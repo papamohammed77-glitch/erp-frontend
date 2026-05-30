@@ -1333,6 +1333,176 @@ var RW_Roles = (function() {
     return { render, _openModal: openModal };
 })();
 window.RW_Roles = RW_Roles;
+// ============================================================
+// RW_Orders – أوردرات المبيعات (فلترة، تأكيد، حذف، رانشيت)
+// ============================================================
+var RW_Orders = (function() {
+    var sortField = 'order_code', sortAsc = true, data = [];
+
+    async function render() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'أوردرات المبيعات');
+        safeHTML(c, '<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="flex justify-between mb-3"><h3 class="font-bold">فلترة الأوردرات</h3><div class="flex gap-2"><button onclick="RW_Orders._apply()" class="bg-blue-50 text-blue-600 px-3 py-1 rounded text-sm">تحديث</button><button onclick="RW_Orders._withoutRS()" class="bg-amber-50 text-amber-600 px-3 py-1 rounded text-sm">بدون رانشيت</button><button onclick="RW_Orders._reset()" class="bg-gray-50 text-gray-600 px-3 py-1 rounded text-sm">إعادة تعيين</button></div></div><div class="grid grid-cols-2 md:grid-cols-6 gap-2"><input type="date" id="f-date-from" onchange="RW_Orders._apply()" class="p-2 bg-gray-50 rounded text-sm"><input type="date" id="f-date-to" onchange="RW_Orders._apply()" class="p-2 bg-gray-50 rounded text-sm"><input type="text" id="f-cust" oninput="RW_Orders._apply()" placeholder="العميل" class="p-2 bg-gray-50 rounded text-sm"><select id="f-status" onchange="RW_Orders._apply()" class="p-2 bg-gray-50 rounded text-sm"><option value="">الحالة</option><option>Draft</option><option>Confirmed</option><option>Pending</option><option>Invoiced</option><option>Delivered</option></select><input type="text" id="f-area" oninput="RW_Orders._apply()" placeholder="المنطقة" class="p-2 bg-gray-50 rounded text-sm"><input type="text" id="f-rs" oninput="RW_Orders._apply()" placeholder="الرانشيت" class="p-2 bg-gray-50 rounded text-sm"></div></div><div class="flex flex-wrap gap-3 mb-4"><button onclick="RW_Orders._createRS()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold"><i class="fa-solid fa-truck-fast ml-2"></i> رانشيت جديد</button><button onclick="RW_Orders._appendRS()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold"><i class="fa-solid fa-folder-plus ml-2"></i> ضم لرانشيت مفتوح</button></div><div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full min-w-[1200px]"><thead class="bg-gray-50 sticky top-0 z-10"><tr><th class="p-3 text-center"><input type="checkbox" id="check-all" onchange="var cbs=document.querySelectorAll(\'.order-checkbox\');for(var i=0;i<cbs.length;i++)cbs[i].checked=this.checked"></th><th class="p-3 text-center cursor-pointer" onclick="RW_Orders._sort(\'order_code\')">رقم الأوردر</th><th class="p-3 text-center">التاريخ</th><th class="p-3 text-center">العميل</th><th class="p-3 text-center">القيمة</th><th class="p-3 text-center">الحالة</th><th class="p-3 text-center">الرانشيت</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="orders-table-body"><tr><td colspan="8" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div></div>');
+        var res = await supabase.from('orders').select('*');
+        data = res.data || [];
+        _apply();
+    }
+
+    function _apply() {
+        var filtered = data.slice();
+        var fd = byId('f-date-from') && byId('f-date-from').value;
+        var td = byId('f-date-to') && byId('f-date-to').value;
+        var cust = (byId('f-cust') && byId('f-cust').value || '').toLowerCase();
+        var st = byId('f-status') && byId('f-status').value;
+        var area = (byId('f-area') && byId('f-area').value || '').toLowerCase();
+        var rs = (byId('f-rs') && byId('f-rs').value || '').toLowerCase();
+
+        if (fd) filtered = filtered.filter(function(o) { return o.order_date >= fd; });
+        if (td) filtered = filtered.filter(function(o) { return o.order_date <= td; });
+        if (cust) filtered = filtered.filter(function(o) { return (o.customer_name || '').toLowerCase().indexOf(cust) !== -1; });
+        if (st) filtered = filtered.filter(function(o) { return o.order_status === st; });
+        if (area) filtered = filtered.filter(function(o) { return (o.area || '').toLowerCase().indexOf(area) !== -1; });
+        if (rs) filtered = filtered.filter(function(o) { return (o.runsheet_id || '').toLowerCase().indexOf(rs) !== -1; });
+
+        var sorted = filtered.sort(function(a, b) {
+            var va = a[sortField] || '', vb = b[sortField] || '';
+            return (va < vb ? -1 : va > vb ? 1 : 0) * (sortAsc ? 1 : -1);
+        });
+        _renderTable(sorted);
+    }
+
+    function _reset() {
+        var ids = ['f-date-from', 'f-date-to', 'f-cust', 'f-status', 'f-area', 'f-rs'];
+        for (var i = 0; i < ids.length; i++) {
+            var el = byId(ids[i]);
+            if (el) el.value = '';
+        }
+        _apply();
+    }
+
+    function _withoutRS() {
+        _renderTable(data.filter(function(o) { return !o.runsheet_id; }));
+    }
+
+    function _sort(f) {
+        if (sortField === f) sortAsc = !sortAsc;
+        else { sortField = f; sortAsc = true; }
+        _apply();
+    }
+
+    function _renderTable(d) {
+        var tb = byId('orders-table-body');
+        if (!tb) return;
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="8" class="text-center py-8">لا توجد أوردرات</td></tr>'); return; }
+        var h = '';
+        for (var i = 0; i < d.length; i++) {
+            var o = d[i];
+            var sc = '';
+            if (o.order_status === 'Draft') sc = 'bg-yellow-100 text-yellow-700';
+            else if (o.order_status === 'Confirmed') sc = 'bg-blue-100 text-blue-700';
+            else if (o.order_status === 'Pending') sc = 'bg-purple-100 text-purple-700';
+            else if (o.order_status === 'Invoiced' || o.order_status === 'Delivered') sc = 'bg-green-100 text-green-700';
+
+            var act = '';
+            if (o.order_status === 'Draft') act += '<button onclick="event.stopPropagation();RW_Orders._confirm(\'' + o.order_code + '\')" class="text-green-600 mx-1" title="تأكيد"><i class="fa-solid fa-check-circle"></i></button>';
+            if (o.order_status === 'Draft' || o.order_status === 'Confirmed') act += '<button onclick="event.stopPropagation();RW_Orders._delete(\'' + o.order_code + '\')" class="text-red-500 mx-1" title="حذف"><i class="fa-solid fa-trash-can"></i></button>';
+
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Orders._details(\'' + o.order_code + '\')">' +
+                '<td class="p-3 text-center" onclick="event.stopPropagation()"><input type="checkbox" class="order-checkbox" data-id="' + o.order_code + '"></td>' +
+                '<td class="p-3 font-bold text-blue-600">' + (o.order_code || '') + '</td>' +
+                '<td class="p-3">' + (o.order_date ? new Date(o.order_date).toLocaleDateString('ar-EG') : '') + '</td>' +
+                '<td class="p-3 font-semibold">' + (o.customer_name || '') + '</td>' +
+                '<td class="p-3 font-bold">' + Number(o.total_amount || 0).toLocaleString() + ' EGP</td>' +
+                '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + sc + '">' + (o.order_status || '') + '</span></td>' +
+                '<td class="p-3">' + (o.runsheet_id || '---') + '</td>' +
+                '<td class="p-3">' + act + '</td></tr>';
+        }
+        safeHTML(tb, h);
+    }
+
+    async function _confirm(code) {
+        var cf = await Swal.fire({ title: 'تأكيد الأوردر', text: 'تحويل ' + code + ' إلى مؤكد؟', icon: 'question', showCancelButton: true, confirmButtonText: 'تأكيد', cancelButtonText: 'إلغاء' });
+        if (!cf.isConfirmed) return;
+        showLoader('جاري التأكيد...');
+        var ses = await supabase.auth.getSession();
+        var t = ses.data.session && ses.data.session.access_token;
+        var res = await fetch(SUPABASE_URL + '/functions/v1/confirm-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: code }) });
+        var json = await res.json(); hideLoader();
+        if (json.success) { showToast('تم التأكيد', 'success'); var r = await supabase.from('orders').select('*'); data = r.data || []; _apply(); }
+        else showToast(json.msg || 'فشل', 'error');
+    }
+
+    async function _delete(code) {
+        var cf = await Swal.fire({ title: 'تأكيد الحذف', text: 'حذف ' + code + '؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' });
+        if (!cf.isConfirmed) return;
+        showLoader('جاري الحذف...');
+        var ses = await supabase.auth.getSession();
+        var t = ses.data.session && ses.data.session.access_token;
+        var res = await fetch(SUPABASE_URL + '/functions/v1/delete-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: code }) });
+        var json = await res.json(); hideLoader();
+        if (json.success) { showToast('تم الحذف', 'success'); var r = await supabase.from('orders').select('*'); data = r.data || []; _apply(); }
+        else showToast(json.msg || 'فشل', 'error');
+    }
+
+    function _getSelected() {
+        var s = [];
+        document.querySelectorAll('.order-checkbox:checked').forEach(function(cb) { s.push(cb.dataset.id); });
+        return s;
+    }
+
+    async function _createRS() {
+        var sel = _getSelected();
+        if (!sel.length) { showToast('اختر أوردراً', 'warning'); return; }
+        showLoader('جاري إنشاء الرانشيت...');
+        var ses = await supabase.auth.getSession();
+        var t = ses.data.session && ses.data.session.access_token;
+        var res = await fetch(SUPABASE_URL + '/functions/v1/create-runsheet', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ selectedOrders: sel }) });
+        var json = await res.json(); hideLoader();
+        if (json.success) { showToast('تم الإنشاء: ' + json.rsId, 'success'); var r = await supabase.from('orders').select('*'); data = r.data || []; _apply(); }
+        else showToast(json.msg || 'فشل', 'error');
+    }
+
+    async function _appendRS() {
+        var sel = _getSelected();
+        if (!sel.length) { showToast('اختر أوردراً', 'warning'); return; }
+        var r = await supabase.from('runsheets').select('runsheet_code, status').in('status', ['Open', 'Confirmed']);
+        if (!r.data || !r.data.length) { showToast('لا توجد رانشيتات مفتوحة', 'info'); return; }
+        var opts = {};
+        r.data.forEach(function(rs) { opts[rs.runsheet_code] = rs.runsheet_code + ' - ' + rs.status; });
+        var v = await Swal.fire({ title: 'اختر الرانشيت', input: 'select', inputOptions: opts, showCancelButton: true, confirmButtonText: 'ضم', cancelButtonText: 'إلغاء' });
+        if (!v.value) return;
+        showLoader('جاري الضم...');
+        var ses = await supabase.auth.getSession();
+        var t = ses.data.session && ses.data.session.access_token;
+        var res = await fetch(SUPABASE_URL + '/functions/v1/append-to-runsheet', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ targetRSID: v.value, selectedOrders: sel }) });
+        var json = await res.json(); hideLoader();
+        if (json.success) { showToast('تم الضم', 'success'); var r2 = await supabase.from('orders').select('*'); data = r2.data || []; _apply(); }
+        else showToast(json.msg || 'فشل', 'error');
+    }
+
+    async function _details(code) {
+        showLoader('جاري التحميل...');
+        var o = await supabase.from('orders').select('*').eq('order_code', code).maybeSingle();
+        var it = await supabase.from('order_details').select('*').eq('order_id', o.data && o.data.id);
+        hideLoader();
+        if (!o.data) { showToast('غير موجود', 'error'); return; }
+        var itemsH = '', total = 0;
+        if (it.data && it.data.length) {
+            itemsH = '<table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+            it.data.forEach(function(i) {
+                var lt = Number(i.line_amount) || (Number(i.qty) * Number(i.unit_price));
+                total += lt;
+                itemsH += '<tr><td class="p-2 font-semibold">' + (i.item_name || '') + '</td><td class="p-2 text-center">' + i.qty + '</td><td class="p-2 text-center">' + Number(i.unit_price).toLocaleString() + '</td><td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
+            });
+            itemsH += '</tbody></table>';
+        }
+        var h = '<div class="text-right"><div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4"><div><p><b>العميل:</b> ' + (o.data.customer_name || '') + '</p><p><b>المنطقة:</b> ' + (o.data.area || '') + '</p></div><div><p><b>الحالة:</b> ' + o.data.order_status + '</p><p><b>الرانشيت:</b> ' + (o.data.runsheet_id || '---') + '</p></div></div>' + itemsH + '<div class="mt-4 font-bold text-lg">الإجمالي: ' + Number(o.data.total_amount || 0).toLocaleString() + ' EGP</div></div>';
+        Swal.fire({ title: 'تفاصيل الأوردر: ' + code, html: h, width: '800px', showCloseButton: true, showConfirmButton: false });
+    }
+
+    return { render: render, _apply: _apply, _reset: _reset, _withoutRS: _withoutRS, _sort: _sort, _confirm: _confirm, _delete: _delete, _createRS: _createRS, _appendRS: _appendRS, _details: _details };
+})();
+window.RW_Orders = RW_Orders;
 // --- العروض (تحديث نهائي) ---
 const RW_Views = {
     async render(view) {
@@ -1353,6 +1523,7 @@ const RW_Views = {
         if (view === 'suppliers') { RW_Suppliers.render(); return; }
         if (view === 'branches') { RW_Branches.render(); return; }
         if (view === 'pos') { RW_POS.render(); return; }
+        if (view === 'orders') { RW_Orders.render(); return; }
         if (view === 'settings') { RW_Settings.render(); return; }
         if (view === 'users') { RW_Users.render(); return; }
         if (view === 'roles') { RW_Roles.render(); return; }
