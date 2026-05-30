@@ -121,12 +121,6 @@
     .rw-table tbody tr:hover{background:#f8fbff;cursor:pointer}
     .rw-status{padding:8px 14px;border-radius:999px;font-size:12px;font-weight:900;display:inline-block}
     .rw-status.success{background:rgba(16,185,129,0.12);color:#10b981}.rw-status.warning{background:rgba(245,158,11,0.12);color:#f59e0b}.rw-status.danger{background:rgba(239,68,68,0.12);color:#ef4444}
-    .rw-activity-list{display:flex;flex-direction:column;gap:18px}
-    .rw-activity-item{display:flex;align-items:center;gap:16px;padding:18px;border-radius:22px;background:#f8fafc}
-    .rw-activity-icon{width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:22px}
-    .rw-activity-icon.blue{background:rgba(37,99,235,0.10)}.rw-activity-icon.green{background:rgba(16,185,129,0.10)}
-    .rw-activity-title{font-size:15px;font-weight:800;color:#111827}
-    .rw-activity-time{margin-top:6px;font-size:13px;font-weight:700;color:#6b7280}
     .rw-btn-primary{background:var(--rw-primary);color:white;height:44px;padding:0 18px;border-radius:12px;font-weight:800;cursor:pointer;border:none}
     .rw-btn-primary:hover{background:var(--rw-primary-dark)}
     @media(max-width:1400px){.rw-kpi-grid{grid-template-columns:repeat(2,1fr)}}
@@ -185,7 +179,7 @@
 
 <script>
 // ============================================================
-// المرحلة 1: الأساس – Safe Engine + Supabase Auth + قائمة كاملة
+// المرحلة 2: تفعيل القراءة المباشرة من Supabase
 // ============================================================
 (function() {
 'use strict';
@@ -195,7 +189,6 @@ const SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// --- الدوال المساعدة الأساسية ---
 function byId(id) { return document.getElementById(id); }
 function safeHTML(el, html) { if (!el) return; try { el.innerHTML = html; } catch(e) { console.error(e); } }
 function safeText(el, text) { if (!el) return; try { el.innerText = text; } catch(e) { console.error(e); } }
@@ -206,7 +199,7 @@ function showToast(message, type) { type = type || 'success'; try { Swal.fire({ 
 // --- حالة التطبيق ---
 var RW_STATE = {
     app: { initialized: false, authenticated: false, loading: false, currentView: 'dashboard', currentUser: null, company: { name: 'الروائع ERP', logo: 'ر' } },
-    data: { items: [], customers: [], suppliers: [], orders: [], runsheets: [], employees: [], branches: [], stock_branches: [] },
+    data: { items: [], customers: [], suppliers: [], branches: [], stock_branches: [] },
     permissions: [],
     ui: { sidebarOpen: false, sidebarCollapsed: false }
 };
@@ -219,7 +212,6 @@ var RW_Auth = {
         try {
             const { data, error } = await supabase.auth.signInWithPassword({ email: username, password: password });
             if (error) {
-                // قد يكون اسم المستخدم وليس بريداً، نتعامل معه كبريد مبدئياً
                 hideLoader();
                 showToast('فشل تسجيل الدخول: ' + error.message, 'error');
                 return;
@@ -230,13 +222,10 @@ var RW_Auth = {
                 name: user.user_metadata?.name || user.email,
                 email: user.email,
                 role: user.user_metadata?.role || 'مدير النظام',
-                isOwner: user.user_metadata?.isOwner || false
+                isOwner: user.user_metadata?.isOwner === 'true' || user.user_metadata?.isOwner === true
             };
             RW_STATE.permissions = user.user_metadata?.permissions || ['*'];
-            
-            // جلب معلومات الشركة (يمكن أن تكون من جدول companies لاحقاً)
             RW_STATE.app.company = { name: user.user_metadata?.companyName || 'الروائع ERP', logo: user.user_metadata?.companyLogo || 'ر' };
-            
             this.enterSystem();
         } catch (e) {
             hideLoader();
@@ -249,12 +238,8 @@ var RW_Auth = {
         try {
             byId('rw-login-page').style.display = 'none';
             byId('rw-main-shell').style.display = 'flex';
-            
             var user = RW_STATE.app.currentUser;
             var userName = user ? (user.name || user.email) : 'مستخدم';
-            var userRole = user ? (user.role || '') : '';
-            var displayText = userName + (userRole ? ' (' + userRole + ')' : '');
-            
             safeText(byId('rw-sidebar-company-name'), RW_STATE.app.company.name || 'الروائع ERP');
             var logoImg = byId('rw-sidebar-brand-logo');
             if (logoImg && RW_STATE.app.company.logo) {
@@ -262,10 +247,7 @@ var RW_Auth = {
                 logoImg.style.objectFit = 'contain';
                 logoImg.style.backgroundColor = '#f8fafc';
             }
-            safeText(byId('rw-header-user-display'), displayText);
-            safeText(byId('rw-sidebar-user-name'), userName);
-            safeText(byId('rw-sidebar-user-role'), userRole);
-            
+            safeText(byId('rw-header-user-display'), userName);
             RW_Navigation.buildSidebar();
             RW_Navigation.navigate('dashboard');
         } catch(e) { console.error(e); this.forceEnterFallback(); }
@@ -281,280 +263,553 @@ var RW_Auth = {
         } catch(e) { document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:Cairo;"><h1>RAWAEA ERP</h1><p>حدث خطأ أثناء تشغيل النظام</p><button onclick="location.reload()">إعادة التحميل</button></div>'; }
     },
     logout: async function() {
-        try {
-            await supabase.auth.signOut();
+        try { await supabase.auth.signOut();
             RW_STATE.app.authenticated = false;
             byId('rw-main-shell').style.display = 'none';
             byId('rw-login-page').style.display = 'flex';
-            var u = byId('rw-username'); if (u) u.value = '';
-            var p = byId('rw-password'); if (p) p.value = '';
         } catch(e) { console.error(e); }
     }
 };
-// --- نظام التنقل وبناء القائمة ---
+
+// --- طبقة البيانات المباشرة ---
+var RW_Data = {
+    loadItems: async function() {
+        try {
+            const { data, error } = await supabase.from('items').select('*');
+            if (error) throw error;
+            RW_STATE.data.items = data || [];
+            return RW_STATE.data.items;
+        } catch(e) { console.error(e); return []; }
+    },
+    loadCustomers: async function() {
+        try {
+            const { data, error } = await supabase.from('customers').select('*');
+            if (error) throw error;
+            RW_STATE.data.customers = data || [];
+            return RW_STATE.data.customers;
+        } catch(e) { console.error(e); return []; }
+    },
+    loadBranches: async function() {
+        try {
+            const { data, error } = await supabase.from('branches').select('*');
+            if (error) throw error;
+            RW_STATE.data.branches = data || [];
+            return RW_STATE.data.branches;
+        } catch(e) { console.error(e); return []; }
+    }
+};
+
+// --- نظام التنقل (كامل) ---
 var RW_Navigation = {
     menuTree: [
     { view: 'dashboard', icon: 'fa-chart-pie', label: 'لوحة التحكم' },
-    {
-        icon: 'fa-chart-line', label: 'إدارة المبيعات',
-        submenu: [
-            { view: 'customers', label: 'العملاء' },
-            { view: 'online-store', label: 'المتجر الإلكتروني' },
-            { view: 'pos', label: 'نقطة البيع' },
-            { view: 'orders', label: 'أوردرات المبيعات' },
-            { view: 'runsheets', label: 'الرانشيتات' }
-        ]
-    },
-    {
-        icon: 'fa-truck', label: 'إدارة المشتريات',
-        submenu: [
-            { view: 'suppliers', label: 'الموردين' },
-            { view: 'purchase-pos', label: 'نقطة شراء' },
-            { view: 'purchases', label: 'أوردرات الشراء' }
-        ]
-    },
-    {
-        icon: 'fa-warehouse', label: 'إدارة المخازن والمخزون',
-        submenu: [
-            { view: 'items', label: 'الأصناف' },
-            { view: 'branches', label: 'المخازن والفروع' },
-            {
-                label: 'العمليات المخزنية', icon: 'fa-timeline',
-                submenu: [
-                    { view: 'receiving', label: 'الاستلام' }, { view: 'picking', label: 'التحضير' },
-                    { view: 'loading', label: 'التحميل' }, { view: 'delivery', label: 'التوصيل' },
-                    { view: 'return', label: 'المرتجعات' }, { view: 'unloading', label: 'التفريغ' }
-                ]
-            },
-            {
-                label: 'الأذونات المخزنية', icon: 'fa-file-signature',
-                submenu: [
-                    { view: 'transfer', label: 'تحويل مخزني' }, { view: 'direct-sale', label: 'صرف سيارة بيع مباشر' },
-                    { view: 'direct-return', label: 'استلام مرتجع سيارة' }, { view: 'supplier-return', label: 'مرتجع لمورد' },
-                    { view: 'vouchers', label: 'عرض الأذونات' }
-                ]
-            },
-            {
-                label: 'الجرد', icon: 'fa-clipboard-check',
-                submenu: [
-                    { view: 'vehicle-count', label: 'جرد سيارة' }, { view: 'branch-count', label: 'جرد فرع' },
-                    { view: 'general-count', label: 'جرد عام' }
-                ]
-            }
-        ]
-    },
-    {
-        icon: 'fa-coins', label: 'إدارة الحسابات والمالية',
-        submenu: [
-            { action: 'showFinanceTab', arg: 'treasury', label: 'الخزائن والبنوك' },
-            { action: 'showFinanceTab', arg: 'accounts', label: 'دليل الحسابات' },
-            { action: 'showFinanceTab', arg: 'journal', label: 'قيود يومية' },
-            { action: 'showFinanceTab', arg: 'receipts', label: 'سندات القبض' },
-            { action: 'showFinanceTab', arg: 'payments', label: 'سندات الصرف' },
-            { action: 'showFinanceTab', arg: 'transfers', label: 'التحويلات' },
-            { action: 'showFinanceTab', arg: 'reports', label: 'التقارير المالية' },
-            { view: 'settlement', label: 'إغلاق اليومية' }
-        ]
-    },
-    {
-        icon: 'fa-chart-simple', label: 'التقارير الذكية',
-        submenu: [
-            { view: 'reports-dashboard', label: 'لوحة القيادة' },
-            { view: 'reports-detailed', label: 'التقارير التفصيلية' }
-        ]
-    },
+    { icon: 'fa-chart-line', label: 'إدارة المبيعات', submenu: [
+        { view: 'customers', label: 'العملاء' }, { view: 'online-store', label: 'المتجر الإلكتروني' },
+        { view: 'pos', label: 'نقطة البيع' }, { view: 'orders', label: 'أوردرات المبيعات' },
+        { view: 'runsheets', label: 'الرانشيتات' }
+    ]},
+    { icon: 'fa-truck', label: 'إدارة المشتريات', submenu: [
+        { view: 'suppliers', label: 'الموردين' }, { view: 'purchase-pos', label: 'نقطة شراء' },
+        { view: 'purchases', label: 'أوردرات الشراء' }
+    ]},
+    { icon: 'fa-warehouse', label: 'إدارة المخازن والمخزون', submenu: [
+        { view: 'items', label: 'الأصناف' }, { view: 'branches', label: 'المخازن والفروع' },
+        { label: 'العمليات المخزنية', icon: 'fa-timeline', submenu: [
+            { view: 'receiving', label: 'الاستلام' }, { view: 'picking', label: 'التحضير' },
+            { view: 'loading', label: 'التحميل' }, { view: 'delivery', label: 'التوصيل' },
+            { view: 'return', label: 'المرتجعات' }, { view: 'unloading', label: 'التفريغ' }
+        ]},
+        { label: 'الأذونات المخزنية', icon: 'fa-file-signature', submenu: [
+            { view: 'transfer', label: 'تحويل مخزني' }, { view: 'direct-sale', label: 'صرف سيارة بيع مباشر' },
+            { view: 'direct-return', label: 'استلام مرتجع سيارة' }, { view: 'supplier-return', label: 'مرتجع لمورد' },
+            { view: 'vouchers', label: 'عرض الأذونات' }
+        ]},
+        { label: 'الجرد', icon: 'fa-clipboard-check', submenu: [
+            { view: 'vehicle-count', label: 'جرد سيارة' }, { view: 'branch-count', label: 'جرد فرع' },
+            { view: 'general-count', label: 'جرد عام' }
+        ]}
+    ]},
+    { icon: 'fa-coins', label: 'إدارة الحسابات والمالية', submenu: [
+        { action: 'showFinanceTab', arg: 'treasury', label: 'الخزائن والبنوك' },
+        { action: 'showFinanceTab', arg: 'accounts', label: 'دليل الحسابات' },
+        { action: 'showFinanceTab', arg: 'journal', label: 'قيود يومية' },
+        { action: 'showFinanceTab', arg: 'receipts', label: 'سندات القبض' },
+        { action: 'showFinanceTab', arg: 'payments', label: 'سندات الصرف' },
+        { action: 'showFinanceTab', arg: 'transfers', label: 'التحويلات' },
+        { action: 'showFinanceTab', arg: 'reports', label: 'التقارير المالية' },
+        { view: 'settlement', label: 'إغلاق اليومية' }
+    ]},
+    { icon: 'fa-chart-simple', label: 'التقارير الذكية', submenu: [
+        { view: 'reports-dashboard', label: 'لوحة القيادة' },
+        { view: 'reports-detailed', label: 'التقارير التفصيلية' }
+    ]},
     { view: 'users', icon: 'fa-users-gear', label: 'المستخدمين والصلاحيات' },
     { view: 'roles', icon: 'fa-user-shield', label: 'إدارة أدوار الموظفين' },
     { view: 'license', icon: 'fa-shield-haltered', label: 'إدارة الترخيص', perm: 'owner' },
     { view: 'settings', icon: 'fa-gear', label: 'إعدادات النظام' },
     { action: 'logout', icon: 'fa-right-from-bracket', label: 'تسجيل الخروج' }
 ],
-
-_buildMenuHTML: function(items) {
-    var html = '<ul style="list-style:none;padding:0;margin:0;">';
-    items.forEach(function(item) {
+_buildMenuHTML(items) {
+    let html = '<ul style="list-style:none;padding:0;margin:0;">';
+    items.forEach(item => {
         if (item.submenu) {
-            html += '<li style="margin-bottom:4px;">';
-            html += '<div class="rw-sidebar-link" style="justify-content:space-between;" onclick="event.stopPropagation(); var sub = this.nextElementSibling; if(sub) sub.style.display = sub.style.display === \'none\' ? \'block\' : \'none\';">';
-            html += '<div style="display:flex;align-items:center;gap:16px;">';
-            html += '<div class="rw-sidebar-link-icon"><i class="fa-solid ' + (item.icon || 'fa-folder') + '"></i></div>';
-            html += '<div class="rw-sidebar-link-text">' + item.label + '</div>';
-            html += '</div>';
-            html += '<i class="fa-solid fa-chevron-down" style="font-size:11px;color:#94a3b8;"></i>';
-            html += '</div>';
-            html += '<div style="display:none;padding-right:16px;" class="rw-sidebar-submenu">' + RW_Navigation._buildMenuHTML(item.submenu) + '</div>';
-            html += '</li>';
+            html += `<li style="margin-bottom:4px;"><div class="rw-sidebar-link" style="justify-content:space-between;" onclick="event.stopPropagation(); const s=this.nextElementSibling; if(s)s.style.display=s.style.display==='none'?'block':'none';">
+                <div style="display:flex;align-items:center;gap:16px;"><div class="rw-sidebar-link-icon"><i class="fa-solid ${item.icon||'fa-folder'}"></i></div><div class="rw-sidebar-link-text">${item.label}</div></div>
+                <i class="fa-solid fa-chevron-down" style="font-size:11px;color:#94a3b8;"></i></div>
+                <div style="display:none;padding-right:16px;" class="rw-sidebar-submenu">${this._buildMenuHTML(item.submenu)}</div></li>`;
         } else if (item.action) {
-            html += '<li style="margin-bottom:4px;">';
-            html += '<button class="rw-sidebar-link" onclick="RW_Navigation._handleAction(\'' + item.action + '\', \'' + (item.arg || '') + '\')">';
-            html += '<div class="rw-sidebar-link-icon"><i class="fa-solid ' + (item.icon || 'fa-cog') + '"></i></div>';
-            html += '<div class="rw-sidebar-link-text">' + item.label + '</div>';
-            html += '</button>';
-            html += '</li>';
+            html += `<li style="margin-bottom:4px;"><button class="rw-sidebar-link" onclick="RW_Navigation._handleAction('${item.action}','${item.arg||''}')">
+                <div class="rw-sidebar-link-icon"><i class="fa-solid ${item.icon||'fa-cog'}"></i></div><div class="rw-sidebar-link-text">${item.label}</div></button></li>`;
         } else {
-            var view = item.view || '';
-            html += '<li style="margin-bottom:4px;">';
-            html += '<button class="rw-sidebar-link" data-view="' + view + '">';
-            html += '<div class="rw-sidebar-link-icon"><i class="fa-solid ' + (item.icon || 'fa-file') + '"></i></div>';
-            html += '<div class="rw-sidebar-link-text">' + item.label + '</div>';
-            html += '</button>';
-            html += '</li>';
+            html += `<li style="margin-bottom:4px;"><button class="rw-sidebar-link" data-view="${item.view}">
+                <div class="rw-sidebar-link-icon"><i class="fa-solid ${item.icon||'fa-file'}"></i></div><div class="rw-sidebar-link-text">${item.label}</div></button></li>`;
         }
     });
-    html += '</ul>';
-    return html;
+    return html + '</ul>';
 },
-
-_handleAction: function(action, arg) {
-    if (action === 'showFinanceTab') {
-        RW_STATE.app.currentView = 'finance';
-        RW_Views.render('finance');
-        safeText(byId('rw-header-title'), 'الحسابات والمالية');
-        safeText(byId('rw-header-subtitle'), 'إدارة الحسابات والمالية');
-        return;
-    }
-    if (action === 'logout') {
-        RW_Auth.logout();
-        return;
-    }
-    if (typeof RW_Views !== 'undefined' && RW_Views.render) {
-        RW_Views.render(action);
-    }
+_handleAction(action, arg) {
+    if (action === 'showFinanceTab') { RW_STATE.app.currentView = 'finance'; RW_Views.render('finance'); safeText(byId('rw-header-title'), 'الحسابات والمالية'); return; }
+    if (action === 'logout') { RW_Auth.logout(); return; }
+    if (typeof RW_Views !== 'undefined' && RW_Views.render) RW_Views.render(action);
 },
-
-    buildSidebar: function() {
-        try {
-            var nav = byId('rw-sidebar-nav');
-            if (!nav) return;
-
-            var perms = RW_STATE.permissions || [];
-            var hasFullAccess = (perms.indexOf('*') !== -1);
-
-            function isAllowed(item) {
-                if (hasFullAccess) return true;
-                if (item.perm === 'owner') { return RW_STATE.app.currentUser && RW_STATE.app.currentUser.isOwner === true; }
-                if (item.perm) return perms.indexOf(item.perm) !== -1;
-                if (item.view) return perms.indexOf(item.view) !== -1;
-                return true;
-            }
-
-            function filterMenu(items) {
-                var filtered = [];
-                for (var i = 0; i < items.length; i++) {
-                    var item = items[i];
-                    if (!isAllowed(item)) continue;
-                    if (item.submenu) {
-                        var filteredSub = filterMenu(item.submenu);
-                        if (filteredSub.length === 0) continue;
-                        var newItem = {}; for (var k in item) newItem[k] = item[k];
-                        newItem.submenu = filteredSub;
-                        filtered.push(newItem);
-                    } else { filtered.push(item); }
-                }
-                return filtered;
-            }
-
-            var filteredTree = filterMenu(this.menuTree);
-            var menuHTML = this._buildMenuHTML(filteredTree);
-            safeHTML(nav, menuHTML);
-
-            nav.querySelectorAll('.rw-sidebar-link[data-view]').forEach(function(btn) {
-                btn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    var view = btn.dataset.view;
-                    if (view) { RW_Navigation.navigate(view); }
-                });
-            });
-        } catch(e) { console.error('فشل بناء القائمة الجانبية', e); }
-    },
-
-    toggleSidebar: function() {
-        var sidebar = byId('rw-sidebar');
-        var mainContent = byId('rw-main-content');
-        if (!sidebar || !mainContent) return;
-        var collapsed = sidebar.classList.toggle('collapsed');
-        if (collapsed) { mainContent.classList.add('expanded'); } else { mainContent.classList.remove('expanded'); }
-        RW_STATE.ui.sidebarCollapsed = collapsed;
-        try { localStorage.setItem('rw_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
-    },
-
-    navigate: function(view) {
-        try {
-            RW_STATE.app.currentView = view;
-            document.querySelectorAll('.rw-sidebar-link').forEach(function(el) { el.classList.remove('active'); });
-            var activeBtn = document.querySelector('.rw-sidebar-link[data-view="' + view + '"]');
-            if (activeBtn) activeBtn.classList.add('active');
-            RW_Views.render(view);
-        } catch(e) { console.error(e); showToast('حدث خطأ أثناء فتح الصفحة', 'error'); }
-    }
-};
-
-// --- نظام العروض (Views Renderer) ---
-var RW_Views = {
-    render: function(view) {
-        try {
-            var container = byId('rw-page-container');
-            if (!container) return;
-            var titles = {
-                'dashboard': 'لوحة التحكم', 'items': 'الأصناف', 'customers': 'العملاء', 'suppliers': 'الموردين',
-                'branches': 'المخازن والفروع', 'pos': 'نقطة البيع', 'purchase-pos': 'نقطة شراء', 'purchases': 'أوردرات الشراء',
-                'orders': 'أوردرات المبيعات', 'runsheets': 'الرانشيتات', 'online-store': 'المتجر الإلكتروني',
-                'users': 'المستخدمين والصلاحيات', 'roles': 'إدارة أدوار الموظفين', 'license': 'إدارة الترخيص',
-                'settings': 'إعدادات النظام', 'settlement': 'إغلاق اليومية',
-                'reports-dashboard': 'لوحة القيادة', 'reports-detailed': 'التقارير التفصيلية',
-                'receiving': 'الاستلام', 'picking': 'التحضير', 'loading': 'التحميل',
-                'delivery': 'التوصيل', 'return': 'المرتجعات', 'unloading': 'التفريغ',
-                'vouchers': 'الأذونات المخزنية', 'transfer': 'تحويل مخزني',
-                'direct-sale': 'صرف سيارة بيع مباشر', 'direct-return': 'استلام مرتجع سيارة',
-                'supplier-return': 'مرتجع لمورد', 'vehicle-count': 'جرد سيارة',
-                'branch-count': 'جرد فرع', 'general-count': 'جرد عام'
-            };
-            safeText(byId('rw-header-title'), titles[view] || view || 'النظام');
-            safeText(byId('rw-header-subtitle'), '');
-            
-            if (view === 'dashboard') { RW_Dashboard.render(); return; }
-            // كل التبويبات الأخرى تظهر رسالة "قيد التطوير" حالياً
-            var placeholderHTML = '<div class="rw-card" style="text-align:center;padding:60px 20px;">';
-            placeholderHTML += '<div style="font-size:64px;margin-bottom:20px;">🚧</div>';
-            placeholderHTML += '<h2 class="rw-card-title" style="margin-bottom:12px;">' + (titles[view] || view) + '</h2>';
-            placeholderHTML += '<p style="color:#6b7280;font-size:16px;">هذا القسم قيد التطوير وسيتم تفعيله في المراحل القادمة</p>';
-            placeholderHTML += '<div style="margin-top:30px;padding:20px;background:#f0f9ff;border-radius:16px;border:1px solid #bae6fd;">';
-            placeholderHTML += '<p style="font-size:14px;color:#0369a1;"><i class="fa-solid fa-circle-info ml-1"></i> المرحلة الحالية: الأساس (المصادقة والتنقل).<br>سيتم ربط هذا القسم بقاعدة البيانات في المراحل التالية.</p>';
-            placeholderHTML += '</div></div>';
-            safeHTML(container, placeholderHTML);
-        } catch(e) {
-            console.error("🔥 RW_Views.render FATAL ERROR - View:", view);
-            console.error("Message:", e.message);
-            safeHTML(byId('rw-page-container'), '<div class="rw-card"><h2>خطأ في الصفحة</h2><pre>' + e.message + '</pre></div>');
+buildSidebar() {
+    try {
+        const nav = byId('rw-sidebar-nav'); if (!nav) return;
+        const perms = RW_STATE.permissions || [];
+        const hasFullAccess = perms.includes('*');
+        function isAllowed(item) {
+            if (hasFullAccess) return true;
+            if (item.perm === 'owner') return RW_STATE.app.currentUser?.isOwner === true;
+            if (item.perm) return perms.includes(item.perm);
+            if (item.view) return perms.includes(item.view);
+            return true;
         }
-    }
+        function filterMenu(items) {
+            const filtered = [];
+            for (const item of items) {
+                if (!isAllowed(item)) continue;
+                if (item.submenu) { const sub = filterMenu(item.submenu); if (sub.length) { const n = {...item}; n.submenu = sub; filtered.push(n); } }
+                else filtered.push(item);
+            }
+            return filtered;
+        }
+        const tree = filterMenu(this.menuTree);
+        safeHTML(nav, this._buildMenuHTML(tree));
+        nav.querySelectorAll('.rw-sidebar-link[data-view]').forEach(btn => {
+            btn.addEventListener('click', function(e) { e.stopPropagation(); RW_Navigation.navigate(btn.dataset.view); });
+        });
+    } catch(e) { console.error(e); }
+},
+toggleSidebar() {
+    const sidebar = byId('rw-sidebar'), main = byId('rw-main-content');
+    if (!sidebar || !main) return;
+    const collapsed = sidebar.classList.toggle('collapsed');
+    main.classList.toggle('expanded', collapsed);
+    RW_STATE.ui.sidebarCollapsed = collapsed;
+    try { localStorage.setItem('rw_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {}
+},
+navigate(view) {
+    try {
+        RW_STATE.app.currentView = view;
+        document.querySelectorAll('.rw-sidebar-link').forEach(el => el.classList.remove('active'));
+        const active = document.querySelector(`.rw-sidebar-link[data-view="${view}"]`);
+        if (active) active.classList.add('active');
+        RW_Views.render(view);
+    } catch(e) { console.error(e); showToast('حدث خطأ', 'error'); }
+}
 };
 
+// --- العروض ---
+var RW_Views = {
+    async render(view) {
+        const container = byId('rw-page-container'); if (!container) return;
+        const titles = {
+            'dashboard':'لوحة التحكم','items':'الأصناف','customers':'العملاء','suppliers':'الموردين',
+            'branches':'المخازن والفروع','pos':'نقطة البيع','purchase-pos':'نقطة شراء','purchases':'أوردرات الشراء',
+            'orders':'أوردرات المبيعات','runsheets':'الرانشيتات','online-store':'المتجر الإلكتروني',
+            'users':'المستخدمين والصلاحيات','roles':'إدارة أدوار الموظفين','license':'إدارة الترخيص',
+            'settings':'إعدادات النظام','settlement':'إغلاق اليومية',
+            'reports-dashboard':'لوحة القيادة','reports-detailed':'التقارير التفصيلية'
+        };
+        safeText(byId('rw-header-title'), titles[view] || 'النظام');
+
+        if (view === 'dashboard') { RW_Dashboard.render(); return; }
+        if (view === 'items') { RW_Items.render(); return; }
+        if (view === 'customers') { RW_Customers.render(); return; }
+        if (view === 'suppliers') { RW_Suppliers.render(); return; }
+        if (view === 'branches') { RW_Branches.render(); return; }
+
+        // باقي التبويبات قيد التطوير
+        safeHTML(container, `<div class="rw-card" style="text-align:center;padding:60px 20px;">
+            <div style="font-size:64px;margin-bottom:20px;">🚧</div>
+            <h2>${titles[view]||view}</h2>
+            <p style="color:#6b7280;">قيد التطوير</p></div>`);
+    }
+};
 // --- لوحة التحكم ---
 var RW_Dashboard = {
-    render: function() {
+    async render() {
+        const container = byId('rw-page-container'); if (!container) return;
+        safeHTML(container, `<div class="rw-kpi-grid">
+            <div class="rw-kpi-card"><div class="rw-kpi-title">إجمالي الأصناف</div><div class="rw-kpi-value" id="stat-items">---</div></div>
+            <div class="rw-kpi-card"><div class="rw-kpi-title">العملاء</div><div class="rw-kpi-value" id="stat-customers">---</div></div>
+            <div class="rw-kpi-card"><div class="rw-kpi-title">الموردين</div><div class="rw-kpi-value" id="stat-suppliers">---</div></div>
+            <div class="rw-kpi-card"><div class="rw-kpi-title">الفروع</div><div class="rw-kpi-value" id="stat-branches">---</div></div>
+        </div>
+        <div class="rw-card" style="text-align:center;padding:40px;">
+            <h3>مرحباً بك في الروائع ERP</h3>
+            <p style="color:#6b7280;">بيانات حية من Supabase</p>
+        </div>`);
+
         try {
-            var container = byId('rw-page-container');
-            if (!container) return;
-            var html = '<div class="rw-kpi-grid">' +
-                '<div class="rw-kpi-card"><div class="rw-kpi-title">إجمالي المبيعات (شهرياً)</div><div class="rw-kpi-value" style="color:#9ca3af;">---</div></div>' +
-                '<div class="rw-kpi-card"><div class="rw-kpi-title">قيمة المخزون</div><div class="rw-kpi-value" style="color:#9ca3af;">---</div></div>' +
-                '<div class="rw-kpi-card"><div class="rw-kpi-title">أصناف نشطة / راكدة</div><div class="rw-kpi-value" style="color:#9ca3af;">---</div></div>' +
-                '<div class="rw-kpi-card"><div class="rw-kpi-title">أصناف منخفضة</div><div class="rw-kpi-value" style="color:#9ca3af;">---</div></div>' +
-                '</div>' +
-                '<div class="rw-card" style="text-align:center;padding:40px;">' +
-                '<div style="font-size:48px;margin-bottom:16px;">📊</div>' +
-                '<h3 style="font-size:20px;font-weight:900;color:#111827;margin-bottom:8px;">مرحباً بك في الروائع ERP</h3>' +
-                '<p style="color:#6b7280;font-size:15px;">النظام قيد الإنشاء حالياً. سيتم ربط لوحة التحكم بالبيانات الحقيقية في المراحل القادمة.</p>' +
-                '<div style="margin-top:24px;display:flex;gap:12px;justify-content:center;">' +
-                '<button onclick="RW_Navigation.navigate(\'pos\')" class="rw-btn-primary" style="height:48px;padding:0 24px;font-size:15px;"><i class="fa-solid fa-cash-register ml-1"></i> نقطة البيع</button>' +
-                '<button onclick="RW_Navigation.navigate(\'orders\')" class="rw-btn-primary" style="height:48px;padding:0 24px;font-size:15px;"><i class="fa-solid fa-clipboard-list ml-1"></i> الأوردرات</button>' +
-                '</div></div>';
-            safeHTML(container, html);
+            const items = await RW_Data.loadItems();
+            const customers = await RW_Data.loadCustomers();
+            const suppliers = await supabase.from('suppliers').select('*', { count: 'exact', head: false }).then(r => r.data || []);
+            const branches = await RW_Data.loadBranches();
+            safeText(byId('stat-items'), items.length);
+            safeText(byId('stat-customers'), customers.length);
+            safeText(byId('stat-suppliers'), suppliers.length);
+            safeText(byId('stat-branches'), branches.length);
         } catch(e) { console.error(e); }
     }
 };
-// --- الأحداث والتمهيد (Boot) ---
+
+// ============================================================
+// RW_Items – الأصناف (قراءة مباشرة من Supabase)
+// ============================================================
+var RW_Items = (function() {
+    var sortField = 'item_code', sortAsc = true, itemsData = [];
+
+    async function render() {
+        const container = byId('rw-page-container'); if (!container) return;
+        safeText(byId('rw-header-title'), 'الأصناف');
+        safeHTML(container, buildMainHTML());
+        bindEvents();
+        showLoader('جاري تحميل الأصناف...');
+        itemsData = await RW_Data.loadItems();
+        hideLoader();
+        renderTable(itemsData);
+    }
+
+    function buildMainHTML() {
+        return `<div class="flex flex-col h-full">
+            <div class="flex flex-wrap gap-3 mb-4">
+                <input type="text" id="items-search" placeholder="🔍 بحث بالاسم، الكود، الباركود..." class="flex-1 min-w-[250px] p-3 bg-white rounded-xl border">
+                <button id="btn-add-item" class="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> صنف جديد</button>
+            </div>
+            <div class="flex-1 bg-white rounded-2xl shadow-sm border overflow-y-auto" id="items-table-wrapper"></div>
+        </div>`;
+    }
+
+    function bindEvents() {
+        byId('items-search')?.addEventListener('input', filterTable);
+        byId('btn-add-item')?.addEventListener('click', () => openModal(null));
+    }
+
+    function renderTable(data) {
+        const w = byId('items-table-wrapper'); if (!w) return;
+        if (!data.length) { safeHTML(w, '<div class="text-center p-10 text-gray-500">لا توجد أصناف</div>'); return; }
+        const sorted = [...data].sort((a,b) => {
+            let va = a[sortField]||'', vb = b[sortField]||'';
+            if (['stock','sales_price','max_qty'].includes(sortField)) { va=Number(va); vb=Number(vb); }
+            else { va=String(va).toLowerCase(); vb=String(vb).toLowerCase(); }
+            return (va<vb?-1:va>vb?1:0) * (sortAsc?1:-1);
+        });
+        const cols = [
+            {field:'name',label:'المنتج'},{field:'category',label:'التصنيف'},{field:'unit',label:'الوحدة'},
+            {field:'stock',label:'المخزون'},{field:'sales_price',label:'السعر'},{field:'max_qty',label:'الأقصى'}
+        ];
+        let html = `<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50 z-10"><tr>`;
+        cols.forEach(c => {
+            const icon = sortField===c.field ? (sortAsc?'fa-sort-up':'fa-sort-down') : 'fa-sort';
+            html += `<th class="p-4 cursor-pointer font-bold" onclick="RW_Items._sort('${c.field}')">${c.label} <i class="fa-solid ${icon}"></i></th>`;
+        });
+        html += `</tr></thead><tbody>`;
+        sorted.forEach(item => {
+            const img = item.image_url || 'https://via.placeholder.com/60';
+            const stockWarn = (Number(item.reorder_point||5) >= Number(item.qty||0)) ? 'color:#ef4444;font-weight:bold' : '';
+            html += `<tr class="hover:bg-blue-50 cursor-pointer" onclick="RW_Items._openModal('${item.item_code}')">
+                <td class="p-4"><div class="flex items-center gap-3"><img src="${img}" class="w-12 h-12 rounded-lg object-cover border" onerror="this.src='https://via.placeholder.com/60'"><span class="font-medium">${item.name||''}</span></div></td>
+                <td class="p-4 text-gray-500">${item.category||'-'}</td>
+                <td class="p-4 text-gray-500">${item.unit||'-'}</td>
+                <td class="p-4" style="${stockWarn}">${item.qty||0}</td>
+                <td class="p-4 font-bold text-blue-600">${Number(item.sales_price||0).toLocaleString()} EGP</td>
+                <td class="p-4">${item.max_qty||'غير محدد'}</td></tr>`;
+        });
+        html += `</tbody></table>`;
+        safeHTML(w, html);
+    }
+
+    function filterTable() {
+        const q = (byId('items-search')?.value||'').toLowerCase();
+        const filtered = itemsData.filter(i => (i.name||'').toLowerCase().includes(q) || (i.item_code||'').toLowerCase().includes(q) || (i.barcode||'').toLowerCase().includes(q));
+        renderTable(filtered);
+    }
+
+    function _sort(field) {
+        if (sortField === field) sortAsc = !sortAsc; else { sortField = field; sortAsc = true; }
+        renderTable(itemsData);
+    }
+
+    function openModal(itemCode) {
+        const item = itemCode ? itemsData.find(i => i.item_code === itemCode) : null;
+        const isEdit = !!item;
+        const title = isEdit ? 'تعديل الصنف' : 'إضافة صنف جديد';
+        let html = `<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden">
+        <div class="bg-blue-600 px-6 py-4 flex justify-between text-white"><h3>${title}</h3><button onclick="Swal.close()"><i class="fa-solid fa-xmark"></i></button></div>
+        <form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="flex flex-col"><label>الباركود</label><input id="item-barcode" value="${item?.barcode||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>اسم المنتج *</label><input id="item-name" value="${item?.name||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>التصنيف</label><input id="item-cat" value="${item?.category||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>الوحدة</label><input id="item-unit" value="${item?.unit||'حبة'}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>سعر البيع</label><input id="item-price" type="number" value="${item?.sales_price||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>حد إعادة الطلب</label><input id="item-reorder" type="number" value="${item?.reorder_point||5}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>الحد الأقصى</label><input id="item-maxqty" type="number" value="${item?.max_qty||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>الوحدة البديلة</label><input id="item-altunit" value="${item?.alt_unit||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>عدد الوحدات البديلة</label><input id="item-altqty" type="number" value="${item?.alt_unit_qty||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        </div>
+        <div class="flex flex-col"><label>الوصف</label><textarea id="item-desc" rows="2" class="p-2.5 bg-gray-50 border rounded-lg">${item?.description||''}</textarea></div>
+        <div class="flex justify-end gap-3 pt-4 border-t">
+        <button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>
+        <button type="button" id="btn-save-item" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold">حفظ</button>
+        </div></form></div></div>`;
+
+        Swal.fire({ html, width: '900px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
+            didOpen: () => {
+                byId('btn-save-item').addEventListener('click', () => {
+                    showToast('الحفظ عبر Edge Function قيد التطوير (المرحلة 3)', 'info');
+                    Swal.close();
+                });
+            }
+        });
+    }
+
+    return { render, _sort, _openModal: openModal };
+})();
+window.RW_Items = RW_Items;
+
+// ============================================================
+// RW_Customers – العملاء (قراءة مباشرة)
+// ============================================================
+var RW_Customers = (function() {
+    var data = [], sortField = 'customer_code', sortAsc = true;
+
+    async function render() {
+        const container = byId('rw-page-container'); if (!container) return;
+        safeText(byId('rw-header-title'), 'العملاء');
+        safeHTML(container, `<div class="p-4">
+            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold">العملاء</h2><button id="btn-add-cust" class="bg-emerald-600 text-white px-4 py-2 rounded-xl">عميل جديد</button></div>
+            <input type="text" id="cust-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">
+            <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="cust-table-wrapper" style="max-height:65vh"></div>
+        </div>`);
+        data = await RW_Data.loadCustomers();
+        renderTable(data);
+        byId('cust-search')?.addEventListener('input', filterTable);
+        byId('btn-add-cust')?.addEventListener('click', () => openModal(null));
+    }
+
+    function renderTable(data) {
+        const w = byId('cust-table-wrapper'); if (!w) return;
+        if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد عملاء</div>'); return; }
+        const sorted = [...data].sort((a,b) => {
+            let va = a[sortField]||'', vb = b[sortField]||'';
+            if (sortField === 'debt') { va=Number(va); vb=Number(vb); }
+            else { va=String(va).toLowerCase(); vb=String(vb).toLowerCase(); }
+            return (va<vb?-1:va>vb?1:0) * (sortAsc?1:-1);
+        });
+        const cols = [
+            {field:'customer_code',label:'الكود'},{field:'name',label:'الاسم'},{field:'phone',label:'الهاتف'},
+            {field:'area',label:'المنطقة'},{field:'contact_person',label:'مسؤول التواصل'},{field:'debt',label:'الرصيد'}
+        ];
+        let html = `<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50"><tr>`;
+        cols.forEach(c => {
+            const icon = sortField===c.field ? (sortAsc?'fa-sort-up':'fa-sort-down') : 'fa-sort';
+            html += `<th class="p-3 cursor-pointer" onclick="RW_Customers._sort('${c.field}')">${c.label} <i class="fa-solid ${icon}"></i></th>`;
+        });
+        html += `</tr></thead><tbody>`;
+        sorted.forEach(c => {
+            html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Customers._openModal('${c.customer_code}')">
+                <td class="p-3">${c.customer_code||''}</td><td class="p-3 font-semibold">${c.name||''}</td><td class="p-3">${c.phone||''}</td>
+                <td class="p-3">${c.area||''}</td><td class="p-3">${c.contact_person||''}</td>
+                <td class="p-3 font-bold ${c.debt>0?'text-red-500':'text-green-600'}">${Number(c.debt||0).toLocaleString()} EGP</td></tr>`;
+        });
+        html += `</tbody></table>`;
+        safeHTML(w, html);
+    }
+
+    function filterTable() {
+        const q = (byId('cust-search')?.value||'').toLowerCase();
+        renderTable(data.filter(c => (c.name||'').toLowerCase().includes(q) || (c.customer_code||'').toLowerCase().includes(q) || (c.phone||'').includes(q)));
+    }
+
+    function _sort(field) {
+        if (sortField === field) sortAsc = !sortAsc; else { sortField = field; sortAsc = true; }
+        renderTable(data);
+    }
+
+    function openModal(code) {
+        const c = code ? data.find(x => x.customer_code === code) : null;
+        const isEdit = !!c;
+        Swal.fire({
+            title: isEdit ? 'تفاصيل العميل' : 'عميل جديد',
+            html: `<div class="text-right space-y-3">
+                <div class="bg-gray-50 p-3 rounded-lg"><span class="font-bold">الكود:</span> ${c?.customer_code||'جديد'}</div>
+                <input id="cust-name" class="swal2-input" placeholder="الاسم" value="${c?.name||''}">
+                <input id="cust-phone" class="swal2-input" placeholder="الهاتف" value="${c?.phone||''}">
+                <input id="cust-area" class="swal2-input" placeholder="المنطقة" value="${c?.area||''}">
+            </div>`,
+            showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
+            preConfirm: () => {
+                showToast('الحفظ عبر Edge Function قيد التطوير', 'info');
+                return false;
+            }
+        });
+    }
+
+    return { render, _sort, _openModal: openModal };
+})();
+window.RW_Customers = RW_Customers;
+
+// ============================================================
+// RW_Suppliers – الموردين (قراءة مباشرة)
+// ============================================================
+var RW_Suppliers = (function() {
+    var data = [], sortField = 'supplier_code', sortAsc = true;
+
+    async function render() {
+        const container = byId('rw-page-container'); if (!container) return;
+        safeText(byId('rw-header-title'), 'الموردين');
+        safeHTML(container, `<div class="p-4">
+            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold">الموردين</h2><button id="btn-add-supp" class="bg-orange-600 text-white px-4 py-2 rounded-xl">مورد جديد</button></div>
+            <input type="text" id="supp-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">
+            <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="supp-table-wrapper" style="max-height:65vh"></div>
+        </div>`);
+        const { data: d } = await supabase.from('suppliers').select('*');
+        data = d || [];
+        renderTable(data);
+        byId('supp-search')?.addEventListener('input', filterTable);
+        byId('btn-add-supp')?.addEventListener('click', () => openModal(null));
+    }
+
+    function renderTable(data) {
+        const w = byId('supp-table-wrapper'); if (!w) return;
+        if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موردين</div>'); return; }
+        const sorted = [...data].sort((a,b) => {
+            let va = a[sortField]||'', vb = b[sortField]||'';
+            if (sortField === 'accounts_payable') { va=Number(va); vb=Number(vb); }
+            else { va=String(va).toLowerCase(); vb=String(vb).toLowerCase(); }
+            return (va<vb?-1:va>vb?1:0) * (sortAsc?1:-1);
+        });
+        const cols = [
+            {field:'supplier_code',label:'الكود'},{field:'name',label:'الاسم'},{field:'phone',label:'الهاتف'},
+            {field:'area',label:'المنطقة'},{field:'contact_person',label:'جهة الاتصال'},{field:'accounts_payable',label:'الرصيد'}
+        ];
+        let html = `<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50"><tr>`;
+        cols.forEach(c => {
+            const icon = sortField===c.field ? (sortAsc?'fa-sort-up':'fa-sort-down') : 'fa-sort';
+            html += `<th class="p-3 cursor-pointer" onclick="RW_Suppliers._sort('${c.field}')">${c.label} <i class="fa-solid ${icon}"></i></th>`;
+        });
+        html += `</tr></thead><tbody>`;
+        sorted.forEach(s => {
+            html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Suppliers._openModal('${s.supplier_code}')">
+                <td class="p-3">${s.supplier_code||''}</td><td class="p-3 font-semibold">${s.name||''}</td><td class="p-3">${s.phone||''}</td>
+                <td class="p-3">${s.area||''}</td><td class="p-3">${s.contact_person||''}</td>
+                <td class="p-3 font-bold text-red-500">${Number(s.accounts_payable||0).toLocaleString()} EGP</td></tr>`;
+        });
+        html += `</tbody></table>`;
+        safeHTML(w, html);
+    }
+
+    function filterTable() {
+        const q = (byId('supp-search')?.value||'').toLowerCase();
+        renderTable(data.filter(s => (s.name||'').toLowerCase().includes(q) || (s.supplier_code||'').toLowerCase().includes(q)));
+    }
+
+    function _sort(field) {
+        if (sortField === field) sortAsc = !sortAsc; else { sortField = field; sortAsc = true; }
+        renderTable(data);
+    }
+
+    function openModal(code) {
+        const s = code ? data.find(x => x.supplier_code === code) : null;
+        Swal.fire({
+            title: s ? 'تفاصيل المورد' : 'مورد جديد',
+            html: `<div class="text-right space-y-3">
+                <div class="bg-gray-50 p-3 rounded-lg"><span class="font-bold">الكود:</span> ${s?.supplier_code||'جديد'}</div>
+                <input id="supp-name" class="swal2-input" placeholder="الاسم" value="${s?.name||''}">
+                <input id="supp-phone" class="swal2-input" placeholder="الهاتف" value="${s?.phone||''}">
+            </div>`,
+            showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
+            preConfirm: () => { showToast('الحفظ عبر Edge Function قيد التطوير', 'info'); return false; }
+        });
+    }
+
+    return { render, _sort, _openModal: openModal };
+})();
+window.RW_Suppliers = RW_Suppliers;
+
+// ============================================================
+// RW_Branches – الفروع (قراءة مباشرة)
+// ============================================================
+var RW_Branches = (function() {
+    var data = [];
+
+    async function render() {
+        const container = byId('rw-page-container'); if (!container) return;
+        safeText(byId('rw-header-title'), 'المخازن والفروع');
+        safeHTML(container, `<div class="p-4">
+            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold">الفروع</h2><button id="btn-add-branch" class="bg-indigo-600 text-white px-4 py-2 rounded-xl">إضافة فرع</button></div>
+            <input type="text" id="branch-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">
+            <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="branch-table-wrapper" style="max-height:65vh"></div>
+        </div>`);
+        data = await RW_Data.loadBranches();
+        renderTable(data);
+        byId('branch-search')?.addEventListener('input', filterTable);
+        byId('btn-add-branch')?.addEventListener('click', () => openModal(null));
+    }
+
+    function renderTable(data) {
+        const w = byId('branch-table-wrapper'); if (!w) return;
+        if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا توجد فروع</div>'); return; }
+        let html = `<table class="w-full text-sm"><thead class="bg-gray-50"><tr>
+            <th class="p-3">الكود</th><th class="p-3">الاسم</th><th class="p-3">الموقع</th><th class="p-3">المدير</th><th class="p-3">الهاتف</th><th class="p-3">الحالة</th></tr></thead><tbody>`;
+        data.forEach(b => {
+            const status = b.is_active ? '<span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">نشط</span>' : '<span class="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs">غير نشط</span>';
+            html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Branches._openModal('${b.branch_code}')">
+                <td class="p-3">${b.branch_code||''}</td><td class="p-3 font-semibold">${b.name||''}</td>
+                <td class="p-3">${b.location||''}</td><td class="p-3">${b.manager||''}</td>
+                <td class="p-3">${b.phone||''}</td><td class="p-3">${status}</td></tr>`;
+        });
+        html += `</tbody></table>`;
+        safeHTML(w, html);
+    }
+
+    function filterTable() {
+        const q = (byId('branch-search')?.value||'').toLowerCase();
+        renderTable(data.filter(b => (b.name||'').toLowerCase().includes(q) || (b.branch_code||'').toLowerCase().includes(q)));
+    }
+
+    function openModal(code) {
+        const b = code ? data.find(x => x.branch_code === code) : null;
+        Swal.fire({
+            title: b ? 'تفاصيل الفرع' : 'فرع جديد',
+            html: `<div class="text-right space-y-3">
+                <div class="bg-gray-50 p-3 rounded-lg"><span class="font-bold">الكود:</span> ${b?.branch_code||'جديد'}</div>
+                <input id="branch-name" class="swal2-input" placeholder="الاسم" value="${b?.name||''}">
+                <input id="branch-location" class="swal2-input" placeholder="الموقع" value="${b?.location||''}">
+                <input id="branch-phone" class="swal2-input" placeholder="الهاتف" value="${b?.phone||''}">
+            </div>`,
+            showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
+            preConfirm: () => { showToast('الحفظ عبر Edge Function قيد التطوير', 'info'); return false; }
+        });
+    }
+
+    return { render, _openModal: openModal };
+})();
+window.RW_Branches = RW_Branches;
+// --- الأحداث والتمهيد ---
 function bindEvents() {
     try {
         var loginForm = byId('rw-login-form');
