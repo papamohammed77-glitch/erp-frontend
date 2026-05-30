@@ -179,12 +179,11 @@
 
 <script>
 // ============================================================
-// المرحلة 2: تفعيل القراءة المباشرة من Supabase
+// المرحلة 2.5: تطابق بصري كامل + قراءة Supabase مباشرة
 // ============================================================
 (function() {
 'use strict';
 
-// --- إعداد Supabase ---
 const SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -196,10 +195,9 @@ function showLoader(title) { title = title || 'جاري التحميل...'; try 
 function hideLoader() { try { Swal.close(); } catch(e) {} }
 function showToast(message, type) { type = type || 'success'; try { Swal.fire({ title: message, icon: type, timer: 2000, showConfirmButton: false }); } catch(e) { alert(message); } }
 
-// --- حالة التطبيق ---
 var RW_STATE = {
     app: { initialized: false, authenticated: false, loading: false, currentView: 'dashboard', currentUser: null, company: { name: 'الروائع ERP', logo: 'ر' } },
-    data: { items: [], customers: [], suppliers: [], branches: [], stock_branches: [] },
+    data: { items: [], customers: [], suppliers: [], branches: [] },
     permissions: [],
     ui: { sidebarOpen: false, sidebarCollapsed: false }
 };
@@ -211,27 +209,18 @@ var RW_Auth = {
         showLoader('جاري تسجيل الدخول...');
         try {
             const { data, error } = await supabase.auth.signInWithPassword({ email: username, password: password });
-            if (error) {
-                hideLoader();
-                showToast('فشل تسجيل الدخول: ' + error.message, 'error');
-                return;
-            }
+            if (error) { hideLoader(); showToast('فشل تسجيل الدخول: ' + error.message, 'error'); return; }
             const user = data.user;
             RW_STATE.app.authenticated = true;
             RW_STATE.app.currentUser = {
-                name: user.user_metadata?.name || user.email,
-                email: user.email,
+                name: user.user_metadata?.name || user.email, email: user.email,
                 role: user.user_metadata?.role || 'مدير النظام',
                 isOwner: user.user_metadata?.isOwner === 'true' || user.user_metadata?.isOwner === true
             };
             RW_STATE.permissions = user.user_metadata?.permissions || ['*'];
             RW_STATE.app.company = { name: user.user_metadata?.companyName || 'الروائع ERP', logo: user.user_metadata?.companyLogo || 'ر' };
             this.enterSystem();
-        } catch (e) {
-            hideLoader();
-            showToast('حدث خطأ أثناء الاتصال', 'error');
-            console.error(e);
-        }
+        } catch(e) { hideLoader(); showToast('حدث خطأ أثناء الاتصال', 'error'); console.error(e); }
     },
     enterSystem: function() {
         hideLoader();
@@ -242,11 +231,7 @@ var RW_Auth = {
             var userName = user ? (user.name || user.email) : 'مستخدم';
             safeText(byId('rw-sidebar-company-name'), RW_STATE.app.company.name || 'الروائع ERP');
             var logoImg = byId('rw-sidebar-brand-logo');
-            if (logoImg && RW_STATE.app.company.logo) {
-                logoImg.src = RW_STATE.app.company.logo;
-                logoImg.style.objectFit = 'contain';
-                logoImg.style.backgroundColor = '#f8fafc';
-            }
+            if (logoImg && RW_STATE.app.company.logo) { logoImg.src = RW_STATE.app.company.logo; logoImg.style.objectFit = 'contain'; logoImg.style.backgroundColor = '#f8fafc'; }
             safeText(byId('rw-header-user-display'), userName);
             RW_Navigation.buildSidebar();
             RW_Navigation.navigate('dashboard');
@@ -262,44 +247,17 @@ var RW_Auth = {
             showToast('تم تشغيل النظام في الوضع الآمن', 'warning');
         } catch(e) { document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:Cairo;"><h1>RAWAEA ERP</h1><p>حدث خطأ أثناء تشغيل النظام</p><button onclick="location.reload()">إعادة التحميل</button></div>'; }
     },
-    logout: async function() {
-        try { await supabase.auth.signOut();
-            RW_STATE.app.authenticated = false;
-            byId('rw-main-shell').style.display = 'none';
-            byId('rw-login-page').style.display = 'flex';
-        } catch(e) { console.error(e); }
-    }
+    logout: async function() { try { await supabase.auth.signOut(); RW_STATE.app.authenticated = false; byId('rw-main-shell').style.display = 'none'; byId('rw-login-page').style.display = 'flex'; } catch(e) { console.error(e); } }
 };
 
-// --- طبقة البيانات المباشرة ---
+// --- طبقة البيانات ---
 var RW_Data = {
-    loadItems: async function() {
-        try {
-            const { data, error } = await supabase.from('items').select('*');
-            if (error) throw error;
-            RW_STATE.data.items = data || [];
-            return RW_STATE.data.items;
-        } catch(e) { console.error(e); return []; }
-    },
-    loadCustomers: async function() {
-        try {
-            const { data, error } = await supabase.from('customers').select('*');
-            if (error) throw error;
-            RW_STATE.data.customers = data || [];
-            return RW_STATE.data.customers;
-        } catch(e) { console.error(e); return []; }
-    },
-    loadBranches: async function() {
-        try {
-            const { data, error } = await supabase.from('branches').select('*');
-            if (error) throw error;
-            RW_STATE.data.branches = data || [];
-            return RW_STATE.data.branches;
-        } catch(e) { console.error(e); return []; }
-    }
+    loadItems: async function() { try { const { data, error } = await supabase.from('items').select('*'); if (error) throw error; RW_STATE.data.items = data || []; return RW_STATE.data.items; } catch(e) { console.error(e); return []; } },
+    loadCustomers: async function() { try { const { data, error } = await supabase.from('customers').select('*'); if (error) throw error; RW_STATE.data.customers = data || []; return RW_STATE.data.customers; } catch(e) { console.error(e); return []; } },
+    loadBranches: async function() { try { const { data, error } = await supabase.from('branches').select('*'); if (error) throw error; RW_STATE.data.branches = data || []; return RW_STATE.data.branches; } catch(e) { console.error(e); return []; } }
 };
 
-// --- نظام التنقل (كامل) ---
+// --- نظام التنقل ---
 var RW_Navigation = {
     menuTree: [
     { view: 'dashboard', icon: 'fa-chart-pie', label: 'لوحة التحكم' },
@@ -418,7 +376,6 @@ navigate(view) {
     } catch(e) { console.error(e); showToast('حدث خطأ', 'error'); }
 }
 };
-
 // --- العروض ---
 var RW_Views = {
     async render(view) {
@@ -439,13 +396,13 @@ var RW_Views = {
         if (view === 'suppliers') { RW_Suppliers.render(); return; }
         if (view === 'branches') { RW_Branches.render(); return; }
 
-        // باقي التبويبات قيد التطوير
         safeHTML(container, `<div class="rw-card" style="text-align:center;padding:60px 20px;">
             <div style="font-size:64px;margin-bottom:20px;">🚧</div>
             <h2>${titles[view]||view}</h2>
             <p style="color:#6b7280;">قيد التطوير</p></div>`);
     }
 };
+
 // --- لوحة التحكم ---
 var RW_Dashboard = {
     async render() {
@@ -460,22 +417,21 @@ var RW_Dashboard = {
             <h3>مرحباً بك في الروائع ERP</h3>
             <p style="color:#6b7280;">بيانات حية من Supabase</p>
         </div>`);
-
         try {
             const items = await RW_Data.loadItems();
             const customers = await RW_Data.loadCustomers();
-            const suppliers = await supabase.from('suppliers').select('*', { count: 'exact', head: false }).then(r => r.data || []);
+            const { data: suppliers } = await supabase.from('suppliers').select('*', { count: 'exact', head: false });
             const branches = await RW_Data.loadBranches();
             safeText(byId('stat-items'), items.length);
             safeText(byId('stat-customers'), customers.length);
-            safeText(byId('stat-suppliers'), suppliers.length);
+            safeText(byId('stat-suppliers'), (suppliers||[]).length);
             safeText(byId('stat-branches'), branches.length);
         } catch(e) { console.error(e); }
     }
 };
 
 // ============================================================
-// RW_Items – الأصناف (قراءة مباشرة من Supabase)
+// RW_Items – الأصناف (مودال كامل مطابق للنسخة B)
 // ============================================================
 var RW_Items = (function() {
     var sortField = 'item_code', sortAsc = true, itemsData = [];
@@ -483,41 +439,33 @@ var RW_Items = (function() {
     async function render() {
         const container = byId('rw-page-container'); if (!container) return;
         safeText(byId('rw-header-title'), 'الأصناف');
-        safeHTML(container, buildMainHTML());
-        bindEvents();
+        safeHTML(container, `<div class="flex flex-col h-full">
+            <div class="flex flex-wrap gap-3 mb-4">
+                <input type="text" id="items-search" placeholder="🔍 بحث بالاسم، الكود، الباركود..." class="flex-1 min-w-[250px] p-3 bg-white rounded-xl border">
+                <button id="btn-add-item" class="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> صنف جديد</button>
+            </div>
+            <div class="flex-1 bg-white rounded-2xl shadow-sm border overflow-y-auto" id="items-table-wrapper"></div>
+        </div>`);
+        byId('items-search')?.addEventListener('input', filterTable);
+        byId('btn-add-item')?.addEventListener('click', () => openModal(null));
         showLoader('جاري تحميل الأصناف...');
         itemsData = await RW_Data.loadItems();
         hideLoader();
         renderTable(itemsData);
     }
 
-    function buildMainHTML() {
-        return `<div class="flex flex-col h-full">
-            <div class="flex flex-wrap gap-3 mb-4">
-                <input type="text" id="items-search" placeholder="🔍 بحث بالاسم، الكود، الباركود..." class="flex-1 min-w-[250px] p-3 bg-white rounded-xl border">
-                <button id="btn-add-item" class="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> صنف جديد</button>
-            </div>
-            <div class="flex-1 bg-white rounded-2xl shadow-sm border overflow-y-auto" id="items-table-wrapper"></div>
-        </div>`;
-    }
-
-    function bindEvents() {
-        byId('items-search')?.addEventListener('input', filterTable);
-        byId('btn-add-item')?.addEventListener('click', () => openModal(null));
-    }
-
     function renderTable(data) {
         const w = byId('items-table-wrapper'); if (!w) return;
-        if (!data.length) { safeHTML(w, '<div class="text-center p-10 text-gray-500">لا توجد أصناف</div>'); return; }
+        if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا توجد أصناف</div>'); return; }
         const sorted = [...data].sort((a,b) => {
             let va = a[sortField]||'', vb = b[sortField]||'';
-            if (['stock','sales_price','max_qty'].includes(sortField)) { va=Number(va); vb=Number(vb); }
+            if (['qty','sales_price','max_qty'].includes(sortField)) { va=Number(va); vb=Number(vb); }
             else { va=String(va).toLowerCase(); vb=String(vb).toLowerCase(); }
             return (va<vb?-1:va>vb?1:0) * (sortAsc?1:-1);
         });
         const cols = [
             {field:'name',label:'المنتج'},{field:'category',label:'التصنيف'},{field:'unit',label:'الوحدة'},
-            {field:'stock',label:'المخزون'},{field:'sales_price',label:'السعر'},{field:'max_qty',label:'الأقصى'}
+            {field:'qty',label:'المخزون'},{field:'sales_price',label:'السعر'},{field:'max_qty',label:'الأقصى'}
         ];
         let html = `<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50 z-10"><tr>`;
         cols.forEach(c => {
@@ -542,8 +490,7 @@ var RW_Items = (function() {
 
     function filterTable() {
         const q = (byId('items-search')?.value||'').toLowerCase();
-        const filtered = itemsData.filter(i => (i.name||'').toLowerCase().includes(q) || (i.item_code||'').toLowerCase().includes(q) || (i.barcode||'').toLowerCase().includes(q));
-        renderTable(filtered);
+        renderTable(itemsData.filter(i => (i.name||'').toLowerCase().includes(q) || (i.item_code||'').toLowerCase().includes(q) || (i.barcode||'').toLowerCase().includes(q)));
     }
 
     function _sort(field) {
@@ -557,31 +504,43 @@ var RW_Items = (function() {
         const title = isEdit ? 'تعديل الصنف' : 'إضافة صنف جديد';
         let html = `<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden">
-        <div class="bg-blue-600 px-6 py-4 flex justify-between text-white"><h3>${title}</h3><button onclick="Swal.close()"><i class="fa-solid fa-xmark"></i></button></div>
+        <div class="bg-blue-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fa-solid fa-box-open ml-2"></i>${title}</h3><button onclick="Swal.close()"><i class="fa-solid fa-xmark text-xl"></i></button></div>
         <form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="flex flex-col items-center bg-gray-50 p-4 rounded-xl border">
+        <label class="text-sm font-bold w-full text-right">صورة المنتج</label>
+        <div class="w-48 h-48 rounded-xl border-2 border-dashed bg-white relative group mt-2">
+        <img id="item-img-preview" src="${item?.image_url||'https://via.placeholder.com/200'}" class="w-full h-full object-cover cursor-pointer" onclick="window._viewImage(this.src)">
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer" onclick="document.getElementById('item-image-file').click()"><span class="text-white text-sm">تغيير الصورة</span></div></div>
+        <input type="file" id="item-image-file" accept="image/*" class="mt-3 text-xs">
+        </div>
+        <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <input type="hidden" id="item-code-hidden" value="${item?.item_code||''}">
         <div class="flex flex-col"><label>الباركود</label><input id="item-barcode" value="${item?.barcode||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
         <div class="flex flex-col"><label>اسم المنتج *</label><input id="item-name" value="${item?.name||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
         <div class="flex flex-col"><label>التصنيف</label><input id="item-cat" value="${item?.category||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>الوحدة</label><input id="item-unit" value="${item?.unit||'حبة'}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>الوحدة الأساسية</label><input id="item-unit" value="${item?.unit||'حبة'}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
         <div class="flex flex-col"><label>سعر البيع</label><input id="item-price" type="number" value="${item?.sales_price||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>السعر القديم</label><input id="item-oprice" type="number" value="${item?.old_price||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>المخزون الافتتاحي</label><input id="item-stock" type="number" value="${item?.qty||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
         <div class="flex flex-col"><label>حد إعادة الطلب</label><input id="item-reorder" type="number" value="${item?.reorder_point||5}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
         <div class="flex flex-col"><label>الحد الأقصى</label><input id="item-maxqty" type="number" value="${item?.max_qty||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
         <div class="flex flex-col"><label>الوحدة البديلة</label><input id="item-altunit" value="${item?.alt_unit||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
         <div class="flex flex-col"><label>عدد الوحدات البديلة</label><input id="item-altqty" type="number" value="${item?.alt_unit_qty||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        </div>
+        <div class="flex flex-col"><label>الوزن</label><input id="item-weight" value="${item?.weight_kg||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>الحجم</label><input id="item-vol" value="${item?.volume_m3||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        </div></div>
         <div class="flex flex-col"><label>الوصف</label><textarea id="item-desc" rows="2" class="p-2.5 bg-gray-50 border rounded-lg">${item?.description||''}</textarea></div>
         <div class="flex justify-end gap-3 pt-4 border-t">
+        ${isEdit ? '<button type="button" id="btn-delete-item" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fa-solid fa-trash ml-1"></i> حذف</button>' : ''}
         <button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>
         <button type="button" id="btn-save-item" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold">حفظ</button>
         </div></form></div></div>`;
 
-        Swal.fire({ html, width: '900px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
+        Swal.fire({ html, width: '1000px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
             didOpen: () => {
-                byId('btn-save-item').addEventListener('click', () => {
-                    showToast('الحفظ عبر Edge Function قيد التطوير (المرحلة 3)', 'info');
-                    Swal.close();
-                });
+                byId('btn-save-item').addEventListener('click', () => { showToast('الحفظ عبر Edge Function قيد التطوير (المرحلة 3)', 'info'); Swal.close(); });
+                if (isEdit) byId('btn-delete-item')?.addEventListener('click', () => { showToast('الحذف عبر Edge Function قيد التطوير', 'info'); });
             }
         });
     }
@@ -591,7 +550,7 @@ var RW_Items = (function() {
 window.RW_Items = RW_Items;
 
 // ============================================================
-// RW_Customers – العملاء (قراءة مباشرة)
+// RW_Customers – العملاء (مودال كامل مطابق للنسخة B)
 // ============================================================
 var RW_Customers = (function() {
     var data = [], sortField = 'customer_code', sortAsc = true;
@@ -600,7 +559,7 @@ var RW_Customers = (function() {
         const container = byId('rw-page-container'); if (!container) return;
         safeText(byId('rw-header-title'), 'العملاء');
         safeHTML(container, `<div class="p-4">
-            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold">العملاء</h2><button id="btn-add-cust" class="bg-emerald-600 text-white px-4 py-2 rounded-xl">عميل جديد</button></div>
+            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-user-tie ml-2"></i>العملاء</h2><button id="btn-add-cust" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> عميل جديد</button></div>
             <input type="text" id="cust-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">
             <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="cust-table-wrapper" style="max-height:65vh"></div>
         </div>`);
@@ -621,7 +580,7 @@ var RW_Customers = (function() {
         });
         const cols = [
             {field:'customer_code',label:'الكود'},{field:'name',label:'الاسم'},{field:'phone',label:'الهاتف'},
-            {field:'area',label:'المنطقة'},{field:'contact_person',label:'مسؤول التواصل'},{field:'debt',label:'الرصيد'}
+            {field:'area',label:'المنطقة'},{field:'contact_person',label:'مسؤول التواصل'},{field:'visit_day',label:'يوم الزيارة'},{field:'debt',label:'الرصيد'}
         ];
         let html = `<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50"><tr>`;
         cols.forEach(c => {
@@ -632,8 +591,8 @@ var RW_Customers = (function() {
         sorted.forEach(c => {
             html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Customers._openModal('${c.customer_code}')">
                 <td class="p-3">${c.customer_code||''}</td><td class="p-3 font-semibold">${c.name||''}</td><td class="p-3">${c.phone||''}</td>
-                <td class="p-3">${c.area||''}</td><td class="p-3">${c.contact_person||''}</td>
-                <td class="p-3 font-bold ${c.debt>0?'text-red-500':'text-green-600'}">${Number(c.debt||0).toLocaleString()} EGP</td></tr>`;
+                <td class="p-3">${c.area||''}</td><td class="p-3">${c.contact_person||''}</td><td class="p-3">${c.visit_day||''}</td>
+                <td class="p-3 font-bold ${Number(c.debt)>0?'text-red-500':'text-green-600'}">${Number(c.debt||0).toLocaleString()} EGP</td></tr>`;
         });
         html += `</tbody></table>`;
         safeHTML(w, html);
@@ -652,18 +611,35 @@ var RW_Customers = (function() {
     function openModal(code) {
         const c = code ? data.find(x => x.customer_code === code) : null;
         const isEdit = !!c;
-        Swal.fire({
-            title: isEdit ? 'تفاصيل العميل' : 'عميل جديد',
-            html: `<div class="text-right space-y-3">
-                <div class="bg-gray-50 p-3 rounded-lg"><span class="font-bold">الكود:</span> ${c?.customer_code||'جديد'}</div>
-                <input id="cust-name" class="swal2-input" placeholder="الاسم" value="${c?.name||''}">
-                <input id="cust-phone" class="swal2-input" placeholder="الهاتف" value="${c?.phone||''}">
-                <input id="cust-area" class="swal2-input" placeholder="المنطقة" value="${c?.area||''}">
-            </div>`,
-            showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
-            preConfirm: () => {
-                showToast('الحفظ عبر Edge Function قيد التطوير', 'info');
-                return false;
+        const title = isEdit ? 'تعديل العميل' : 'إضافة عميل جديد';
+        const codeValue = c?.customer_code || 'جديد';
+        let html = `<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
+        <div class="bg-emerald-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fas fa-user-tie ml-2"></i>${title}</h3><button onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button></div>
+        <form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="flex flex-col"><label>كود العميل</label><input id="cust-code" value="${codeValue}" readonly class="p-2.5 bg-gray-100 border rounded-lg"></div>
+        <div class="flex flex-col"><label>اسم العميل *</label><input id="cust-name" value="${c?.name||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>رقم الهاتف</label><input id="cust-phone" value="${c?.phone||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>المنطقة</label><input id="cust-area" value="${c?.area||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>العنوان التفصيلي</label><input id="cust-location" value="${c?.location||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>نوع العميل</label><select id="cust-type" class="p-2.5 bg-gray-50 border rounded-lg"><option value="عادي" ${c?.customer_type==='عادي'?'selected':''}>عادي</option><option value="جملة" ${c?.customer_type==='جملة'?'selected':''}>جملة</option><option value="VIP" ${c?.customer_type==='VIP'?'selected':''}>VIP</option></select></div>
+        <div class="flex flex-col"><label>طريقة الدفع</label><select id="cust-payment" class="p-2.5 bg-gray-50 border rounded-lg"><option value="نقدي" ${c?.payment_type==='نقدي'?'selected':''}>نقدي</option><option value="أجل" ${c?.payment_type==='أجل'?'selected':''}>أجل</option></select></div>
+        <div class="flex flex-col"><label>الرصيد الحالي (EGP)</label><input id="cust-debt" type="number" value="${c?.debt||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>يوم الزيارة</label><select id="cust-visit" class="p-2.5 bg-gray-50 border rounded-lg"><option value="">اختر</option>${['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس'].map(d => `<option value="${d}" ${c?.visit_day===d?'selected':''}>${d}</option>`).join('')}</select></div>
+        <div class="flex flex-col"><label>مسؤول التواصل</label><input id="cust-contact" value="${c?.contact_person||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="md:col-span-2 flex flex-col"><label>ملاحظات</label><textarea id="cust-notes" rows="2" class="p-2.5 bg-gray-50 border rounded-lg">${c?.notes||''}</textarea></div>
+        </div>
+        <div class="flex justify-end gap-3 pt-4 border-t">
+        ${isEdit ? '<button type="button" id="btn-delete-cust" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fas fa-trash-alt ml-1"></i> حذف</button>' : ''}
+        <button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>
+        <button type="button" id="btn-save-cust" class="px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold">حفظ</button>
+        </div></form></div></div>`;
+
+        Swal.fire({ html, width: '900px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
+            didOpen: () => {
+                byId('btn-save-cust').addEventListener('click', () => { showToast('الحفظ عبر Edge Function قيد التطوير (المرحلة 3)', 'info'); Swal.close(); });
+                if (isEdit) byId('btn-delete-cust')?.addEventListener('click', () => { showToast('الحذف قيد التطوير', 'info'); });
             }
         });
     }
@@ -671,9 +647,8 @@ var RW_Customers = (function() {
     return { render, _sort, _openModal: openModal };
 })();
 window.RW_Customers = RW_Customers;
-
 // ============================================================
-// RW_Suppliers – الموردين (قراءة مباشرة)
+// RW_Suppliers – الموردين (مودال كامل مطابق للنسخة B)
 // ============================================================
 var RW_Suppliers = (function() {
     var data = [], sortField = 'supplier_code', sortAsc = true;
@@ -682,7 +657,7 @@ var RW_Suppliers = (function() {
         const container = byId('rw-page-container'); if (!container) return;
         safeText(byId('rw-header-title'), 'الموردين');
         safeHTML(container, `<div class="p-4">
-            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold">الموردين</h2><button id="btn-add-supp" class="bg-orange-600 text-white px-4 py-2 rounded-xl">مورد جديد</button></div>
+            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-truck ml-2"></i>الموردين</h2><button id="btn-add-supp" class="bg-orange-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> مورد جديد</button></div>
             <input type="text" id="supp-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">
             <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="supp-table-wrapper" style="max-height:65vh"></div>
         </div>`);
@@ -734,15 +709,37 @@ var RW_Suppliers = (function() {
 
     function openModal(code) {
         const s = code ? data.find(x => x.supplier_code === code) : null;
-        Swal.fire({
-            title: s ? 'تفاصيل المورد' : 'مورد جديد',
-            html: `<div class="text-right space-y-3">
-                <div class="bg-gray-50 p-3 rounded-lg"><span class="font-bold">الكود:</span> ${s?.supplier_code||'جديد'}</div>
-                <input id="supp-name" class="swal2-input" placeholder="الاسم" value="${s?.name||''}">
-                <input id="supp-phone" class="swal2-input" placeholder="الهاتف" value="${s?.phone||''}">
-            </div>`,
-            showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
-            preConfirm: () => { showToast('الحفظ عبر Edge Function قيد التطوير', 'info'); return false; }
+        const isEdit = !!s;
+        const title = isEdit ? 'تعديل المورد' : 'إضافة مورد جديد';
+        const codeValue = s?.supplier_code || 'جديد';
+        let html = `<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
+        <div class="bg-orange-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fas fa-truck ml-2"></i>${title}</h3><button onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button></div>
+        <form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="flex flex-col"><label>كود المورد</label><input id="supp-code" value="${codeValue}" readonly class="p-2.5 bg-gray-100 border rounded-lg"></div>
+        <div class="flex flex-col"><label>اسم المورد *</label><input id="supp-name" value="${s?.name||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>رقم الهاتف</label><input id="supp-phone" value="${s?.phone||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>المنطقة</label><input id="supp-area" value="${s?.area||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>العنوان التفصيلي</label><input id="supp-address" value="${s?.address||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>نوع المورد</label><select id="supp-type" class="p-2.5 bg-gray-50 border rounded-lg"><option value="مورد عام" ${s?.supplier_type==='مورد عام'?'selected':''}>مورد عام</option><option value="مصنع" ${s?.supplier_type==='مصنع'?'selected':''}>مصنع</option><option value="مورد خارجي" ${s?.supplier_type==='مورد خارجي'?'selected':''}>مورد خارجي</option></select></div>
+        <div class="flex flex-col"><label>طريقة الدفع</label><select id="supp-payment" class="p-2.5 bg-gray-50 border rounded-lg"><option value="نقدي" ${s?.payment_type==='نقدي'?'selected':''}>نقدي</option><option value="أجل" ${s?.payment_type==='أجل'?'selected':''}>أجل</option></select></div>
+        <div class="flex flex-col"><label>الرصيد الدائن (EGP)</label><input id="supp-balance" type="number" value="${s?.accounts_payable||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>جهة الاتصال</label><input id="supp-contact" value="${s?.contact_person||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>مسؤول المشتريات</label><input id="supp-rep" value="${s?.purchase_rep||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="md:col-span-2 flex flex-col"><label>ملاحظات</label><textarea id="supp-notes" rows="2" class="p-2.5 bg-gray-50 border rounded-lg">${s?.notes||''}</textarea></div>
+        </div>
+        <div class="flex justify-end gap-3 pt-4 border-t">
+        ${isEdit ? '<button type="button" id="btn-delete-supp" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fas fa-trash-alt ml-1"></i> حذف</button>' : ''}
+        <button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>
+        <button type="button" id="btn-save-supp" class="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-bold">حفظ</button>
+        </div></form></div></div>`;
+
+        Swal.fire({ html, width: '900px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
+            didOpen: () => {
+                byId('btn-save-supp').addEventListener('click', () => { showToast('الحفظ عبر Edge Function قيد التطوير (المرحلة 3)', 'info'); Swal.close(); });
+                if (isEdit) byId('btn-delete-supp')?.addEventListener('click', () => { showToast('الحذف قيد التطوير', 'info'); });
+            }
         });
     }
 
@@ -751,7 +748,7 @@ var RW_Suppliers = (function() {
 window.RW_Suppliers = RW_Suppliers;
 
 // ============================================================
-// RW_Branches – الفروع (قراءة مباشرة)
+// RW_Branches – الفروع (مودال كامل مطابق للنسخة B)
 // ============================================================
 var RW_Branches = (function() {
     var data = [];
@@ -760,7 +757,7 @@ var RW_Branches = (function() {
         const container = byId('rw-page-container'); if (!container) return;
         safeText(byId('rw-header-title'), 'المخازن والفروع');
         safeHTML(container, `<div class="p-4">
-            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold">الفروع</h2><button id="btn-add-branch" class="bg-indigo-600 text-white px-4 py-2 rounded-xl">إضافة فرع</button></div>
+            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-store ml-2"></i>الفروع والمخازن</h2><button id="btn-add-branch" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة فرع</button></div>
             <input type="text" id="branch-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">
             <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="branch-table-wrapper" style="max-height:65vh"></div>
         </div>`);
@@ -793,13 +790,129 @@ var RW_Branches = (function() {
 
     function openModal(code) {
         const b = code ? data.find(x => x.branch_code === code) : null;
+        const isEdit = !!b;
+        const title = isEdit ? 'تعديل الفرع' : 'إضافة فرع جديد';
+        const codeValue = b?.branch_code || 'جديد';
+        let html = `<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+        <div class="bg-indigo-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fas fa-store ml-2"></i>${title}</h3><button onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button></div>
+        <form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="flex flex-col"><label>كود الفرع</label><input id="branch-code" value="${codeValue}" readonly class="p-2.5 bg-gray-100 border rounded-lg"></div>
+        <div class="flex flex-col"><label>اسم الفرع *</label><input id="branch-name" value="${b?.name||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>الموقع / العنوان</label><input id="branch-location" value="${b?.location||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>المدير المسؤول</label><input id="branch-manager" value="${b?.manager||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>رقم الهاتف</label><input id="branch-phone" value="${b?.phone||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="flex flex-col"><label>الحالة</label><select id="branch-status" class="p-2.5 bg-gray-50 border rounded-lg"><option value="active" ${b?.is_active?'selected':''}>نشط</option><option value="inactive" ${!b?.is_active && b?'selected':''}>غير نشط</option></select></div>
+        </div>
+        <div class="flex justify-end gap-3 pt-4 border-t">
+        ${isEdit ? '<button type="button" id="btn-delete-branch" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fas fa-trash-alt ml-1"></i> حذف</button>' : ''}
+        <button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>
+        <button type="button" id="btn-save-branch" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold">حفظ</button>
+        </div></form></div></div>`;
+
+        Swal.fire({ html, width: '800px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
+            didOpen: () => {
+                byId('btn-save-branch').addEventListener('click', () => { showToast('الحفظ عبر Edge Function قيد التطوير (المرحلة 3)', 'info'); Swal.close(); });
+                if (isEdit) byId('btn-delete-branch')?.addEventListener('click', () => { showToast('الحذف قيد التطوير', 'info'); });
+            }
+        });
+    }
+
+    return { render, _openModal: openModal };
+})();
+window.RW_Branches = RW_Branches;
+
+// ============================================================
+// RW_Settings – إعدادات النظام (مودال مطابق للنسخة B)
+// ============================================================
+var RW_Settings = (function() {
+    async function render() {
+        const container = byId('rw-page-container'); if (!container) return;
+        safeText(byId('rw-header-title'), 'إعدادات النظام');
+        showLoader('جاري تحميل الإعدادات...');
+        let deliveryFee = 0, minInvoice = 0, taxRate = 0, companyName = 'الروائع', companyLogo = '';
+        try {
+            const { data: appSets, error } = await supabase.from('app_settings').select('*').limit(1).single();
+            if (!error && appSets) {
+                deliveryFee = appSets.delivery_fee || 0;
+                minInvoice = appSets.min_invoice_amount || 0;
+                taxRate = appSets.tax_rate || 0;
+                companyName = appSets.company_name || 'الروائع';
+                companyLogo = appSets.company_logo || '';
+            }
+        } catch(e) { console.error(e); }
+        hideLoader();
+        safeHTML(container, `<div class="p-4 max-w-2xl mx-auto"><div class="bg-white rounded-2xl shadow-sm border p-6">
+            <h2 class="text-xl font-bold mb-6"><i class="fas fa-cog ml-2"></i>إعدادات النظام</h2>
+            <div class="space-y-4">
+            <div class="flex flex-col"><label class="text-sm font-bold">رسوم التوصيل (EGP)</label><input id="settings-delivery-fee" type="number" value="${deliveryFee}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+            <div class="flex flex-col"><label class="text-sm font-bold">الحد الأدنى للفاتورة (EGP)</label><input id="settings-min-invoice" type="number" value="${minInvoice}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+            <div class="flex flex-col"><label class="text-sm font-bold">نسبة الضريبة (%)</label><input id="settings-tax-rate" type="number" step="0.01" value="${taxRate}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+            <div class="flex flex-col"><label class="text-sm font-bold">اسم الشركة</label><input id="settings-company-name" value="${companyName}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+            <div class="flex flex-col"><label class="text-sm font-bold">رابط شعار الشركة</label><input id="settings-company-logo" value="${companyLogo}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+            <div class="flex justify-end pt-4"><button id="btn-save-settings" class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold">حفظ الإعدادات</button></div>
+            </div>
+        </div></div>`);
+        byId('btn-save-settings').addEventListener('click', () => { showToast('حفظ الإعدادات عبر Edge Function قيد التطوير', 'info'); });
+    }
+    return { render };
+})();
+window.RW_Settings = RW_Settings;
+
+// ============================================================
+// RW_Users – المستخدمين والصلاحيات (قراءة الموظفين فقط)
+// ============================================================
+var RW_Users = (function() {
+    var employeesData = [];
+    async function render() {
+        const container = byId('rw-page-container'); if (!container) return;
+        safeText(byId('rw-header-title'), 'المستخدمين والصلاحيات');
+        safeHTML(container, `<div class="p-4">
+            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-users-gear ml-2"></i>إدارة المستخدمين والصلاحيات</h2><button id="btn-add-emp" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة موظف</button></div>
+            <input type="text" id="emp-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">
+            <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="emp-table-wrapper" style="max-height:65vh"></div>
+        </div>`);
+        // جلب الموظفين فقط (جدول users بدون المالك)
+        const { data: users } = await supabase.from('users').select('*');
+        employeesData = users || [];
+        renderTable(employeesData);
+        byId('emp-search')?.addEventListener('input', filterTable);
+        byId('btn-add-emp')?.addEventListener('click', () => openModal(null));
+    }
+
+    function renderTable(data) {
+        const w = byId('emp-table-wrapper'); if (!w) return;
+        if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون</div>'); return; }
+        let html = `<table class="w-full text-sm"><thead class="bg-gray-50"><tr>
+            <th class="p-3">الاسم</th><th class="p-3">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">الهاتف</th><th class="p-3">الفروع</th></tr></thead><tbody>`;
+        data.forEach(emp => {
+            const statusClass = emp.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+            html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Users._openModal('${emp.email}')">
+                <td class="p-3 font-semibold">${emp.name||''}</td><td class="p-3">${emp.email||''}</td><td class="p-3">${emp.role||''}</td>
+                <td class="p-3"><span class="px-2 py-1 rounded-full text-xs ${statusClass}">${emp.status==='Active'?'نشط':'غير نشط'}</span></td>
+                <td class="p-3">${emp.phone||''}</td><td class="p-3">${emp.allowed_branch_ids||'*'}</td></tr>`;
+        });
+        html += `</tbody></table>`;
+        safeHTML(w, html);
+    }
+
+    function filterTable() {
+        const q = (byId('emp-search')?.value||'').toLowerCase();
+        renderTable(employeesData.filter(e => (e.name||'').toLowerCase().includes(q) || (e.email||'').toLowerCase().includes(q)));
+    }
+
+    function openModal(email) {
+        const emp = email ? employeesData.find(e => e.email === email) : null;
+        const isEdit = !!emp;
         Swal.fire({
-            title: b ? 'تفاصيل الفرع' : 'فرع جديد',
+            title: isEdit ? 'تعديل موظف' : 'إضافة موظف جديد',
             html: `<div class="text-right space-y-3">
-                <div class="bg-gray-50 p-3 rounded-lg"><span class="font-bold">الكود:</span> ${b?.branch_code||'جديد'}</div>
-                <input id="branch-name" class="swal2-input" placeholder="الاسم" value="${b?.name||''}">
-                <input id="branch-location" class="swal2-input" placeholder="الموقع" value="${b?.location||''}">
-                <input id="branch-phone" class="swal2-input" placeholder="الهاتف" value="${b?.phone||''}">
+                <input id="emp-name" class="swal2-input" placeholder="الاسم" value="${emp?.name||''}">
+                <input id="emp-email" class="swal2-input" placeholder="البريد" value="${emp?.email||''}">
+                <input id="emp-phone" class="swal2-input" placeholder="الهاتف" value="${emp?.phone||''}">
+                <input id="emp-password" type="password" class="swal2-input" placeholder="كلمة المرور">
+                <select id="emp-role" class="swal2-input"><option value="مدير" ${emp?.role==='مدير'?'selected':''}>مدير</option><option value="محاسب" ${emp?.role==='محاسب'?'selected':''}>محاسب</option><option value="مندوب" ${emp?.role==='مندوب'?'selected':''}>مندوب</option></select>
             </div>`,
             showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
             preConfirm: () => { showToast('الحفظ عبر Edge Function قيد التطوير', 'info'); return false; }
@@ -808,7 +921,34 @@ var RW_Branches = (function() {
 
     return { render, _openModal: openModal };
 })();
-window.RW_Branches = RW_Branches;
+window.RW_Users = RW_Users;
+// --- العروض (تحديث) ---
+RW_Views.render = async function(view) {
+    const container = byId('rw-page-container'); if (!container) return;
+    const titles = {
+        'dashboard':'لوحة التحكم','items':'الأصناف','customers':'العملاء','suppliers':'الموردين',
+        'branches':'المخازن والفروع','pos':'نقطة البيع','purchase-pos':'نقطة شراء','purchases':'أوردرات الشراء',
+        'orders':'أوردرات المبيعات','runsheets':'الرانشيتات','online-store':'المتجر الإلكتروني',
+        'users':'المستخدمين والصلاحيات','roles':'إدارة أدوار الموظفين','license':'إدارة الترخيص',
+        'settings':'إعدادات النظام','settlement':'إغلاق اليومية',
+        'reports-dashboard':'لوحة القيادة','reports-detailed':'التقارير التفصيلية'
+    };
+    safeText(byId('rw-header-title'), titles[view] || 'النظام');
+
+    if (view === 'dashboard') { RW_Dashboard.render(); return; }
+    if (view === 'items') { RW_Items.render(); return; }
+    if (view === 'customers') { RW_Customers.render(); return; }
+    if (view === 'suppliers') { RW_Suppliers.render(); return; }
+    if (view === 'branches') { RW_Branches.render(); return; }
+    if (view === 'settings') { RW_Settings.render(); return; }
+    if (view === 'users') { RW_Users.render(); return; }
+
+    safeHTML(container, `<div class="rw-card" style="text-align:center;padding:60px 20px;">
+        <div style="font-size:64px;margin-bottom:20px;">🚧</div>
+        <h2>${titles[view]||view}</h2>
+        <p style="color:#6b7280;">قيد التطوير</p></div>`);
+};
+
 // --- الأحداث والتمهيد ---
 function bindEvents() {
     try {
