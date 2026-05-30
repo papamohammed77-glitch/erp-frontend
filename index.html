@@ -668,65 +668,6 @@ var RW_Branches = (function() {
 })();
 window.RW_Branches = RW_Branches;
 // ============================================================
-// RW_POS – نقطة البيع (كاشير الفرع) – متوافق مع Edge Function
-// ============================================================
-var RW_POS = (function() {
-  var cart=[], deliveryFee=0, minInvoice=0, taxRate=0;
-  function _esc(s){ return String(s||'').replace(/[&<>]/g, function(m){return m==='&'?'&amp;':m==='<'?'&lt;':m==='>'?'&gt;';}); }
-  async function render() {
-    var c=byId('rw-page-container'); if(!c)return;
-    safeText(byId('rw-header-title'),'نقطة البيع');
-    try { var res=await supabase.from('app_settings').select('*').limit(1).single(); if(!res.error&&res.data){deliveryFee=Number(res.data.delivery_fee)||0;minInvoice=Number(res.data.min_invoice_amount)||0;taxRate=Number(res.data.tax_rate)||0;} } catch(e){}
-    cart=[];
-    var h='<div class="max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 p-6">';
-    h+='<div class="lg:col-span-1 space-y-6"><div class="bg-white p-6 rounded-[30px] shadow-sm"><label class="text-xs font-black mb-2 block">اختيار العميل</label><select id="pos-customer" onchange="RW_POS._onCustChange()" class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold"><option value="">-- اختر عميلاً --</option></select><div class="mt-4 p-4 bg-blue-50 rounded-2xl"><p class="text-xs text-blue-400 font-black">المنطقة</p><input id="pos-area" readonly class="bg-transparent font-bold text-blue-800 outline-none w-full" placeholder="---"></div></div><div class="bg-white p-6 rounded-[30px] shadow-sm relative border-2 border-blue-50"><label class="text-xs font-black text-blue-400 mb-2 block">البحث عن صنف</label><div class="relative"><input type="text" id="pos-search" oninput="RW_POS._search(this.value)" autocomplete="off" placeholder="ابحث بالاسم أو الباركود..." class="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-lg"><div id="pos-dropdown" class="absolute z-[9999] left-0 right-0 mt-2 bg-white shadow-2xl rounded-2xl max-h-[400px] overflow-y-auto hidden border"></div></div></div></div>';
-    h+='<div class="lg:col-span-3 bg-white rounded-[40px] shadow-xl overflow-hidden flex flex-col min-h-[600px]"><div class="p-6 bg-slate-800 text-white flex justify-between items-center"><h2 class="font-black text-xl">قائمة طلب البيع</h2><div><p class="text-xs opacity-60">إجمالي البنود</p><p id="pos-count" class="text-xl font-black">0</p></div></div><div class="flex-1 overflow-y-auto p-6"><table class="w-full text-right border-separate border-spacing-y-3"><thead><tr class="text-slate-400 text-xs font-black uppercase"><th class="px-4">الصنف</th><th class="px-4">السعر</th><th class="px-4 w-32">الكمية</th><th class="px-4">الإجمالي</th><th class="px-4"></th></tr></thead><tbody id="pos-cart-body"></tbody></table></div><div class="p-8 bg-slate-50 border-t flex flex-wrap justify-between items-center gap-6"><div><div class="flex justify-between mb-2"><span class="text-slate-400 font-bold ml-4">مجموع الأصناف:</span><span id="pos-subtotal" class="text-xl font-bold">0</span></div><div class="flex justify-between mb-2" id="pos-del-row"><span class="text-slate-400 font-bold ml-4">رسوم التوصيل:</span><span id="pos-delivery" class="text-xl font-bold text-blue-600">0</span></div><div class="flex justify-between mb-2" id="pos-tax-row"><span class="text-slate-400 font-bold ml-4">ضريبة القيمة المضافة:</span><span id="pos-tax" class="text-xl font-bold text-red-600">0</span></div><div class="flex justify-between"><span class="text-slate-400 font-bold ml-4">الإجمالي النهائي:</span><span id="pos-total" class="text-5xl font-black text-emerald-700">0.00</span></div></div><div class="flex gap-3"><button onclick="RW_POS._clearCart()" class="bg-red-500 text-white px-8 py-5 rounded-2xl font-black text-lg">مسح الكل</button><button onclick="RW_POS._save()" class="bg-blue-600 text-white px-16 py-5 rounded-2xl font-black text-xl">حفظ الفاتورة</button></div></div></div></div>';
-    safeHTML(c,h);
-    _renderCustomers(); _renderCart();
-  }
-  function _renderCustomers(){var sel=byId('pos-customer');if(!sel)return;var customers=RW_STATE.data.customers||[];var h='<option value="">-- اختر عميلاً --</option>';for(var i=0;i<customers.length;i++){var c=customers[i];h+='<option value="'+(c.customer_code||c.code||'')+'">'+(c.name||'')+' ('+(c.area||'')+')</option>';}safeHTML(sel,h);}
-  function _onCustChange(){var sel=byId('pos-customer'),area=byId('pos-area');if(!sel||!area)return;var customers=RW_STATE.data.customers||[];var found=null;for(var i=0;i<customers.length;i++){if(customers[i].customer_code===sel.value||customers[i].code===sel.value){found=customers[i];break;}}area.value=found?found.area||'':'';}
-  function _search(q){var dd=byId('pos-dropdown');if(!dd)return;if(!q||!q.trim()){dd.classList.add('hidden');return;}var items=RW_STATE.data.items||[],f=items.filter(function(i){return(i.name||'').toLowerCase().indexOf(q.toLowerCase())!==-1||(i.item_code||'').toLowerCase().indexOf(q.toLowerCase())!==-1;});if(!f.length){safeHTML(dd,'<div class="p-3 text-center text-gray-400">لا توجد نتائج</div>');dd.classList.remove('hidden');return;}var h='';f.forEach(function(it){h+='<div onclick="RW_POS._addItem(\''+it.item_code+'\')" class="p-3 hover:bg-blue-50 cursor-pointer flex justify-between border-b"><div><div class="font-bold">'+(it.name||'')+'</div></div><div class="font-bold text-blue-600">'+Number(it.sales_price||0).toLocaleString()+' EGP</div></div>';});safeHTML(dd,h);dd.classList.remove('hidden');}
-  function _addItem(code){var items=RW_STATE.data.items||[],item=null;for(var i=0;i<items.length;i++){if(items[i].item_code===code){item=items[i];break;}}if(!item)return;var ex=null;for(var j=0;j<cart.length;j++){if(cart[j].code===code){ex=cart[j];break;}}if(ex)ex.qty++;else cart.unshift({code:item.item_code,name:item.name,price:Number(item.sales_price)||0,unit:item.unit||'حبة',qty:1});byId('pos-search').value='';byId('pos-dropdown').classList.add('hidden');_renderCart();}
-  function _updateQty(idx,val){var q=parseFloat(val);if(isNaN(q)||q<=0)cart.splice(idx,1);else cart[idx].qty=q;_renderCart();}
-  function _removeItem(idx){cart.splice(idx,1);_renderCart();}
-  function _clearCart(){if(!cart.length){showToast('السلة فارغة','info');return;}Swal.fire({title:'تأكيد مسح السلة',text:'حذف جميع الأصناف؟',icon:'warning',showCancelButton:true,confirmButtonText:'نعم',cancelButtonText:'إلغاء'}).then(function(r){if(r.isConfirmed){cart=[];_renderCart();showToast('تم مسح السلة','success');}});}
-  function _renderCart(){
-    var tb=byId('pos-cart-body'),subtotal=0;
-    if(!cart.length){safeHTML(tb,'<tr><td colspan="5" class="p-6 text-center">لا توجد أصناف</td></tr>');safeText(byId('pos-subtotal'),'0');safeText(byId('pos-delivery'),'0');safeText(byId('pos-tax'),'0');safeText(byId('pos-total'),'0');safeText(byId('pos-count'),'0');return;}
-    var h='';cart.forEach(function(it,i){var line=it.price*it.qty;subtotal+=line;h+='<tr class="bg-white shadow-sm rounded-2xl overflow-hidden"><td class="p-4 rounded-r-2xl border-y border-r"><p class="font-black">'+_esc(it.name)+'</p><p class="text-xs text-gray-400">'+it.code+'</p></td><td class="p-4 border-y font-bold text-blue-600">'+it.price.toLocaleString()+' EGP</td><td class="p-4 border-y"><input type="number" value="'+it.qty+'" onchange="RW_POS._updateQty('+i+',this.value)" class="w-20 p-2 bg-slate-50 border-2 rounded-xl text-center font-black" min="1"></td><td class="p-4 border-y font-black">'+line.toLocaleString()+' EGP</td><td class="p-4 rounded-l-2xl border-y border-l text-center"><button onclick="RW_POS._removeItem('+i+')" class="text-red-400"><i class="fa-solid fa-circle-xmark text-xl"></i></button></td></tr>';});
-    safeHTML(tb,h);var del=deliveryFee||0,before=subtotal+del,taxAmt=Math.round(before*taxRate)/100,total=before+taxAmt;
-    safeText(byId('pos-subtotal'),subtotal.toLocaleString());
-    if(del>0){byId('pos-del-row').classList.remove('hidden');safeText(byId('pos-delivery'),del.toLocaleString());}else byId('pos-del-row').classList.add('hidden');
-    if(taxRate>0&&subtotal>0){byId('pos-tax-row').classList.remove('hidden');safeText(byId('pos-tax'),taxAmt.toLocaleString());}else byId('pos-tax-row').classList.add('hidden');
-    safeText(byId('pos-total'),total.toLocaleString());safeText(byId('pos-count'),String(cart.length));
-  }
-  async function _save(){
-    var cust=byId('pos-customer')&&byId('pos-customer').value;if(!cust){showToast('اختر عميلاً','warning');return;}
-    if(!cart.length){showToast('أضف أصنافاً','warning');return;}
-    var subtotal=0;for(var i=0;i<cart.length;i++)subtotal+=cart[i].price*cart[i].qty;
-    var del=deliveryFee||0,before=subtotal+del,taxAmt=Math.round(before*taxRate)/100,total=before+taxAmt;
-    if(minInvoice>0&&total<minInvoice){showToast('الحد الأدنى للفاتورة: '+minInvoice+' EGP','warning');return;}
-    var customers=RW_STATE.data.customers||[],customer=null;for(var j=0;j<customers.length;j++){if(customers[j].customer_code===cust||customers[j].code===cust){customer=customers[j];break;}}
-    var orderHeader={custId:cust,custName:customer?customer.name:'',area:customer?customer.area:'',total:total,deliveryFees:del,status:"Invoiced",paymentType:"نقدي",taxAmount:taxAmt,taxRate:taxRate};
-    var itemsList=cart.map(function(it){return{code:it.code,name:it.name,price:it.price,qty:it.qty,unit:it.unit};});
-    showLoader('جاري حفظ الفاتورة...');
-    var ses=await supabase.auth.getSession(),t=ses.data.session&&ses.data.session.access_token;
-    try{
-      var res=await fetch(SUPABASE_URL+'/functions/v1/save-sales-invoice',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({orderHeader:orderHeader,itemsList:itemsList,branchId:'MAIN'})});
-      var json=await res.json();hideLoader();
-      if(json.success){
-        var qrBase64=generateQRInvoiceBase64(RW_STATE.app.company.name||'الروائع','310000000000003',new Date().toISOString(),String(total),String(taxAmt));
-        var qrHtml='<div style="text-align:center;margin-top:15px"><p style="font-weight:bold;margin-bottom:8px">رمز الفاتورة الإلكترونية</p><div id="pos-qr" style="display:inline-block"></div></div>';
-        Swal.fire({title:'تم الحفظ',html:'<p style="text-align:center">رقم الفاتورة: <strong>'+json.orderID+'</strong></p>'+qrHtml,icon:'success',timer:4000,showConfirmButton:true,didOpen:function(){try{var el=document.getElementById('pos-qr');if(el&&typeof QRCode!=='undefined'){el.innerHTML='';new QRCode(el,{text:qrBase64,width:150,height:150,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});}}catch(e){}}});
-        cart=[];_renderCart();byId('pos-customer').value='';byId('pos-area').value='';
-      }else showToast(json.msg||'فشل الحفظ','error');
-    }catch(e){hideLoader();showToast('فشل الاتصال','error');}
-  }
-  return{render:render,_search:_search,_addItem:_addItem,_updateQty:_updateQty,_removeItem:_removeItem,_clearCart:_clearCart,_onCustChange:_onCustChange,_save:_save};
-})();
-window.RW_POS = RW_POS;
-// ============================================================
 // RW_Settings – إعدادات النظام (قراءة وكتابة Supabase)
 // ============================================================
 var RW_Settings = (function() {
@@ -915,6 +856,364 @@ var RW_Users = (function() {
 window.RW_Users = RW_Users;
 
 // ============================================================
+// RW_POS – نقطة البيع (POS) كاملة
+// ============================================================
+var RW_POS = (function() {
+    var cart = [];
+    var deliveryFee = 0;
+    var minInvoice = 0;
+    var taxRate = 0;
+
+    function esc(s) {
+        return String(s || '').replace(/[&<>]/g, function(m) {
+            return m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;';
+        });
+    }
+
+    async function render() {
+        var container = byId('rw-page-container');
+        if (!container) return;
+        safeText(byId('rw-header-title'), 'نقطة البيع');
+
+        var settingsRes = await supabase.from('app_settings').select('*').limit(1).single();
+        if (!settingsRes.error && settingsRes.data) {
+            deliveryFee = Number(settingsRes.data.delivery_fee) || 0;
+            minInvoice = Number(settingsRes.data.min_invoice_amount) || 0;
+            taxRate = Number(settingsRes.data.tax_rate) || 0;
+        }
+        cart = [];
+
+        safeHTML(container, '<div class="max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 p-6">' +
+            '<div class="lg:col-span-1 space-y-6">' +
+                '<div class="bg-white p-6 rounded-[30px] shadow-sm">' +
+                    '<label class="text-xs font-black mb-2 block">اختيار العميل</label>' +
+                    '<select id="pos-customer" onchange="RW_POS._onCustChange()" class="w-full p-4 bg-slate-50 rounded-2xl border-none outline-none font-bold">' +
+                        '<option value="">-- اختر عميلاً --</option>' +
+                    '</select>' +
+                    '<div class="mt-4 p-4 bg-blue-50 rounded-2xl">' +
+                        '<p class="text-xs text-blue-400 font-black">المنطقة</p>' +
+                        '<input id="pos-area" readonly class="bg-transparent font-bold text-blue-800 outline-none w-full" placeholder="---">' +
+                    '</div>' +
+                '</div>' +
+                '<div class="bg-white p-6 rounded-[30px] shadow-sm relative border-2 border-blue-50">' +
+                    '<label class="text-xs font-black text-blue-400 mb-2 block">البحث عن صنف</label>' +
+                    '<div class="relative">' +
+                        '<input type="text" id="pos-search" oninput="RW_POS._search(this.value)" autocomplete="off" placeholder="ابحث بالاسم أو الباركود..." class="w-full p-4 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-lg">' +
+                        '<div id="pos-dropdown" class="absolute z-[9999] left-0 right-0 mt-2 bg-white shadow-2xl rounded-2xl max-h-[400px] overflow-y-auto hidden border"></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="lg:col-span-3 bg-white rounded-[40px] shadow-xl overflow-hidden flex flex-col min-h-[600px]">' +
+                '<div class="p-6 bg-slate-800 text-white flex justify-between items-center">' +
+                    '<h2 class="font-black text-xl">قائمة طلب البيع</h2>' +
+                    '<div><p class="text-xs opacity-60">إجمالي البنود</p><p id="pos-count" class="text-xl font-black">0</p></div>' +
+                '</div>' +
+                '<div class="flex-1 overflow-y-auto p-6">' +
+                    '<table class="w-full text-right border-separate border-spacing-y-3">' +
+                        '<thead><tr class="text-slate-400 text-xs font-black uppercase">' +
+                            '<th class="px-4">الصنف</th><th class="px-4">السعر</th>' +
+                            '<th class="px-4 w-32">الكمية</th><th class="px-4">الإجمالي</th>' +
+                            '<th class="px-4"></th>' +
+                        '</tr></thead>' +
+                        '<tbody id="pos-cart-body"></tbody>' +
+                    '</table>' +
+                '</div>' +
+                '<div class="p-8 bg-slate-50 border-t flex flex-wrap justify-between items-center gap-6">' +
+                    '<div>' +
+                        '<div class="flex justify-between mb-2"><span class="text-slate-400 font-bold ml-4">مجموع الأصناف:</span><span id="pos-subtotal" class="text-xl font-bold">0</span></div>' +
+                        '<div class="flex justify-between mb-2" id="pos-del-row"><span class="text-slate-400 font-bold ml-4">رسوم التوصيل:</span><span id="pos-delivery" class="text-xl font-bold text-blue-600">0</span></div>' +
+                        '<div class="flex justify-between mb-2" id="pos-tax-row"><span class="text-slate-400 font-bold ml-4">ضريبة القيمة المضافة:</span><span id="pos-tax" class="text-xl font-bold text-red-600">0</span></div>' +
+                        '<div class="flex justify-between"><span class="text-slate-400 font-bold ml-4">الإجمالي النهائي:</span><span id="pos-total" class="text-5xl font-black text-emerald-700">0.00</span></div>' +
+                    '</div>' +
+                    '<div class="flex gap-3">' +
+                        '<button onclick="RW_POS._clearCart()" class="bg-red-500 text-white px-8 py-5 rounded-2xl font-black text-lg">مسح الكل</button>' +
+                        '<button onclick="RW_POS._save()" class="bg-blue-600 text-white px-16 py-5 rounded-2xl font-black text-xl">حفظ الفاتورة</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+        '</div>');
+
+        loadCustomers();
+        renderCart();
+    }
+
+    function loadCustomers() {
+        var sel = byId('pos-customer');
+        if (!sel) return;
+        var customers = RW_STATE.data.customers || [];
+        var html = '<option value="">-- اختر عميلاً --</option>';
+        for (var i = 0; i < customers.length; i++) {
+            var c = customers[i];
+            html += '<option value="' + (c.customer_code || c.code || '') + '">' + (c.name || '') + ' (' + (c.area || '') + ')</option>';
+        }
+        safeHTML(sel, html);
+    }
+
+    function onCustChange() {
+        var sel = byId('pos-customer');
+        var area = byId('pos-area');
+        if (!sel || !area) return;
+        var customers = RW_STATE.data.customers || [];
+        var found = null;
+        for (var i = 0; i < customers.length; i++) {
+            if (customers[i].customer_code === sel.value || customers[i].code === sel.value) {
+                found = customers[i];
+                break;
+            }
+        }
+        area.value = found ? (found.area || '') : '';
+    }
+
+    function search(q) {
+        var dd = byId('pos-dropdown');
+        if (!dd) return;
+        if (!q || !q.trim()) {
+            dd.classList.add('hidden');
+            return;
+        }
+        var items = RW_STATE.data.items || [];
+        var filtered = items.filter(function(i) {
+            return (i.name || '').toLowerCase().indexOf(q.toLowerCase()) !== -1 ||
+                   (i.item_code || '').toLowerCase().indexOf(q.toLowerCase()) !== -1;
+        });
+        if (!filtered.length) {
+            safeHTML(dd, '<div class="p-3 text-center text-gray-400">لا توجد نتائج</div>');
+            dd.classList.remove('hidden');
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < filtered.length; i++) {
+            var it = filtered[i];
+            html += '<div onclick="RW_POS._addItem(\'' + it.item_code + '\')" class="p-3 hover:bg-blue-50 cursor-pointer flex justify-between border-b">' +
+                '<div><div class="font-bold">' + (it.name || '') + '</div></div>' +
+                '<div class="font-bold text-blue-600">' + Number(it.sales_price || 0).toLocaleString() + ' EGP</div>' +
+            '</div>';
+        }
+        safeHTML(dd, html);
+        dd.classList.remove('hidden');
+    }
+
+    function addItem(code) {
+        var items = RW_STATE.data.items || [];
+        var item = null;
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].item_code === code) {
+                item = items[i];
+                break;
+            }
+        }
+        if (!item) return;
+        var existing = null;
+        for (var j = 0; j < cart.length; j++) {
+            if (cart[j].code === code) {
+                existing = cart[j];
+                break;
+            }
+        }
+        if (existing) {
+            existing.qty++;
+        } else {
+            cart.unshift({
+                code: item.item_code,
+                name: item.name,
+                price: Number(item.sales_price) || 0,
+                unit: item.unit || 'حبة',
+                qty: 1
+            });
+        }
+        byId('pos-search').value = '';
+        byId('pos-dropdown').classList.add('hidden');
+        renderCart();
+    }
+
+    function updateQty(idx, val) {
+        var q = parseFloat(val);
+        if (isNaN(q) || q <= 0) {
+            cart.splice(idx, 1);
+        } else {
+            cart[idx].qty = q;
+        }
+        renderCart();
+    }
+
+    function removeItem(idx) {
+        cart.splice(idx, 1);
+        renderCart();
+    }
+
+    function clearCart() {
+        if (!cart.length) {
+            showToast('السلة فارغة', 'info');
+            return;
+        }
+        Swal.fire({
+            title: 'تأكيد مسح السلة',
+            text: 'حذف جميع الأصناف؟',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم',
+            cancelButtonText: 'إلغاء'
+        }).then(function(r) {
+            if (r.isConfirmed) {
+                cart = [];
+                renderCart();
+                showToast('تم مسح السلة', 'success');
+            }
+        });
+    }
+
+    function renderCart() {
+        var tb = byId('pos-cart-body');
+        var subtotal = 0;
+        if (!cart.length) {
+            safeHTML(tb, '<tr><td colspan="5" class="p-6 text-center">لا توجد أصناف</td></tr>');
+            safeText(byId('pos-subtotal'), '0');
+            safeText(byId('pos-delivery'), '0');
+            safeText(byId('pos-tax'), '0');
+            safeText(byId('pos-total'), '0');
+            safeText(byId('pos-count'), '0');
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < cart.length; i++) {
+            var it = cart[i];
+            var line = it.price * it.qty;
+            subtotal += line;
+            html += '<tr class="bg-white shadow-sm rounded-2xl overflow-hidden">' +
+                '<td class="p-4 rounded-r-2xl border-y border-r">' +
+                    '<p class="font-black">' + esc(it.name) + '</p>' +
+                    '<p class="text-xs text-gray-400">' + it.code + '</p>' +
+                '</td>' +
+                '<td class="p-4 border-y font-bold text-blue-600">' + it.price.toLocaleString() + ' EGP</td>' +
+                '<td class="p-4 border-y">' +
+                    '<input type="number" value="' + it.qty + '" onchange="RW_POS._updateQty(' + i + ',this.value)" class="w-20 p-2 bg-slate-50 border-2 rounded-xl text-center font-black" min="1">' +
+                '</td>' +
+                '<td class="p-4 border-y font-black">' + line.toLocaleString() + ' EGP</td>' +
+                '<td class="p-4 rounded-l-2xl border-y border-l text-center">' +
+                    '<button onclick="RW_POS._removeItem(' + i + ')" class="text-red-400"><i class="fa-solid fa-circle-xmark text-xl"></i></button>' +
+                '</td>' +
+            '</tr>';
+        }
+        safeHTML(tb, html);
+        var del = deliveryFee || 0;
+        var before = subtotal + del;
+        var taxAmt = Math.round(before * taxRate) / 100;
+        var total = before + taxAmt;
+        safeText(byId('pos-subtotal'), subtotal.toLocaleString());
+        if (del > 0) {
+            byId('pos-del-row').classList.remove('hidden');
+            safeText(byId('pos-delivery'), del.toLocaleString());
+        } else {
+            byId('pos-del-row').classList.add('hidden');
+        }
+        if (taxRate > 0 && subtotal > 0) {
+            byId('pos-tax-row').classList.remove('hidden');
+            safeText(byId('pos-tax'), taxAmt.toLocaleString());
+        } else {
+            byId('pos-tax-row').classList.add('hidden');
+        }
+        safeText(byId('pos-total'), total.toLocaleString());
+        safeText(byId('pos-count'), String(cart.length));
+    }
+
+    async function save() {
+        var cust = byId('pos-customer') && byId('pos-customer').value;
+        if (!cust) {
+            showToast('اختر عميلاً', 'warning');
+            return;
+        }
+        if (!cart.length) {
+            showToast('أضف أصنافاً', 'warning');
+            return;
+        }
+        var subtotal = 0;
+        for (var i = 0; i < cart.length; i++) {
+            subtotal += cart[i].price * cart[i].qty;
+        }
+        var del = deliveryFee || 0;
+        var before = subtotal + del;
+        var taxAmt = Math.round(before * taxRate) / 100;
+        var total = before + taxAmt;
+        if (minInvoice > 0 && total < minInvoice) {
+            showToast('الحد الأدنى للفاتورة: ' + minInvoice + ' EGP', 'warning');
+            return;
+        }
+        var customers = RW_STATE.data.customers || [];
+        var customer = null;
+        for (var j = 0; j < customers.length; j++) {
+            if (customers[j].customer_code === cust || customers[j].code === cust) {
+                customer = customers[j];
+                break;
+            }
+        }
+        var orderHeader = {
+            custId: cust,
+            custName: customer ? customer.name : '',
+            area: customer ? customer.area : '',
+            total: total,
+            deliveryFees: del,
+            status: 'Invoiced',
+            paymentType: 'نقدي',
+            taxAmount: taxAmt,
+            taxRate: taxRate
+        };
+        var itemsList = cart.map(function(it) {
+            return {
+                code: it.code,
+                name: it.name,
+                price: it.price,
+                qty: it.qty,
+                unit: it.unit
+            };
+        });
+        showLoader('جاري حفظ الفاتورة...');
+        var sessionRes = await supabase.auth.getSession();
+        var token = sessionRes.data.session && sessionRes.data.session.access_token;
+        try {
+            var res = await fetch(SUPABASE_URL + '/functions/v1/save-sales-invoice', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    orderHeader: orderHeader,
+                    itemsList: itemsList,
+                    branchId: 'MAIN'
+                })
+            });
+            var json = await res.json();
+            hideLoader();
+            if (json.success) {
+                showToast('تم حفظ الفاتورة بنجاح: ' + json.orderID, 'success');
+                cart = [];
+                renderCart();
+                var posCust = byId('pos-customer');
+                if (posCust) posCust.value = '';
+                var posArea = byId('pos-area');
+                if (posArea) posArea.value = '';
+            } else {
+                showToast(json.msg || 'فشل الحفظ', 'error');
+            }
+        } catch(e) {
+            hideLoader();
+            showToast('فشل الاتصال', 'error');
+        }
+    }
+
+    return {
+        render: render,
+        _search: search,
+        _addItem: addItem,
+        _updateQty: updateQty,
+        _removeItem: removeItem,
+        _clearCart: clearCart,
+        _onCustChange: onCustChange,
+        _save: save
+    };
+})();
+window.RW_POS = RW_POS;
+// ============================================================
 // RW_Roles – إدارة أدوار الموظفين (قراءة وكتابة Supabase)
 // ============================================================
 var RW_Roles = (function() {
@@ -1053,6 +1352,7 @@ const RW_Views = {
         if (view === 'customers') { RW_Customers.render(); return; }
         if (view === 'suppliers') { RW_Suppliers.render(); return; }
         if (view === 'branches') { RW_Branches.render(); return; }
+        if (view === 'pos') { RW_POS.render(); return; }
         if (view === 'settings') { RW_Settings.render(); return; }
         if (view === 'users') { RW_Users.render(); return; }
         if (view === 'roles') { RW_Roles.render(); return; }
