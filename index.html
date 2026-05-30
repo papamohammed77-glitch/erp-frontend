@@ -1503,6 +1503,169 @@ var RW_Orders = (function() {
     return { render: render, _apply: _apply, _reset: _reset, _withoutRS: _withoutRS, _sort: _sort, _confirm: _confirm, _delete: _delete, _createRS: _createRS, _appendRS: _appendRS, _details: _details };
 })();
 window.RW_Orders = RW_Orders;
+// ============================================================
+// RW_Runsheets – الرانشيتات (عرض، فلترة، تفاصيل)
+// ============================================================
+var RW_Runsheets = (function() {
+    var sortField = 'runsheet_code';
+    var sortAsc = true;
+    var data = [];
+
+    async function render() {
+        var c = byId('rw-page-container');
+        if (!c) return;
+        safeText(byId('rw-header-title'), 'الرانشيتات');
+        safeHTML(c, '<div class="p-4">' +
+            '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">' +
+                '<div class="grid grid-cols-2 md:grid-cols-6 gap-2">' +
+                    '<input type="text" id="rs-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-gray-50 rounded text-sm" oninput="RW_Runsheets._apply()">' +
+                    '<select id="rs-f-status" class="p-2 bg-gray-50 rounded text-sm" onchange="RW_Runsheets._apply()">' +
+                        '<option value="">كل الحالات</option>' +
+                        '<option>Open</option><option>Picking</option><option>Picked</option>' +
+                        '<option>Loading</option><option>Loaded</option><option>Delivering</option><option>Delivered</option>' +
+                    '</select>' +
+                    '<input type="text" id="rs-f-driver" placeholder="السائق..." class="p-2 bg-gray-50 rounded text-sm" oninput="RW_Runsheets._apply()">' +
+                    '<input type="date" id="rs-f-from" class="p-2 bg-gray-50 rounded text-sm" onchange="RW_Runsheets._apply()">' +
+                    '<input type="date" id="rs-f-to" class="p-2 bg-gray-50 rounded text-sm" onchange="RW_Runsheets._apply()">' +
+                    '<button onclick="RW_Runsheets._apply()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>' +
+                '</div>' +
+            '</div>' +
+            '<div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh">' +
+                '<table class="w-full min-w-[1000px]">' +
+                    '<thead class="bg-gray-50 sticky top-0 z-10">' +
+                        '<tr>' +
+                            '<th class="p-3 text-center cursor-pointer" onclick="RW_Runsheets._sort(\'runsheet_code\')">رقم الرانشيت</th>' +
+                            '<th class="p-3 text-center">التاريخ</th>' +
+                            '<th class="p-3 text-center">السائق</th>' +
+                            '<th class="p-3 text-center">السيارة</th>' +
+                            '<th class="p-3 text-center">القيمة</th>' +
+                            '<th class="p-3 text-center">الحالة</th>' +
+                        '</tr>' +
+                    '</thead>' +
+                    '<tbody id="rs-table-body"><tr><td colspan="6" class="text-center py-8">جاري التحميل...</td></tr></tbody>' +
+                '</table>' +
+            '</div>' +
+        '</div>');
+
+        var res = await supabase.from('runsheets').select('*');
+        data = res.data || [];
+        _apply();
+    }
+
+    function _apply() {
+        var filtered = data.slice();
+
+        var idEl = byId('rs-f-id');
+        var stEl = byId('rs-f-status');
+        var drEl = byId('rs-f-driver');
+        var fromEl = byId('rs-f-from');
+        var toEl = byId('rs-f-to');
+
+        var id = idEl ? idEl.value.toLowerCase() : '';
+        var st = stEl ? stEl.value : '';
+        var dr = drEl ? drEl.value.toLowerCase() : '';
+        var fd = fromEl ? fromEl.value : '';
+        var td = toEl ? toEl.value : '';
+
+        if (id) filtered = filtered.filter(function(r) { return (r.runsheet_code || '').toLowerCase().indexOf(id) !== -1; });
+        if (st) filtered = filtered.filter(function(r) { return r.status === st; });
+        if (dr) filtered = filtered.filter(function(r) { return (r.driver_id || '').toLowerCase().indexOf(dr) !== -1; });
+        if (fd) filtered = filtered.filter(function(r) { return r.run_date >= fd; });
+        if (td) filtered = filtered.filter(function(r) { return r.run_date <= td; });
+
+        var sorted = filtered.sort(function(a, b) {
+            var va = a[sortField] || '';
+            var vb = b[sortField] || '';
+            return (va < vb ? -1 : va > vb ? 1 : 0) * (sortAsc ? 1 : -1);
+        });
+
+        _renderTable(sorted);
+    }
+
+    function _sort(field) {
+        if (sortField === field) sortAsc = !sortAsc;
+        else { sortField = field; sortAsc = true; }
+        _apply();
+    }
+
+    function _renderTable(d) {
+        var tb = byId('rs-table-body');
+        if (!tb) return;
+        if (!d.length) {
+            safeHTML(tb, '<tr><td colspan="6" class="text-center py-8">لا توجد رانشيتات</td></tr>');
+            return;
+        }
+        var h = '';
+        for (var i = 0; i < d.length; i++) {
+            var r = d[i];
+            var sc = '';
+            if (r.status === 'Open') sc = 'bg-blue-100 text-blue-700';
+            else if (r.status === 'Picking' || r.status === 'Picked') sc = 'bg-purple-100 text-purple-700';
+            else if (r.status === 'Loading' || r.status === 'Loaded') sc = 'bg-orange-100 text-orange-700';
+            else if (r.status === 'Delivering' || r.status === 'Delivered') sc = 'bg-green-100 text-green-700';
+            else sc = 'bg-gray-100 text-gray-600';
+
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Runsheets._details(\'' + r.runsheet_code + '\')">' +
+                '<td class="p-3 text-center font-bold text-emerald-600">' + (r.runsheet_code || '') + '</td>' +
+                '<td class="p-3 text-center">' + (r.run_date ? new Date(r.run_date).toLocaleDateString('ar-EG') : '') + '</td>' +
+                '<td class="p-3 text-center">' + (r.driver_id || '---') + '</td>' +
+                '<td class="p-3 text-center">' + (r.vehicle_id || '---') + '</td>' +
+                '<td class="p-3 text-center font-bold">' + Number(r.total_amount || 0).toLocaleString() + ' EGP</td>' +
+                '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs ' + sc + '">' + (r.status || '') + '</span></td>' +
+            '</tr>';
+        }
+        safeHTML(tb, h);
+    }
+
+    async function _details(code) {
+        showLoader('جاري التحميل...');
+        var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle();
+        var rs = rsRes.data;
+        var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs ? rs.id : null);
+        var items = itemsRes.data || [];
+        hideLoader();
+
+        if (!rs) { showToast('الرانشيت غير موجود', 'error'); return; }
+
+        var itemsH = '';
+        if (items.length) {
+            itemsH = '<table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                var lt = (Number(it.qty_ordered) || 0) * (Number(it.unit_price) || 0);
+                itemsH += '<tr><td class="p-2 font-semibold">' + (it.item_name || '') + '</td><td class="p-2 text-center">' + (it.qty_ordered || 0) + '</td><td class="p-2 text-center">' + Number(it.unit_price || 0).toLocaleString() + '</td><td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
+            }
+            itemsH += '</tbody></table>';
+        } else {
+            itemsH = '<p class="text-gray-400">لا توجد بنود.</p>';
+        }
+
+        var h = '<div class="text-right">' +
+            '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4">' +
+                '<div><p><b>التاريخ:</b> ' + (rs.run_date || '') + '</p><p><b>السائق:</b> ' + (rs.driver_id || '---') + '</p></div>' +
+                '<div><p><b>السيارة:</b> ' + (rs.vehicle_id || '---') + '</p><p><b>الحالة:</b> ' + (rs.status || '') + '</p></div>' +
+            '</div>' +
+            itemsH +
+            '<div class="mt-4 font-bold text-lg">الإجمالي: ' + Number(rs.total_amount || 0).toLocaleString() + ' EGP</div>' +
+        '</div>';
+
+        Swal.fire({
+            title: 'تفاصيل الرانشيت: ' + code,
+            html: h,
+            width: '800px',
+            showCloseButton: true,
+            showConfirmButton: false
+        });
+    }
+
+    return {
+        render: render,
+        _apply: _apply,
+        _sort: _sort,
+        _details: _details
+    };
+})();
+window.RW_Runsheets = RW_Runsheets;
 // --- العروض (تحديث نهائي) ---
 const RW_Views = {
     async render(view) {
@@ -1524,6 +1687,7 @@ const RW_Views = {
         if (view === 'branches') { RW_Branches.render(); return; }
         if (view === 'pos') { RW_POS.render(); return; }
         if (view === 'orders') { RW_Orders.render(); return; }
+        if (view === 'runsheets') { RW_Runsheets.render(); return; }
         if (view === 'settings') { RW_Settings.render(); return; }
         if (view === 'users') { RW_Users.render(); return; }
         if (view === 'roles') { RW_Roles.render(); return; }
