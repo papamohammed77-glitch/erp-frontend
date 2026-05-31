@@ -182,8 +182,15 @@ const RW_Auth = {
             const userName = user ? (user.name || user.email) : 'مستخدم';
             safeText(byId('rw-sidebar-company-name'), RW_STATE.app.company.name || 'الروائع ERP');
             const logoImg = byId('rw-sidebar-brand-logo');
-            if (logoImg && RW_STATE.app.company.logo) { logoImg.src = RW_STATE.app.company.logo; logoImg.style.objectFit = 'contain'; logoImg.style.backgroundColor = '#f8fafc'; }
             safeText(byId('rw-header-user-display'), userName);
+            // جلب شعار واسم الشركة من الإعدادات
+            supabase.from('app_settings').select('company_name, company_logo').limit(1).single().then(function(r) {
+                if (r.data) {
+                    safeText(byId('rw-sidebar-company-name'), r.data.company_name || 'الروائع ERP');
+                    var logoImg = byId('rw-sidebar-brand-logo');
+                    if (logoImg && r.data.company_logo) { logoImg.src = r.data.company_logo; logoImg.style.objectFit = 'contain'; logoImg.style.backgroundColor = '#f8fafc'; }
+                }
+            });
             RW_Navigation.buildSidebar();
             // ✅ Bootstrap: تحميل البيانات الأساسية مرة واحدة لجميع التبويبات
             Promise.all([
@@ -936,24 +943,24 @@ var RW_Users = (function() {
     }
 
     function renderTable(data) {
-        const w = byId('emp-table-wrapper'); if (!w) return;
-        // إخفاء المالك
-        var filtered = data.filter(function(emp) {
-            return emp.role !== 'مالك' && emp.role !== 'Owner' && emp.is_owner !== true;
-        });
-        if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون</div>'); return; }
-        let html = `<table class="w-full text-sm"><thead class="bg-gray-50"><tr>
-            <th class="p-3">الاسم</th><th class="p-3">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">الهاتف</th><th class="p-3">الفروع</th></tr></thead><tbody>`;
-        filtered.forEach(emp => {
-            const statusClass = emp.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
-            html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Users._openModal('${emp.email}')">
-                <td class="p-3 font-semibold">${emp.name||''}</td><td class="p-3">${emp.email||''}</td><td class="p-3">${emp.role||''}</td>
-                <td class="p-3"><span class="px-2 py-1 rounded-full text-xs ${statusClass}">${emp.status==='Active'?'نشط':'غير نشط'}</span></td>
-                <td class="p-3">${emp.phone||''}</td><td class="p-3">${emp.allowed_branch_ids||'*'}</td></tr>`;
-        });
-        html += `</tbody></table>`;
-        safeHTML(w, html);
-    }
+    const w = byId('emp-table-wrapper'); if (!w) return;
+    // إخفاء المالك من القائمة
+    var filtered = data.filter(function(emp) {
+        return emp.role !== 'مالك' && emp.role !== 'Owner' && emp.is_owner !== true;
+    });
+    if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون</div>'); return; }
+    let html = `<table class="w-full text-sm"><thead class="bg-gray-50"><tr>
+        <th class="p-3">الاسم</th><th class="p-3">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">الهاتف</th><th class="p-3">الفروع</th></tr></thead><tbody>`;
+    filtered.forEach(emp => {
+        const statusClass = emp.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+        html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Users._openModal('${emp.email}')">
+            <td class="p-3 font-semibold">${emp.name||''}</td><td class="p-3">${emp.email||''}</td><td class="p-3">${emp.role||''}</td>
+            <td class="p-3"><span class="px-2 py-1 rounded-full text-xs ${statusClass}">${emp.status==='Active'?'نشط':'غير نشط'}</span></td>
+            <td class="p-3">${emp.phone||''}</td><td class="p-3">${emp.allowed_branch_ids||'*'}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+    safeHTML(w, html);
+}
 
     function filterTable() {
         const q = (byId('emp-search')?.value||'').toLowerCase();
@@ -1029,6 +1036,14 @@ var RW_Users = (function() {
                     const email = byId('emp-email').value.trim();
                     if (!name || !email) { showToast('الاسم والبريد مطلوبان', 'error'); return; }
                     if (!isEdit && !byId('emp-password').value) { showToast('يجب تعيين كلمة مرور', 'error'); return; }
+                    // تجميع الصلاحيات المخصصة
+                    var customPerms = [];
+                    if (document.getElementById('emp-custom-perms-toggle').checked) {
+                        document.querySelectorAll('.emp-custom-perm:checked').forEach(function(cb) {
+                            customPerms.push(cb.value);
+                        });
+                    }
+                    
                     // تجميع الصلاحيات المخصصة
                     var customPerms = [];
                     if (document.getElementById('emp-custom-perms-toggle').checked) {
@@ -2586,7 +2601,7 @@ var RW_Warehouse = (function() {
                 <table class="w-full"><thead class="bg-gray-800 text-white sticky top-0"><tr><th class="p-3">رقم الإذن</th><th class="p-3">النوع</th><th class="p-3">التاريخ</th><th class="p-3">الحالة</th><th class="p-3">المرجع</th><th class="p-3">من</th><th class="p-3">إلى</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="vouchers-tbody"><tr><td colspan="8" class="text-center py-8">جاري التحميل...</td></tr></tbody></table>
             </div>
         </div>`);
-        var res = await supabase.from('stock_vouchers').select('*');
+        var res = await supabase.from('stock_vouchers').select('*').or('source.eq.Manual,and(source.is.null,type.not.in.(Picking,Loading,Return,Unloading))');
         window._vouchersData = res.data || [];
         _applyVouchers();
     }
@@ -3037,7 +3052,7 @@ var RW_Warehouse = (function() {
             </div>
             <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4 relative">
                 <label class="text-xs font-bold block mb-2">البحث عن صنف</label>
-                <div class="relative"><input type="text" id="bc-item-search" oninput="RW_Warehouse._searchInvItem('bc', this.value)" autocomplete="off" placeholder="امسح الباركود أو ابحث..." class="w-full p-4 bg-slate-50 rounded-xl border-2 focus:border-emerald-500 outline-none font-bold text-lg"><div id="bc-item-results" class="absolute z-50 left-0 right-0 mt-1 bg-white shadow-xl rounded-xl max-h-60 overflow-y-auto hidden border"></div></div>
+<div class="relative"><input type="text" id="bc-item-search" oninput="RW_Warehouse._searchInvItem('bc', this.value)" autocomplete="off" placeholder="امسح الباركود أو ابحث..." class="w-full p-4 bg-slate-50 rounded-xl border-2 focus:border-emerald-500 outline-none font-bold text-lg"><button onclick="RW_Warehouse._startBarcodeScanner('bc')" class="absolute left-2 top-2 bg-emerald-600 text-white p-3 rounded-xl"><i class="fa-solid fa-camera"></i></button></div>
             </div>
             <div class="bg-white rounded-xl shadow-sm overflow-auto" style="max-height:50vh;"><table class="w-full"><thead class="bg-slate-800 text-white"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">حذف</th></tr></thead><tbody id="bc-cart-table"><tr><td colspan="4" class="p-6 text-center">أضف أصنافاً</td></tr></tbody></table></div>
             <div class="mt-2">عدد الأصناف: <span id="bc-cart-count">0</span></div>
@@ -3063,7 +3078,7 @@ var RW_Warehouse = (function() {
             <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><input id="gc-notes" class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-200" placeholder="ملاحظات الجرد العام..."></div>
             <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4 relative">
                 <label class="text-xs font-bold block mb-2">البحث عن صنف</label>
-                <div class="relative"><input type="text" id="gc-item-search" oninput="RW_Warehouse._searchInvItem('gc', this.value)" autocomplete="off" placeholder="امسح الباركود أو ابحث..." class="w-full p-4 bg-slate-50 rounded-xl border-2 focus:border-emerald-500 outline-none font-bold text-lg"><div id="gc-item-results" class="absolute z-50 left-0 right-0 mt-1 bg-white shadow-xl rounded-xl max-h-60 overflow-y-auto hidden border"></div></div>
+<div class="relative"><input type="text" id="gc-item-search" oninput="RW_Warehouse._searchInvItem('gc', this.value)" autocomplete="off" placeholder="امسح الباركود أو ابحث..." class="w-full p-4 bg-slate-50 rounded-xl border-2 focus:border-emerald-500 outline-none font-bold text-lg"><button onclick="RW_Warehouse._startBarcodeScanner('gc')" class="absolute left-2 top-2 bg-emerald-600 text-white p-3 rounded-xl"><i class="fa-solid fa-camera"></i></button></div>
             </div>
             <div class="bg-white rounded-xl shadow-sm overflow-auto" style="max-height:50vh;"><table class="w-full"><thead class="bg-slate-800 text-white"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">حذف</th></tr></thead><tbody id="gc-cart-table"><tr><td colspan="4" class="p-6 text-center">أضف أصنافاً</td></tr></tbody></table></div>
             <div class="mt-2">عدد الأصناف: <span id="gc-cart-count">0</span></div>
