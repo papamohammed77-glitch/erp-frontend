@@ -7,10 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:'Cairo',sans-serif;background:#f8fafc;overflow-x:hidden;color:#111827}:root{--rw-primary:#2563eb;--rw-primary-dark:#1d4ed8;--rw-primary-light:#eff6ff;--rw-success:#10b981;--rw-warning:#f59e0b;--rw-danger:#ef4444;--rw-info:#06b6d4;--rw-dark:#111827;--rw-dark-2:#1f2937;--rw-gray:#6b7280;--rw-gray-light:#e5e7eb;--rw-bg:#f8fafc;--rw-card:#ffffff;--rw-sidebar:#ffffff;--rw-sidebar-hover:#f1f5f9;--rw-radius:22px;--rw-shadow:0 10px 30px rgba(0,0,0,0.06);--transition-speed:0.3s}
     .rw-login-page{width:100%;min-height:100vh;display:flex;position:relative;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 35%,#2563eb 100%)}
@@ -185,7 +185,24 @@ const RW_Auth = {
             if (logoImg && RW_STATE.app.company.logo) { logoImg.src = RW_STATE.app.company.logo; logoImg.style.objectFit = 'contain'; logoImg.style.backgroundColor = '#f8fafc'; }
             safeText(byId('rw-header-user-display'), userName);
             RW_Navigation.buildSidebar();
-            RW_Navigation.navigate('dashboard');
+            // ✅ Bootstrap: تحميل البيانات الأساسية مرة واحدة لجميع التبويبات
+            Promise.all([
+                RW_Data.loadItems(),
+                RW_Data.loadCustomers(),
+                RW_Data.loadBranches()
+            ]).then(function() {
+                console.log('✅ Bootstrap data loaded successfully.');
+                // تحميل الموردين (اختياري، لا يمنع الدخول)
+                supabase.from('suppliers').select('*').then(function(r) {
+                    RW_STATE.data.suppliers = r.data || [];
+                    console.log('✅ Suppliers loaded.');
+                });
+            }).catch(function(e) {
+                console.warn('⚠️ Bootstrap data failed:', e);
+            }).finally(function() {
+                // الانتقال للوحة التحكم في جميع الأحوال
+                RW_Navigation.navigate('dashboard');
+            });
         } catch(e) { console.error(e); this.forceEnterFallback(); }
     },
     forceEnterFallback: function() { hideLoader(); try { byId('rw-login-page').style.display = 'none'; byId('rw-main-shell').style.display = 'flex'; RW_Navigation.buildSidebar(); RW_Navigation.navigate('dashboard'); showToast('تم تشغيل النظام في الوضع الآمن', 'warning'); } catch(e) { document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:Cairo;"><h1>RAWAEA ERP</h1><p>حدث خطأ أثناء تشغيل النظام</p><button onclick="location.reload()">إعادة التحميل</button></div>'; } },
@@ -882,7 +899,8 @@ var RW_POS = (function() {
             taxRate = Number(settingsRes.data.tax_rate) || 0;
         }
         cart = [];
-
+                if (!RW_STATE.data.items || !RW_STATE.data.items.length) { showLoader('جاري تحميل الأصناف...'); await RW_Data.loadItems(); hideLoader(); }
+        if (!RW_STATE.data.customers || !RW_STATE.data.customers.length) { await RW_Data.loadCustomers(); }
         safeHTML(container, '<div class="max-w-[1400px] mx-auto grid grid-cols-1 lg:grid-cols-4 gap-6 p-6">' +
             '<div class="lg:col-span-1 space-y-6">' +
                 '<div class="bg-white p-6 rounded-[30px] shadow-sm">' +
@@ -1166,6 +1184,16 @@ var RW_POS = (function() {
                 unit: it.unit
             };
         });
+                // تحميل QRCode.js ديناميكياً عند أول فاتورة
+        if (typeof QRCode === 'undefined') {
+            await new Promise(function(resolve, reject) {
+                var script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js';
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
         showLoader('جاري حفظ الفاتورة...');
         var sessionRes = await supabase.auth.getSession();
         var token = sessionRes.data.session && sessionRes.data.session.access_token;
@@ -1677,6 +1705,7 @@ var RW_OnlineStore = (function() {
     safeText(byId('rw-header-title'),'المتجر الإلكتروني');
     cart={};
     try{ var sRes=await supabase.from('app_settings').select('*').limit(1).single(); if(!sRes.error&&sRes.data){ deliveryFee=Number(sRes.data.delivery_fee)||0; taxRate=Number(sRes.data.tax_rate)||0; } }catch(e){}
+    if (!RW_STATE.data.items || !RW_STATE.data.items.length) { showLoader('جاري تحميل المنتجات...'); await RW_Data.loadItems(); hideLoader(); }
     safeHTML(c,'<div class="p-4"><div class="flex flex-wrap justify-between items-center mb-4 gap-3"><div class="flex overflow-x-auto gap-2 pb-2" id="store-cats"></div><div class="flex gap-2"><button onclick="RW_OnlineStore._trackOrder()" class="bg-white border border-blue-200 text-blue-600 px-4 py-2 rounded-xl font-bold text-sm"><i class="fa-solid fa-magnifying-glass ml-1"></i> تتبع الطلب</button><button onclick="RW_OnlineStore._showCart()" class="bg-slate-100 px-4 py-2 rounded-xl font-bold relative">🛒 <span id="store-cart-badge">0</span></button></div></div><input type="text" id="store-search" class="w-full p-3 bg-white rounded-xl border mb-4" placeholder="ابحث عن منتج..." oninput="RW_OnlineStore._renderCards()"><div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="store-grid"></div></div>');
     buildCats(); renderCards();
   }
@@ -1811,6 +1840,8 @@ var RW_Purchases = (function() {
   function renderPOS(){
     var c=byId('rw-page-container'); if(!c)return;
     safeText(byId('rw-header-title'),'نقطة شراء');
+    if (!RW_STATE.data.items || !RW_STATE.data.items.length) { showLoader('جاري تحميل الأصناف...'); await RW_Data.loadItems(); hideLoader(); }
+    if (!RW_STATE.data.suppliers || !RW_STATE.data.suppliers.length) { try { var sRes = await supabase.from('suppliers').select('*'); RW_STATE.data.suppliers = sRes.data || []; } catch(e) {} }
     safeHTML(c,'<div class="grid grid-cols-1 lg:grid-cols-4 gap-6 p-4"><div class="lg:col-span-1 space-y-4"><div class="bg-white p-4 rounded-xl shadow-sm"><label class="text-sm font-bold">اختيار المورد</label><select id="po-supplier" class="w-full p-2.5 bg-gray-50 border rounded-lg"></select></div><div class="bg-white p-4 rounded-xl shadow-sm"><label class="text-sm font-bold">البحث عن صنف</label><input type="text" id="po-search" oninput="RW_Purchases._searchItem(this.value)" placeholder="ابحث..." class="w-full p-2.5 bg-gray-50 border rounded-lg"><div id="po-dropdown" class="absolute z-50 bg-white shadow-xl rounded-xl max-h-60 overflow-y-auto hidden border"></div></div></div><div class="lg:col-span-3 bg-white rounded-xl shadow-md overflow-hidden flex flex-col min-h-[500px]"><div class="bg-emerald-700 text-white p-4 flex justify-between"><h2 class="font-bold text-lg">أمر شراء جديد</h2><span id="po-count">0</span></div><div class="flex-1 overflow-y-auto p-4"><table class="w-full text-right"><thead><tr class="text-xs text-gray-500"><th class="p-2">الصنف</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">الإجمالي</th><th></th></tr></thead><tbody id="po-cart-body"><tr><td colspan="5" class="p-8 text-center">لا توجد أصناف</td></tr></tbody></table></div><div class="p-4 bg-gray-50 border-t flex justify-between"><div><span class="text-gray-500">الإجمالي:</span><span id="po-total" class="text-3xl font-bold">0</span></div><div class="flex gap-2"><button onclick="RW_Purchases._clearCart()" class="px-4 py-2 bg-red-500 text-white rounded-lg">مسح</button><button onclick="RW_Purchases._savePO()" class="px-6 py-2 bg-emerald-600 text-white rounded-lg">حفظ</button></div></div></div></div>');
     loadSuppliers(); renderPOCart();
   }
