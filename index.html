@@ -983,6 +983,34 @@ var RW_Users = (function() {
         <div class="flex flex-col"><label>الدور الوظيفي *</label><select id="emp-role" class="p-2.5 bg-gray-50 border rounded-lg">${roleOptions}</select></div>
         <div class="flex flex-col"><label>الحالة</label><select id="emp-status" class="p-2.5 bg-gray-50 border rounded-lg"><option value="Active" ${emp?.status==='Active'?'selected':''}>نشط</option><option value="Inactive" ${emp?.status==='Inactive'?'selected':''}>غير نشط</option></select></div>
         <div class="flex flex-col"><label>تاريخ انتهاء الصلاحية</label><input id="emp-expiry" type="date" value="${emp?.expiry_date||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+        <div class="md:col-span-2">
+    <label class="flex items-center gap-2 cursor-pointer mt-2">
+        <input type="checkbox" id="emp-custom-perms-toggle" onchange="document.getElementById('emp-custom-perms-section').classList.toggle('hidden')">
+        <span class="text-sm font-bold">تفعيل صلاحيات مخصصة (تضاف لصلاحيات الدور)</span>
+    </label>
+    <div id="emp-custom-perms-section" class="hidden mt-3 p-3 bg-gray-50 rounded-xl">
+        <label class="text-xs font-bold text-gray-500 block mb-2">الصلاحيات الإضافية:</label>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="emp-permissions-checkboxes">
+            ${[
+                { key: 'dash', label: 'لوحة التحكم' }, { key: 'items', label: 'الأصناف' }, { key: 'customers', label: 'العملاء' },
+                { key: 'suppliers', label: 'الموردين' }, { key: 'branches', label: 'الفروع' },
+                { key: 'pos', label: 'نقطة البيع' }, { key: 'orders', label: 'الأوردرات' }, { key: 'runsheets', label: 'الرانشيتات' },
+                { key: 'online-store', label: 'المتجر الإلكتروني' }, { key: 'purchases', label: 'المشتريات' },
+                { key: 'warehouse', label: 'المخازن' }, { key: 'receiving', label: 'الاستلام' },
+                { key: 'picking', label: 'التحضير' }, { key: 'loading', label: 'التحميل' },
+                { key: 'delivery', label: 'التوصيل' }, { key: 'return', label: 'المرتجعات' },
+                { key: 'unloading', label: 'التفريغ' }, { key: 'vouchers', label: 'الأذونات المخزنية' },
+                { key: 'transfer', label: 'تحويل مخزني' }, { key: 'direct-sale', label: 'صرف سيارة' },
+                { key: 'direct-return', label: 'مرتجع سيارة' }, { key: 'supplier-return', label: 'مرتجع مورد' },
+                { key: 'vehicle-count', label: 'جرد سيارة' }, { key: 'branch-count', label: 'جرد فرع' },
+                { key: 'general-count', label: 'جرد عام' }, { key: 'finance', label: 'الحسابات' },
+                { key: 'reports', label: 'التقارير' }, { key: 'users', label: 'الموظفين' },
+                { key: 'roles', label: 'إدارة الأدوار' }, { key: 'license', label: 'إدارة الترخيص' },
+                { key: 'settings', label: 'إعدادات النظام' }, { key: 'settlement', label: 'إغلاق اليومية' }
+            ].map(p => `<label class="flex items-center gap-1 text-xs"><input type="checkbox" value="${p.key}" class="emp-custom-perm"> ${p.label}</label>`).join('')}
+        </div>
+    </div>
+</div>
         <div class="flex flex-col"><label>الفروع المسموحة</label><select id="emp-branches" multiple class="p-2.5 bg-gray-50 border rounded-lg" style="min-height:100px">${branchOptions}</select><p class="text-xs text-gray-500 mt-1">اضغط Ctrl/Cmd للاختيار المتعدد. اتركه فارغاً للسماح بجميع الفروع.</p></div>
         </div>
         <div class="flex justify-end gap-3 pt-4 border-t">
@@ -1001,6 +1029,14 @@ var RW_Users = (function() {
                     const email = byId('emp-email').value.trim();
                     if (!name || !email) { showToast('الاسم والبريد مطلوبان', 'error'); return; }
                     if (!isEdit && !byId('emp-password').value) { showToast('يجب تعيين كلمة مرور', 'error'); return; }
+                    // تجميع الصلاحيات المخصصة
+                    var customPerms = [];
+                    if (document.getElementById('emp-custom-perms-toggle').checked) {
+                        document.querySelectorAll('.emp-custom-perm:checked').forEach(function(cb) {
+                            customPerms.push(cb.value);
+                        });
+                    }
+                    
                     const payload = {
                         name, email,
                         phone: byId('emp-phone').value.trim(),
@@ -1008,7 +1044,8 @@ var RW_Users = (function() {
                         role: byId('emp-role').value,
                         status: byId('emp-status').value,
                         expiry_date: byId('emp-expiry').value,
-                        allowed_branch_ids: selectedBranches.join(',')
+                        allowed_branch_ids: selectedBranches.join(','),
+                        permissions: customPerms
                     };
                     showLoader('جاري الحفظ...');
                     const { data: { session } } = await supabase.auth.getSession();
