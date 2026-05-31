@@ -240,7 +240,33 @@ const RW_Navigation = {
     { view: 'settings', icon: 'fa-gear', label: 'إعدادات النظام' },
     { action: 'logout', icon: 'fa-right-from-bracket', label: 'تسجيل الخروج' }
 ],
-_buildMenuHTML(items) { let html = '<ul style="list-style:none;padding:0;margin:0;">'; items.forEach(item => { if (item.submenu) { html += `<li style="margin-bottom:4px;"><div class="rw-sidebar-link" style="justify-content:space-between;" onclick="event.stopPropagation(); var s=this.nextElementSibling; if(s)s.style.display=s.style.display==='none'?'block':'none';"><div style="display:flex;align-items:center;gap:16px;"><div class="rw-sidebar-link-icon"><i class="fa-solid ${item.icon||'fa-folder'}"></i></div><div class="rw-sidebar-link-text">${item.label}</div></div><i class="fa-solid fa-chevron-down" style="font-size:11px;color:#94a3b8;"></i></div><div style="display:none;padding-right:16px;" class="rw-sidebar-submenu">${this._buildMenuHTML(item.submenu)}</div></li>`; } else if (item.action) { html += `<li style="margin-bottom:4px;"><button class="rw-sidebar-link" onclick="RW_Navigation._handleAction('${item.action}','${item.arg||''}')"><div class="rw-sidebar-link-icon"><i class="fa-solid ${item.icon||'fa-cog'}"></i></div><div class="rw-sidebar-link-text">${item.label}</div></button></li>`; } else { html += `<li style="margin-bottom:4px;"><button class="rw-sidebar-link" data-view="${item.view}"><div class="rw-sidebar-link-icon"><i class="fa-solid ${item.icon||'fa-file'}"></i></div><div class="rw-sidebar-link-text">${item.label}</div></button></li>`; } }); return html + '</ul>'; },
+_buildMenuHTML(items) { 
+    let html = '<ul style="list-style:none;padding:0;margin:0;">'; 
+    items.forEach(item => { 
+        if (item.submenu) { 
+            html += `<li style="margin-bottom:4px;">
+                <div class="rw-sidebar-link" style="justify-content:space-between;" onclick="event.stopPropagation(); var s=this.nextElementSibling; if(s)s.style.display=s.style.display==='none'?'block':'none';">
+                    <div class="rw-sidebar-link-text">${item.label}</div>
+                    <i class="fa-solid fa-chevron-down" style="font-size:11px;color:#94a3b8;"></i>
+                </div>
+                <div style="display:none;padding-right:16px;" class="rw-sidebar-submenu">${this._buildMenuHTML(item.submenu)}</div>
+            </li>`; 
+        } else if (item.action) { 
+            html += `<li style="margin-bottom:4px;">
+                <button class="rw-sidebar-link" onclick="RW_Navigation._handleAction('${item.action}','${item.arg||''}')">
+                    <div class="rw-sidebar-link-text">${item.label}</div>
+                </button>
+            </li>`; 
+        } else { 
+            html += `<li style="margin-bottom:4px;">
+                <button class="rw-sidebar-link" data-view="${item.view}">
+                    <div class="rw-sidebar-link-text">${item.label}</div>
+                </button>
+            </li>`; 
+        } 
+    }); 
+    return html + '</ul>'; 
+},
 _handleAction(action, arg) { if (action === 'showFinanceTab') {
     RW_STATE.app.currentView = 'finance';
     if (typeof RW_Finance !== 'undefined' && typeof RW_Finance.renderSubTab === 'function') {
@@ -1043,15 +1069,7 @@ var RW_Users = (function() {
                             customPerms.push(cb.value);
                         });
                     }
-                    
-                    // تجميع الصلاحيات المخصصة
-                    var customPerms = [];
-                    if (document.getElementById('emp-custom-perms-toggle').checked) {
-                        document.querySelectorAll('.emp-custom-perm:checked').forEach(function(cb) {
-                            customPerms.push(cb.value);
-                        });
-                    }
-                    
+                                        
                     const payload = {
                         name, email,
                         phone: byId('emp-phone').value.trim(),
@@ -4716,6 +4734,8 @@ var RW_OwnerLicense = (function() {
         var currentStatus = licenseInfo.licenseStatus || 'trial';
         var trialEnd = licenseInfo.trialEndDate || '';
         var subEnd = licenseInfo.subscriptionEndDate || '';
+        var ownerEmail = licenseInfo.ownerEmail || '';
+        
         var html = '<form class="space-y-6">';
         html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">حالة الشركة</label><select id="license-status" class="p-2.5 bg-gray-50 border rounded-lg">';
         html += '<option value="trial"' + (currentStatus === 'trial' ? ' selected' : '') + '>فترة تجربة</option>';
@@ -4723,32 +4743,80 @@ var RW_OwnerLicense = (function() {
         html += '<option value="suspended"' + (currentStatus === 'suspended' ? ' selected' : '') + '>موقوفة</option>';
         html += '<option value="cancelled"' + (currentStatus === 'cancelled' ? ' selected' : '') + '>ملغاة</option>';
         html += '</select></div>';
+        
         html += '<div class="grid grid-cols-2 gap-4">';
         html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء التجربة</label><input id="license-trial-end" type="date" value="' + trialEnd + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
         html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء الاشتراك</label><input id="license-sub-end" type="date" value="' + subEnd + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
         html += '</div>';
+        
+        // قسم بيانات المالك (الجديد)
+        html += '<h3 class="text-lg font-black text-red-600 border-b pb-2 mb-4 mt-6"><i class="fa-solid fa-user-shield ml-2"></i> بيانات اعتماد المالك</h3>';
+        html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">البريد الإلكتروني للمالك</label><input id="license-owner-email" type="email" value="' + ownerEmail + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
+        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">كلمة مرور جديدة (اترك فارغاً للإبقاء)</label><input id="license-owner-password" type="password" class="p-2.5 bg-gray-50 border rounded-lg" placeholder="كلمة مرور جديدة"></div>';
+        html += '</div>';
+        html += '<div class="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-lg text-sm text-amber-800"><i class="fa-solid fa-triangle-exclamation ml-2"></i> تحذير: تغيير بيانات المالك سيؤثر على تسجيل الدخول. احفظ هذه البيانات في مكان آمن.</div>';
+        
         html += '<div class="flex justify-end gap-3 pt-4 border-t">';
-        html += '<button type="button" id="btn-save-license" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md">حفظ التغييرات</button>';
+        html += '<button type="button" id="btn-save-license" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md">حفظ جميع التغييرات</button>';
         html += '</div></form>';
         safeHTML(container, html);
-        document.getElementById('btn-save-license').addEventListener('click', function() {
+        
+        document.getElementById('btn-save-license').addEventListener('click', async function() {
             var newStatus = document.getElementById('license-status').value;
             var trialEndDate = document.getElementById('license-trial-end').value;
             var subEndDate = document.getElementById('license-sub-end').value;
-            var licensePayload = { status: newStatus, trialEndDate: trialEndDate, subscriptionEndDate: subEndDate };
-            showLoader('جاري حفظ الترخيص...');
-            // تحديث مباشر في Supabase
-            supabase.from('app_settings').update({ status: newStatus, trial_end_date: trialEndDate || null, subscription_end_date: subEndDate || null }).eq('id', (licenseInfo.id || '1')).then(function() {
+            var ownerEmail = document.getElementById('license-owner-email').value.trim();
+            var ownerPassword = document.getElementById('license-owner-password').value;
+            
+            if (!ownerEmail) {
+                showToast('بريد المالك مطلوب', 'error');
+                return;
+            }
+            
+            var licensePayload = {
+                status: newStatus,
+                trial_end_date: trialEndDate || null,
+                subscription_end_date: subEndDate || null,
+                owner_email: ownerEmail
+            };
+            
+            // إذا تم إدخال كلمة مرور جديدة، نضيفها
+            if (ownerPassword && ownerPassword.trim() !== '') {
+                licensePayload.owner_password = ownerPassword;
+            }
+            
+            showLoader('جاري حفظ التغييرات...');
+            
+            try {
+                var { data: { session } } = await supabase.auth.getSession();
+                var token = session?.access_token;
+                
+                var res = await fetch(SUPABASE_URL + '/functions/v1/save-settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: 'Bearer ' + token
+                    },
+                    body: JSON.stringify(licensePayload)
+                });
+                
+                var json = await res.json();
                 hideLoader();
-                showToast('تم حفظ الترخيص', 'success');
-                _loadLicenseData();
-            }).catch(function(err) {
+                
+                if (json.success) {
+                    showToast('تم حفظ جميع التغييرات بنجاح', 'success');
+                    _loadLicenseData(); // إعادة تحميل البيانات
+                } else {
+                    showToast(json.error || 'فشل حفظ التغييرات', 'error');
+                }
+            } catch(e) {
                 hideLoader();
-                showToast('فشل الحفظ: ' + err.message, 'error');
-            });
+                showToast('فشل الاتصال', 'error');
+                console.error(e);
+            }
         });
     }
-
     return { render: render };
 })();
 window.RW_OwnerLicense = RW_OwnerLicense;
