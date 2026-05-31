@@ -2418,10 +2418,9 @@ window.RW_Purchases = RW_Purchases;
 // RW_Warehouse – العمليات المخزنية المتكاملة (Supabase مباشر)
 // ============================================================
 var RW_Warehouse = (function() {
-    var _pickingData = [], _loadingData = [], _deliveryData = [], _returnData = [], _unloadingData = [], _receivingData = [];
     function esc(s) { return String(s||'').replace(/[&<>]/g, function(m) { return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'; }); }
 
-    // ==================== PICKING ====================
+    // ==================== PICKING (سجل التحضير) ====================
     async function loadPicking() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'التحضير (Picking)');
@@ -2431,21 +2430,22 @@ var RW_Warehouse = (function() {
                 <select id="pk-f-st" class="p-2 bg-slate-50 rounded text-sm" onchange="RW_Warehouse._applyPicking()"><option value="">كل الحالات</option><option>Picked</option></select>
                 <button onclick="RW_Warehouse._applyPicking()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
             </div></div>
-            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="pk-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="pk-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
         </div>`);
         var res = await supabase.from('runsheets').select('*').in('status', ['Picked']);
-        _pickingData = res.data || [];
+        window._pickingData = res.data || [];
         _applyPicking();
     }
     function _applyPicking() {
-        var d = _pickingData, id = (byId('pk-f-id')?.value||'').toLowerCase(), st = byId('pk-f-st')?.value;
-        if (id) d = d.filter(function(r) { return (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1; });
-        if (st) d = d.filter(function(r) { return r.status === st; });
+        var d = window._pickingData || [];
+        var id = (byId('pk-f-id')?.value||'').toLowerCase(), st = byId('pk-f-st')?.value;
+        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        if (st) d = d.filter(r => r.status === st);
         var tb = byId('pk-table'); if (!tb) return;
         if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات محضّرة</td></tr>'); return; }
         var h = '';
-        d.forEach(function(r) {
-            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showPickingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">Picked</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i> عرض</button></td></tr>';
+        d.forEach(r => {
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showPickingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">Picked</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
         });
         safeHTML(tb, h);
     }
@@ -2457,12 +2457,12 @@ var RW_Warehouse = (function() {
         var items = itemsRes.data || [];
         if (!items.length) { showToast('لا توجد أصناف', 'info'); return; }
         var h = '<div class="text-right"><table class="w-full border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية المطلوبة</th><th class="p-2 text-center">الكمية المحضرة</th></tr></thead><tbody>';
-        items.forEach(function(it) { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_ordered||0) + '</td><td class="p-2 text-center font-bold text-purple-600">' + (it.qty_picked||0) + '</td></tr>'; });
+        items.forEach(it => { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_ordered||0) + '</td><td class="p-2 text-center font-bold text-purple-600">' + (it.qty_picked||0) + '</td></tr>'; });
         h += '</tbody></table></div>';
         Swal.fire({ title: 'تفاصيل التحضير: ' + code, html: h, width: '700px', showCloseButton: true, showConfirmButton: false });
     }
 
-    // ==================== LOADING ====================
+    // ==================== LOADING (سجل التحميل) ====================
     async function loadLoading() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'التحميل (Loading)');
@@ -2472,13 +2472,25 @@ var RW_Warehouse = (function() {
                 <select id="ld-f-st" class="p-2 bg-slate-50 rounded text-sm" onchange="RW_Warehouse._applyLoading()"><option value="">كل الحالات</option><option>Loaded</option></select>
                 <button onclick="RW_Warehouse._applyLoading()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
             </div></div>
-            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="ld-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="ld-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
         </div>`);
         var res = await supabase.from('runsheets').select('*').in('status', ['Loaded']);
-        _loadingData = res.data || [];
+        window._loadingData = res.data || [];
         _applyLoading();
     }
-    function _applyLoading() { /* نفس المنطق */ }
+    function _applyLoading() {
+        var d = window._loadingData || [];
+        var id = (byId('ld-f-id')?.value||'').toLowerCase(), st = byId('ld-f-st')?.value;
+        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        if (st) d = d.filter(r => r.status === st);
+        var tb = byId('ld-table'); if (!tb) return;
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات محمّلة</td></tr>'); return; }
+        var h = '';
+        d.forEach(r => {
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showLoadingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-700">Loaded</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        });
+        safeHTML(tb, h);
+    }
     async function _showLoadingDetails(code) {
         showLoader('جاري التحميل...');
         var rsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', code).maybeSingle();
@@ -2487,12 +2499,12 @@ var RW_Warehouse = (function() {
         var items = itemsRes.data || [];
         if (!items.length) { showToast('لا توجد أصناف', 'info'); return; }
         var h = '<div class="text-right"><table class="w-full border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية المحضّرة</th><th class="p-2 text-center">الكمية المحمّلة</th></tr></thead><tbody>';
-        items.forEach(function(it) { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_picked||0) + '</td><td class="p-2 text-center font-bold text-orange-600">' + (it.qty_loaded||0) + '</td></tr>'; });
+        items.forEach(it => { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_picked||0) + '</td><td class="p-2 text-center font-bold text-orange-600">' + (it.qty_loaded||0) + '</td></tr>'; });
         h += '</tbody></table></div>';
         Swal.fire({ title: 'تفاصيل التحميل: ' + code, html: h, width: '700px', showCloseButton: true, showConfirmButton: false });
     }
 
-    // ==================== DELIVERY (سجل) ====================
+    // ==================== DELIVERY (سجل التوصيل) ====================
     async function loadDelivery() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'التوصيل (Delivery)');
@@ -2501,23 +2513,178 @@ var RW_Warehouse = (function() {
                 <input type="text" id="dv-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyDelivery()">
                 <button onclick="RW_Warehouse._applyDelivery()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
             </div></div>
-            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="dv-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="dv-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
         </div>`);
         var res = await supabase.from('runsheets').select('*').in('status', ['Delivered']);
-        _deliveryData = res.data || [];
+        window._deliveryData = res.data || [];
         _applyDelivery();
     }
-    function _applyDelivery() { /* فلترة */ }
+    function _applyDelivery() {
+        var d = window._deliveryData || [];
+        var id = (byId('dv-f-id')?.value||'').toLowerCase();
+        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        var tb = byId('dv-table'); if (!tb) return;
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات موصّلة</td></tr>'); return; }
+        var h = '';
+        d.forEach(r => {
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showDeliveryDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">Delivered</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        });
+        safeHTML(tb, h);
+    }
+    async function _showDeliveryDetails(code) {
+        showLoader('جاري التحميل...');
+        var rsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', code).maybeSingle();
+        var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsRes.data?.id);
+        hideLoader();
+        var items = itemsRes.data || [];
+        if (!items.length) { showToast('لا توجد أصناف', 'info'); return; }
+        var h = '<div class="text-right"><table class="w-full border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية المحمّلة</th><th class="p-2 text-center">الكمية المسلّمة</th></tr></thead><tbody>';
+        items.forEach(it => { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_loaded||0) + '</td><td class="p-2 text-center font-bold text-green-600">' + (it.qty_delivered||0) + '</td></tr>'; });
+        h += '</tbody></table></div>';
+        Swal.fire({ title: 'تفاصيل التوصيل: ' + code, html: h, width: '700px', showCloseButton: true, showConfirmButton: false });
+    }
 
-    // ... (تكملة باقي التبويبات Return, Unloading, Vouchers, Count بنفس النمط) ...
+    // ==================== RETURN (سجل المرتجعات) ====================
+    async function loadReturn() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'المرتجعات (Return)');
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+                <input type="text" id="rt-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyReturn()">
+                <button onclick="RW_Warehouse._applyReturn()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
+            </div></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="rt-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+        </div>`);
+        var res = await supabase.from('runsheets').select('*').in('status', ['Returned']);
+        window._returnData = res.data || [];
+        _applyReturn();
+    }
+    function _applyReturn() {
+        var d = window._returnData || [];
+        var id = (byId('rt-f-id')?.value||'').toLowerCase();
+        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        var tb = byId('rt-table'); if (!tb) return;
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات مرتجعة</td></tr>'); return; }
+        var h = '';
+        d.forEach(r => {
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showReturnDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-rose-100 text-rose-700">Returned</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        });
+        safeHTML(tb, h);
+    }
+    async function _showReturnDetails(code) {
+        showLoader('جاري التحميل...');
+        var rsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', code).maybeSingle();
+        var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsRes.data?.id);
+        hideLoader();
+        var items = itemsRes.data || [];
+        if (!items.length) { showToast('لا توجد أصناف', 'info'); return; }
+        var h = '<div class="text-right"><table class="w-full border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية المسلّمة</th><th class="p-2 text-center">الكمية المرتجعة</th></tr></thead><tbody>';
+        items.forEach(it => { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_delivered||0) + '</td><td class="p-2 text-center font-bold text-rose-600">' + (it.qty_returned||0) + '</td></tr>'; });
+        h += '</tbody></table></div>';
+        Swal.fire({ title: 'تفاصيل المرتجعات: ' + code, html: h, width: '700px', showCloseButton: true, showConfirmButton: false });
+    }
 
-    // دوال إجرائية (Start) تُستخدم من أزرار الرانشيتات
-    async function _startPicking(code) { await _changeStatus(code, 'start-picking', 'Picking'); loadPicking(); }
-    async function _startLoading(code) { await _changeStatus(code, 'start-loading', 'Loading'); loadLoading(); }
-    async function _startDelivery(code) { await _changeStatus(code, 'start-delivery', 'Delivering'); loadDelivery(); }
-    async function _startReturn(code) { await _changeStatus(code, 'start-return', 'Returning'); loadReturn(); }
+    // ==================== UNLOADING (سجل التفريغ) ====================
+    async function loadUnloading() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'التفريغ (Unloading)');
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+                <input type="text" id="ul-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyUnloading()">
+                <button onclick="RW_Warehouse._applyUnloading()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
+            </div></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="ul-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+        </div>`);
+        var res = await supabase.from('runsheets').select('*').in('status', ['Open','New']); // بعد التفريغ تصبح Open
+        window._unloadingData = res.data || [];
+        _applyUnloading();
+    }
+    function _applyUnloading() {
+        var d = window._unloadingData || [];
+        var id = (byId('ul-f-id')?.value||'').toLowerCase();
+        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        var tb = byId('ul-table'); if (!tb) return;
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات مفرّغة</td></tr>'); return; }
+        var h = '';
+        d.forEach(r => {
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">' + (r.status||'') + '</span></td><td class="p-3 text-center"><button class="text-blue-600" onclick="RW_Warehouse._showUnloadingDetails(\'' + r.runsheet_code + '\')"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        });
+        safeHTML(tb, h);
+    }
+    async function _showUnloadingDetails(code) { /* مشابه */ }
 
-    async function _changeStatus(code, funcName, newStatus) {
+    // ==================== RECEIVING (سجل الاستلام) ====================
+    async function loadReceiving() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'الاستلام');
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="rec-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('receiving').select('*');
+        var data = res.data || [];
+        var h = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم العملية</th><th class="p-3">التاريخ</th><th class="p-3">أمر الشراء</th><th class="p-3">المسؤول</th></tr></thead><tbody>' + data.map(op => '<tr class="border-b"><td class="p-3 font-bold">' + (op.operation_id||'') + '</td><td class="p-3">' + (op.date||'') + '</td><td class="p-3">' + (op.po_number||'') + '</td><td class="p-3">' + (op.responsible||'') + '</td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات استلام</div>';
+        safeHTML(byId('rec-table-container'), h);
+    }
+
+    // ==================== VOUCHERS (الأذونات المخزنية) ====================
+    async function loadVouchers() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'الأذونات المخزنية');
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="vouchers-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('stock_vouchers').select('*');
+        var data = res.data || [];
+        var h = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">النوع</th><th class="p-3">التاريخ</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.type||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد أذونات</div>';
+        safeHTML(byId('vouchers-table-container'), h);
+    }
+    function loadVoucherForm(type) { loadVouchers(); }
+
+    // ==================== COUNT (الجرد) & SETTLEMENT (التسوية) ====================
+    async function loadVehicleCount() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'جرد سيارة');
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="vc-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Adjustment');
+        var data = res.data || [];
+        var h = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + (v.reference||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات جرد</div>';
+        safeHTML(byId('vc-table-container'), h);
+    }
+    async function loadBranchCount() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'جرد فرع');
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="bc-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Adjustment');
+        var data = res.data || [];
+        var h = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + (v.reference||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات جرد</div>';
+        safeHTML(byId('bc-table-container'), h);
+    }
+    async function loadGeneralCount() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'جرد عام');
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="gc-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Adjustment');
+        var data = res.data || [];
+        var h = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + (v.reference||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات جرد</div>';
+        safeHTML(byId('gc-table-container'), h);
+    }
+    async function loadSettlement() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'إغلاق اليومية');
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="settlement-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('daily_settlements').select('*');
+        var data = res.data || [];
+        var h = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">كود التسوية</th><th class="p-3">التاريخ</th><th class="p-3">الرانشيت</th><th class="p-3">العجز</th><th class="p-3">قيمة العجز</th></tr></thead><tbody>' + data.map(s => '<tr class="border-b"><td class="p-3 font-bold">' + (s.settlement_code||'') + '</td><td class="p-3">' + (s.settlement_date||'') + '</td><td class="p-3">' + (s.runsheet_id||'') + '</td><td class="p-3">' + (s.total_shortage||0) + '</td><td class="p-3 font-bold text-red-600">' + Number(s.total_shortage_value||0).toLocaleString() + ' EGP</td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد تسويات</div>';
+        safeHTML(byId('settlement-table-container'), h);
+    }
+
+    // ==================== دوال إجرائية (Start) لأزرار الرانشيتات ====================
+    async function _startPicking(code) { await _changeStatus(code, 'start-picking'); }
+    async function _startLoading(code) { await _changeStatus(code, 'start-loading'); }
+    async function _startDelivery(code) { await _changeStatus(code, 'start-delivery'); }
+    async function _startReturn(code) { await _changeStatus(code, 'start-return'); }
+    async function _confirmUnload(code) {
+        var cf = await Swal.fire({ title: 'تأكيد التفريغ', text: 'إعادة جميع الكميات للمخزون؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم', cancelButtonText: 'لا' });
+        if (!cf.isConfirmed) return;
+        await _changeStatus(code, 'unload-runsheet');
+    }
+    async function _changeStatus(code, funcName) {
         showLoader('جاري تحديث الحالة...');
         var ses = await supabase.auth.getSession(), t = ses.data.session?.access_token;
         try {
@@ -2528,37 +2695,16 @@ var RW_Warehouse = (function() {
         } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
-    async function _confirmUnload(code) {
-        var cf = await Swal.fire({ title: 'تأكيد التفريغ', text: 'إعادة جميع الكميات للمخزون؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم', cancelButtonText: 'لا' });
-        if (!cf.isConfirmed) return;
-        showLoader('جاري التفريغ...');
-        var ses = await supabase.auth.getSession(), t = ses.data.session?.access_token;
-        try {
-            var res = await fetch(SUPABASE_URL + '/functions/v1/unload-runsheet', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code }) });
-            var json = await res.json(); hideLoader();
-            if (json.success) { showToast('تم التفريغ', 'success'); loadUnloading(); }
-            else showToast(json.msg || 'فشل', 'error');
-        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
-    }
-
-    // تبويبات قيد التطوير (مؤقتاً)
-    function loadReturn() { byId('rw-page-container') ? safeHTML(byId('rw-page-container'), '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">🔄</div><h2>المرتجعات</h2><p style="color:#6b7280">قيد التطوير</p></div></div>') : null; }
-    function loadUnloading() { byId('rw-page-container') ? safeHTML(byId('rw-page-container'), '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📥</div><h2>التفريغ</h2><p style="color:#6b7280">قيد التطوير</p></div></div>') : null; }
-    function loadVouchers() { byId('rw-page-container') ? safeHTML(byId('rw-page-container'), '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📋</div><h2>الأذونات المخزنية</h2><p style="color:#6b7280">قيد التطوير</p></div></div>') : null; }
-    function loadVoucherForm(t) { loadVouchers(); }
-    function loadVehicleCount() { byId('rw-page-container') ? safeHTML(byId('rw-page-container'), '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">🚛</div><h2>جرد سيارة</h2><p style="color:#6b7280">قيد التطوير</p></div></div>') : null; }
-    function loadBranchCount() { byId('rw-page-container') ? safeHTML(byId('rw-page-container'), '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">🏪</div><h2>جرد فرع</h2><p style="color:#6b7280">قيد التطوير</p></div></div>') : null; }
-    function loadGeneralCount() { byId('rw-page-container') ? safeHTML(byId('rw-page-container'), '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📦</div><h2>جرد عام</h2><p style="color:#6b7280">قيد التطوير</p></div></div>') : null; }
-    function loadSettlement() { byId('rw-page-container') ? safeHTML(byId('rw-page-container'), '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📑</div><h2>إغلاق اليومية</h2><p style="color:#6b7280">قيد التطوير</p></div></div>') : null; }
-    function loadReceiving() { byId('rw-page-container') ? safeHTML(byId('rw-page-container'), '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📥</div><h2>الاستلام</h2><p style="color:#6b7280">قيد التطوير</p></div></div>') : null; }
-
     return {
         loadPicking, _applyPicking, _showPickingDetails,
         loadLoading, _applyLoading, _showLoadingDetails,
-        loadDelivery, _applyDelivery,
-        loadReturn, loadUnloading, loadVouchers, loadVoucherForm,
+        loadDelivery, _applyDelivery, _showDeliveryDetails,
+        loadReturn, _applyReturn, _showReturnDetails,
+        loadUnloading, _applyUnloading, _showUnloadingDetails,
+        loadReceiving,
+        loadVouchers, loadVoucherForm,
         loadVehicleCount, loadBranchCount, loadGeneralCount,
-        loadSettlement, loadReceiving,
+        loadSettlement,
         _startPicking, _startLoading, _startDelivery, _startReturn, _confirmUnload
     };
 })();
