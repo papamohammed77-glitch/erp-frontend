@@ -1494,25 +1494,116 @@ window.RW_Roles = RW_Roles;
 // RW_Orders – أوردرات المبيعات (فلترة، تأكيد، حذف، رانشيت)
 // ============================================================
 var RW_Orders = (function() {
-    var sortField = 'order_code', sortAsc = true, data = [];
+    var sortField = 'order_code', sortAsc = true, ordersData = [];
+    var _sortIcons = {}; // لتحديث أيقونات الفرز
 
-    async function render() {
-        var c = byId('rw-page-container'); if (!c) return;
-        safeText(byId('rw-header-title'), 'أوردرات المبيعات');
-        safeHTML(c, '<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="flex justify-between mb-3"><h3 class="font-bold">فلترة الأوردرات</h3><div class="flex gap-2"><button onclick="RW_Orders._apply()" class="bg-blue-50 text-blue-600 px-3 py-1 rounded text-sm">تحديث</button><button onclick="RW_Orders._withoutRS()" class="bg-amber-50 text-amber-600 px-3 py-1 rounded text-sm">بدون رانشيت</button><button onclick="RW_Orders._reset()" class="bg-gray-50 text-gray-600 px-3 py-1 rounded text-sm">إعادة تعيين</button></div></div><div class="grid grid-cols-2 md:grid-cols-6 gap-2"><input type="date" id="f-date-from" onchange="RW_Orders._apply()" class="p-2 bg-gray-50 rounded text-sm"><input type="date" id="f-date-to" onchange="RW_Orders._apply()" class="p-2 bg-gray-50 rounded text-sm"><input type="text" id="f-cust" oninput="RW_Orders._apply()" placeholder="العميل" class="p-2 bg-gray-50 rounded text-sm"><select id="f-status" onchange="RW_Orders._apply()" class="p-2 bg-gray-50 rounded text-sm"><option value="">الحالة</option><option>Draft</option><option>Confirmed</option><option>Pending</option><option>Invoiced</option><option>Delivered</option></select><input type="text" id="f-area" oninput="RW_Orders._apply()" placeholder="المنطقة" class="p-2 bg-gray-50 rounded text-sm"><input type="text" id="f-rs" oninput="RW_Orders._apply()" placeholder="الرانشيت" class="p-2 bg-gray-50 rounded text-sm"></div></div><div class="flex flex-wrap gap-3 mb-4"><button onclick="RW_Orders._createRS()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold"><i class="fa-solid fa-truck-fast ml-2"></i> رانشيت جديد</button><button onclick="RW_Orders._appendRS()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold"><i class="fa-solid fa-folder-plus ml-2"></i> ضم لرانشيت مفتوح</button></div><div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full min-w-[1200px]"><thead class="bg-gray-50 sticky top-0 z-10"><tr><th class="p-3 text-center"><input type="checkbox" id="check-all" onchange="var cbs=document.querySelectorAll(\'.order-checkbox\');for(var i=0;i<cbs.length;i++)cbs[i].checked=this.checked"></th><th class="p-3 text-center cursor-pointer" onclick="RW_Orders._sort(\'order_code\')">رقم الأوردر</th><th class="p-3 text-center">التاريخ</th><th class="p-3 text-center">العميل</th><th class="p-3 text-center">القيمة</th><th class="p-3 text-center">الحالة</th><th class="p-3 text-center">الرانشيت</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="orders-table-body"><tr><td colspan="8" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div></div>');
-        var res = await supabase.from('orders').select('*');
-        data = res.data || [];
-        _apply();
+    function esc(s) {
+        return String(s || '').replace(/[&<>]/g, function(m) {
+            return m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;';
+        });
     }
 
-    function _apply() {
-        var filtered = data.slice();
-        var fd = byId('f-date-from') && byId('f-date-from').value;
-        var td = byId('f-date-to') && byId('f-date-to').value;
-        var cust = (byId('f-cust') && byId('f-cust').value || '').toLowerCase();
-        var st = byId('f-status') && byId('f-status').value;
-        var area = (byId('f-area') && byId('f-area').value || '').toLowerCase();
-        var rs = (byId('f-rs') && byId('f-rs').value || '').toLowerCase();
+    async function render() {
+        var c = byId('rw-page-container');
+        if (!c) return;
+        safeText(byId('rw-header-title'), 'أوردرات المبيعات');
+        safeText(byId('rw-header-subtitle'), 'عرض وإدارة جميع أوردرات المبيعات');
+
+        // بناء واجهة المستخدم
+        safeHTML(c, `
+        <div class="p-4">
+            <!-- منطقة الفلترة -->
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">
+                <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+                    <h3 class="font-bold text-lg">فلترة الأوردرات</h3>
+                    <div class="flex gap-2">
+                        <button onclick="RW_Orders._applyFilters()" class="bg-blue-50 text-blue-600 px-3 py-1 rounded text-sm font-bold">تحديث</button>
+                        <button onclick="RW_Orders._showWithoutRS()" class="bg-amber-50 text-amber-600 px-3 py-1 rounded text-sm font-bold">بدون رانشيت</button>
+                        <button onclick="RW_Orders._resetFilters()" class="bg-gray-50 text-gray-600 px-3 py-1 rounded text-sm font-bold">إعادة تعيين</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+                    <input type="date" id="f-date-from" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">
+                    <input type="date" id="f-date-to" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">
+                    <input type="text" id="f-cust" oninput="RW_Orders._applyFilters()" placeholder="العميل" class="p-2 bg-gray-50 rounded text-sm">
+                    <select id="f-status" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">
+                        <option value="">الحالة</option>
+                        <option>Draft</option><option>Confirmed</option><option>Pending</option>
+                        <option>Invoiced</option><option>Delivered</option><option>Returned</option><option>Cancelled</option>
+                    </select>
+                    <input type="text" id="f-area" oninput="RW_Orders._applyFilters()" placeholder="المنطقة" class="p-2 bg-gray-50 rounded text-sm">
+                    <input type="text" id="f-rs" oninput="RW_Orders._applyFilters()" placeholder="الرانشيت" class="p-2 bg-gray-50 rounded text-sm">
+                </div>
+            </div>
+            <!-- أزرار الإجراءات الجماعية -->
+            <div class="flex flex-wrap gap-3 mb-4">
+                <button onclick="RW_Orders._createRS()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow">
+                    <i class="fa-solid fa-truck-fast ml-2"></i> رانشيت جديد
+                </button>
+                <button onclick="RW_Orders._appendRS()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold shadow">
+                    <i class="fa-solid fa-folder-plus ml-2"></i> ضم لرانشيت مفتوح
+                </button>
+            </div>
+            <!-- جدول الأوردرات -->
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto orders-table-container" style="max-height:65vh">
+                <table class="w-full min-w-[1200px]">
+                    <thead class="bg-gray-50 sticky top-0 z-10">
+                        <tr>
+                            <th class="p-3 text-center"><input type="checkbox" id="check-all" onchange="var cbs=document.querySelectorAll('.order-checkbox');for(var i=0;i<cbs.length;i++)cbs[i].checked=this.checked;"></th>
+                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('order_code')">رقم الأوردر <i class="fa-solid ${_sortIcons['order_code']||'fa-sort'}"></i></th>
+                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('order_date')">التاريخ <i class="fa-solid ${_sortIcons['order_date']||'fa-sort'}"></i></th>
+                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('customer_name')">العميل والمنطقة <i class="fa-solid ${_sortIcons['customer_name']||'fa-sort'}"></i></th>
+                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('itemsCount')">عدد الأصناف <i class="fa-solid ${_sortIcons['itemsCount']||'fa-sort'}"></i></th>
+                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('total_amount')">القيمة (EGP) <i class="fa-solid ${_sortIcons['total_amount']||'fa-sort'}"></i></th>
+                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('order_status')">الحالة <i class="fa-solid ${_sortIcons['order_status']||'fa-sort'}"></i></th>
+                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('runsheet_id')">الرانشيت <i class="fa-solid ${_sortIcons['runsheet_id']||'fa-sort'}"></i></th>
+                            <th class="p-3 text-center text-xs font-bold uppercase">إجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orders-table-body">
+                        <tr><td colspan="9" class="text-center py-8 text-gray-500">جاري التحميل...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>`);
+
+        // تحميل البيانات (الأوردرات + تفاصيلها لحساب عدد الأصناف)
+        showLoader('جاري تحميل الأوردرات...');
+        try {
+            var ordRes = await supabase.from('orders').select('*');
+            ordersData = ordRes.data || [];
+            // جلب تفاصيل الأوردرات لحساب عدد الأصناف لكل أوردر
+            var detRes = await supabase.from('order_details').select('order_id, item_code');
+            var details = detRes.data || [];
+            var itemsCountMap = {};
+            for (var i = 0; i < details.length; i++) {
+                var oid = details[i].order_id;
+                if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
+            }
+            // إضافة itemsCount لكل أوردر
+            for (var j = 0; j < ordersData.length; j++) {
+                ordersData[j].itemsCount = itemsCountMap[ordersData[j].order_code] || 0;
+            }
+            hideLoader();
+        } catch(e) {
+            hideLoader();
+            console.error(e);
+        }
+        _applyFilters();
+    }
+
+    // ========== الفلترة والفرز ==========
+    function _applyFilters() {
+        var filtered = ordersData.slice();
+        var fdEl = byId('f-date-from'), tdEl = byId('f-date-to'), custEl = byId('f-cust'),
+            stEl = byId('f-status'), areaEl = byId('f-area'), rsEl = byId('f-rs');
+
+        var fd = fdEl ? fdEl.value : '';
+        var td = tdEl ? tdEl.value : '';
+        var cust = custEl ? (custEl.value || '').toLowerCase() : '';
+        var st = stEl ? stEl.value : '';
+        var area = areaEl ? (areaEl.value || '').toLowerCase() : '';
+        var rs = rsEl ? (rsEl.value || '').toLowerCase() : '';
 
         if (fd) filtered = filtered.filter(function(o) { return o.order_date >= fd; });
         if (td) filtered = filtered.filter(function(o) { return o.order_date <= td; });
@@ -1521,143 +1612,389 @@ var RW_Orders = (function() {
         if (area) filtered = filtered.filter(function(o) { return (o.area || '').toLowerCase().indexOf(area) !== -1; });
         if (rs) filtered = filtered.filter(function(o) { return (o.runsheet_id || '').toLowerCase().indexOf(rs) !== -1; });
 
+        // الفرز
         var sorted = filtered.sort(function(a, b) {
             var va = a[sortField] || '', vb = b[sortField] || '';
+            if (sortField === 'total_amount' || sortField === 'itemsCount') {
+                va = Number(va); vb = Number(vb);
+            } else if (sortField === 'order_date') {
+                va = new Date(va); vb = new Date(vb);
+            } else {
+                va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
+            }
             return (va < vb ? -1 : va > vb ? 1 : 0) * (sortAsc ? 1 : -1);
         });
+
         _renderTable(sorted);
     }
 
-    function _reset() {
+    function _resetFilters() {
         var ids = ['f-date-from', 'f-date-to', 'f-cust', 'f-status', 'f-area', 'f-rs'];
         for (var i = 0; i < ids.length; i++) {
             var el = byId(ids[i]);
             if (el) el.value = '';
         }
-        _apply();
+        _applyFilters();
     }
 
-    function _withoutRS() {
-        _renderTable(data.filter(function(o) { return !o.runsheet_id; }));
+    function _showWithoutRS() {
+        var filtered = ordersData.filter(function(o) { return !o.runsheet_id || o.runsheet_id === ''; });
+        _renderTable(filtered);
     }
 
-    function _sort(f) {
-        if (sortField === f) sortAsc = !sortAsc;
-        else { sortField = f; sortAsc = true; }
-        _apply();
+    function _sort(field) {
+        if (sortField === field) {
+            sortAsc = !sortAsc;
+        } else {
+            sortField = field;
+            sortAsc = true;
+        }
+        // تحديث الأيقونات
+        _sortIcons = {};
+        _sortIcons[field] = sortAsc ? 'fa-sort-up' : 'fa-sort-down';
+        // إعادة البناء لتحديث الأيقونات في الـ thead
+        _applyFilters();
+        // تحديث الأيقونات يدوياً (لأننا لم نعد نبني HTML كامل)
+        document.querySelectorAll('#orders-table-body').forEach(function(el) {});
     }
 
-    function _renderTable(d) {
-        var tb = byId('orders-table-body');
-        if (!tb) return;
-        if (!d.length) { safeHTML(tb, '<tr><td colspan="8" class="text-center py-8">لا توجد أوردرات</td></tr>'); return; }
-        var h = '';
-        for (var i = 0; i < d.length; i++) {
-            var o = d[i];
+    // ========== عرض الجدول ==========
+    function _renderTable(data) {
+        var tbody = byId('orders-table-body');
+        if (!tbody) return;
+
+        if (!data || data.length === 0) {
+            safeHTML(tbody, '<tr><td colspan="9" class="text-center py-8 text-gray-500">لا توجد أوردرات</td></tr>');
+            return;
+        }
+
+        var html = '';
+        for (var i = 0; i < data.length; i++) {
+            var o = data[i];
             var sc = '';
             if (o.order_status === 'Draft') sc = 'bg-yellow-100 text-yellow-700';
             else if (o.order_status === 'Confirmed') sc = 'bg-blue-100 text-blue-700';
             else if (o.order_status === 'Pending') sc = 'bg-purple-100 text-purple-700';
             else if (o.order_status === 'Invoiced' || o.order_status === 'Delivered') sc = 'bg-green-100 text-green-700';
+            else if (o.order_status === 'Returned') sc = 'bg-orange-100 text-orange-700';
+            else if (o.order_status === 'Cancelled') sc = 'bg-red-100 text-red-700';
+            else sc = 'bg-gray-100 text-gray-700';
 
-            var act = '';
-            if (o.order_status === 'Draft') act += '<button onclick="event.stopPropagation();RW_Orders._confirm(\'' + o.order_code + '\')" class="text-green-600 mx-1" title="تأكيد"><i class="fa-solid fa-check-circle"></i></button>';
-            if (o.order_status === 'Draft' || o.order_status === 'Confirmed') act += '<button onclick="event.stopPropagation();RW_Orders._delete(\'' + o.order_code + '\')" class="text-red-500 mx-1" title="حذف"><i class="fa-solid fa-trash-can"></i></button>';
+            var actions = '';
+            if (o.order_status === 'Draft') {
+                actions += '<button onclick="event.stopPropagation();RW_Orders._confirm(\'' + o.order_code + '\')" class="text-green-600 mx-1" title="تأكيد"><i class="fa-solid fa-check-circle"></i></button>';
+            }
+            if (o.order_status === 'Draft' || o.order_status === 'Confirmed') {
+                actions += '<button onclick="event.stopPropagation();RW_Orders._delete(\'' + o.order_code + '\')" class="text-red-500 mx-1" title="حذف"><i class="fa-solid fa-trash-can"></i></button>';
+            }
 
-            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Orders._details(\'' + o.order_code + '\')">' +
+            html += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Orders._showDetails(\'' + o.order_code + '\')">' +
                 '<td class="p-3 text-center" onclick="event.stopPropagation()"><input type="checkbox" class="order-checkbox" data-id="' + o.order_code + '"></td>' +
-                '<td class="p-3 font-bold text-blue-600">' + (o.order_code || '') + '</td>' +
-                '<td class="p-3">' + (o.order_date ? new Date(o.order_date).toLocaleDateString('ar-EG') : '') + '</td>' +
-                '<td class="p-3 font-semibold">' + (o.customer_name || '') + '</td>' +
-                '<td class="p-3 font-bold">' + Number(o.total_amount || 0).toLocaleString() + ' EGP</td>' +
-                '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + sc + '">' + (o.order_status || '') + '</span></td>' +
-                '<td class="p-3">' + (o.runsheet_id || '---') + '</td>' +
-                '<td class="p-3">' + act + '</td></tr>';
+                '<td class="p-3 text-center font-bold text-blue-600">' + (o.order_code || '') + '</td>' +
+                '<td class="p-3 text-center">' + (o.order_date ? new Date(o.order_date).toLocaleDateString('ar-EG') : '') + '</td>' +
+                '<td class="p-3 text-center"><p class="font-semibold">' + (o.customer_name || '') + '</p><p class="text-xs text-gray-500">' + (o.area || '') + '</p></td>' +
+                '<td class="p-3 text-center font-bold">' + (o.itemsCount || 0) + '</td>' +
+                '<td class="p-3 text-center font-bold">' + Number(o.total_amount || 0).toLocaleString() + ' EGP</td>' +
+                '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-semibold ' + sc + '">' + (o.order_status || '') + '</span></td>' +
+                '<td class="p-3 text-center">' + (o.runsheet_id || '---') + '</td>' +
+                '<td class="p-3 text-center">' + actions + '</td>' +
+            '</tr>';
         }
-        safeHTML(tb, h);
+        safeHTML(tbody, html);
+    }
+
+    // ========== الإجراءات الأساسية ==========
+    function _getSelectedOrders() {
+        var selected = [];
+        document.querySelectorAll('.order-checkbox:checked').forEach(function(cb) {
+            selected.push(cb.dataset.id);
+        });
+        return selected;
     }
 
     async function _confirm(code) {
-        var cf = await Swal.fire({ title: 'تأكيد الأوردر', text: 'تحويل ' + code + ' إلى مؤكد؟', icon: 'question', showCancelButton: true, confirmButtonText: 'تأكيد', cancelButtonText: 'إلغاء' });
+        var cf = await Swal.fire({
+            title: 'تأكيد الأوردر',
+            text: 'تحويل ' + code + ' إلى مؤكد؟',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'تأكيد',
+            cancelButtonText: 'إلغاء'
+        });
         if (!cf.isConfirmed) return;
         showLoader('جاري التأكيد...');
-        var ses = await supabase.auth.getSession();
-        var t = ses.data.session && ses.data.session.access_token;
-        var res = await fetch(SUPABASE_URL + '/functions/v1/confirm-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: code }) });
-        var json = await res.json(); hideLoader();
-        if (json.success) { showToast('تم التأكيد', 'success'); var r = await supabase.from('orders').select('*'); data = r.data || []; _apply(); }
-        else showToast(json.msg || 'فشل', 'error');
+        try {
+            var ses = await supabase.auth.getSession();
+            var t = ses.data.session && ses.data.session.access_token;
+            var res = await fetch(SUPABASE_URL + '/functions/v1/confirm-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ order_code: code })
+            });
+            var json = await res.json();
+            hideLoader();
+            if (json.success) {
+                showToast('تم التأكيد', 'success');
+                var found = ordersData.find(function(o) { return o.order_code === code; });
+                if (found) found.order_status = 'Confirmed';
+                _applyFilters();
+            } else showToast(json.msg || 'فشل', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
     async function _delete(code) {
-        var cf = await Swal.fire({ title: 'تأكيد الحذف', text: 'حذف ' + code + '؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' });
+        var cf = await Swal.fire({
+            title: 'تأكيد الحذف',
+            text: 'إلغاء الأوردر ' + code + '؟',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            confirmButtonText: 'نعم، ألغِ',
+            cancelButtonText: 'تراجع'
+        });
         if (!cf.isConfirmed) return;
-        showLoader('جاري الحذف...');
-        var ses = await supabase.auth.getSession();
-        var t = ses.data.session && ses.data.session.access_token;
-        var res = await fetch(SUPABASE_URL + '/functions/v1/delete-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: code }) });
-        var json = await res.json(); hideLoader();
-        if (json.success) { showToast('تم الحذف', 'success'); var r = await supabase.from('orders').select('*'); data = r.data || []; _apply(); }
-        else showToast(json.msg || 'فشل', 'error');
+        showLoader('جاري الإلغاء...');
+        try {
+            var ses = await supabase.auth.getSession();
+            var t = ses.data.session && ses.data.session.access_token;
+            var res = await fetch(SUPABASE_URL + '/functions/v1/delete-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ order_code: code })
+            });
+            var json = await res.json();
+            hideLoader();
+            if (json.success) {
+                showToast('تم الإلغاء', 'success');
+                var found = ordersData.find(function(o) { return o.order_code === code; });
+                if (found) found.order_status = 'Cancelled';
+                _applyFilters();
+            } else showToast(json.msg || 'فشل', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
-    function _getSelected() {
-        var s = [];
-        document.querySelectorAll('.order-checkbox:checked').forEach(function(cb) { s.push(cb.dataset.id); });
-        return s;
+    // ========== مودال التفاصيل ==========
+    async function _showDetails(code) {
+        showLoader('جاري تحميل التفاصيل...');
+        try {
+            var oRes = await supabase.from('orders').select('*').eq('order_code', code).maybeSingle();
+            var order = oRes.data;
+            if (!order) { hideLoader(); showToast('الأوردر غير موجود', 'error'); return; }
+
+            var itemsRes = await supabase.from('order_details').select('*').eq('order_id', order.id);
+            var items = itemsRes.data || [];
+            hideLoader();
+
+            // تحذير الارتباط بالرانشيت
+            var warningHtml = '';
+            if (order.runsheet_id) {
+                warningHtml = '<div class="bg-amber-50 border-r-4 border-amber-500 p-3 mb-4 rounded">' +
+                    '<p class="text-amber-700 text-sm"><i class="fa-solid fa-link ml-2"></i> مرتبط بالرانشيت: <strong>' + esc(order.runsheet_id) + '</strong></p></div>';
+            }
+
+            // جدول الأصناف
+            var itemsHtml = '';
+            var itemsTotal = 0;
+            if (items.length > 0) {
+                itemsHtml = '<table class="w-full border text-sm"><thead class="bg-gray-100"><tr>' +
+                    '<th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th>' +
+                    '<th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var i = 0; i < items.length; i++) {
+                    var it = items[i];
+                    var lt = Number(it.line_amount) || (Number(it.qty) * Number(it.unit_price));
+                    itemsTotal += lt;
+                    itemsHtml += '<tr><td class="p-2 font-semibold">' + (it.item_name || '') + '</td>' +
+                        '<td class="p-2 text-center">' + (it.unit || 'حبة') + '</td>' +
+                        '<td class="p-2 text-center">' + it.qty + '</td>' +
+                        '<td class="p-2 text-center">' + Number(it.unit_price).toLocaleString() + '</td>' +
+                        '<td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
+                }
+                itemsHtml += '</tbody></table>';
+            } else {
+                itemsHtml = '<div class="text-center py-4 text-gray-500">لا توجد أصناف مسجلة لهذا الأوردر</div>';
+            }
+
+            var deliveryFee = Number(order.delivery_fee) || 0;
+            var grandTotal = itemsTotal + deliveryFee;
+
+            // بناء المحتوى الكامل
+            var html = '<div class="text-right">' + warningHtml +
+                '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4">' +
+                    '<div><p><b>العميل:</b> ' + esc(order.customer_name || '') + '</p><p><b>المنطقة:</b> ' + esc(order.area || '') + '</p></div>' +
+                    '<div><p><b>الحالة:</b> <span class="font-bold">' + esc(order.order_status || '') + '</span></p><p><b>الرانشيت:</b> ' + (order.runsheet_id || '---') + '</p></div>' +
+                '</div>' +
+                '<div class="overflow-x-auto">' + itemsHtml + '</div>' +
+                '<div class="bg-gray-50 p-4 rounded-2xl mt-4">' +
+                    '<div class="flex justify-between mb-2"><span>مجموع الأصناف:</span><span>' + Number(itemsTotal).toLocaleString() + ' EGP</span></div>' +
+                    '<div class="flex justify-between mb-2"><span class="text-blue-600">رسوم التوصيل:</span><span class="text-blue-600">' + Number(deliveryFee).toLocaleString() + ' EGP</span></div>' +
+                    '<div class="flex justify-between pt-2 border-t"><span class="font-bold">الإجمالي:</span><span class="font-bold text-emerald-600 text-lg">' + Number(grandTotal).toLocaleString() + ' EGP</span></div>' +
+                '</div>' +
+                '<div class="flex justify-center gap-3 mt-6 pt-4 border-t">' +
+                    '<button id="btn-delete-order-modal" class="bg-red-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-trash ml-2"></i> حذف الأوردر</button>' +
+                    '<button id="btn-print-order-modal" class="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-print ml-2"></i> طباعة الفاتورة</button>' +
+                '</div>' +
+            '</div>';
+
+            Swal.fire({
+                title: 'تفاصيل الأوردر: ' + code,
+                html: html,
+                width: '900px',
+                showCloseButton: true,
+                showConfirmButton: false,
+                showCancelButton: true,
+                cancelButtonText: 'إغلاق',
+                didOpen: function() {
+                    var deleteBtn = document.getElementById('btn-delete-order-modal');
+                    var printBtn = document.getElementById('btn-print-order-modal');
+                    if (deleteBtn) deleteBtn.onclick = function() { Swal.close(); _delete(code); };
+                    if (printBtn) printBtn.onclick = function() { _printOrder(code); };
+                }
+            });
+
+        } catch(e) { hideLoader(); showToast('فشل التحميل', 'error'); console.error(e); }
     }
 
+    // ========== الطباعة مع QR ==========
+    function _printOrder(code) {
+        showLoader('جاري تحضير الطباعة...');
+        supabase.from('orders').select('*').eq('order_code', code).maybeSingle().then(function(oRes) {
+            var order = oRes.data;
+            if (!order) { hideLoader(); showToast('الأوردر غير موجود', 'error'); return; }
+            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(itRes) {
+                var items = itRes.data || [];
+                supabase.from('app_settings').select('*').limit(1).single().then(function(sRes) {
+                    hideLoader();
+                    var settings = sRes.data || {};
+                    var companyName = settings.company_name || 'الروائع';
+                    var taxRate = Number(settings.tax_rate) || 0;
+                    var vatNumber = '310000000000003';
+
+                    var printWindow = window.open('', '_blank');
+                    if (!printWindow) { showToast('الرجاء السماح للنوافذ المنبثقة', 'warning'); return; }
+
+                    var itemsHtml = '', itemsTotal = 0;
+                    for (var i = 0; i < items.length; i++) {
+                        var it = items[i];
+                        var lt = Number(it.line_amount) || (Number(it.qty) * Number(it.unit_price));
+                        itemsTotal += lt;
+                        itemsHtml += '<tr><td class="border p-2">' + esc(it.item_name) + '</td>' +
+                            '<td class="border p-2 text-center">' + (it.unit || 'حبة') + '</td>' +
+                            '<td class="border p-2 text-center">' + it.qty + '</td>' +
+                            '<td class="border p-2 text-center">' + Number(it.unit_price).toLocaleString() + '</td>' +
+                            '<td class="border p-2 text-center">' + lt.toLocaleString() + '</td></tr>';
+                    }
+
+                    var deliveryFee = Number(order.delivery_fee) || 0;
+                    var grandTotal = itemsTotal + deliveryFee;
+                    var beforeTax = itemsTotal + deliveryFee;
+                    var taxAmount = Math.round(beforeTax * taxRate) / 100;
+
+                    var qrBase64 = generateQRInvoiceBase64(companyName, vatNumber, new Date().toISOString(), String(grandTotal), String(taxAmount));
+
+                    var html = '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ' + esc(order.order_code) + '</title>' +
+                        '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>' +
+                        '<style>body{font-family:"Cairo",sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:right}th{background:#f2f2f2}</style></head>' +
+                        '<body><div style="text-align:center;border-bottom:2px solid #000;padding-bottom:10px"><h1>فاتورة بيع</h1><p>رقم: ' + esc(order.order_code) + '</p><p>التاريخ: ' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p></div>' +
+                        '<p><strong>العميل:</strong> ' + esc(order.customer_name || '') + '</p><p><strong>المنطقة:</strong> ' + esc(order.area || '') + '</p>' +
+                        '<table><thead><tr><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>' + itemsHtml + '</tbody></table>' +
+                        '<div style="font-weight:bold;font-size:18px;margin-top:20px">الإجمالي: ' + Number(order.total_amount || 0).toLocaleString() + ' EGP</div>' +
+                        '<div style="text-align:center;margin-top:20px;padding-top:15px;border-top:1px dashed #ccc;"><p style="font-weight:bold">رمز الفاتورة الإلكترونية</p><div id="print-qrcode-container" style="display:inline-block;"></div><p style="font-size:11px;color:#888">امسح الكود للتحقق من الفاتورة</p></div>' +
+                        '<script>window.onload=function(){try{var c=document.getElementById("print-qrcode-container");if(c&&typeof QRCode!=="undefined"){c.innerHTML="";new QRCode(c,{text:"' + qrBase64 + '",width:150,height:150,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}}catch(e){}window.print();};<\/script></body></html>';
+                    printWindow.document.write(html);
+                    printWindow.document.close();
+                }).catch(function() { hideLoader(); });
+            });
+        });
+    }
+
+    // ========== إنشاء وضم الرانشيتات ==========
     async function _createRS() {
-        var sel = _getSelected();
-        if (!sel.length) { showToast('اختر أوردراً', 'warning'); return; }
+        var selected = _getSelectedOrders();
+        if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
+        var cf = await Swal.fire({
+            title: 'إنشاء رانشيت جديد',
+            text: 'سيتم تجميع ' + selected.length + ' أوردر في رانشيت جديد. متابعة؟',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، إنشاء',
+            cancelButtonText: 'إلغاء'
+        });
+        if (!cf.isConfirmed) return;
         showLoader('جاري إنشاء الرانشيت...');
-        var ses = await supabase.auth.getSession();
-        var t = ses.data.session && ses.data.session.access_token;
-        var res = await fetch(SUPABASE_URL + '/functions/v1/create-runsheet', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ selectedOrders: sel }) });
-        var json = await res.json(); hideLoader();
-        if (json.success) { showToast('تم الإنشاء: ' + json.rsId, 'success'); var r = await supabase.from('orders').select('*'); data = r.data || []; _apply(); }
-        else showToast(json.msg || 'فشل', 'error');
+        try {
+            var ses = await supabase.auth.getSession();
+            var t = ses.data.session && ses.data.session.access_token;
+            var res = await fetch(SUPABASE_URL + '/functions/v1/create-runsheet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ selectedOrders: selected })
+            });
+            var json = await res.json(); hideLoader();
+            if (json.success) {
+                showToast('تم إنشاء الرانشيت: ' + json.rsId, 'success');
+                // تحديث محلي
+                for (var i = 0; i < ordersData.length; i++) {
+                    if (selected.indexOf(ordersData[i].order_code) !== -1) {
+                        ordersData[i].runsheet_id = json.rsId;
+                        ordersData[i].order_status = 'Pending';
+                    }
+                }
+                _applyFilters();
+            } else showToast(json.msg || 'فشل', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
     async function _appendRS() {
-        var sel = _getSelected();
-        if (!sel.length) { showToast('اختر أوردراً', 'warning'); return; }
-        var r = await supabase.from('runsheets').select('runsheet_code, status').in('status', ['Open', 'Confirmed']);
-        if (!r.data || !r.data.length) { showToast('لا توجد رانشيتات مفتوحة', 'info'); return; }
-        var opts = {};
-        r.data.forEach(function(rs) { opts[rs.runsheet_code] = rs.runsheet_code + ' - ' + rs.status; });
-        var v = await Swal.fire({ title: 'اختر الرانشيت', input: 'select', inputOptions: opts, showCancelButton: true, confirmButtonText: 'ضم', cancelButtonText: 'إلغاء' });
-        if (!v.value) return;
-        showLoader('جاري الضم...');
-        var ses = await supabase.auth.getSession();
-        var t = ses.data.session && ses.data.session.access_token;
-        var res = await fetch(SUPABASE_URL + '/functions/v1/append-to-runsheet', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ targetRSID: v.value, selectedOrders: sel }) });
-        var json = await res.json(); hideLoader();
-        if (json.success) { showToast('تم الضم', 'success'); var r2 = await supabase.from('orders').select('*'); data = r2.data || []; _apply(); }
-        else showToast(json.msg || 'فشل', 'error');
-    }
-
-    async function _details(code) {
-        showLoader('جاري التحميل...');
-        var o = await supabase.from('orders').select('*').eq('order_code', code).maybeSingle();
-        var it = await supabase.from('order_details').select('*').eq('order_id', o.data && o.data.id);
-        hideLoader();
-        if (!o.data) { showToast('غير موجود', 'error'); return; }
-        var itemsH = '', total = 0;
-        if (it.data && it.data.length) {
-            itemsH = '<table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-            it.data.forEach(function(i) {
-                var lt = Number(i.line_amount) || (Number(i.qty) * Number(i.unit_price));
-                total += lt;
-                itemsH += '<tr><td class="p-2 font-semibold">' + (i.item_name || '') + '</td><td class="p-2 text-center">' + i.qty + '</td><td class="p-2 text-center">' + Number(i.unit_price).toLocaleString() + '</td><td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
+        var selected = _getSelectedOrders();
+        if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
+        try {
+            var rsRes = await supabase.from('runsheets').select('runsheet_code, status').in('status', ['Open', 'Confirmed']);
+            if (!rsRes.data || !rsRes.data.length) { showToast('لا توجد رانشيتات مفتوحة', 'info'); return; }
+            var opts = {};
+            rsRes.data.forEach(function(rs) { opts[rs.runsheet_code] = rs.runsheet_code + ' - ' + rs.status; });
+            var v = await Swal.fire({
+                title: 'اختر الرانشيت',
+                input: 'select',
+                inputOptions: opts,
+                showCancelButton: true,
+                confirmButtonText: 'ضم',
+                cancelButtonText: 'إلغاء'
             });
-            itemsH += '</tbody></table>';
-        }
-        var h = '<div class="text-right"><div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4"><div><p><b>العميل:</b> ' + (o.data.customer_name || '') + '</p><p><b>المنطقة:</b> ' + (o.data.area || '') + '</p></div><div><p><b>الحالة:</b> ' + o.data.order_status + '</p><p><b>الرانشيت:</b> ' + (o.data.runsheet_id || '---') + '</p></div></div>' + itemsH + '<div class="mt-4 font-bold text-lg">الإجمالي: ' + Number(o.data.total_amount || 0).toLocaleString() + ' EGP</div></div>';
-        Swal.fire({ title: 'تفاصيل الأوردر: ' + code, html: h, width: '800px', showCloseButton: true, showConfirmButton: false });
+            if (!v.value) return;
+            showLoader('جاري الضم...');
+            var ses = await supabase.auth.getSession();
+            var t = ses.data.session && ses.data.session.access_token;
+            var res = await fetch(SUPABASE_URL + '/functions/v1/append-to-runsheet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ targetRSID: v.value, selectedOrders: selected })
+            });
+            var json = await res.json(); hideLoader();
+            if (json.success) {
+                showToast('تم الضم', 'success');
+                for (var i = 0; i < ordersData.length; i++) {
+                    if (selected.indexOf(ordersData[i].order_code) !== -1) {
+                        ordersData[i].runsheet_id = v.value;
+                        ordersData[i].order_status = 'Pending';
+                    }
+                }
+                _applyFilters();
+            } else showToast(json.msg || 'فشل', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
-    return { render: render, _apply: _apply, _reset: _reset, _withoutRS: _withoutRS, _sort: _sort, _confirm: _confirm, _delete: _delete, _createRS: _createRS, _appendRS: _appendRS, _details: _details };
+    return {
+        render: render,
+        _applyFilters: _applyFilters,
+        _resetFilters: _resetFilters,
+        _showWithoutRS: _showWithoutRS,
+        _sort: _sort,
+        _confirm: _confirm,
+        _delete: _delete,
+        _showDetails: _showDetails,
+        _createRS: _createRS,
+        _appendRS: _appendRS
+    };
 })();
 window.RW_Orders = RW_Orders;
 // ============================================================
