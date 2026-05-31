@@ -3665,7 +3665,6 @@ var RW_Reports_Comprehensive = (function() {
     var _currentSection = null;
     var _currentReport = null;
 
-    // تعريف هيكل التقارير لكل قسم
     var _reportsStructure = {
         'sales': {
             title: 'تقارير المبيعات والتوزيع',
@@ -3749,7 +3748,6 @@ var RW_Reports_Comprehensive = (function() {
         }
     };
 
-    // ========== الشاشة الرئيسية ==========
     async function render() {
         var container = byId('rw-page-container');
         if (!container) return;
@@ -3763,7 +3761,6 @@ var RW_Reports_Comprehensive = (function() {
         html += '<p class="text-gray-500 text-sm">اختر القسم لعرض جميع التقارير الخاصة به. كل قسم يحتوي على مجموعة متكاملة من التقارير الجاهزة.</p>';
         html += '</div>';
 
-        // أزرار الأقسام
         html += '<div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="reports-sections">';
         var sections = [
             { key: 'sales', title: 'تقارير المبيعات', icon: 'fa-chart-line', color: 'bg-blue-500', desc: 'المبيعات، الأوردرات، الرانشيتات، العملاء' },
@@ -3782,14 +3779,12 @@ var RW_Reports_Comprehensive = (function() {
             html += '</div></div>';
         }
         html += '</div>';
-
         html += '<div id="section-reports-container"></div>';
         html += '</div>';
 
         safeHTML(container, html);
     }
 
-    // ========== فتح صفحة تقارير القسم ==========
     function _openSection(sectionKey) {
         var section = _reportsStructure[sectionKey];
         if (!section) return;
@@ -3817,7 +3812,6 @@ var RW_Reports_Comprehensive = (function() {
             html += '</div></div>';
         }
         html += '</div>';
-
         html += '<div id="report-detail-container" class="mt-6"></div>';
         html += '</div>';
 
@@ -3833,7 +3827,6 @@ var RW_Reports_Comprehensive = (function() {
         safeText(byId('rw-header-title'), 'التقارير الشاملة');
     }
 
-    // ========== فتح شاشة المعايير للتقرير ==========
     function _openReport(sectionKey, reportId) {
         var section = _reportsStructure[sectionKey];
         if (!section) return;
@@ -3851,7 +3844,6 @@ var RW_Reports_Comprehensive = (function() {
         html += '<h3 class="font-black text-lg mb-4"><i class="fa-solid fa-sliders ml-2 text-indigo-600"></i> معايير التقرير: ' + report.label + '</h3>';
         html += '<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4" id="report-params">';
 
-        // بناء حقول المعايير حسب نوع التقرير
         var params = report.params || [];
         if (params.indexOf('date') !== -1) {
             var today = new Date().toISOString().split('T')[0];
@@ -3890,12 +3882,9 @@ var RW_Reports_Comprehensive = (function() {
         html += '</div>';
 
         safeHTML(container, html);
-
-        // تعبئة القوائم المنسدلة
         _loadDropdowns(params);
     }
 
-    // ========== تحميل القوائم المنسدلة ==========
     async function _loadDropdowns(params) {
         if (params.indexOf('customer') !== -1) {
             var customers = RW_STATE.data.customers || [];
@@ -3920,7 +3909,89 @@ var RW_Reports_Comprehensive = (function() {
         }
     }
 
-    // ========== توليد التقرير ==========
+    // ==================== دوال التفاصيل (Drill-Down) ====================
+    async function _showCustomerLedgerDetail(customerCode, customerName) {
+        _showLoader('جاري تحميل كشف حساب العميل...');
+        try {
+            var res = await supabase.from('customer_ledger').select('*').eq('customer_id', customerCode).order('entry_date', { ascending: false });
+            var data = res.data || [];
+            _hideLoader();
+            if (!data.length) { _showToast('لا توجد حركات لهذا العميل', 'info'); return; }
+            var html = '<div class="text-right"><h4 class="font-bold mb-3">كشف حساب: ' + _esc(customerName) + ' (' + _esc(customerCode) + ')</h4>';
+            html += '<table class="w-full text-sm border"><thead><tr class="bg-gray-100"><th class="p-2">التاريخ</th><th class="p-2">البيان</th><th class="p-2 text-center">مدين</th><th class="p-2 text-center">دائن</th><th class="p-2 text-center">الرصيد</th></tr></thead><tbody>';
+            for (var i = 0; i < data.length; i++) {
+                html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].entry_date) + '</td><td class="p-2">' + _esc(data[i].description) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].debit) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].credit) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].balance) + '</td></tr>';
+            }
+            html += '</tbody></table></div>';
+            Swal.fire({ title: 'تفاصيل كشف الحساب', html: html, width: '800px', showCloseButton: true, showConfirmButton: false });
+        } catch(e) { _hideLoader(); _showToast('فشل تحميل كشف الحساب', 'error'); }
+    }
+
+    async function _showItemMovementDetail(itemCode, itemName) {
+        _showLoader('جاري تحميل حركة الصنف...');
+        try {
+            var res = await supabase.from('inventory_log').select('*').eq('item_code', itemCode).order('movement_date', { ascending: false });
+            var data = res.data || [];
+            _hideLoader();
+            if (!data.length) { _showToast('لا توجد حركات لهذا الصنف', 'info'); return; }
+            var html = '<div class="text-right"><h4 class="font-bold mb-3">حركة الصنف: ' + _esc(itemName) + ' (' + _esc(itemCode) + ')</h4>';
+            html += '<table class="w-full text-sm border"><thead><tr class="bg-gray-100"><th class="p-2">التاريخ</th><th class="p-2">النوع</th><th class="p-2 text-center">الكمية</th><th class="p-2">المرجع</th></tr></thead><tbody>';
+            for (var i = 0; i < data.length; i++) {
+                html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].movement_date) + '</td><td class="p-2">' + _esc(data[i].movement_type) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].qty) + '</td><td class="p-2">' + _esc(data[i].reference) + '</td></tr>';
+            }
+            html += '</tbody></table></div>';
+            Swal.fire({ title: 'تفاصيل حركة الصنف', html: html, width: '800px', showCloseButton: true, showConfirmButton: false });
+        } catch(e) { _hideLoader(); _showToast('فشل تحميل حركة الصنف', 'error'); }
+    }
+
+    async function _showRunsheetDetail(runsheetCode) {
+        _showLoader('جاري تحميل تفاصيل الرانشيت...');
+        try {
+            var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', runsheetCode).maybeSingle();
+            var rs = rsRes.data;
+            if (!rs) { _hideLoader(); _showToast('الرانشيت غير موجود', 'error'); return; }
+            var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
+            var items = itemsRes.data || [];
+            var ordersRes = await supabase.from('orders').select('order_code, customer_name, total_amount').eq('runsheet_id', runsheetCode);
+            var orders = ordersRes.data || [];
+            _hideLoader();
+
+            var html = '<div class="text-right"><h4 class="font-bold mb-3">تفاصيل الرانشيت: ' + _esc(runsheetCode) + '</h4>';
+            html += '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl mb-4"><div><p><b>التاريخ:</b> ' + _esc(rs.run_date) + '</p><p><b>السائق:</b> ' + _esc(rs.driver_id) + '</p></div><div><p><b>السيارة:</b> ' + _esc(rs.vehicle_id) + '</p><p><b>الحالة:</b> ' + _esc(rs.status) + '</p></div></div>';
+            if (orders.length) {
+                html += '<h5 class="font-bold mb-2">الأوردرات المرتبطة:</h5><div class="flex flex-wrap gap-2 mb-4">';
+                for (var o = 0; o < orders.length; o++) html += '<span class="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">' + _esc(orders[o].order_code) + ' - ' + _esc(orders[o].customer_name) + ' (' + _fmtNum(orders[o].total_amount) + ')</span>';
+                html += '</div>';
+            }
+            if (items.length) {
+                html += '<table class="w-full text-sm border"><thead><tr class="bg-gray-100"><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var i = 0; i < items.length; i++) { var lt = (Number(items[i].qty_ordered)||0) * (Number(items[i].unit_price)||0); html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(items[i].item_name) + '</td><td class="p-2 text-center">' + (items[i].qty_ordered||0) + '</td><td class="p-2 text-center">' + _fmtNum(items[i].unit_price) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(lt) + '</td></tr>'; }
+                html += '</tbody></table>';
+            }
+            html += '</div>';
+            Swal.fire({ title: 'تفاصيل الرانشيت', html: html, width: '900px', showCloseButton: true, showConfirmButton: false });
+        } catch(e) { _hideLoader(); _showToast('فشل تحميل التفاصيل', 'error'); }
+    }
+
+    async function _showSettlementDetail(settlementCode) {
+        _showLoader('جاري تحميل تفاصيل التسوية...');
+        try {
+            var res = await supabase.from('daily_settlements').select('*').eq('settlement_code', settlementCode).maybeSingle();
+            var data = res.data;
+            _hideLoader();
+            if (!data) { _showToast('التسوية غير موجودة', 'error'); return; }
+            var html = '<div class="text-right"><h4 class="font-bold mb-3">تفاصيل التسوية: ' + _esc(settlementCode) + '</h4>';
+            html += '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl mb-4">';
+            html += '<div><p><b>التاريخ:</b> ' + _esc(data.settlement_date) + '</p><p><b>الرانشيت:</b> ' + _esc(data.runsheet_id) + '</p></div>';
+            html += '<div><p><b>العجز:</b> ' + data.total_shortage + ' قطعة</p><p><b>قيمة العجز:</b> ' + _fmtNum(data.total_shortage_value) + ' EGP</p></div>';
+            html += '</div>';
+            html += '<p><b>ملاحظات:</b> ' + _esc(data.notes || 'لا يوجد') + '</p>';
+            html += '</div>';
+            Swal.fire({ title: 'تفاصيل التسوية', html: html, width: '600px', showCloseButton: true, showConfirmButton: false });
+        } catch(e) { _hideLoader(); _showToast('فشل تحميل التفاصيل', 'error'); }
+    }
+
+    // ==================== توليد التقرير (مع Drill-Down) ====================
     async function _generateReport(sectionKey, reportId) {
         var resultDiv = byId('report-result');
         if (!resultDiv) return;
@@ -3949,22 +4020,28 @@ var RW_Reports_Comprehensive = (function() {
                 html = '<h4 class="font-bold mb-3">ملخص المبيعات</h4><div class="grid grid-cols-3 gap-4"><div class="bg-blue-50 p-4 rounded-xl text-center"><p class="text-xs">عدد الأوردرات</p><p class="text-2xl font-black">' + data.length + '</p></div><div class="bg-green-50 p-4 rounded-xl text-center"><p class="text-xs">الإجمالي</p><p class="text-2xl font-black">' + _fmtNum(total) + ' EGP</p></div><div class="bg-amber-50 p-4 rounded-xl text-center"><p class="text-xs">متوسط الأوردر</p><p class="text-2xl font-black">' + _fmtNum(avg) + ' EGP</p></div></div>';
             }
             else if (reportId === 'sales-by-customer') {
-                var q = supabase.from('orders').select('customer_name, total_amount').gte('order_date', fromDate).lte('order_date', toDate);
+                var q = supabase.from('orders').select('customer_id, customer_name, total_amount').gte('order_date', fromDate).lte('order_date', toDate);
                 if (customer) q = q.eq('customer_id', customer);
                 var res = await q; data = res.data || [];
-                var map = {}; for (var i = 0; i < data.length; i++) { var nm = data[i].customer_name || 'غير محدد'; map[nm] = { total: (map[nm] ? map[nm].total : 0) + Number(data[i].total_amount || 0), cnt: (map[nm] ? map[nm].cnt : 0) + 1 }; }
-                var arr = Object.entries(map).map(function(e) { return { name: e[0], total: e[1].total, count: e[1].cnt }; }).sort(function(a,b) { return b.total - a.total; });
-                html = '<h4 class="font-bold mb-3">المبيعات حسب العميل</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">العميل</th><th class="p-2 text-center">عدد الأوردرات</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].count + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                var map = {}; for (var i = 0; i < data.length; i++) { var cid = data[i].customer_id || 'غير محدد'; var nm = data[i].customer_name || cid; map[cid] = { name: nm, total: (map[cid] ? map[cid].total : 0) + Number(data[i].total_amount || 0), cnt: (map[cid] ? map[cid].cnt : 0) + 1 }; }
+                var arr = Object.entries(map).map(function(e) { return { id: e[0], name: e[1].name, total: e[1].total, count: e[1].cnt }; }).sort(function(a,b) { return b.total - a.total; });
+                html = '<h4 class="font-bold mb-3">المبيعات حسب العميل (اضغط على الصف للتفاصيل)</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">كود العميل</th><th class="p-2">اسم العميل</th><th class="p-2 text-center">عدد الفواتير</th><th class="p-2 text-center">إجمالي المبيعات</th><th class="p-2 text-center">نسبة من الإجمالي</th></tr></thead><tbody>';
+                var grandTotal = arr.reduce(function(s, a) { return s + a.total; }, 0);
+                for (var i = 0; i < arr.length; i++) {
+                    var pct = grandTotal > 0 ? Math.round((arr[i].total / grandTotal) * 100) : 0;
+                    html += '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="RW_Reports_Comprehensive._showCustomerLedgerDetail(\'' + _esc(arr[i].id) + '\', \'' + _esc(arr[i].name).replace(/'/g, "\\'") + '\')"><td class="p-2">' + _esc(arr[i].id) + '</td><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].count + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td><td class="p-2 text-center">' + pct + '%</td></tr>';
+                }
                 html += '</tbody></table>';
             }
             else if (reportId === 'sales-by-item') {
-                var res = await supabase.from('order_details').select('item_name, item_code, qty, unit_price').gte('created_at', fromDate).lte('created_at', toDate);
+                var res = await supabase.from('order_details').select('item_code, item_name, qty, unit_price').gte('created_at', fromDate).lte('created_at', toDate);
                 data = res.data || [];
                 var map = {}; for (var i = 0; i < data.length; i++) { var code = data[i].item_code || data[i].item_name; map[code] = { name: data[i].item_name || code, qty: (map[code] ? map[code].qty : 0) + Number(data[i].qty || 0), total: (map[code] ? map[code].total : 0) + (Number(data[i].qty || 0) * Number(data[i].unit_price || 0)) }; }
-                var arr = Object.values(map).sort(function(a,b) { return b.total - a.total; }).slice(0,20);
-                html = '<h4 class="font-bold mb-3">المبيعات حسب الصنف</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].qty + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                var arr = Object.entries(map).map(function(e) { return { code: e[0], name: e[1].name, qty: e[1].qty, total: e[1].total }; }).sort(function(a,b) { return b.total - a.total; });
+                html = '<h4 class="font-bold mb-3">المبيعات حسب الصنف (اضغط للتفاصيل)</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">كود الصنف</th><th class="p-2">اسم الصنف</th><th class="p-2 text-center">الكمية المباعة</th><th class="p-2 text-center">إجمالي المبيعات</th></tr></thead><tbody>';
+                for (var i = 0; i < arr.length; i++) {
+                    html += '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="RW_Reports_Comprehensive._showItemMovementDetail(\'' + _esc(arr[i].code) + '\', \'' + _esc(arr[i].name).replace(/'/g, "\\'") + '\')"><td class="p-2">' + _esc(arr[i].code) + '</td><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].qty + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                }
                 html += '</tbody></table>';
             }
             else if (reportId === 'sales-by-area') {
@@ -3993,28 +4070,32 @@ var RW_Reports_Comprehensive = (function() {
                 html += '</tbody></table>';
             }
             else if (reportId === 'sales-runsheet-performance') {
-                var res = await supabase.from('runsheets').select('runsheet_code, run_date, total_amount, status').gte('run_date', fromDate).lte('run_date', toDate);
+                var res = await supabase.from('runsheets').select('runsheet_code, run_date, total_amount, status, driver_id, vehicle_id').gte('run_date', fromDate).lte('run_date', toDate);
                 data = res.data || [];
-                html = '<h4 class="font-bold mb-3">أداء الرانشيتات</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الرانشيت</th><th class="p-2">التاريخ</th><th class="p-2 text-center">القيمة</th><th class="p-2 text-center">الحالة</th></tr></thead><tbody>';
-                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2 font-bold">' + _esc(data[i].runsheet_code) + '</td><td class="p-2">' + _esc(data[i].run_date) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].total_amount) + '</td><td class="p-2 text-center">' + _esc(data[i].status) + '</td></tr>';
+                html = '<h4 class="font-bold mb-3">أداء الرانشيتات (اضغط للتفاصيل)</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">كود الرانشيت</th><th class="p-2">التاريخ</th><th class="p-2">السائق</th><th class="p-2 text-center">القيمة</th><th class="p-2 text-center">الحالة</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="RW_Reports_Comprehensive._showRunsheetDetail(\'' + _esc(data[i].runsheet_code) + '\')"><td class="p-2 font-bold text-blue-600">' + _esc(data[i].runsheet_code) + '</td><td class="p-2">' + _esc(data[i].run_date) + '</td><td class="p-2">' + _esc(data[i].driver_id) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].total_amount) + '</td><td class="p-2 text-center">' + _esc(data[i].status) + '</td></tr>';
                 html += '</tbody></table>';
             }
 
             // ---------- المخازن والمشتريات ----------
             else if (reportId === 'inventory-stock') {
                 var items = RW_STATE.data.items || [];
-                var res = await supabase.from('stock_branches').select('item_id, qty');
-                var stk = res.data || []; var map = {}; for (var i = 0; i < stk.length; i++) map[stk[i].item_id] = (map[stk[i].item_id] || 0) + Number(stk[i].qty || 0);
-                html = '<h4 class="font-bold mb-3">جرد المخزون الحالي</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th></tr></thead><tbody>';
-                for (var i = 0; i < items.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(items[i].name) + '</td><td class="p-2 text-center font-bold">' + (map[items[i].id] || 0) + '</td></tr>';
+                var res = await supabase.from('stock_branches').select('item_id, qty, allocated_qty');
+                var stk = res.data || []; var map = {}; var allocMap = {};
+                for (var i = 0; i < stk.length; i++) { map[stk[i].item_id] = (map[stk[i].item_id] || 0) + Number(stk[i].qty || 0); allocMap[stk[i].item_id] = (allocMap[stk[i].item_id] || 0) + Number(stk[i].allocated_qty || 0); }
+                html = '<h4 class="font-bold mb-3">جرد المخزون الحالي (اضغط للتفاصيل)</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">كود الصنف</th><th class="p-2">اسم الصنف</th><th class="p-2">الوحدة</th><th class="p-2 text-center">الكمية الفعلية</th><th class="p-2 text-center">المحجوزة</th><th class="p-2 text-center">المتاحة</th><th class="p-2 text-center">سعر البيع</th><th class="p-2 text-center">قيمة المخزون</th></tr></thead><tbody>';
+                for (var i = 0; i < items.length; i++) {
+                    var it = items[i]; var qty = map[it.id] || 0; var alloc = allocMap[it.id] || 0; var avail = Math.max(0, qty - alloc); var val = qty * (Number(it.sales_price)||0);
+                    html += '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="RW_Reports_Comprehensive._showItemMovementDetail(\'' + _esc(it.item_code) + '\', \'' + _esc(it.name).replace(/'/g, "\\'") + '\')"><td class="p-2">' + _esc(it.item_code) + '</td><td class="p-2 font-semibold">' + _esc(it.name) + '</td><td class="p-2">' + _esc(it.unit) + '</td><td class="p-2 text-center">' + qty + '</td><td class="p-2 text-center">' + alloc + '</td><td class="p-2 text-center font-bold">' + avail + '</td><td class="p-2 text-center">' + _fmtNum(it.sales_price) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(val) + ' EGP</td></tr>';
+                }
                 html += '</tbody></table>';
             }
             else if (reportId === 'inventory-movement') {
                 if (!itemCode) { safeHTML(resultDiv, '<div class="text-center py-4 text-gray-500">يرجى اختيار صنف</div>'); return; }
                 var res = await supabase.from('inventory_log').select('*').eq('item_code', itemCode).order('movement_date', { ascending: false });
                 data = res.data || [];
-                html = '<h4 class="font-bold mb-3">حركة الصنف</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التاريخ</th><th class="p-2">النوع</th><th class="p-2 text-center">الكمية</th></tr></thead><tbody>';
-                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].movement_date) + '</td><td class="p-2">' + _esc(data[i].movement_type) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].qty) + '</td></tr>';
+                html = '<h4 class="font-bold mb-3">حركة الصنف</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التاريخ</th><th class="p-2">النوع</th><th class="p-2 text-center">الكمية</th><th class="p-2">المرجع</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].movement_date) + '</td><td class="p-2">' + _esc(data[i].movement_type) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].qty) + '</td><td class="p-2">' + _esc(data[i].reference) + '</td></tr>';
                 html += '</tbody></table>';
             }
             else if (reportId === 'inventory-low-stock') {
@@ -4038,13 +4119,13 @@ var RW_Reports_Comprehensive = (function() {
                 html += '</tbody></table>';
             }
             else if (reportId === 'purchase-by-supplier') {
-                var q = supabase.from('purchase_orders').select('supplier_name, total_amount').gte('po_date', fromDate).lte('po_date', toDate);
+                var q = supabase.from('purchase_orders').select('supplier_id, supplier_name, total_amount').gte('po_date', fromDate).lte('po_date', toDate);
                 if (supplier) q = q.eq('supplier_id', supplier);
                 var res = await q; data = res.data || [];
-                var map = {}; for (var i = 0; i < data.length; i++) { var sn = data[i].supplier_name || 'غير محدد'; map[sn] = (map[sn] || 0) + Number(data[i].total_amount || 0); }
-                var arr = Object.entries(map).map(function(e) { return { name: e[0], total: e[1] }; }).sort(function(a,b) { return b.total - a.total; });
-                html = '<h4 class="font-bold mb-3">المشتريات حسب المورد</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">المورد</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                var map = {}; for (var i = 0; i < data.length; i++) { var sid = data[i].supplier_id || 'غير محدد'; var sn = data[i].supplier_name || sid; map[sid] = { name: sn, total: (map[sid] ? map[sid].total : 0) + Number(data[i].total_amount || 0), cnt: (map[sid] ? map[sid].cnt : 0) + 1 }; }
+                var arr = Object.entries(map).map(function(e) { return { id: e[0], name: e[1].name, total: e[1].total, count: e[1].cnt }; }).sort(function(a,b) { return b.total - a.total; });
+                html = '<h4 class="font-bold mb-3">المشتريات حسب المورد</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">كود المورد</th><th class="p-2">اسم المورد</th><th class="p-2 text-center">عدد الأوامر</th><th class="p-2 text-center">إجمالي المشتريات</th></tr></thead><tbody>';
+                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(arr[i].id) + '</td><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].count + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
                 html += '</tbody></table>';
             }
             else if (reportId === 'purchase-order-status') {
@@ -4082,14 +4163,14 @@ var RW_Reports_Comprehensive = (function() {
                 var ses = await supabase.auth.getSession(); var token = ses.data.session?.access_token;
                 var res = await fetch(SUPABASE_URL + '/functions/v1/get-balance-sheet', { method:'POST', headers: { 'Content-Type':'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ asOfDate: toDate }) });
                 var json = await res.json();
-                if (json.success) { /* عرض مبسط */ html = '<div class="text-green-600 font-bold p-4">تم تحميل الميزانية العمومية (العرض الكامل قيد التطوير)</div>'; }
+                if (json.success) { html = '<div class="text-green-600 font-bold p-4">تم تحميل الميزانية العمومية (العرض الكامل قيد التطوير)</div>'; }
                 else html = '<div class="text-center py-4 text-red-500">فشل تحميل الميزانية</div>';
             }
             else if (reportId === 'finance-cash-flow') {
                 var ses = await supabase.auth.getSession(); var token = ses.data.session?.access_token;
                 var res = await fetch(SUPABASE_URL + '/functions/v1/get-cash-flow', { method:'POST', headers: { 'Content-Type':'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ fromDate, toDate }) });
                 var json = await res.json();
-                if (json.success) { /* عرض مبسط */ html = '<div class="text-blue-600 font-bold p-4">تم تحميل قائمة التدفقات النقدية</div>'; }
+                if (json.success) { html = '<div class="text-blue-600 font-bold p-4">تم تحميل قائمة التدفقات النقدية</div>'; }
                 else html = '<div class="text-center py-4 text-red-500">فشل تحميل التدفقات النقدية</div>';
             }
             else if (reportId === 'finance-general-ledger') {
@@ -4157,8 +4238,8 @@ var RW_Reports_Comprehensive = (function() {
             else if (reportId === 'logistics-settlement') {
                 var res = await supabase.from('daily_settlements').select('*').gte('settlement_date', fromDate).lte('settlement_date', toDate);
                 data = res.data || [];
-                html = '<h4 class="font-bold mb-3">إغلاق اليومية</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التسوية</th><th class="p-2">التاريخ</th><th class="p-2 text-center">العجز</th><th class="p-2 text-center">قيمة العجز</th></tr></thead><tbody>';
-                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].settlement_code) + '</td><td class="p-2">' + _esc(data[i].settlement_date) + '</td><td class="p-2 text-center">' + data[i].total_shortage + '</td><td class="p-2 text-center font-bold text-red-600">' + _fmtNum(data[i].total_shortage_value) + ' EGP</td></tr>';
+                html = '<h4 class="font-bold mb-3">إغلاق اليومية (اضغط للتفاصيل)</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">كود التسوية</th><th class="p-2">التاريخ</th><th class="p-2">الرانشيت</th><th class="p-2 text-center">العجز</th><th class="p-2 text-center">قيمة العجز</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t hover:bg-gray-50 cursor-pointer" onclick="RW_Reports_Comprehensive._showSettlementDetail(\'' + _esc(data[i].settlement_code) + '\')"><td class="p-2 font-bold">' + _esc(data[i].settlement_code) + '</td><td class="p-2">' + _esc(data[i].settlement_date) + '</td><td class="p-2">' + _esc(data[i].runsheet_id) + '</td><td class="p-2 text-center">' + data[i].total_shortage + '</td><td class="p-2 text-center font-bold text-red-600">' + _fmtNum(data[i].total_shortage_value) + ' EGP</td></tr>';
                 html += '</tbody></table>';
             }
             else if (reportId === 'logistics-driver-performance') {
@@ -4200,6 +4281,9 @@ var RW_Reports_Comprehensive = (function() {
         printWindow.document.write(html); printWindow.document.close();
     }
 
+    return { render: render, _openSection: _openSection, _closeSection: _closeSection, _openReport: _openReport, _generateReport: _generateReport, _printReport: _printReport, _showCustomerLedgerDetail: _showCustomerLedgerDetail, _showItemMovementDetail: _showItemMovementDetail, _showRunsheetDetail: _showRunsheetDetail, _showSettlementDetail: _showSettlementDetail };
+})();
+window.RW_Reports_Comprehensive = RW_Reports_Comprehensive;
     return { render: render, _openSection: _openSection, _closeSection: _closeSection, _openReport: _openReport, _generateReport: _generateReport, _printReport: _printReport };
 })();
 window.RW_Reports_Comprehensive = RW_Reports_Comprehensive;
