@@ -235,7 +235,126 @@ buildSidebar() { try { const nav = byId('rw-sidebar-nav'); if (!nav) return; con
 toggleSidebar() { const sidebar = byId('rw-sidebar'), main = byId('rw-main-content'); if (!sidebar || !main) return; const collapsed = sidebar.classList.toggle('collapsed'); main.classList.toggle('expanded', collapsed); RW_STATE.ui.sidebarCollapsed = collapsed; try { localStorage.setItem('rw_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {} },
 navigate(view) { try { RW_STATE.app.currentView = view; document.querySelectorAll('.rw-sidebar-link').forEach(el => el.classList.remove('active')); const active = document.querySelector(`.rw-sidebar-link[data-view="${view}"]`); if (active) active.classList.add('active'); RW_Views.render(view); } catch(e) { console.error(e); showToast('حدث خطأ', 'error'); } }
 };
+// ============================================================
+// RW_Dashboard – لوحة التحكم الاحترافية (الإنترو)
+// ============================================================
+var RW_Dashboard = (function() {
+    function _fmtNum(n) { return Number(n || 0).toLocaleString(); }
 
+    async function render() {
+        var container = byId('rw-page-container');
+        if (!container) return;
+        safeText(byId('rw-header-title'), 'الإنترو');
+
+        // بناء هيكل لوحة التحكم
+        var html = '<div class="p-4 space-y-6">';
+        // صف الترحيب
+        html += '<div class="bg-gradient-to-r from-blue-700 to-indigo-800 rounded-3xl p-8 text-white shadow-xl">';
+        html += '<h1 class="text-3xl font-black mb-2">مرحباً بك في الروائع ERP</h1>';
+        html += '<p class="text-blue-100 text-lg">نظام إدارة موارد المؤسسات المتكامل – جميع عملياتك في مكان واحد</p>';
+        html += '</div>';
+
+        // مؤشرات الأداء الرئيسية
+        html += '<div class="grid grid-cols-2 md:grid-cols-4 gap-4">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">إجمالي الأصناف</p><p class="text-3xl font-black text-blue-600" id="dash-items">---</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">العملاء</p><p class="text-3xl font-black text-emerald-600" id="dash-customers">---</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">الموردين</p><p class="text-3xl font-black text-orange-600" id="dash-suppliers">---</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">الفروع</p><p class="text-3xl font-black text-purple-600" id="dash-branches">---</p></div>';
+        html += '</div>';
+
+        // آخر الأوردرات والتنبيهات
+        html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-6">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-black text-lg mb-4"><i class="fa-solid fa-clock-rotate-left ml-2 text-blue-600"></i>آخر الأوردرات</h3><div id="dash-recent-orders"><p class="text-gray-400 text-center py-8">جاري التحميل...</p></div></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-black text-lg mb-4"><i class="fa-solid fa-triangle-exclamation ml-2 text-amber-600"></i>تنبيهات</h3><div id="dash-alerts"><p class="text-gray-400 text-center py-8">جاري التحميل...</p></div></div>';
+        html += '</div>';
+        html += '</div>';
+
+        safeHTML(container, html);
+
+        // تحميل البيانات بشكل متوازي
+        try {
+            var items = RW_STATE.data.items;
+            var customers = RW_STATE.data.customers;
+            var suppliers = RW_STATE.data.suppliers;
+            var branches = RW_STATE.data.branches;
+            var orders = [];
+
+            // تحميل البيانات التي لم تحمل بعد
+            if (!items || !items.length) { items = await RW_Data.loadItems(); }
+            if (!customers || !customers.length) { customers = await RW_Data.loadCustomers(); }
+            if (!suppliers || !suppliers.length) {
+                var sRes = await supabase.from('suppliers').select('*');
+                suppliers = sRes.data || [];
+                RW_STATE.data.suppliers = suppliers;
+            }
+            if (!branches || !branches.length) { branches = await RW_Data.loadBranches(); }
+
+            // جلب الأوردرات
+            var oRes = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(10);
+            orders = oRes.data || [];
+
+            // تحديث المؤشرات
+            safeText(byId('dash-items'), _fmtNum(items.length));
+            safeText(byId('dash-customers'), _fmtNum(customers.length));
+            safeText(byId('dash-suppliers'), _fmtNum(suppliers.length));
+            safeText(byId('dash-branches'), _fmtNum(branches.length));
+
+            // عرض آخر الأوردرات
+            var recentHtml = '';
+            if (orders.length > 0) {
+                recentHtml = '<table class="w-full text-sm"><thead><tr class="text-gray-400 text-xs uppercase"><th class="p-2 text-right">الرقم</th><th class="p-2 text-right">العميل</th><th class="p-2 text-right">الحالة</th><th class="p-2 text-right">المبلغ</th></tr></thead><tbody>';
+                for (var i = 0; i < Math.min(orders.length, 10); i++) {
+                    var ord = orders[i];
+                    var statusClass = '';
+                    if (ord.order_status === 'Draft') statusClass = 'text-yellow-600';
+                    else if (ord.order_status === 'Invoiced') statusClass = 'text-green-600';
+                    else if (ord.order_status === 'Confirmed') statusClass = 'text-blue-600';
+                    else statusClass = 'text-gray-600';
+                    recentHtml += '<tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="RW_Navigation.navigate(\'orders\')"><td class="p-2 font-bold text-blue-600">' + (ord.order_code || '---') + '</td><td class="p-2">' + (ord.customer_name || '---') + '</td><td class="p-2 ' + statusClass + ' font-bold">' + (ord.order_status || '') + '</td><td class="p-2 font-bold">' + _fmtNum(ord.total_amount) + ' EGP</td></tr>';
+                }
+                recentHtml += '</tbody></table>';
+            } else {
+                recentHtml = '<p class="text-gray-400 text-center py-8">لا توجد أوردرات بعد</p>';
+            }
+            safeHTML(byId('dash-recent-orders'), recentHtml);
+
+            // تنبيهات
+            var alertsHtml = '<ul class="space-y-2 text-sm">';
+            // أصناف منخفضة
+            var lowStockCount = 0;
+            for (var j = 0; j < items.length; j++) {
+                var item = items[j];
+                if ((item.reorder_point || 5) >= (item.qty || 0)) lowStockCount++;
+            }
+            if (lowStockCount > 0) {
+                alertsHtml += '<li class="p-3 bg-amber-50 rounded-xl flex items-center gap-2 cursor-pointer" onclick="RW_Navigation.navigate(\'items\')"><i class="fa-solid fa-boxes-stacked text-amber-600"></i><span class="font-bold text-amber-700">' + lowStockCount + ' أصناف منخفضة المخزون</span></li>';
+            } else {
+                alertsHtml += '<li class="p-3 bg-green-50 rounded-xl flex items-center gap-2"><i class="fa-solid fa-circle-check text-green-600"></i><span class="font-bold text-green-700">جميع الأصناف بمستوى آمن</span></li>';
+            }
+            // أوردرات مسودة
+            var draftCount = 0;
+            for (var k = 0; k < orders.length; k++) { if (orders[k].order_status === 'Draft') draftCount++; }
+            if (draftCount > 0) {
+                alertsHtml += '<li class="p-3 bg-blue-50 rounded-xl flex items-center gap-2 cursor-pointer" onclick="RW_Navigation.navigate(\'orders\')"><i class="fa-solid fa-file-lines text-blue-600"></i><span class="font-bold text-blue-700">' + draftCount + ' أوردرات مسودة</span></li>';
+            }
+            // عملاء مديونون
+            var debtCount = 0;
+            for (var l = 0; l < customers.length; l++) { if ((customers[l].debt || 0) > 0) debtCount++; }
+            if (debtCount > 0) {
+                alertsHtml += '<li class="p-3 bg-red-50 rounded-xl flex items-center gap-2 cursor-pointer" onclick="RW_Navigation.navigate(\'customers\')"><i class="fa-solid fa-file-invoice-dollar text-red-600"></i><span class="font-bold text-red-700">' + debtCount + ' عملاء مديونون</span></li>';
+            }
+            alertsHtml += '</ul>';
+            safeHTML(byId('dash-alerts'), alertsHtml);
+        } catch(e) {
+            console.error('Dashboard error:', e);
+            safeHTML(byId('dash-recent-orders'), '<p class="text-red-500 text-center py-8">فشل تحميل البيانات</p>');
+            safeHTML(byId('dash-alerts'), '<p class="text-red-500 text-center py-8">فشل تحميل التنبيهات</p>');
+        }
+    }
+
+    return { render: render };
+})();
+window.RW_Dashboard = RW_Dashboard;
 // ============================================================
 // RW_Items – الأصناف (صور محسّنة، مودال كامل، تثبيت الرأس، is_active، show_in_store)
 // ============================================================
@@ -2051,7 +2170,7 @@ var RW_Views = {
     };
     safeText(byId('rw-header-title'), titles[view]||view);
 
-    if(view==='dashboard'){ RW_Dashboard.render(); return; }
+    if(view==='dashboard'){ safeText(byId('rw-header-title'), 'الإنترو'); RW_Dashboard.render(); return; }
     if(view==='items'){ RW_Items.render(); return; }
     if(view==='customers'){ RW_Customers.render(); return; }
     if(view==='suppliers'){ RW_Suppliers.render(); return; }
