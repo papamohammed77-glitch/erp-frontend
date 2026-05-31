@@ -2533,9 +2533,65 @@ var RW_Warehouse = (function() {
         h += '</tbody></table>';
         Swal.fire({ title: 'تفاصيل الإذن: ' + voucherCode, html: h, width: '600px', showCloseButton: true, showConfirmButton: false });
     }
-    async function _sendVoucher(voucherCode) { /* ... */ }
-    async function _receiveVoucher(voucherCode) { /* ... */ }
-    async function _openNewVoucherModal() { /* ... */ }
+    async function _sendVoucher(voucherCode) {
+        var confirm = await Swal.fire({ title: 'تأكيد الإرسال', text: 'سيتم إرسال الإذن ' + voucherCode + ' وخصم المخزون من المصدر. متابعة؟', icon: 'warning', showCancelButton: true, confirmButtonColor: '#2563eb', confirmButtonText: 'نعم، أرسل', cancelButtonText: 'إلغاء' });
+        if (!confirm.isConfirmed) return;
+        showLoader('جاري إرسال الإذن...');
+        var ses = await supabase.auth.getSession(), token = ses.data.session ? ses.data.session.access_token : null;
+        try {
+            var res = await fetch(SUPABASE_URL + '/functions/v1/send-stock-voucher', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ voucher_code: voucherCode }) });
+            var json = await res.json(); hideLoader();
+            if (json.success) { showToast('تم إرسال الإذن بنجاح', 'success'); loadVouchers(); }
+            else showToast(json.error || json.msg || 'فشل الإرسال', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
+    }
+    async function _receiveVoucher(voucherCode) {
+        showLoader('جاري تحميل تفاصيل الإذن...');
+        var detRes = await supabase.from('stock_voucher_details').select('*').eq('voucher_code', voucherCode);
+        var details = detRes.data || []; hideLoader();
+        if (!details.length) { showToast('لا توجد تفاصيل لهذا الإذن', 'info'); return; }
+        var html = '<div class="text-right"><table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الكمية المرسلة</th><th class="p-2 border text-center">الكمية المستلمة</th></tr></thead><tbody>';
+        for (var i = 0; i < details.length; i++) {
+            var d = details[i];
+            html += '<tr><td class="p-2 border font-semibold">' + esc(d.item_name || '') + ' (' + esc(d.item_code || '') + ')</td><td class="p-2 border text-center font-bold">' + (d.qty || 0) + '</td><td class="p-2 border text-center"><input type="number" id="vrec_qty_' + i + '" value="' + (d.qty || 0) + '" class="w-20 p-1 border rounded text-center" min="0"></td></tr>';
+        }
+        html += '</tbody></table></div>';
+        var result = await Swal.fire({ title: 'استلام الإذن: ' + voucherCode, html: html, width: '700px', showCancelButton: true, confirmButtonText: 'تأكيد الاستلام', confirmButtonColor: '#10b981', cancelButtonText: 'إلغاء',
+            preConfirm: function() { var items = []; for (var j = 0; j < details.length; j++) { var qty = parseFloat(document.getElementById('vrec_qty_' + j).value) || 0; items.push({ itemCode: details[j].item_code || '', itemName: details[j].item_name || '', unit: details[j].unit || 'حبة', receivedQty: qty }); } return items; }
+        });
+        if (!result.isConfirmed) return;
+        showLoader('جاري الاستلام...');
+        var ses = await supabase.auth.getSession(), token = ses.data.session ? ses.data.session.access_token : null;
+        try {
+            var res = await fetch(SUPABASE_URL + '/functions/v1/receive-stock-voucher', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ voucher_code: voucherCode, receivedItems: result.value }) });
+            var json = await res.json(); hideLoader();
+            if (json.success) { showToast(json.msg || 'تم الاستلام', 'success'); loadVouchers(); }
+            else showToast(json.error || json.msg || 'فشل الاستلام', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
+    }
+    async function _openNewVoucherModal() {
+        var typeOptions = '<option value="Transfer">تحويل داخلي</option><option value="DirectSale">صرف سيارة بيع مباشر</option><option value="DirectReturn">استلام مرتجع سيارة</option><option value="SupplierReturn">مرتجع لمورد</option><option value="Adjustment">جرد</option>';
+        var html = '<div class="text-right space-y-3"><div><label class="text-xs font-bold">نوع الإذن</label><select id="newVoucherType" class="swal2-input w-full">' + typeOptions + '</select></div><div><label class="text-xs font-bold">المرجع (اختياري)</label><input id="newVoucherRef" class="swal2-input w-full" placeholder="رقم مرجعي"></div><div><label class="text-xs font-bold">ملاحظات</label><textarea id="newVoucherNotes" rows="2" class="swal2-input w-full"></textarea></div></div>';
+        var result = await Swal.fire({ title: 'إنشاء إذن مخزني جديد', html: html, showCancelButton: true, confirmButtonText: 'إنشاء', cancelButtonText: 'إلغاء',
+            preConfirm: function() {
+                var type = document.getElementById('newVoucherType').value;
+                var ref = document.getElementById('newVoucherRef').value.trim();
+                var notes = document.getElementById('newVoucherNotes').value.trim();
+                if (!type) { Swal.showValidationMessage('اختر نوع الإذن'); return false; }
+                return { type: type, ref: ref, notes: notes };
+            }
+        });
+        if (!result.isConfirmed) return;
+        var d = result.value;
+        showLoader('جاري الإنشاء...');
+        var ses = await supabase.auth.getSession(), token = ses.data.session ? ses.data.session.access_token : null;
+        try {
+            var res = await fetch(SUPABASE_URL + '/functions/v1/create-stock-voucher', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ type: d.type, reference: d.ref, fromType: 'Branch', fromId: 'MAIN', toType: 'Branch', toId: '', items: [], notes: d.notes }) });
+            var json = await res.json(); hideLoader();
+            if (json.success) { showToast('تم إنشاء الإذن ' + json.voucherId, 'success'); loadVouchers(); }
+            else showToast(json.error || json.msg || 'فشل الإنشاء', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
+    }
     function loadVoucherForm(type) { loadVouchers(); }
 
     // ==================== PICKING ====================
@@ -2580,15 +2636,194 @@ var RW_Warehouse = (function() {
         Swal.fire({ title: 'تفاصيل التحضير: ' + code, html: h, width: '700px', showCloseButton: true, showConfirmButton: false });
     }
 
-    // ... (باقي التبويبات بنفس الشكل التفصيلي بدون اختصار)
-    // تم تضمينها كلها في الردود السابقة ولن تتكرر هنا حفاظاً على المساحة، لكنها موجودة في النسخة الكاملة.
-    // سأرسل لك الملف النهائي الكامل إذا أردت.
+    // ==================== LOADING ====================
+    async function loadLoading() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'التحميل (Loading)');
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+                <input type="text" id="ld-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyLoading()">
+                <select id="ld-f-st" class="p-2 bg-slate-50 rounded text-sm" onchange="RW_Warehouse._applyLoading()"><option value="">كل الحالات</option><option>Loaded</option></select>
+                <button onclick="RW_Warehouse._applyLoading()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
+            </div></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="ld-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+        </div>`);
+        var res = await supabase.from('runsheets').select('*').in('status', ['Loaded']);
+        window._loadingData = res.data || [];
+        _applyLoading();
+    }
+    function _applyLoading() {
+        var d = window._loadingData || [];
+        var id = (byId('ld-f-id')?.value||'').toLowerCase(), st = byId('ld-f-st')?.value;
+        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        if (st) d = d.filter(r => r.status === st);
+        var tb = byId('ld-table'); if (!tb) return;
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات محمّلة</td></tr>'); return; }
+        var h = '';
+        d.forEach(r => {
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showLoadingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-700">Loaded</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        });
+        safeHTML(tb, h);
+    }
+    async function _showLoadingDetails(code) {
+        showLoader('جاري التحميل...');
+        var rsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', code).maybeSingle();
+        var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsRes.data?.id);
+        hideLoader();
+        var items = itemsRes.data || [];
+        if (!items.length) { showToast('لا توجد أصناف', 'info'); return; }
+        var h = '<div class="text-right"><table class="w-full border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية المحضّرة</th><th class="p-2 text-center">الكمية المحمّلة</th></tr></thead><tbody>';
+        items.forEach(it => { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_picked||0) + '</td><td class="p-2 text-center font-bold text-orange-600">' + (it.qty_loaded||0) + '</td></tr>'; });
+        h += '</tbody></table></div>';
+        Swal.fire({ title: 'تفاصيل التحميل: ' + code, html: h, width: '700px', showCloseButton: true, showConfirmButton: false });
+    }
+
+    // ==================== DELIVERY ====================
+    async function loadDelivery() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'التوصيل (Delivery)');
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+                <input type="text" id="dv-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyDelivery()">
+                <button onclick="RW_Warehouse._applyDelivery()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
+            </div></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="dv-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+        </div>`);
+        var res = await supabase.from('runsheets').select('*').in('status', ['Delivered']);
+        window._deliveryData = res.data || [];
+        _applyDelivery();
+    }
+    function _applyDelivery() {
+        var d = window._deliveryData || [];
+        var id = (byId('dv-f-id')?.value||'').toLowerCase();
+        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        var tb = byId('dv-table'); if (!tb) return;
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات موصّلة</td></tr>'); return; }
+        var h = '';
+        d.forEach(r => {
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showDeliveryDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">Delivered</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        });
+        safeHTML(tb, h);
+    }
+    async function _showDeliveryDetails(code) {
+        showLoader('جاري التحميل...');
+        var rsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', code).maybeSingle();
+        var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsRes.data?.id);
+        hideLoader();
+        var items = itemsRes.data || [];
+        if (!items.length) { showToast('لا توجد أصناف', 'info'); return; }
+        var h = '<div class="text-right"><table class="w-full border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية المحمّلة</th><th class="p-2 text-center">الكمية المسلّمة</th></tr></thead><tbody>';
+        items.forEach(it => { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_loaded||0) + '</td><td class="p-2 text-center font-bold text-green-600">' + (it.qty_delivered||0) + '</td></tr>'; });
+        h += '</tbody></table></div>';
+        Swal.fire({ title: 'تفاصيل التوصيل: ' + code, html: h, width: '700px', showCloseButton: true, showConfirmButton: false });
+    }
+
+    // ==================== RETURN ====================
+    async function loadReturn() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'المرتجعات (Return)');
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+                <input type="text" id="rt-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyReturn()">
+                <button onclick="RW_Warehouse._applyReturn()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
+            </div></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="rt-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+        </div>`);
+        var res = await supabase.from('runsheets').select('*').in('status', ['Returned']);
+        window._returnData = res.data || [];
+        _applyReturn();
+    }
+    function _applyReturn() {
+        var d = window._returnData || [];
+        var id = (byId('rt-f-id')?.value||'').toLowerCase();
+        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        var tb = byId('rt-table'); if (!tb) return;
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات مرتجعة</td></tr>'); return; }
+        var h = '';
+        d.forEach(r => {
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showReturnDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-rose-100 text-rose-700">Returned</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        });
+        safeHTML(tb, h);
+    }
+    async function _showReturnDetails(code) {
+        showLoader('جاري التحميل...');
+        var rsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', code).maybeSingle();
+        var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsRes.data?.id);
+        hideLoader();
+        var items = itemsRes.data || [];
+        if (!items.length) { showToast('لا توجد أصناف', 'info'); return; }
+        var h = '<div class="text-right"><table class="w-full border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية المسلّمة</th><th class="p-2 text-center">الكمية المرتجعة</th></tr></thead><tbody>';
+        items.forEach(it => { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_delivered||0) + '</td><td class="p-2 text-center font-bold text-rose-600">' + (it.qty_returned||0) + '</td></tr>'; });
+        h += '</tbody></table></div>';
+        Swal.fire({ title: 'تفاصيل المرتجعات: ' + code, html: h, width: '700px', showCloseButton: true, showConfirmButton: false });
+    }
+
+    // ==================== UNLOADING ====================
+    async function loadUnloading() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'التفريغ (Unloading)');
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+                <input type="text" id="ul-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyUnloading()">
+                <button onclick="RW_Warehouse._applyUnloading()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
+            </div></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="ul-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+        </div>`);
+        var res = await supabase.from('runsheets').select('*').in('status', ['Open','New']);
+        window._unloadingData = res.data || [];
+        _applyUnloading();
+    }
+    function _applyUnloading() {
+        var d = window._unloadingData || [];
+        var id = (byId('ul-f-id')?.value||'').toLowerCase();
+        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        var tb = byId('ul-table'); if (!tb) return;
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات مفرّغة</td></tr>'); return; }
+        var h = '';
+        d.forEach(r => {
+            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">' + (r.status||'') + '</span></td><td class="p-3 text-center"><button class="text-blue-600" onclick="RW_Warehouse._showUnloadingDetails(\'' + r.runsheet_code + '\')"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        });
+        safeHTML(tb, h);
+    }
+    async function _showUnloadingDetails(code) { showToast('التفاصيل قيد التطوير', 'info'); }
+
+    // ==================== COUNT & SETTLEMENT ====================
+    async function loadVehicleCount() { var c = byId('rw-page-container'); if(c){ safeText(byId('rw-header-title'),'جرد سيارة'); safeHTML(c,'<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">🚛</div><h2>جرد سيارة</h2><p style="color:#6b7280">قيد التطوير</p></div></div>'); } }
+    async function loadBranchCount() { var c = byId('rw-page-container'); if(c){ safeText(byId('rw-header-title'),'جرد فرع'); safeHTML(c,'<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">🏪</div><h2>جرد فرع</h2><p style="color:#6b7280">قيد التطوير</p></div></div>'); } }
+    async function loadGeneralCount() { var c = byId('rw-page-container'); if(c){ safeText(byId('rw-header-title'),'جرد عام'); safeHTML(c,'<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📦</div><h2>جرد عام</h2><p style="color:#6b7280">قيد التطوير</p></div></div>'); } }
+    async function loadSettlement() { var c = byId('rw-page-container'); if(c){ safeText(byId('rw-header-title'),'إغلاق اليومية'); safeHTML(c,'<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📑</div><h2>إغلاق اليومية</h2><p style="color:#6b7280">قيد التطوير</p></div></div>'); } }
+
+    // ==================== دوال إجرائية (Start) ====================
+    async function _startPicking(code) { await _changeStatus(code, 'start-picking'); }
+    async function _startLoading(code) { await _changeStatus(code, 'start-loading'); }
+    async function _startDelivery(code) { await _changeStatus(code, 'start-delivery'); }
+    async function _startReturn(code) { await _changeStatus(code, 'start-return'); }
+    async function _confirmUnload(code) {
+        var cf = await Swal.fire({ title: 'تأكيد التفريغ', text: 'إعادة جميع الكميات للمخزون؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم', cancelButtonText: 'لا' });
+        if (!cf.isConfirmed) return;
+        await _changeStatus(code, 'unload-runsheet');
+    }
+    async function _changeStatus(code, funcName) {
+        showLoader('جاري تحديث الحالة...');
+        var ses = await supabase.auth.getSession(), t = ses.data.session?.access_token;
+        try {
+            var res = await fetch(SUPABASE_URL + '/functions/v1/' + funcName, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code }) });
+            var json = await res.json(); hideLoader();
+            if (json.success) showToast('تم بنجاح', 'success');
+            else showToast(json.msg || 'فشل', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
+    }
 
     return {
         loadReceiving, _applyReceiving, _showReceivingDetails,
         loadVouchers, _applyVouchers, _viewVoucherDetails, _sendVoucher, _receiveVoucher, _openNewVoucherModal, loadVoucherForm,
         loadPicking, _applyPicking, _showPickingDetails,
-        // ... (باقي الدوال)
+        loadLoading, _applyLoading, _showLoadingDetails,
+        loadDelivery, _applyDelivery, _showDeliveryDetails,
+        loadReturn, _applyReturn, _showReturnDetails,
+        loadUnloading, _applyUnloading, _showUnloadingDetails,
+        loadVehicleCount, loadBranchCount, loadGeneralCount, loadSettlement,
+        _startPicking, _startLoading, _startDelivery, _startReturn, _confirmUnload
     };
 })();
 window.RW_Warehouse = RW_Warehouse;
@@ -3099,12 +3334,324 @@ window.RW_Finance = RW_Finance;
 // RW_Reports – التقارير الذكية (مبسط)
 // ============================================================
 var RW_Reports = (function() {
-  function renderDashboard(){ var c=byId('rw-page-container'); if(c){ safeText(byId('rw-header-title'),'لوحة القيادة'); safeHTML(c,'<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px;margin-bottom:20px">📊</div><h2 class="rw-card-title">لوحة القيادة</h2><p style="color:#6b7280">التقارير الذكية قيد التطوير – سيتم تفعيلها بالكامل في التحديث القادم</p></div></div>'); } }
-  function renderDetailedReports(){ renderDashboard(); }
-  return { renderDashboard:renderDashboard, renderDetailedReports:renderDetailedReports };
+    function _fmtNum(n) { return Number(n || 0).toLocaleString(); }
+    function _esc(s) { return String(s||'').replace(/[&<>]/g, function(m) { return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'; }); }
+    function _showLoader(m) { try { if (typeof showLoader === 'function') showLoader(m || 'جاري التحميل...'); } catch(e) { console.error(e); } }
+    function _hideLoader() { try { if (typeof hideLoader === 'function') hideLoader(); } catch(e) { console.error(e); } }
+    function _showToast(m, t) { try { if (typeof showToast === 'function') showToast(m, t || 'success'); } catch(e) { alert(m); } }
+
+    var _container = null;
+
+    // ========== لوحة القيادة (النظرة الشاملة) ==========
+    async function renderDashboard() {
+        var container = byId('rw-page-container');
+        if (!container) return;
+        _container = container;
+        safeText(byId('rw-header-title'), 'التقارير الذكية');
+        safeText(byId('rw-header-subtitle'), 'لوحة قيادة تفاعلية لمراقبة أداء الأعمال');
+
+        var today = new Date();
+        var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        var fromDef = firstDay.toISOString().split('T')[0];
+        var toDef = today.toISOString().split('T')[0];
+
+        var html = '<div class="p-4 space-y-6 text-right">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
+        html += '<h3 class="font-bold text-lg mb-4"><i class="fa-solid fa-calendar-range ml-2 text-indigo-600"></i> تحديد الفترة</h3>';
+        html += '<div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">';
+        html += '<div><label class="text-xs font-bold text-gray-500 block mb-1">من تاريخ</label><input type="date" id="dash-date-from" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm" value="' + fromDef + '"></div>';
+        html += '<div><label class="text-xs font-bold text-gray-500 block mb-1">إلى تاريخ</label><input type="date" id="dash-date-to" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm" value="' + toDef + '"></div>';
+        html += '<div><button id="dash-analyze-btn" class="w-full bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold shadow"><i class="fa-solid fa-magnifying-glass-chart ml-1"></i> تحليل الفترة</button></div>';
+        html += '<div><button id="dash-reset-btn" class="w-full bg-gray-100 text-gray-600 px-4 py-2.5 rounded-xl font-bold">إعادة تعيين</button></div>';
+        html += '</div></div>';
+        html += '<div id="dash-result-container"><div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-indigo-600"></i><p class="mt-2 text-gray-500">جاري تحميل التحليلات...</p></div></div>';
+        html += '</div>';
+
+        safeHTML(container, html);
+
+        var analyzeBtn = byId('dash-analyze-btn');
+        if (analyzeBtn) analyzeBtn.addEventListener('click', function() {
+            var fromEl = byId('dash-date-from'), from = fromEl ? fromEl.value : '';
+            var toEl = byId('dash-date-to'), to = toEl ? toEl.value : '';
+            if (!from || !to) { _showToast('يرجى تحديد الفترة', 'warning'); return; }
+            _loadDashboardData(from, to);
+        });
+        var resetBtn = byId('dash-reset-btn');
+        if (resetBtn) resetBtn.addEventListener('click', function() {
+            byId('dash-date-from').value = fromDef;
+            byId('dash-date-to').value = toDef;
+            _loadDashboardData(fromDef, toDef);
+        });
+
+        _loadDashboardData(fromDef, toDef);
+    }
+
+    async function _loadDashboardData(fromDate, toDate) {
+        var container = byId('dash-result-container');
+        if (!container) return;
+        safeHTML(container, '<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-indigo-600"></i><p class="mt-2 text-gray-500">جاري تحليل البيانات للفترة...</p></div>');
+
+        try {
+            // 1. جلب الأوردرات في الفترة
+            var ordersRes = await supabase.from('orders').select('total_amount, order_date, customer_id, order_status').gte('order_date', fromDate).lte('order_date', toDate);
+            var orders = ordersRes.data || [];
+
+            var totalSales = 0;
+            var orderCount = orders.length;
+            for (var i = 0; i < orders.length; i++) {
+                totalSales += Number(orders[i].total_amount) || 0;
+            }
+            var averageOrder = orderCount > 0 ? Math.round(totalSales / orderCount) : 0;
+
+            // 2. جلب الأصناف والمخزون
+            var items = RW_STATE.data.items;
+            if (!items || !items.length) {
+                var itemsRes = await supabase.from('items').select('*');
+                items = itemsRes.data || [];
+                RW_STATE.data.items = items;
+            }
+
+            var stockBranchesRes = await supabase.from('stock_branches').select('item_id, qty, allocated_qty');
+            var stockData = stockBranchesRes.data || [];
+            var stockMap = {};
+            for (var s = 0; s < stockData.length; s++) {
+                var st = stockData[s];
+                stockMap[st.item_id] = (stockMap[st.item_id] || 0) + (Number(st.qty) || 0);
+            }
+
+            var lowStockCount = 0;
+            for (var j = 0; j < items.length; j++) {
+                var it = items[j];
+                var stk = stockMap[it.id] || 0;
+                if (stk <= (Number(it.reorder_point) || 5)) lowStockCount++;
+            }
+
+            // 3. توقعات المبيعات (بسيطة)
+            var forecast = averageOrder * 30; // توقع شهري بسيط
+            var confidence = orderCount > 50 ? 'عالية' : (orderCount > 20 ? 'متوسطة' : 'منخفضة');
+
+            // 4. العملاء غير النشطين (آخر 60 يوم)
+            var sixtyDaysAgo = new Date();
+            sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+            var recentRes = await supabase.from('orders').select('customer_id').gte('order_date', sixtyDaysAgo.toISOString().split('T')[0]);
+            var recentCustomers = {};
+            var recentData = recentRes.data || [];
+            for (var r = 0; r < recentData.length; r++) {
+                if (recentData[r].customer_id) recentCustomers[recentData[r].customer_id] = true;
+            }
+            var customers = RW_STATE.data.customers;
+            if (!customers || !customers.length) {
+                var custRes = await supabase.from('customers').select('customer_code, name');
+                customers = custRes.data || [];
+            }
+            var inactiveCount = 0;
+            for (var c = 0; c < customers.length; c++) {
+                if (!recentCustomers[customers[c].customer_code]) inactiveCount++;
+            }
+
+            // 5. بناء HTML النتيجة
+            _renderDashboardContent(container, {
+                totalSales: totalSales,
+                orderCount: orderCount,
+                averageOrder: averageOrder,
+                lowStockCount: lowStockCount,
+                forecast: forecast,
+                confidence: confidence,
+                inactiveCount: inactiveCount
+            }, fromDate, toDate);
+
+        } catch(e) {
+            console.error(e);
+            safeHTML(container, '<div class="text-center py-10 text-red-500">فشل تحميل التحليلات</div>');
+        }
+    }
+
+    function _renderDashboardContent(container, data, fromDate, toDate) {
+        var html = '<div class="text-right space-y-6 p-4">';
+        html += '<div class="grid grid-cols-1 md:grid-cols-4 gap-4">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-5 text-center"><p class="text-xs text-gray-400 font-bold mb-1">المبيعات المتوقعة (شهرياً)</p><p class="text-3xl font-black text-indigo-600">' + _fmtNum(data.forecast) + ' EGP</p><p class="text-xs text-gray-400 mt-1">مستوى الثقة: ' + data.confidence + '</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-5 text-center"><p class="text-xs text-gray-400 font-bold mb-1">إجمالي المبيعات</p><p class="text-3xl font-black text-emerald-600">' + _fmtNum(data.totalSales) + ' EGP</p><p class="text-xs text-gray-400 mt-1">' + data.orderCount + ' أوردر</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-5 text-center"><p class="text-xs text-gray-400 font-bold mb-1">أصناف منخفضة</p><p class="text-3xl font-black text-red-600">' + data.lowStockCount + '</p><p class="text-xs text-gray-400 mt-1">تحت حد إعادة الطلب</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-5 text-center"><p class="text-xs text-gray-400 font-bold mb-1">عملاء غير نشطين</p><p class="text-3xl font-black text-amber-600">' + data.inactiveCount + '</p><p class="text-xs text-gray-400 mt-1">لم يشتروا منذ 60 يوماً</p></div>';
+        html += '</div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><p class="text-sm text-gray-500"><strong>الفترة:</strong> من ' + fromDate + ' إلى ' + toDate + '</p></div>';
+        html += '</div>';
+        safeHTML(container, html);
+    }
+
+    // ========== التقارير التفصيلية ==========
+    async function renderDetailedReports() {
+        var container = byId('rw-page-container');
+        if (!container) return;
+        safeText(byId('rw-header-title'), 'التقارير التفصيلية');
+        safeText(byId('rw-header-subtitle'), 'تحليلات متقدمة وتوصيات ذكية');
+
+        var today = new Date();
+        var firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        var fromDef = firstDay.toISOString().split('T')[0];
+        var toDef = today.toISOString().split('T')[0];
+
+        var html = '<div class="p-4 space-y-6 text-right">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
+        html += '<h3 class="font-bold text-lg mb-4"><i class="fa-solid fa-sliders ml-2 text-indigo-600"></i> التقارير التفصيلية</h3>';
+        html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">';
+        html += '<div><label class="text-xs font-bold text-gray-500 block mb-1">من تاريخ</label><input type="date" id="det-from" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm" value="' + fromDef + '"></div>';
+        html += '<div><label class="text-xs font-bold text-gray-500 block mb-1">إلى تاريخ</label><input type="date" id="det-to" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm" value="' + toDef + '"></div>';
+        html += '</div>';
+        html += '<div class="flex gap-2">';
+        html += '<button id="det-generate-btn" class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold shadow"><i class="fa-solid fa-chart-simple ml-1"></i> عرض التحليلات</button>';
+        html += '<button id="det-reset-btn" class="bg-gray-100 text-gray-600 px-4 py-2.5 rounded-xl font-bold">إعادة تعيين</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div id="det-result-container"></div>';
+        html += '</div>';
+
+        safeHTML(container, html);
+
+        var genBtn = byId('det-generate-btn');
+        if (genBtn) genBtn.addEventListener('click', function() {
+            var fromEl = byId('det-from'), from = fromEl ? fromEl.value : '';
+            var toEl = byId('det-to'), to = toEl ? toEl.value : '';
+            if (!from || !to) { _showToast('يرجى تحديد الفترة', 'warning'); return; }
+            _loadDetailedReports(from, to);
+        });
+        var resetBtn = byId('det-reset-btn');
+        if (resetBtn) resetBtn.addEventListener('click', function() {
+            byId('det-from').value = fromDef;
+            byId('det-to').value = toDef;
+            safeHTML(byId('det-result-container'), '');
+        });
+
+        _loadDetailedReports(fromDef, toDef);
+    }
+
+    async function _loadDetailedReports(fromDate, toDate) {
+        var container = byId('det-result-container');
+        if (!container) return;
+        safeHTML(container, '<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl"></i> جاري تحميل التقارير...</div>');
+
+        try {
+            var items = RW_STATE.data.items || [];
+            var customers = RW_STATE.data.customers || [];
+            if (!items.length) { var iRes = await supabase.from('items').select('*'); items = iRes.data || []; }
+            if (!customers.length) { var cRes = await supabase.from('customers').select('*'); customers = cRes.data || []; }
+
+            var stockBranchesRes = await supabase.from('stock_branches').select('item_id, qty');
+            var stockData = stockBranchesRes.data || [];
+            var stockMap = {};
+            for (var s = 0; s < stockData.length; s++) {
+                stockMap[stockData[s].item_id] = (stockMap[stockData[s].item_id] || 0) + (Number(stockData[s].qty) || 0);
+            }
+
+            var orderDetailsRes = await supabase.from('order_details').select('item_code, qty, unit_price, order_id');
+            var ordersRes = await supabase.from('orders').select('order_code, order_date').gte('order_date', fromDate).lte('order_date', toDate);
+            var orderDateMap = {};
+            var ordersData = ordersRes.data || [];
+            for (var o = 0; o < ordersData.length; o++) {
+                orderDateMap[ordersData[o].order_code] = ordersData[o].order_date;
+            }
+
+            // الأصناف الراكدة
+            var soldItems = {};
+            var detailsData = orderDetailsRes.data || [];
+            for (var d = 0; d < detailsData.length; d++) {
+                var det = detailsData[d];
+                if (orderDateMap[det.order_id]) soldItems[det.item_code] = true;
+            }
+
+            var dormantItems = [];
+            for (var i = 0; i < items.length; i++) {
+                var itm = items[i];
+                var stk = stockMap[itm.id] || 0;
+                if (stk > 0 && !soldItems[itm.item_code]) {
+                    dormantItems.push({ name: itm.name, code: itm.item_code, stock: stk, unit: itm.unit || 'حبة' });
+                }
+            }
+
+            // العملاء المديونون
+            var debtors = [];
+            for (var c = 0; c < customers.length; c++) {
+                var cust = customers[c];
+                if ((Number(cust.debt) || 0) > 0) {
+                    debtors.push({ name: cust.name, code: cust.customer_code, debt: Number(cust.debt) });
+                }
+            }
+            debtors.sort(function(a, b) { return b.debt - a.debt; });
+
+            // توصيات
+            var recommendations = [];
+            if (dormantItems.length > 0) {
+                recommendations.push({ type: 'عرض ترويجي', item: dormantItems[0].name, reason: 'راكد في المخزون (' + dormantItems[0].stock + ' ' + dormantItems[0].unit + ')' });
+            }
+            if (debtors.length > 0) {
+                recommendations.push({ type: 'تحصيل', item: debtors[0].name, reason: 'أعلى رصيد مديونية: ' + _fmtNum(debtors[0].debt) + ' EGP' });
+            }
+            for (var j = 0; j < items.length; j++) {
+                var iit = items[j];
+                var sstk = stockMap[iit.id] || 0;
+                if (sstk <= (Number(iit.reorder_point) || 5) && recommendations.length < 5) {
+                    recommendations.push({ type: 'شراء', item: iit.name, reason: 'المخزون منخفض (' + sstk + ')' });
+                    break;
+                }
+            }
+
+            var html = '<div class="text-right space-y-6">';
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><p class="text-sm text-gray-500"><strong>الفترة:</strong> من ' + fromDate + ' إلى ' + toDate + '</p></div>';
+            
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-box-archive ml-2 text-red-600"></i> الأصناف الراكدة</h3>';
+            if (dormantItems.length > 0) {
+                html += '<div class="overflow-x-auto"><table class="w-full border text-sm"><thead><tr><th class="p-2">الكود</th><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th></tr></thead><tbody>';
+                for (var di = 0; di < Math.min(dormantItems.length, 20); di++) {
+                    html += '<tr><td class="p-2">' + dormantItems[di].code + '</td><td class="p-2 font-semibold">' + dormantItems[di].name + '</td><td class="p-2 text-center font-bold text-red-600">' + dormantItems[di].stock + '</td></tr>';
+                }
+                html += '</tbody></table></div>';
+            } else {
+                html += '<div class="text-center py-8 text-green-600">لا توجد أصناف راكدة</div>';
+            }
+            html += '</div>';
+
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-file-invoice-dollar ml-2 text-red-600"></i> أعلى العملاء مديونية</h3>';
+            if (debtors.length > 0) {
+                html += '<div class="overflow-x-auto"><table class="w-full border text-sm"><thead><tr><th class="p-2">الكود</th><th class="p-2">العميل</th><th class="p-2 text-center">الدين</th></tr></thead><tbody>';
+                for (var db = 0; db < Math.min(debtors.length, 10); db++) {
+                    html += '<tr><td class="p-2">' + debtors[db].code + '</td><td class="p-2 font-semibold">' + debtors[db].name + '</td><td class="p-2 text-center font-bold text-red-600">' + _fmtNum(debtors[db].debt) + ' EGP</td></tr>';
+                }
+                html += '</tbody></table></div>';
+            } else {
+                html += '<div class="text-center py-8 text-green-600">لا توجد ديون</div>';
+            }
+            html += '</div>';
+
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-lightbulb ml-2 text-amber-500"></i> توصيات ذكية</h3>';
+            if (recommendations.length > 0) {
+                html += '<div class="space-y-3">';
+                for (var rc = 0; rc < recommendations.length; rc++) {
+                    var rec = recommendations[rc];
+                    var icon = rec.type === 'شراء' ? 'fa-cart-shopping' : (rec.type === 'عرض ترويجي' ? 'fa-tag' : 'fa-file-invoice-dollar');
+                    var color = rec.type === 'شراء' ? 'border-indigo-200 bg-indigo-50' : (rec.type === 'عرض ترويجي' ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50');
+                    html += '<div class="border-r-4 ' + color + ' p-4 rounded-lg"><div class="flex items-center gap-2 mb-1"><i class="fa-solid ' + icon + '"></i><span class="font-bold">' + rec.type + ': ' + rec.item + '</span></div><p class="text-sm text-gray-600">' + rec.reason + '</p></div>';
+                }
+                html += '</div>';
+            } else {
+                html += '<div class="text-center py-8 text-gray-500">لا توجد توصيات حالياً</div>';
+            }
+            html += '</div>';
+
+            html += '</div>';
+            safeHTML(container, html);
+
+        } catch(e) {
+            console.error(e);
+            safeHTML(container, '<div class="text-center py-10 text-red-500">فشل تحميل التقارير</div>');
+        }
+    }
+
+    return {
+        renderDashboard: renderDashboard,
+        renderDetailedReports: renderDetailedReports
+    };
 })();
 window.RW_Reports = RW_Reports;
-
 // ============================================================
 // RW_Views – نظام التوجيه النهائي
 // ============================================================
