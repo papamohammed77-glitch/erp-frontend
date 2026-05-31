@@ -2838,43 +2838,308 @@ var RW_Warehouse = (function() {
     }
     async function _showUnloadingDetails(code) { showToast('التفاصيل قيد التطوير', 'info'); }
 
-    // ==================== COUNT & SETTLEMENT (Placeholders) ====================
-    // ==================== COUNT & SETTLEMENT ====================
+    // ==================== COUNT (الجرد) & SETTLEMENT (إغلاق اليومية) ====================
     async function loadVehicleCount() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'جرد سيارة');
-        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="vc-table-container">جاري التحميل...</div></div></div>`);
-        var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Adjustment').order('voucher_date', { ascending: false });
-        var data = res.data || [];
-        var html = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + (v.reference||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات جرد</div>';
-        safeHTML(byId('vc-table-container'), html);
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="text-xs font-bold block mb-1">المندوب</label>
+                    <input type="text" id="vc-driver-search" oninput="RW_Warehouse._searchDriver(this.value)" autocomplete="off" placeholder="ابحث باسم أو بريد المندوب..." class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-200 focus:border-blue-500 outline-none">
+                    <div id="vc-driver-results" class="absolute z-50 bg-white shadow-xl rounded-xl max-h-48 overflow-y-auto hidden border mt-1" style="width:calc(33%-2rem);"></div>
+                </div>
+                <div>
+                    <label class="text-xs font-bold block mb-1">الرانشيت (اختياري)</label>
+                    <select id="vc-runsheet-select" class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-200 font-bold"><option value="">-- اختر --</option></select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold block mb-1">ملاحظات</label>
+                    <input id="vc-notes" class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-200" placeholder="ملاحظات...">
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4 relative">
+                <label class="text-xs font-bold block mb-2">البحث عن صنف</label>
+                <div class="relative">
+                    <input type="text" id="vc-item-search" oninput="RW_Warehouse._searchInvItem('vc', this.value)" autocomplete="off" placeholder="امسح الباركود أو ابحث..." class="w-full p-4 bg-slate-50 rounded-xl border-2 focus:border-emerald-500 outline-none font-bold text-lg">
+                    <button onclick="RW_Warehouse._startBarcodeScanner('vc')" class="absolute left-2 top-2 bg-emerald-600 text-white p-3 rounded-xl"><i class="fa-solid fa-camera"></i></button>
+                </div>
+                <div id="vc-item-results" class="absolute z-50 left-0 right-0 mt-1 bg-white shadow-xl rounded-xl max-h-60 overflow-y-auto hidden border"></div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm overflow-auto" style="max-height:50vh;">
+                <table class="w-full"><thead class="bg-slate-800 text-white"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">حذف</th></tr></thead><tbody id="vc-cart-table"><tr><td colspan="4" class="p-6 text-center">أضف أصنافاً</td></tr></tbody></table>
+            </div>
+            <div class="mt-2">عدد الأصناف: <span id="vc-cart-count">0</span></div>
+            <div class="mt-4 flex justify-end gap-3">
+                <button onclick="window._invCart=[]; RW_Warehouse._renderInvCart('vc')" class="bg-gray-500 text-white px-4 py-2 rounded-xl font-bold text-sm">مسح الكل</button>
+                <button onclick="RW_Warehouse._saveVehicleCount()" class="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-lg shadow-lg"><i class="fa-solid fa-check ml-2"></i> حفظ الجرد</button>
+            </div>
+        </div>`);
+        
+        window._selectedDriver = null;
+        window._invCart = [];
+        _renderInvCart('vc');
+        
+        // تحميل الرانشيتات
+        var runsheetsRes = await supabase.from('runsheets').select('runsheet_code, driver_id').in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning']);
+        var sel = byId('vc-runsheet-select');
+        if (sel && runsheetsRes.data) {
+            for (var i = 0; i < runsheetsRes.data.length; i++) {
+                var r = runsheetsRes.data[i];
+                sel.innerHTML += '<option value="' + r.runsheet_code + '">' + r.runsheet_code + ' - ' + (r.driver_id || '') + '</option>';
+            }
+        }
     }
+
+    async function _searchDriver(query) {
+        var div = byId('vc-driver-results'); if (!div) return;
+        if (!query || query.trim().length < 1) { div.classList.add('hidden'); return; }
+        var res = await supabase.from('users').select('email, name').in('role', ['driver','سائق','مندوب']).ilike('name', '%' + query + '%');
+        var drivers = res.data || [];
+        var q = query.toLowerCase();
+        var filtered = drivers.filter(function(d) { return (d.name || '').toLowerCase().indexOf(q) !== -1 || (d.email || '').toLowerCase().indexOf(q) !== -1; });
+        if (filtered.length > 0) {
+            var html = '';
+            for (var i = 0; i < filtered.length; i++) {
+                var d = filtered[i];
+                html += '<div onclick="RW_Warehouse._selectDriver(\'' + d.email + '\', \'' + (d.name || '').replace(/'/g, "\\'") + '\')" class="p-3 hover:bg-blue-50 cursor-pointer border-b"><div class="font-bold">' + d.name + '</div><div class="text-xs text-slate-400">' + d.email + '</div></div>';
+            }
+            safeHTML(div, html); div.classList.remove('hidden');
+        } else { div.classList.add('hidden'); }
+    }
+
+    function _selectDriver(email, name) {
+        window._selectedDriver = email;
+        byId('vc-driver-search').value = name + ' (' + email + ')';
+        byId('vc-driver-results').classList.add('hidden');
+    }
+
+    function _searchInvItem(prefix, query) {
+        var div = byId(prefix + '-item-results'); if (!div) return;
+        if (!query || query.trim().length < 1) { div.classList.add('hidden'); return; }
+        var items = RW_STATE.data.items || [];
+        var q = query.toLowerCase();
+        var filtered = items.filter(function(i) { return (i.name || '').toLowerCase().indexOf(q) !== -1 || (i.item_code || '').toLowerCase().indexOf(q) !== -1 || (i.barcode || '').toLowerCase().indexOf(q) !== -1; });
+        if (filtered.length > 0) {
+            var html = '';
+            for (var idx = 0; idx < Math.min(filtered.length, 30); idx++) {
+                var item = filtered[idx];
+                html += '<div onclick="RW_Warehouse._addToInvCart(\'' + prefix + '\', \'' + item.item_code + '\')" class="p-3 hover:bg-blue-50 cursor-pointer border-b flex items-center"><div><div class="font-bold">' + item.name + '</div><div class="text-xs text-slate-400">كود: ' + item.item_code + ' | رصيد: ' + (item.qty || 0) + '</div></div></div>';
+            }
+            safeHTML(div, html); div.classList.remove('hidden');
+        } else { safeHTML(div, '<div class="p-3 text-center text-gray-400">لا توجد نتائج</div>'); div.classList.remove('hidden'); }
+    }
+
+    function _addToInvCart(prefix, itemCode) {
+        var items = RW_STATE.data.items || [], item = null;
+        for (var i = 0; i < items.length; i++) { if (items[i].item_code === itemCode) { item = items[i]; break; } }
+        if (!item) return;
+        var existing = null;
+        for (var j = 0; j < window._invCart.length; j++) { if (window._invCart[j].code === itemCode) { existing = window._invCart[j]; break; } }
+        if (existing) { existing.qty = (parseInt(existing.qty) || 0) + 1; } else { window._invCart.push({ code: item.item_code, name: item.name, unit: item.unit || 'حبة', qty: 1 }); }
+        byId(prefix + '-item-search').value = '';
+        byId(prefix + '-item-results').classList.add('hidden');
+        _renderInvCart(prefix);
+    }
+
+    function _renderInvCart(prefix) {
+        var tbody = byId(prefix + '-cart-table'), countSpan = byId(prefix + '-cart-count');
+        if (!tbody) return;
+        if (window._invCart.length === 0) { safeHTML(tbody, '<tr><td colspan="4" class="p-6 text-center">أضف أصنافاً</td></tr>'); if (countSpan) countSpan.innerText = '0'; return; }
+        var html = '';
+        for (var i = 0; i < window._invCart.length; i++) {
+            var it = window._invCart[i];
+            html += '<tr class="border-b hover:bg-slate-50"><td class="p-2"><div class="font-bold">' + it.name + '</div><div class="text-xs">' + it.code + '</div></td><td class="p-2 text-center">' + it.unit + '</td><td class="p-2 text-center"><input type="number" value="' + it.qty + '" onchange="RW_Warehouse._updateInvCartQty(' + i + ', this.value, \'' + prefix + '\')" class="w-20 p-1 border rounded text-center" min="0"></td><td class="p-2 text-center"><button onclick="RW_Warehouse._removeInvCartItem(' + i + ', \'' + prefix + '\')" class="text-red-500"><i class="fa-solid fa-trash"></i></button></td></tr>';
+        }
+        safeHTML(tbody, html);
+        if (countSpan) countSpan.innerText = String(window._invCart.length);
+    }
+
+    function _updateInvCartQty(idx, val, prefix) {
+        var q = parseInt(val);
+        if (isNaN(q) || q <= 0) { window._invCart.splice(idx, 1); } else { window._invCart[idx].qty = q; }
+        _renderInvCart(prefix);
+    }
+
+    function _removeInvCartItem(idx, prefix) { window._invCart.splice(idx, 1); _renderInvCart(prefix); }
+
+    async function _saveVehicleCount() {
+        var entityId = window._selectedDriver || '';
+        if (!entityId) { showToast('يجب اختيار مندوب', 'warning'); return; }
+        var reference = (byId('vc-runsheet-select') ? byId('vc-runsheet-select').value : '') || '';
+        var notes = (byId('vc-notes') ? byId('vc-notes').value : '') || '';
+        if (notes) reference = reference ? reference + ' | ' + notes : notes;
+        await _saveInvCount('vehicle', entityId, reference || 'جرد سيارة');
+    }
+
+    async function _saveInvCount(type, entityId, reference) {
+        if (!window._invCart || window._invCart.length === 0) { showToast('أضف أصنافاً', 'warning'); return; }
+        var items = [];
+        for (var i = 0; i < window._invCart.length; i++) {
+            items.push({ itemCode: window._invCart[i].code, itemName: window._invCart[i].name, unit: window._invCart[i].unit, qty: parseInt(window._invCart[i].qty) || 0, unitPrice: 0, notes: '' });
+        }
+        showLoader('جاري حفظ الجرد...');
+        try {
+            var ses = await supabase.auth.getSession(), token = ses.data.session ? ses.data.session.access_token : null;
+            var res = await fetch(SUPABASE_URL + '/functions/v1/save-inventory-count', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ type: type, entityId: entityId, reference: reference, items: items }) });
+            var json = await res.json(); hideLoader();
+            if (json.success) { showToast(json.msg + ' (' + json.voucherId + ')', 'success'); window._invCart = []; _renderInvCart('vc'); }
+            else showToast(json.msg || 'فشل الحفظ', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
+    }
+
     async function loadBranchCount() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'جرد فرع');
-        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="bc-table-container">جاري التحميل...</div></div></div>`);
-        var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Adjustment').order('voucher_date', { ascending: false });
-        var data = res.data || [];
-        var html = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + (v.reference||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات جرد</div>';
-        safeHTML(byId('bc-table-container'), html);
+        var branches = RW_STATE.data.branches || [];
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div><label class="text-xs font-bold block mb-1">الفرع</label><select id="bc-branch-select" class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-200 font-bold"><option value="">-- اختر --</option>${branches.map(b => '<option value="' + (b.branch_code || b.id || '') + '">' + (b.name || b.branch_name || '') + '</option>').join('')}</select></div>
+                <div><label class="text-xs font-bold block mb-1">القسم / الرف</label><input id="bc-section" class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-200" placeholder="مثلاً: رف A-1"></div>
+                <div><label class="text-xs font-bold block mb-1">ملاحظات</label><input id="bc-notes" class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-200" placeholder="ملاحظات..."></div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4 relative">
+                <label class="text-xs font-bold block mb-2">البحث عن صنف</label>
+                <div class="relative"><input type="text" id="bc-item-search" oninput="RW_Warehouse._searchInvItem('bc', this.value)" autocomplete="off" placeholder="امسح الباركود أو ابحث..." class="w-full p-4 bg-slate-50 rounded-xl border-2 focus:border-emerald-500 outline-none font-bold text-lg"><div id="bc-item-results" class="absolute z-50 left-0 right-0 mt-1 bg-white shadow-xl rounded-xl max-h-60 overflow-y-auto hidden border"></div></div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm overflow-auto" style="max-height:50vh;"><table class="w-full"><thead class="bg-slate-800 text-white"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">حذف</th></tr></thead><tbody id="bc-cart-table"><tr><td colspan="4" class="p-6 text-center">أضف أصنافاً</td></tr></tbody></table></div>
+            <div class="mt-2">عدد الأصناف: <span id="bc-cart-count">0</span></div>
+            <div class="mt-4 flex justify-end gap-3"><button onclick="window._invCart=[]; RW_Warehouse._renderInvCart('bc')" class="bg-gray-500 text-white px-4 py-2 rounded-xl font-bold text-sm">مسح الكل</button><button onclick="RW_Warehouse._saveBranchCount()" class="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-lg shadow-lg"><i class="fa-solid fa-check ml-2"></i> حفظ الجرد</button></div>
+        </div>`);
+        window._invCart = []; _renderInvCart('bc');
     }
+
+    async function _saveBranchCount() {
+        var entityId = (byId('bc-branch-select') ? byId('bc-branch-select').value : '') || '';
+        if (!entityId) { showToast('يجب اختيار فرع', 'warning'); return; }
+        var section = (byId('bc-section') ? byId('bc-section').value : '') || '';
+        var notes = (byId('bc-notes') ? byId('bc-notes').value : '') || '';
+        var reference = section ? ('قسم: ' + section) : '';
+        if (notes) reference = reference ? reference + ' | ' + notes : notes;
+        await _saveInvCount('branch', entityId, reference || 'جرد فرع');
+    }
+
     async function loadGeneralCount() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'جرد عام');
-        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="gc-table-container">جاري التحميل...</div></div></div>`);
-        var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Adjustment').order('voucher_date', { ascending: false });
-        var data = res.data || [];
-        var html = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + (v.reference||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات جرد</div>';
-        safeHTML(byId('gc-table-container'), html);
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><input id="gc-notes" class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-200" placeholder="ملاحظات الجرد العام..."></div>
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4 relative">
+                <label class="text-xs font-bold block mb-2">البحث عن صنف</label>
+                <div class="relative"><input type="text" id="gc-item-search" oninput="RW_Warehouse._searchInvItem('gc', this.value)" autocomplete="off" placeholder="امسح الباركود أو ابحث..." class="w-full p-4 bg-slate-50 rounded-xl border-2 focus:border-emerald-500 outline-none font-bold text-lg"><div id="gc-item-results" class="absolute z-50 left-0 right-0 mt-1 bg-white shadow-xl rounded-xl max-h-60 overflow-y-auto hidden border"></div></div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm overflow-auto" style="max-height:50vh;"><table class="w-full"><thead class="bg-slate-800 text-white"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">حذف</th></tr></thead><tbody id="gc-cart-table"><tr><td colspan="4" class="p-6 text-center">أضف أصنافاً</td></tr></tbody></table></div>
+            <div class="mt-2">عدد الأصناف: <span id="gc-cart-count">0</span></div>
+            <div class="mt-4 flex justify-end gap-3"><button onclick="window._invCart=[]; RW_Warehouse._renderInvCart('gc')" class="bg-gray-500 text-white px-4 py-2 rounded-xl font-bold text-sm">مسح الكل</button><button onclick="RW_Warehouse._saveGeneralCount()" class="bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-lg shadow-lg"><i class="fa-solid fa-check ml-2"></i> حفظ الجرد</button></div>
+        </div>`);
+        window._invCart = []; _renderInvCart('gc');
     }
+
+    async function _saveGeneralCount() {
+        var notes = (byId('gc-notes') ? byId('gc-notes').value : '') || '';
+        await _saveInvCount('general', 'MAIN', 'جرد عام' + (notes ? ' | ' + notes : ''));
+    }
+
+    // ==================== SETTLEMENT (إغلاق اليومية) ====================
     async function loadSettlement() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'إغلاق اليومية');
-        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="settlement-table-container">جاري التحميل...</div></div></div>`);
-        var res = await supabase.from('daily_settlements').select('*').order('settlement_date', { ascending: false });
-        var data = res.data || [];
-        var html = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">كود التسوية</th><th class="p-3">التاريخ</th><th class="p-3">الرانشيت</th><th class="p-3 text-center">العجز</th><th class="p-3 text-center">قيمة العجز</th></tr></thead><tbody>' + data.map(s => '<tr class="border-b"><td class="p-3 font-bold">' + (s.settlement_code||'') + '</td><td class="p-3">' + (s.settlement_date||'') + '</td><td class="p-3">' + (s.runsheet_id||'') + '</td><td class="p-3 text-center">' + (s.total_shortage||0) + '</td><td class="p-3 text-center font-bold text-red-600">' + Number(s.total_shortage_value||0).toLocaleString() + ' EGP</td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد تسويات</div>';
-        safeHTML(byId('settlement-table-container'), html);
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">
+                <label class="text-xs font-bold block mb-2">اختيار الرانشيت</label>
+                <select id="settlement-rs-select" class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-200 font-bold" onchange="RW_Warehouse._onSettlementRsChange()"><option value="">-- اختر رانشيتاً --</option></select>
+                <div id="settlement-rs-info" class="mt-3 text-sm text-slate-500"></div>
+            </div>
+            <div id="settlement-details-container" class="hidden">
+                <div class="bg-white rounded-xl shadow-sm overflow-auto mb-4" style="max-height:50vh;"><table class="w-full"><thead class="bg-slate-800 text-white sticky top-0"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">محمّلة</th><th class="p-2 text-center">مسلّمة</th><th class="p-2 text-center">مرتجعة</th><th class="p-2 text-center">مجرودة</th><th class="p-2 text-center">العجز</th><th class="p-2 text-center">قيمة العجز</th></tr></thead><tbody id="settlement-items-body"><tr><td colspan="7" class="p-6 text-center">اختر رانشيتاً</td></tr></tbody></table></div>
+                <div class="flex justify-end gap-2"><button onclick="RW_Warehouse._saveSettlement()" class="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-black shadow-lg"><i class="fa-solid fa-check ml-2"></i> حفظ التسوية وترحيل العجز</button></div>
+            </div>
+        </div>`);
+        
+        var runsheetsRes = await supabase.from('runsheets').select('runsheet_code, driver_id').in('status', ['Delivered', 'Returned']);
+        var sel = byId('settlement-rs-select');
+        if (sel && runsheetsRes.data) {
+            for (var i = 0; i < runsheetsRes.data.length; i++) {
+                sel.innerHTML += '<option value="' + runsheetsRes.data[i].runsheet_code + '">' + runsheetsRes.data[i].runsheet_code + ' - ' + (runsheetsRes.data[i].driver_id || '') + '</option>';
+            }
+        }
+    }
+
+    async function _onSettlementRsChange() {
+        var rsCode = byId('settlement-rs-select')?.value;
+        if (!rsCode) { byId('settlement-details-container').classList.add('hidden'); return; }
+        showLoader('جاري تحميل بيانات التسوية...');
+        try {
+            // 1. جلب الرانشيت
+            var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', rsCode).maybeSingle();
+            var rs = rsRes.data; if (!rs) { hideLoader(); showToast('الرانشيت غير موجود', 'error'); return; }
+            
+            // 2. جلب المحمّل من run_sheet_details
+            var loadedRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
+            var loadedItems = loadedRes.data || [];
+            
+            // 3. جلب المسلّم والمرتجع من order_details
+            var orderDetailsRes = await supabase.from('order_details').select('*').eq('runsheet_id', rs.id);
+            var orderDetails = orderDetailsRes.data || [];
+            
+            // 4. جلب المرتجعات من stock_vouchers
+            var vouchersRes = await supabase.from('stock_vouchers').select('voucher_code').eq('reference', rsCode).eq('type', 'Return');
+            var voucherIds = (vouchersRes.data || []).map(function(v) { return v.voucher_code; });
+            var returnDetails = [];
+            if (voucherIds.length > 0) {
+                var retRes = await supabase.from('stock_voucher_details').select('*').in('voucher_code', voucherIds);
+                returnDetails = retRes.data || [];
+            }
+            
+            // 5. تجميع البيانات
+            var itemsMap = {};
+            for (var i = 0; i < loadedItems.length; i++) {
+                var it = loadedItems[i];
+                itemsMap[it.item_code] = { itemCode: it.item_code, itemName: it.item_name, unit: it.unit, loadedQty: Number(it.qty_loaded) || 0, deliveredQty: 0, returnedQty: 0, countedQty: 0, unitPrice: Number(it.unit_price) || 0 };
+            }
+            for (var i = 0; i < orderDetails.length; i++) {
+                var od = orderDetails[i];
+                if (itemsMap[od.item_code]) {
+                    itemsMap[od.item_code].deliveredQty += Number(od.qty_delivered) || 0;
+                    itemsMap[od.item_code].returnedQty += Number(od.qty_refused) || 0;
+                }
+            }
+            for (var i = 0; i < returnDetails.length; i++) {
+                var rd = returnDetails[i];
+                if (itemsMap[rd.item_code]) itemsMap[rd.item_code].returnedQty += Number(rd.qty) || 0;
+            }
+            
+            // 6. عرض الجدول
+            var html = '';
+            var totalShortage = 0, totalShortageValue = 0;
+            for (var code in itemsMap) {
+                var itm = itemsMap[code];
+                var shortage = itm.loadedQty - itm.deliveredQty - itm.returnedQty - itm.countedQty;
+                var shortageValue = shortage * itm.unitPrice;
+                if (shortage > 0) { totalShortage += shortage; totalShortageValue += shortageValue; }
+                html += '<tr class="border-b"><td class="p-2"><div class="font-bold">' + itm.itemName + '</div><div class="text-xs text-gray-400">' + itm.itemCode + '</div></td><td class="p-2 text-center">' + itm.loadedQty + '</td><td class="p-2 text-center">' + itm.deliveredQty + '</td><td class="p-2 text-center">' + itm.returnedQty + '</td><td class="p-2 text-center font-bold">' + itm.countedQty + '</td><td class="p-2 text-center font-bold text-red-600">' + shortage + '</td><td class="p-2 text-center">' + Math.abs(shortageValue).toLocaleString() + ' EGP</td></tr>';
+            }
+            safeHTML(byId('settlement-items-body'), html || '<tr><td colspan="7" class="p-6 text-center">لا توجد بيانات</td></tr>');
+            safeHTML(byId('settlement-rs-info'), '<strong>المندوب:</strong> ' + (rs.driver_id || '---') + ' | <strong>السيارة:</strong> ' + (rs.vehicle_id || '---') + ' | <strong>التاريخ:</strong> ' + (rs.run_date || '---'));
+            byId('settlement-details-container').classList.remove('hidden');
+            window._settlementData = { rs: rs, items: itemsMap, totalShortage: totalShortage, totalShortageValue: totalShortageValue };
+            hideLoader();
+        } catch(e) { hideLoader(); showToast('فشل تحميل البيانات', 'error'); }
+    }
+
+    async function _saveSettlement() {
+        var data = window._settlementData;
+        if (!data) { showToast('اختر رانشيتاً أولاً', 'warning'); return; }
+        var rs = data.rs;
+        var totalShortageValue = data.totalShortageValue || 0;
+        showLoader('جاري حفظ التسوية...');
+        try {
+            var ses = await supabase.auth.getSession(), token = ses.data.session ? ses.data.session.access_token : null;
+            var res = await fetch(SUPABASE_URL + '/functions/v1/save-daily-settlement', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ rsId: rs.runsheet_code, driverEmail: rs.driver_id, driverName: rs.driver_id, vehicleId: rs.vehicle_id, items: Object.values(data.items), totalShortage: data.totalShortage, totalShortageValue: totalShortageValue, notes: '' }) });
+            var json = await res.json(); hideLoader();
+            if (json.success) { showToast('تم حفظ التسوية: ' + json.settlementId, 'success'); byId('settlement-details-container').classList.add('hidden'); }
+            else showToast(json.msg || 'فشل الحفظ', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
     // ==================== دوال إجرائية (Start) لأزرار الرانشيتات ====================
@@ -2907,6 +3172,7 @@ var RW_Warehouse = (function() {
         loadReturn, _applyReturn, _showReturnDetails,
         loadUnloading, _applyUnloading, _showUnloadingDetails,
         loadVehicleCount, loadBranchCount, loadGeneralCount, loadSettlement,
+        _searchDriver, _selectDriver, _searchInvItem, _addToInvCart, _renderInvCart, _updateInvCartQty, _removeInvCartItem, _saveVehicleCount, _saveBranchCount, _saveGeneralCount, _saveInvCount, _onSettlementRsChange, _saveSettlement,
         _startPicking, _startLoading, _startDelivery, _startReturn, _confirmUnload
     };
 })();
