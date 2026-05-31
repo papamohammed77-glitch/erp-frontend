@@ -849,17 +849,50 @@ var RW_Settings = (function() {
             <div class="flex flex-col"><label class="text-sm font-bold">الحد الأدنى للفاتورة (EGP)</label><input id="settings-min-invoice" type="number" value="${currentSettings.min_invoice_amount}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
             <div class="flex flex-col"><label class="text-sm font-bold">نسبة الضريبة (%)</label><input id="settings-tax-rate" type="number" step="0.01" value="${currentSettings.tax_rate}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
             <div class="flex flex-col"><label class="text-sm font-bold">اسم الشركة</label><input id="settings-company-name" value="${currentSettings.company_name}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-            <div class="flex flex-col"><label class="text-sm font-bold">رابط شعار الشركة</label><input id="settings-company-logo" value="${currentSettings.company_logo}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
+            <div class="flex flex-col"><label class="text-sm font-bold">شعار الشركة</label>
+                <div class="flex items-center gap-4">
+                    <div class="w-20 h-20 rounded-xl border-2 border-dashed bg-gray-50 flex items-center justify-center overflow-hidden">
+                        <img id="settings-logo-preview" src="${currentSettings.company_logo || 'https://via.placeholder.com/80'}" class="max-w-full max-h-full object-contain" onerror="this.src='https://via.placeholder.com/80'">
+                    </div>
+                    <div>
+                        <input type="file" id="settings-logo-file" accept="image/*" class="text-xs file:py-2 file:px-4 file:rounded-lg file:bg-blue-50 file:text-blue-700">
+                        <p class="text-xs text-gray-500 mt-1">يفضل صورة مربعة (مثلاً 200×200)</p>
+                    </div>
+                </div>
+            </div>
             <div class="flex justify-end pt-4"><button id="btn-save-settings" class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold">حفظ الإعدادات</button></div>
             </div>
         </div></div>`);
+        
+        // معاينة الصورة
+        byId('settings-logo-file')?.addEventListener('change', function() {
+            var file = this.files[0];
+            if (file) {
+                var reader = new FileReader();
+                reader.onload = function(e) { byId('settings-logo-preview').src = e.target.result; };
+                reader.readAsDataURL(file);
+            }
+        });
+
         byId('btn-save-settings').addEventListener('click', async () => {
+            var company_logo = currentSettings.company_logo;
+            var fileInput = byId('settings-logo-file');
+            if (fileInput && fileInput.files.length > 0) {
+                showLoader('جاري رفع الشعار...');
+                var file = fileInput.files[0];
+                var fileName = `logos/${Date.now()}-${file.name}`;
+                var { data: uploadData, error: uploadError } = await supabase.storage.from('product-images').upload(fileName, file, { upsert: true });
+                if (!uploadError) {
+                    var { data: publicUrl } = supabase.storage.from('product-images').getPublicUrl(fileName);
+                    company_logo = publicUrl.publicUrl;
+                }
+            }
             const payload = {
                 delivery_fee: parseFloat(byId('settings-delivery-fee').value) || 0,
                 min_invoice_amount: parseFloat(byId('settings-min-invoice').value) || 0,
                 tax_rate: parseFloat(byId('settings-tax-rate').value) || 0,
                 company_name: byId('settings-company-name').value.trim(),
-                company_logo: byId('settings-company-logo').value.trim()
+                company_logo: company_logo
             };
             showLoader('جاري حفظ الإعدادات...');
             const { data: { session } } = await supabase.auth.getSession();
@@ -904,10 +937,14 @@ var RW_Users = (function() {
 
     function renderTable(data) {
         const w = byId('emp-table-wrapper'); if (!w) return;
-        if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون</div>'); return; }
+        // إخفاء المالك
+        var filtered = data.filter(function(emp) {
+            return emp.role !== 'مالك' && emp.role !== 'Owner' && emp.is_owner !== true;
+        });
+        if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون</div>'); return; }
         let html = `<table class="w-full text-sm"><thead class="bg-gray-50"><tr>
             <th class="p-3">الاسم</th><th class="p-3">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">الهاتف</th><th class="p-3">الفروع</th></tr></thead><tbody>`;
-        data.forEach(emp => {
+        filtered.forEach(emp => {
             const statusClass = emp.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
             html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Users._openModal('${emp.email}')">
                 <td class="p-3 font-semibold">${emp.name||''}</td><td class="p-3">${emp.email||''}</td><td class="p-3">${emp.role||''}</td>
@@ -2792,25 +2829,42 @@ var RW_Warehouse = (function() {
     async function _showUnloadingDetails(code) { showToast('التفاصيل قيد التطوير', 'info'); }
 
     // ==================== COUNT & SETTLEMENT (Placeholders) ====================
+    // ==================== COUNT & SETTLEMENT ====================
     async function loadVehicleCount() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'جرد سيارة');
-        safeHTML(c, `<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">🚛</div><h2>جرد سيارة</h2><p style="color:#6b7280">وحدة الجرد المتقدم قيد التطوير. يمكنك استخدام الأذونات المخزنية (نوع Adjustment) لتسجيل الجرد حالياً.</p></div></div>`);
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="vc-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Adjustment').order('voucher_date', { ascending: false });
+        var data = res.data || [];
+        var html = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + (v.reference||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات جرد</div>';
+        safeHTML(byId('vc-table-container'), html);
     }
     async function loadBranchCount() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'جرد فرع');
-        safeHTML(c, `<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">🏪</div><h2>جرد فرع</h2><p style="color:#6b7280">وحدة الجرد المتقدم قيد التطوير. يمكنك استخدام الأذونات المخزنية (نوع Adjustment) لتسجيل الجرد حالياً.</p></div></div>`);
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="bc-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Adjustment').order('voucher_date', { ascending: false });
+        var data = res.data || [];
+        var html = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + (v.reference||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات جرد</div>';
+        safeHTML(byId('bc-table-container'), html);
     }
     async function loadGeneralCount() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'جرد عام');
-        safeHTML(c, `<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📦</div><h2>جرد عام</h2><p style="color:#6b7280">وحدة الجرد المتقدم قيد التطوير. يمكنك استخدام الأذونات المخزنية (نوع Adjustment) لتسجيل الجرد حالياً.</p></div></div>`);
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="gc-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Adjustment').order('voucher_date', { ascending: false });
+        var data = res.data || [];
+        var html = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th></tr></thead><tbody>' + data.map(v => '<tr class="border-b"><td class="p-3 font-bold">' + (v.voucher_code||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + (v.reference||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">' + (v.status||'') + '</span></td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد عمليات جرد</div>';
+        safeHTML(byId('gc-table-container'), html);
     }
     async function loadSettlement() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'إغلاق اليومية');
-        safeHTML(c, `<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📑</div><h2>إغلاق اليومية</h2><p style="color:#6b7280">وحدة إغلاق اليومية قيد التطوير</p></div></div>`);
+        safeHTML(c, `<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border p-4"><div id="settlement-table-container">جاري التحميل...</div></div></div>`);
+        var res = await supabase.from('daily_settlements').select('*').order('settlement_date', { ascending: false });
+        var data = res.data || [];
+        var html = data.length ? '<table class="w-full"><thead class="bg-gray-50"><tr><th class="p-3">كود التسوية</th><th class="p-3">التاريخ</th><th class="p-3">الرانشيت</th><th class="p-3 text-center">العجز</th><th class="p-3 text-center">قيمة العجز</th></tr></thead><tbody>' + data.map(s => '<tr class="border-b"><td class="p-3 font-bold">' + (s.settlement_code||'') + '</td><td class="p-3">' + (s.settlement_date||'') + '</td><td class="p-3">' + (s.runsheet_id||'') + '</td><td class="p-3 text-center">' + (s.total_shortage||0) + '</td><td class="p-3 text-center font-bold text-red-600">' + Number(s.total_shortage_value||0).toLocaleString() + ' EGP</td></tr>').join('') + '</tbody></table>' : '<div class="text-center py-8">لا توجد تسويات</div>';
+        safeHTML(byId('settlement-table-container'), html);
     }
 
     // ==================== دوال إجرائية (Start) لأزرار الرانشيتات ====================
