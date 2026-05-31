@@ -2077,7 +2077,47 @@ var RW_Warehouse = (function() {
     async function _openLoadingModal(code) { /* same pattern as _openPickingModal */ }
 
     // ========== DELIVERY, RETURN, UNLOADING, VOUCHERS, COUNT, SETTLEMENT ==========
-    function loadDelivery() { var c = byId('rw-page-container'); if (c) { safeText(byId('rw-header-title'), 'التوصيل (Delivery)'); safeHTML(c, '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">🚚</div><h2>التوصيل</h2><p style="color:#6b7280">قيد التطوير</p></div></div>'); } }
+    async function loadDelivery() {
+        var c = byId('rw-page-container'); if (!c) return;
+        safeText(byId('rw-header-title'), 'التوصيل (Delivery)');
+        var res = await supabase.from('runsheets').select('*').in('status', ['Loaded', 'Delivering', 'Delivered']);
+        var data = res.data || [];
+        var html = '<div class="p-4"><div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody>';
+        if (!data.length) { html += '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات جاهزة للتوصيل</td></tr>'; }
+        else {
+            for (var i = 0; i < data.length; i++) {
+                var r = data[i];
+                var st = r.status || '';
+                var badge = st === 'Loaded' ? 'bg-blue-100 text-blue-700' : st === 'Delivering' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700';
+                var btn = st === 'Loaded' ? '<button onclick="RW_Warehouse._startDelivery(\'' + r.runsheet_code + '\')" class="bg-blue-600 text-white px-2 py-1 rounded text-xs">بدء التوصيل</button>' : st === 'Delivering' ? '<button onclick="RW_Warehouse._completeDelivery(\'' + r.runsheet_code + '\')" class="bg-green-600 text-white px-2 py-1 rounded text-xs">إنهاء التوصيل</button>' : '<span class="text-xs text-green-600">مكتمل</span>';
+                html += '<tr class="border-b"><td class="p-3 font-bold">' + (r.runsheet_code || '') + '</td><td class="p-3">' + (r.run_date || '') + '</td><td class="p-3">' + (r.driver_id || '---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + badge + '">' + st + '</span></td><td class="p-3 text-center">' + btn + '</td></tr>';
+            }
+        }
+        html += '</tbody></table></div></div>';
+        safeHTML(c, html);
+    }
+
+    async function _startDelivery(code) {
+        showLoader('جاري بدء التوصيل...');
+        var ses = await supabase.auth.getSession(), t = ses.data.session && ses.data.session.access_token;
+        try {
+            var res = await fetch(SUPABASE_URL + '/functions/v1/start-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code }) });
+            var json = await res.json(); hideLoader();
+            if (json.success) { showToast('تم بدء التوصيل', 'success'); loadDelivery(); }
+            else showToast(json.msg || 'فشل', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
+    }
+
+    async function _completeDelivery(code) {
+        showLoader('جاري إنهاء التوصيل...');
+        var ses = await supabase.auth.getSession(), t = ses.data.session && ses.data.session.access_token;
+        try {
+            var res = await fetch(SUPABASE_URL + '/functions/v1/complete-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code, ordersData: [] }) });
+            var json = await res.json(); hideLoader();
+            if (json.success) { showToast('تم إنهاء التوصيل', 'success'); loadDelivery(); }
+            else showToast(json.msg || 'فشل', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
+    }
     function loadReturn() { var c = byId('rw-page-container'); if (c) { safeText(byId('rw-header-title'), 'المرتجعات (Return)'); safeHTML(c, '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">🔄</div><h2>المرتجعات</h2><p style="color:#6b7280">قيد التطوير</p></div></div>'); } }
     function loadUnloading() { var c = byId('rw-page-container'); if (c) { safeText(byId('rw-header-title'), 'التفريغ (Unloading)'); safeHTML(c, '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📥</div><h2>التفريغ</h2><p style="color:#6b7280">قيد التطوير</p></div></div>'); } }
     function loadVouchers() { var c = byId('rw-page-container'); if (c) { safeText(byId('rw-header-title'), 'الأذونات المخزنية'); safeHTML(c, '<div class="p-4"><div class="rw-card" style="text-align:center;padding:60px"><div style="font-size:64px">📋</div><h2>الأذونات المخزنية</h2><p style="color:#6b7280">قيد التطوير</p></div></div>'); } }
@@ -2091,7 +2131,8 @@ var RW_Warehouse = (function() {
     return {
         loadPicking: loadPicking, _applyPicking: _applyPicking, _startPicking: _startPicking, _openPickingModal: _openPickingModal,
         loadLoading: loadLoading, _applyLoading: _applyLoading, _startLoading: _startLoading, _openLoadingModal: _openLoadingModal,
-        loadDelivery: loadDelivery, loadReturn: loadReturn, loadUnloading: loadUnloading,
+        loadDelivery: loadDelivery, _startDelivery: _startDelivery, _completeDelivery: _completeDelivery,
+        loadReturn: loadReturn, loadUnloading: loadUnloading,
         loadVouchers: loadVouchers, loadVoucherForm: loadVoucherForm,
         loadVehicleCount: loadVehicleCount, loadBranchCount: loadBranchCount, loadGeneralCount: loadGeneralCount,
         loadSettlement: loadSettlement, loadReceiving: loadReceiving
@@ -2115,24 +2156,39 @@ var RW_Finance = (function() {
         _showLoader('جاري تحميل البيانات المالية...');
         var pending = 2;
         function done() { pending--; if (pending <= 0) { _cache.loaded = true; _hideLoader(); if (callback) callback(); } }
-        try {
-            supabase.from('treasury').select('*').then(function(r) { _cache.treasury = r.data || []; done(); }).catch(function() { done(); });
-            supabase.from('chart_of_accounts').select('*').then(function(r) {
-                _cache.accountsFlat = r.data || [];
-                var map = {}, roots = [];
-                for (var i = 0; i < _cache.accountsFlat.length; i++) {
-                    var a = _cache.accountsFlat[i];
-                    map[a.account_code] = { id: a.account_code, name: a.account_name, type: a.account_type, parent: a.parent_account_id, children: [] };
-                }
-                for (var code in map) {
+        supabase.from('treasury').select('*').then(function(r) {
+            _cache.treasury = r.data || [];
+            done();
+        }).catch(function(err) {
+            console.error('Treasury load error:', err);
+            _cache.treasury = [];
+            done();
+        });
+        supabase.from('chart_of_accounts').select('*').then(function(r) {
+            _cache.accountsFlat = r.data || [];
+            var map = {}, roots = [];
+            for (var i = 0; i < _cache.accountsFlat.length; i++) {
+                var a = _cache.accountsFlat[i];
+                map[a.account_code] = { id: a.account_code, name: a.account_name, type: a.account_type, parent: a.parent_account_id, children: [] };
+            }
+            for (var code in map) {
+                if (map.hasOwnProperty(code)) {
                     var node = map[code];
-                    if (node.parent && map[node.parent]) { map[node.parent].children.push(node); }
-                    else { roots.push(node); }
+                    if (node.parent && map[node.parent]) {
+                        map[node.parent].children.push(node);
+                    } else {
+                        roots.push(node);
+                    }
                 }
-                _cache.accountsTree = roots;
-                done();
-            }).catch(function() { done(); });
-        } catch(e) { _hideLoader(); _showToast('فشل تحميل البيانات المالية', 'error'); }
+            }
+            _cache.accountsTree = roots;
+            done();
+        }).catch(function(err) {
+            console.error('Accounts load error:', err);
+            _cache.accountsFlat = [];
+            _cache.accountsTree = [];
+            done();
+        });
     }
 
     function _refreshCache() { _cache.loaded = false; }
