@@ -222,8 +222,11 @@ const RW_Navigation = {
     { icon: 'fa-truck', label: 'إدارة المشتريات', submenu: [{ view: 'suppliers', label: 'الموردين' }, { view: 'purchase-pos', label: 'نقطة شراء' }, { view: 'purchases', label: 'أوردرات الشراء' }] },
     { icon: 'fa-warehouse', label: 'إدارة المخازن والمخزون', submenu: [{ view: 'items', label: 'الأصناف' }, { view: 'branches', label: 'المخازن والفروع' }, { label: 'العمليات المخزنية', icon: 'fa-timeline', submenu: [{ view: 'receiving', label: 'الاستلام' }, { view: 'picking', label: 'التحضير' }, { view: 'loading', label: 'التحميل' }, { view: 'delivery', label: 'التوصيل' }, { view: 'return', label: 'المرتجعات' }, { view: 'unloading', label: 'التفريغ' }] }, { label: 'الأذونات المخزنية', icon: 'fa-file-signature', submenu: [{ view: 'transfer', label: 'تحويل مخزني' }, { view: 'direct-sale', label: 'صرف سيارة بيع مباشر' }, { view: 'direct-return', label: 'استلام مرتجع سيارة' }, { view: 'supplier-return', label: 'مرتجع لمورد' }, { view: 'vouchers', label: 'عرض الأذونات' }] }, { label: 'الجرد', icon: 'fa-clipboard-check', submenu: [{ view: 'vehicle-count', label: 'جرد سيارة' }, { view: 'branch-count', label: 'جرد فرع' }, { view: 'general-count', label: 'جرد عام' }] }] },
     { icon: 'fa-coins', label: 'إدارة الحسابات والمالية', submenu: [{ action: 'showFinanceTab', arg: 'treasury', label: 'الخزائن والبنوك' }, { action: 'showFinanceTab', arg: 'accounts', label: 'دليل الحسابات' }, { action: 'showFinanceTab', arg: 'journal', label: 'قيود يومية' }, { action: 'showFinanceTab', arg: 'receipts', label: 'سندات القبض' }, { action: 'showFinanceTab', arg: 'payments', label: 'سندات الصرف' }, { action: 'showFinanceTab', arg: 'transfers', label: 'التحويلات' }, { action: 'showFinanceTab', arg: 'reports', label: 'التقارير المالية' }, { view: 'settlement', label: 'إغلاق اليومية' }] },
-    { icon: 'fa-chart-simple', label: 'التقارير الذكية', submenu: [{ view: 'reports-dashboard', label: 'لوحة القيادة' }, { view: 'reports-detailed', label: 'التقارير التفصيلية' }] },
-    { view: 'reports-comprehensive', label: 'التقارير الشاملة' },
+    { icon: 'fa-chart-simple', label: 'التقارير الذكية', submenu: [
+    { view: 'reports-dashboard', label: 'لوحة القيادة' },
+    { view: 'reports-detailed', label: 'التقارير التفصيلية' },
+    { view: 'reports-comprehensive', label: 'التقارير الشاملة' }
+] },
     { view: 'users', icon: 'fa-users-gear', label: 'المستخدمين والصلاحيات' },
     { view: 'roles', icon: 'fa-user-shield', label: 'إدارة أدوار الموظفين' },
     { view: 'license', icon: 'fa-shield-haltered', label: 'إدارة الترخيص', perm: 'owner' },
@@ -3923,68 +3926,269 @@ var RW_Reports_Comprehensive = (function() {
         if (!resultDiv) return;
         safeHTML(resultDiv, '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin text-2xl"></i> جاري تحميل التقرير...</div>');
 
-        var fromDate = byId('rp-date-from') ? byId('rp-date-from').value : '';
-        var toDate = byId('rp-date-to') ? byId('rp-date-to').value : '';
-        var customer = byId('rp-customer') ? byId('rp-customer').value : '';
-        var supplier = byId('rp-supplier') ? byId('rp-supplier').value : '';
-        var item = byId('rp-item') ? byId('rp-item').value : '';
-        var account = byId('rp-account') ? byId('rp-account').value : '';
-        var treasury = byId('rp-treasury') ? byId('rp-treasury').value : '';
-        var driver = byId('rp-driver') ? byId('rp-driver').value : '';
+        var fromDate = (byId('rp-date-from') ? byId('rp-date-from').value : '');
+        var toDate = (byId('rp-date-to') ? byId('rp-date-to').value : '');
+        var customer = (byId('rp-customer') ? byId('rp-customer').value : '');
+        var supplier = (byId('rp-supplier') ? byId('rp-supplier').value : '');
+        var itemCode = (byId('rp-item') ? byId('rp-item').value : '');
+        var account = (byId('rp-account') ? byId('rp-account').value : '');
+        var treasury = (byId('rp-treasury') ? byId('rp-treasury').value : '');
+        var driver = (byId('rp-driver') ? byId('rp-driver').value : '');
+        var area = (byId('rp-area') ? byId('rp-area').value : '');
 
         try {
+            var data, html = '';
+
+            // ---------- المبيعات ----------
             if (reportId === 'sales-summary') {
-                var query = supabase.from('orders').select('total_amount, order_date, customer_name').gte('order_date', fromDate).lte('order_date', toDate);
-                if (customer) query = query.eq('customer_id', customer);
-                var res = await query;
-                var data = res.data || [];
-                var total = 0; for (var i = 0; i < data.length; i++) { total += Number(data[i].total_amount) || 0; }
-                var avg = data.length > 0 ? Math.round(total / data.length) : 0;
-                var html = '<h4 class="font-bold mb-3">ملخص المبيعات</h4><div class="grid grid-cols-3 gap-4 mb-4"><div class="bg-blue-50 p-4 rounded-xl text-center"><p class="text-xs">عدد الأوردرات</p><p class="text-2xl font-black">' + data.length + '</p></div><div class="bg-green-50 p-4 rounded-xl text-center"><p class="text-xs">الإجمالي</p><p class="text-2xl font-black">' + _fmtNum(total) + ' EGP</p></div><div class="bg-amber-50 p-4 rounded-xl text-center"><p class="text-xs">متوسط الأوردر</p><p class="text-2xl font-black">' + _fmtNum(avg) + ' EGP</p></div></div>';
-                safeHTML(resultDiv, html);
-            } else if (reportId === 'sales-by-customer') {
-                var query = supabase.from('orders').select('customer_name, total_amount, order_date').gte('order_date', fromDate).lte('order_date', toDate);
-                if (customer) query = query.eq('customer_id', customer);
-                var res = await query; var data = res.data || [];
-                var custMap = {}; for (var i = 0; i < data.length; i++) { var cn = data[i].customer_name || 'غير محدد'; custMap[cn] = { total: (custMap[cn] ? custMap[cn].total : 0) + Number(data[i].total_amount || 0), count: (custMap[cn] ? custMap[cn].count : 0) + 1 }; }
-                var arr = Object.keys(custMap).map(function(k) { return { name: k, total: custMap[k].total, count: custMap[k].count }; }).sort(function(a,b) { return b.total - a.total; });
-                var html = '<h4 class="font-bold mb-3">المبيعات حسب العميل</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">العميل</th><th class="p-2 text-center">عدد الأوردرات</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                for (var i = 0; i < arr.length; i++) { html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].count + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>'; }
-                html += '</tbody></table>'; safeHTML(resultDiv, html);
-            } else if (reportId === 'sales-by-item') {
-                var query = supabase.from('order_details').select('item_name, qty, unit_price, order_id, item_code').gte('created_at', fromDate).lte('created_at', toDate);
-                var res = await query; var data = res.data || [];
-                var itemMap = {}; for (var i = 0; i < data.length; i++) { var code = data[i].item_code || data[i].item_name; itemMap[code] = { name: data[i].item_name || code, qty: (itemMap[code] ? itemMap[code].qty : 0) + Number(data[i].qty || 0), total: (itemMap[code] ? itemMap[code].total : 0) + (Number(data[i].qty || 0) * Number(data[i].unit_price || 0)) }; }
-                var arr = Object.values(itemMap).sort(function(a,b) { return b.total - a.total; }).slice(0, 20);
-                var html = '<h4 class="font-bold mb-3">المبيعات حسب الصنف</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                for (var i = 0; i < arr.length; i++) { html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].qty + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>'; }
-                html += '</tbody></table>'; safeHTML(resultDiv, html);
-            } else if (reportId === 'inventory-low-stock') {
-                var items = RW_STATE.data.items || [];
-                var stockRes = await supabase.from('stock_branches').select('item_id, qty'); var stockData = stockRes.data || [];
-                var stockMap = {}; for (var i = 0; i < stockData.length; i++) { stockMap[stockData[i].item_id] = (stockMap[stockData[i].item_id] || 0) + (Number(stockData[i].qty) || 0); }
-                var lowItems = items.filter(function(it) { return (stockMap[it.id] || 0) <= (Number(it.reorder_point) || 5); });
-                var html = '<h4 class="font-bold mb-3">الأصناف الأقل من حد الطلب</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th><th class="p-2 text-center">حد الطلب</th></tr></thead><tbody>';
-                for (var i = 0; i < lowItems.length; i++) { html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(lowItems[i].name) + '</td><td class="p-2 text-center font-bold text-red-600">' + (stockMap[lowItems[i].id] || 0) + '</td><td class="p-2 text-center">' + (lowItems[i].reorder_point || 5) + '</td></tr>'; }
-                html += '</tbody></table>'; safeHTML(resultDiv, html);
-            } else if (reportId === 'purchase-by-supplier') {
-                var query = supabase.from('purchase_orders').select('supplier_name, total_amount, po_date').gte('po_date', fromDate).lte('po_date', toDate);
-                if (supplier) query = query.eq('supplier_id', supplier);
-                var res = await query; var data = res.data || [];
-                var suppMap = {}; for (var i = 0; i < data.length; i++) { var sn = data[i].supplier_name || 'غير محدد'; suppMap[sn] = { total: (suppMap[sn] ? suppMap[sn].total : 0) + Number(data[i].total_amount || 0), count: (suppMap[sn] ? suppMap[sn].count : 0) + 1 }; }
-                var arr = Object.keys(suppMap).map(function(k) { return { name: k, total: suppMap[k].total, count: suppMap[k].count }; }).sort(function(a,b) { return b.total - a.total; });
-                var html = '<h4 class="font-bold mb-3">المشتريات حسب المورد</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">المورد</th><th class="p-2 text-center">عدد الأوامر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                for (var i = 0; i < arr.length; i++) { html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].count + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>'; }
-                html += '</tbody></table>'; safeHTML(resultDiv, html);
-            } else if (reportId === 'crm-customer-list') {
-                var customers = RW_STATE.data.customers || [];
-                var html = '<h4 class="font-bold mb-3">قائمة العملاء</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الكود</th><th class="p-2">الاسم</th><th class="p-2">الهاتف</th><th class="p-2">المنطقة</th><th class="p-2 text-center">الرصيد</th></tr></thead><tbody>';
-                for (var i = 0; i < customers.length; i++) { var c = customers[i]; html += '<tr class="border-t"><td class="p-2">' + _esc(c.customer_code) + '</td><td class="p-2 font-semibold">' + _esc(c.name) + '</td><td class="p-2">' + _esc(c.phone) + '</td><td class="p-2">' + _esc(c.area) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(c.debt) + ' EGP</td></tr>'; }
-                html += '</tbody></table>'; safeHTML(resultDiv, html);
-            } else {
-                safeHTML(resultDiv, '<div class="text-center py-8 text-gray-500"><i class="fa-solid fa-tools text-3xl block mb-2"></i>هذا التقرير سيتم تفعيله في التحديث القادم</div>');
+                var q = supabase.from('orders').select('total_amount').gte('order_date', fromDate).lte('order_date', toDate);
+                if (customer) q = q.eq('customer_id', customer);
+                var res = await q; data = res.data || [];
+                var total = 0; for (var i = 0; i < data.length; i++) total += Number(data[i].total_amount) || 0;
+                var avg = data.length ? Math.round(total / data.length) : 0;
+                html = '<h4 class="font-bold mb-3">ملخص المبيعات</h4><div class="grid grid-cols-3 gap-4"><div class="bg-blue-50 p-4 rounded-xl text-center"><p class="text-xs">عدد الأوردرات</p><p class="text-2xl font-black">' + data.length + '</p></div><div class="bg-green-50 p-4 rounded-xl text-center"><p class="text-xs">الإجمالي</p><p class="text-2xl font-black">' + _fmtNum(total) + ' EGP</p></div><div class="bg-amber-50 p-4 rounded-xl text-center"><p class="text-xs">متوسط الأوردر</p><p class="text-2xl font-black">' + _fmtNum(avg) + ' EGP</p></div></div>';
             }
-        } catch(e) { console.error(e); safeHTML(resultDiv, '<div class="text-center py-8 text-red-500">فشل تحميل التقرير</div>'); }
+            else if (reportId === 'sales-by-customer') {
+                var q = supabase.from('orders').select('customer_name, total_amount').gte('order_date', fromDate).lte('order_date', toDate);
+                if (customer) q = q.eq('customer_id', customer);
+                var res = await q; data = res.data || [];
+                var map = {}; for (var i = 0; i < data.length; i++) { var nm = data[i].customer_name || 'غير محدد'; map[nm] = { total: (map[nm] ? map[nm].total : 0) + Number(data[i].total_amount || 0), cnt: (map[nm] ? map[nm].cnt : 0) + 1 }; }
+                var arr = Object.entries(map).map(function(e) { return { name: e[0], total: e[1].total, count: e[1].cnt }; }).sort(function(a,b) { return b.total - a.total; });
+                html = '<h4 class="font-bold mb-3">المبيعات حسب العميل</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">العميل</th><th class="p-2 text-center">عدد الأوردرات</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].count + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'sales-by-item') {
+                var res = await supabase.from('order_details').select('item_name, item_code, qty, unit_price').gte('created_at', fromDate).lte('created_at', toDate);
+                data = res.data || [];
+                var map = {}; for (var i = 0; i < data.length; i++) { var code = data[i].item_code || data[i].item_name; map[code] = { name: data[i].item_name || code, qty: (map[code] ? map[code].qty : 0) + Number(data[i].qty || 0), total: (map[code] ? map[code].total : 0) + (Number(data[i].qty || 0) * Number(data[i].unit_price || 0)) }; }
+                var arr = Object.values(map).sort(function(a,b) { return b.total - a.total; }).slice(0,20);
+                html = '<h4 class="font-bold mb-3">المبيعات حسب الصنف</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].qty + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'sales-by-area') {
+                var res = await supabase.from('orders').select('area, total_amount').gte('order_date', fromDate).lte('order_date', toDate);
+                data = res.data || [];
+                var map = {}; for (var i = 0; i < data.length; i++) { var a = data[i].area || 'غير محدد'; map[a] = (map[a] || 0) + Number(data[i].total_amount || 0); }
+                var arr = Object.entries(map).map(function(e) { return { area: e[0], total: e[1] }; }).sort(function(a,b) { return b.total - a.total; });
+                html = '<h4 class="font-bold mb-3">المبيعات حسب المنطقة</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">المنطقة</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].area) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'sales-order-status') {
+                var res = await supabase.from('orders').select('order_status').gte('order_date', fromDate).lte('order_date', toDate);
+                data = res.data || [];
+                var map = {}; for (var i = 0; i < data.length; i++) { var st = data[i].order_status || 'غير محدد'; map[st] = (map[st] || 0) + 1; }
+                html = '<h4 class="font-bold mb-3">حالة الأوردرات</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الحالة</th><th class="p-2 text-center">العدد</th></tr></thead><tbody>';
+                for (var k in map) html += '<tr class="border-t"><td class="p-2">' + _esc(k) + '</td><td class="p-2 text-center font-bold">' + map[k] + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'sales-customer-ledger') {
+                if (!customer) { safeHTML(resultDiv, '<div class="text-center py-4 text-gray-500">يرجى اختيار عميل</div>'); return; }
+                var res = await supabase.from('customer_ledger').select('*').eq('customer_id', customer).order('entry_date', { ascending: false });
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">كشف حساب العميل</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التاريخ</th><th class="p-2">البيان</th><th class="p-2 text-center">مدين</th><th class="p-2 text-center">دائن</th><th class="p-2 text-center">الرصيد</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].entry_date) + '</td><td class="p-2">' + _esc(data[i].description) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].debit) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].credit) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].balance) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'sales-runsheet-performance') {
+                var res = await supabase.from('runsheets').select('runsheet_code, run_date, total_amount, status').gte('run_date', fromDate).lte('run_date', toDate);
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">أداء الرانشيتات</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الرانشيت</th><th class="p-2">التاريخ</th><th class="p-2 text-center">القيمة</th><th class="p-2 text-center">الحالة</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2 font-bold">' + _esc(data[i].runsheet_code) + '</td><td class="p-2">' + _esc(data[i].run_date) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].total_amount) + '</td><td class="p-2 text-center">' + _esc(data[i].status) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+
+            // ---------- المخازن والمشتريات ----------
+            else if (reportId === 'inventory-stock') {
+                var items = RW_STATE.data.items || [];
+                var res = await supabase.from('stock_branches').select('item_id, qty');
+                var stk = res.data || []; var map = {}; for (var i = 0; i < stk.length; i++) map[stk[i].item_id] = (map[stk[i].item_id] || 0) + Number(stk[i].qty || 0);
+                html = '<h4 class="font-bold mb-3">جرد المخزون الحالي</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th></tr></thead><tbody>';
+                for (var i = 0; i < items.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(items[i].name) + '</td><td class="p-2 text-center font-bold">' + (map[items[i].id] || 0) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'inventory-movement') {
+                if (!itemCode) { safeHTML(resultDiv, '<div class="text-center py-4 text-gray-500">يرجى اختيار صنف</div>'); return; }
+                var res = await supabase.from('inventory_log').select('*').eq('item_code', itemCode).order('movement_date', { ascending: false });
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">حركة الصنف</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التاريخ</th><th class="p-2">النوع</th><th class="p-2 text-center">الكمية</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].movement_date) + '</td><td class="p-2">' + _esc(data[i].movement_type) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].qty) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'inventory-low-stock') {
+                var items = RW_STATE.data.items || [];
+                var res = await supabase.from('stock_branches').select('item_id, qty'); var stk = res.data || [];
+                var map = {}; for (var i = 0; i < stk.length; i++) map[stk[i].item_id] = (map[stk[i].item_id] || 0) + Number(stk[i].qty || 0);
+                var low = items.filter(function(it) { return (map[it.id] || 0) <= (Number(it.reorder_point) || 5); });
+                html = '<h4 class="font-bold mb-3">الأصناف الأقل من حد الطلب</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th><th class="p-2 text-center">حد الطلب</th></tr></thead><tbody>';
+                for (var i = 0; i < low.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(low[i].name) + '</td><td class="p-2 text-center font-bold text-red-600">' + (map[low[i].id] || 0) + '</td><td class="p-2 text-center">' + (low[i].reorder_point || 5) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'inventory-dormant') {
+                var items = RW_STATE.data.items || [];
+                var res1 = await supabase.from('order_details').select('item_code').gte('created_at', fromDate).lte('created_at', toDate);
+                var sold = {}; var det = res1.data || []; for (var i = 0; i < det.length; i++) sold[det[i].item_code] = true;
+                var res2 = await supabase.from('stock_branches').select('item_id, qty'); var stk = res2.data || [];
+                var map = {}; for (var i = 0; i < stk.length; i++) map[stk[i].item_id] = (map[stk[i].item_id] || 0) + Number(stk[i].qty || 0);
+                var dormant = items.filter(function(it) { return (map[it.id] || 0) > 0 && !sold[it.item_code]; });
+                html = '<h4 class="font-bold mb-3">تحليل دوران المخزون (راكدة)</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th></tr></thead><tbody>';
+                for (var i = 0; i < Math.min(dormant.length, 30); i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(dormant[i].name) + '</td><td class="p-2 text-center font-bold text-red-600">' + (map[dormant[i].id] || 0) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'purchase-by-supplier') {
+                var q = supabase.from('purchase_orders').select('supplier_name, total_amount').gte('po_date', fromDate).lte('po_date', toDate);
+                if (supplier) q = q.eq('supplier_id', supplier);
+                var res = await q; data = res.data || [];
+                var map = {}; for (var i = 0; i < data.length; i++) { var sn = data[i].supplier_name || 'غير محدد'; map[sn] = (map[sn] || 0) + Number(data[i].total_amount || 0); }
+                var arr = Object.entries(map).map(function(e) { return { name: e[0], total: e[1] }; }).sort(function(a,b) { return b.total - a.total; });
+                html = '<h4 class="font-bold mb-3">المشتريات حسب المورد</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">المورد</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'purchase-order-status') {
+                var res = await supabase.from('purchase_orders').select('status').gte('po_date', fromDate).lte('po_date', toDate);
+                data = res.data || [];
+                var map = {}; for (var i = 0; i < data.length; i++) map[data[i].status || 'غير محدد'] = (map[data[i].status || 'غير محدد'] || 0) + 1;
+                html = '<h4 class="font-bold mb-3">حالة أوامر الشراء</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الحالة</th><th class="p-2 text-center">العدد</th></tr></thead><tbody>';
+                for (var k in map) html += '<tr class="border-t"><td class="p-2">' + _esc(k) + '</td><td class="p-2 text-center font-bold">' + map[k] + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'purchase-receiving') {
+                var res = await supabase.from('receiving_details').select('item_code, item_name, qty_expected, qty_received').gte('created_at', fromDate).lte('created_at', toDate);
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">استلام البضاعة</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الصنف</th><th class="p-2 text-center">المطلوب</th><th class="p-2 text-center">المستلم</th><th class="p-2 text-center">الفرق</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) { var diff = (Number(data[i].qty_received) || 0) - (Number(data[i].qty_expected) || 0); html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].item_name) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].qty_expected) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].qty_received) + '</td><td class="p-2 text-center ' + (diff < 0 ? 'text-red-600' : 'text-green-600') + '">' + _fmtNum(diff) + '</td></tr>'; }
+                html += '</tbody></table>';
+            }
+
+            // ---------- الحسابات ----------
+            else if (reportId === 'finance-trial-balance') {
+                var ses = await supabase.auth.getSession(); var token = ses.data.session?.access_token;
+                var res = await fetch(SUPABASE_URL + '/functions/v1/get-trial-balance', { method:'POST', headers: { 'Content-Type':'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ fromDate, toDate }) });
+                var json = await res.json();
+                if (json.success) { html = '<h4 class="font-bold mb-3">ميزان المراجعة</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الكود</th><th class="p-2">الاسم</th><th class="p-2 text-center">مدين</th><th class="p-2 text-center">دائن</th></tr></thead><tbody>'; for (var i = 0; i < json.data.length; i++) { var r = json.data[i]; html += '<tr><td class="p-2">' + r.accountId + '</td><td class="p-2">' + r.accountName + '</td><td class="p-2 text-center">' + _fmtNum(r.totalDebit) + '</td><td class="p-2 text-center">' + _fmtNum(r.totalCredit) + '</td></tr>'; } html += '</tbody></table>'; }
+                else html = '<div class="text-center py-4 text-red-500">فشل تحميل ميزان المراجعة</div>';
+            }
+            else if (reportId === 'finance-profit-loss') {
+                var ses = await supabase.auth.getSession(); var token = ses.data.session?.access_token;
+                var res = await fetch(SUPABASE_URL + '/functions/v1/get-profit-loss', { method:'POST', headers: { 'Content-Type':'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ fromDate, toDate }) });
+                var json = await res.json();
+                if (json.success) { html = '<h4 class="font-bold mb-3">قائمة الدخل</h4><table class="w-full text-sm"><thead><tr class="bg-green-100"><th class="p-2">الإيرادات</th><th class="p-2">المبلغ</th></tr></thead><tbody>'; for (var i = 0; i < json.data.revenueAccounts.length; i++) html += '<tr><td class="p-2">' + json.data.revenueAccounts[i].accountName + '</td><td class="p-2">' + _fmtNum(json.data.revenueAccounts[i].total) + '</td></tr>'; html += '</tbody></table>'; }
+                else html = '<div class="text-center py-4 text-red-500">فشل تحميل قائمة الدخل</div>';
+            }
+            else if (reportId === 'finance-balance-sheet') {
+                var ses = await supabase.auth.getSession(); var token = ses.data.session?.access_token;
+                var res = await fetch(SUPABASE_URL + '/functions/v1/get-balance-sheet', { method:'POST', headers: { 'Content-Type':'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ asOfDate: toDate }) });
+                var json = await res.json();
+                if (json.success) { /* عرض مبسط */ html = '<div class="text-green-600 font-bold p-4">تم تحميل الميزانية العمومية (العرض الكامل قيد التطوير)</div>'; }
+                else html = '<div class="text-center py-4 text-red-500">فشل تحميل الميزانية</div>';
+            }
+            else if (reportId === 'finance-cash-flow') {
+                var ses = await supabase.auth.getSession(); var token = ses.data.session?.access_token;
+                var res = await fetch(SUPABASE_URL + '/functions/v1/get-cash-flow', { method:'POST', headers: { 'Content-Type':'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ fromDate, toDate }) });
+                var json = await res.json();
+                if (json.success) { /* عرض مبسط */ html = '<div class="text-blue-600 font-bold p-4">تم تحميل قائمة التدفقات النقدية</div>'; }
+                else html = '<div class="text-center py-4 text-red-500">فشل تحميل التدفقات النقدية</div>';
+            }
+            else if (reportId === 'finance-general-ledger') {
+                if (!account) { safeHTML(resultDiv, '<div class="text-center py-4 text-gray-500">يرجى اختيار حساب</div>'); return; }
+                var res = await supabase.from('journal_lines').select('*, journal_entries!inner(entry_date, reference, description)').eq('account_id', account).order('entry_date', { ascending: false });
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">دفتر الأستاذ العام</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التاريخ</th><th class="p-2">المرجع</th><th class="p-2 text-center">مدين</th><th class="p-2 text-center">دائن</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].journal_entries?.entry_date) + '</td><td class="p-2">' + _esc(data[i].journal_entries?.reference) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].debit) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].credit) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'finance-treasury') {
+                if (!treasury) { safeHTML(resultDiv, '<div class="text-center py-4 text-gray-500">يرجى اختيار خزينة</div>'); return; }
+                var res = await supabase.from('cash_box').select('*').eq('treasury_id', treasury).order('voucher_date', { ascending: false });
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">كشف حساب الخزينة</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التاريخ</th><th class="p-2">النوع</th><th class="p-2 text-center">المبلغ</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].voucher_date) + '</td><td class="p-2">' + _esc(data[i].type) + '</td><td class="p-2 text-center font-bold">' + _fmtNum(data[i].amount) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'finance-tax') {
+                html = '<div class="text-center py-4 text-gray-500">تقرير الضرائب قيد التطوير</div>';
+            }
+
+            // ---------- العملاء CRM ----------
+            else if (reportId === 'crm-customer-list') {
+                var customers = RW_STATE.data.customers || [];
+                html = '<h4 class="font-bold mb-3">قائمة العملاء</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الكود</th><th class="p-2">الاسم</th><th class="p-2">الهاتف</th><th class="p-2">المنطقة</th></tr></thead><tbody>';
+                for (var i = 0; i < customers.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(customers[i].customer_code) + '</td><td class="p-2 font-semibold">' + _esc(customers[i].name) + '</td><td class="p-2">' + _esc(customers[i].phone) + '</td><td class="p-2">' + _esc(customers[i].area) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'crm-customer-analysis') {
+                var res = await supabase.from('orders').select('customer_name, total_amount').gte('order_date', fromDate).lte('order_date', toDate);
+                data = res.data || [];
+                var map = {}; for (var i = 0; i < data.length; i++) { var nm = data[i].customer_name || 'غير محدد'; map[nm] = { total: (map[nm] ? map[nm].total : 0) + Number(data[i].total_amount || 0), cnt: (map[nm] ? map[nm].cnt : 0) + 1 }; }
+                var arr = Object.values(map).sort(function(a,b) { return b.total - a.total; }).slice(0,20);
+                html = '<h4 class="font-bold mb-3">تحليل العملاء</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">العميل</th><th class="p-2 text-center">عدد الأوردرات</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(arr[i].name) + '</td><td class="p-2 text-center">' + arr[i].cnt + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'crm-customer-followups') {
+                html = '<div class="text-center py-4 text-gray-500">سجل المتابعات غير متوفر حالياً</div>';
+            }
+            else if (reportId === 'crm-customer-by-area') {
+                var customers = RW_STATE.data.customers || [];
+                var map = {}; for (var i = 0; i < customers.length; i++) { var a = customers[i].area || 'غير محدد'; map[a] = (map[a] || 0) + 1; }
+                html = '<h4 class="font-bold mb-3">العملاء حسب المنطقة</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">المنطقة</th><th class="p-2 text-center">عدد العملاء</th></tr></thead><tbody>';
+                for (var k in map) html += '<tr class="border-t"><td class="p-2">' + _esc(k) + '</td><td class="p-2 text-center font-bold">' + map[k] + '</td></tr>';
+                html += '</tbody></table>';
+            }
+
+            // ---------- اللوجستيات ----------
+            else if (reportId === 'logistics-loading-unloading') {
+                var res = await supabase.from('stock_vouchers').select('*').in('type', ['Loading','Unloading']).gte('voucher_date', fromDate).lte('voucher_date', toDate);
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">سجل التحميل والتفريغ</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">رقم الإذن</th><th class="p-2">النوع</th><th class="p-2">التاريخ</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].voucher_code) + '</td><td class="p-2">' + _esc(data[i].type) + '</td><td class="p-2">' + _esc(data[i].voucher_date) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'logistics-returns') {
+                var res = await supabase.from('stock_vouchers').select('*').eq('type', 'Return').gte('voucher_date', fromDate).lte('voucher_date', toDate);
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">سجل المرتجعات</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">رقم الإذن</th><th class="p-2">التاريخ</th><th class="p-2">المرجع</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].voucher_code) + '</td><td class="p-2">' + _esc(data[i].voucher_date) + '</td><td class="p-2">' + _esc(data[i].reference) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'logistics-settlement') {
+                var res = await supabase.from('daily_settlements').select('*').gte('settlement_date', fromDate).lte('settlement_date', toDate);
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">إغلاق اليومية</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التسوية</th><th class="p-2">التاريخ</th><th class="p-2 text-center">العجز</th><th class="p-2 text-center">قيمة العجز</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].settlement_code) + '</td><td class="p-2">' + _esc(data[i].settlement_date) + '</td><td class="p-2 text-center">' + data[i].total_shortage + '</td><td class="p-2 text-center font-bold text-red-600">' + _fmtNum(data[i].total_shortage_value) + ' EGP</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'logistics-driver-performance') {
+                var q = supabase.from('runsheets').select('driver_id, total_amount').gte('run_date', fromDate).lte('run_date', toDate);
+                if (driver) q = q.eq('driver_id', driver);
+                var res = await q; data = res.data || [];
+                var map = {}; for (var i = 0; i < data.length; i++) { var dr = data[i].driver_id || 'غير محدد'; map[dr] = { total: (map[dr] ? map[dr].total : 0) + Number(data[i].total_amount || 0), cnt: (map[dr] ? map[dr].cnt : 0) + 1 }; }
+                var arr = Object.entries(map).map(function(e) { return { driver: e[0], total: e[1].total, cnt: e[1].cnt }; }).sort(function(a,b) { return b.total - a.total; });
+                html = '<h4 class="font-bold mb-3">أداء السائقين</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">السائق</th><th class="p-2 text-center">عدد الرانشيتات</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var i = 0; i < arr.length; i++) html += '<tr class="border-t"><td class="p-2">' + _esc(arr[i].driver) + '</td><td class="p-2 text-center">' + arr[i].cnt + '</td><td class="p-2 text-center font-bold">' + _fmtNum(arr[i].total) + ' EGP</td></tr>';
+                html += '</tbody></table>';
+            }
+
+            // ---------- HR ----------
+            else if (reportId === 'hr-employee-list') {
+                var res = await supabase.from('users').select('name, email, role, status');
+                data = res.data || [];
+                html = '<h4 class="font-bold mb-3">قائمة الموظفين</h4><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">الاسم</th><th class="p-2">البريد</th><th class="p-2">الدور</th><th class="p-2">الحالة</th></tr></thead><tbody>';
+                for (var i = 0; i < data.length; i++) html += '<tr class="border-t"><td class="p-2 font-semibold">' + _esc(data[i].name) + '</td><td class="p-2">' + _esc(data[i].email) + '</td><td class="p-2">' + _esc(data[i].role) + '</td><td class="p-2">' + _esc(data[i].status) + '</td></tr>';
+                html += '</tbody></table>';
+            }
+            else if (reportId === 'hr-attendance' || reportId === 'hr-salary') {
+                html = '<div class="text-center py-4 text-gray-500">البيانات غير متوفرة حالياً (قيد التطوير)</div>';
+            }
+            else {
+                html = '<div class="text-center py-4 text-gray-500">هذا التقرير غير متوفر بعد</div>';
+            }
+
+            safeHTML(resultDiv, html);
+        } catch(e) { console.error(e); safeHTML(resultDiv, '<div class="text-center py-8 text-red-500">فشل تحميل التقرير: ' + e.message + '</div>'); }
     }
 
     function _printReport() {
