@@ -5031,43 +5031,71 @@ var RW_OwnerLicense = (function() {
         });
     }
 
-    function _buildFullForm(licenseInfo) {
-        var container = byId('license-main-container');
-        if (!container) return;
-        
-        var html = '';
-        
-        // ========== القسم الأول: حالة الشركة ==========
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
-        html += '<h3 class="text-lg font-black text-indigo-600 border-b pb-2 mb-4"><i class="fa-solid fa-shield-haltered ml-2"></i> إعدادات الترخيص</h3>';
-        html += '<div class="space-y-4">';
-        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">حالة الشركة</label><select id="license-status" class="p-2.5 bg-gray-50 border rounded-lg">';
-        html += '<option value="trial"' + (licenseInfo.licenseStatus === 'trial' ? ' selected' : '') + '>فترة تجربة</option>';
-        html += '<option value="active"' + (licenseInfo.licenseStatus === 'active' ? ' selected' : '') + '>نشطة</option>';
-        html += '<option value="suspended"' + (licenseInfo.licenseStatus === 'suspended' ? ' selected' : '') + '>موقوفة</option>';
-        html += '<option value="cancelled"' + (licenseInfo.licenseStatus === 'cancelled' ? ' selected' : '') + '>ملغاة</option>';
-        html += '</select></div>';
-        html += '<div class="grid grid-cols-2 gap-4">';
-        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء التجربة</label><input id="license-trial-end" type="date" value="' + (licenseInfo.trialEndDate || '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
-        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء الاشتراك</label><input id="license-sub-end" type="date" value="' + (licenseInfo.subscriptionEndDate || '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
-        html += '</div>';
-        html += '<div class="flex justify-end pt-2"><button type="button" id="btn-save-license-only" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md">حفظ إعدادات الترخيص</button></div>';
-        html += '</div></div>';
-        
-        // ========== القسم الثاني: بيانات المالك ==========
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
-        html += '<h3 class="text-lg font-black text-red-600 border-b pb-2 mb-4"><i class="fa-solid fa-user-shield ml-2"></i> بيانات اعتماد المالك</h3>';
-        html += '<div class="space-y-4">';
-        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">البريد الإلكتروني للمالك</label><input id="license-owner-email" type="email" value="' + (licenseInfo.ownerEmail || '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
-        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">كلمة مرور جديدة (اترك فارغاً للإبقاء)</label><input id="license-owner-password" type="password" class="p-2.5 bg-gray-50 border rounded-lg" placeholder="كلمة مرور جديدة"></div>';
-        html += '<div class="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-lg text-sm text-amber-800"><i class="fa-solid fa-triangle-exclamation ml-2"></i> تحذير: تغيير بيانات المالك سيؤثر على تسجيل الدخول. احفظ هذه البيانات في مكان آمن.</div>';
-        html += '<div class="flex justify-end pt-2"><button type="button" id="btn-save-owner-only" class="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold shadow-md">حفظ بيانات المالك</button></div>';
-        html += '</div></div>';
-        
-        safeHTML(container, html);
-        
-        _bindSaveButtons();
+    // ============================================================
+// دالة togglePasswordVisibility المساعدة (توضع خارج أي دالة داخل RW_OwnerLicense)
+// ============================================================
+function togglePasswordVisibility(inputId, btn) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
+    } else {
+        input.type = 'password';
+        btn.innerHTML = '<i class="fa-solid fa-eye"></i>';
     }
+}
+
+// ============================================================
+// دالة _buildFullForm المُعدَّلة
+// ============================================================
+function _buildFullForm(licenseInfo) {
+    var container = byId('license-main-container');
+    if (!container) return;
+    
+    var html = '';
+    
+    // ========== القسم الأول: حالة الشركة ==========
+    html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
+    html += '<h3 class="text-lg font-black text-indigo-600 border-b pb-2 mb-4"><i class="fa-solid fa-shield-haltered ml-2"></i> إعدادات الترخيص</h3>';
+    html += '<div class="space-y-4">';
+    html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">حالة الشركة</label><select id="license-status" class="p-2.5 bg-gray-50 border rounded-lg">';
+    html += '<option value="trial"' + (licenseInfo.licenseStatus === 'trial' ? ' selected' : '') + '>فترة تجربة</option>';
+    html += '<option value="active"' + (licenseInfo.licenseStatus === 'active' ? ' selected' : '') + '>نشطة</option>';
+    html += '<option value="suspended"' + (licenseInfo.licenseStatus === 'suspended' ? ' selected' : '') + '>موقوفة</option>';
+    html += '<option value="cancelled"' + (licenseInfo.licenseStatus === 'cancelled' ? ' selected' : '') + '>ملغاة</option>';
+    html += '</select></div>';
+    html += '<div class="grid grid-cols-2 gap-4">';
+    html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء التجربة</label><input id="license-trial-end" type="date" value="' + (licenseInfo.trialEndDate || '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
+    html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء الاشتراك</label><input id="license-sub-end" type="date" value="' + (licenseInfo.subscriptionEndDate || '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
+    html += '</div>';
+    html += '<div class="flex justify-end pt-2"><button type="button" id="btn-save-license-only" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md">حفظ إعدادات الترخيص</button></div>';
+    html += '</div></div>';
+    
+    // ========== القسم الثاني: بيانات المالك ==========
+    html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
+    html += '<h3 class="text-lg font-black text-red-600 border-b pb-2 mb-4"><i class="fa-solid fa-user-shield ml-2"></i> بيانات اعتماد المالك</h3>';
+    html += '<div class="space-y-4">';
+    html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">البريد الإلكتروني للمالك</label><input id="license-owner-email" type="email" value="' + (licenseInfo.ownerEmail || '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
+    
+    // ---------- حقل كلمة المرور مع زر العين ----------
+    html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">كلمة مرور جديدة (اترك فارغاً للإبقاء)</label>';
+    html += '<div class="relative">';
+    html += '<input id="license-owner-password" type="password" class="p-2.5 bg-gray-50 border rounded-lg w-full" placeholder="كلمة مرور جديدة">';
+    html += '<button type="button" onclick="togglePasswordVisibility(\'license-owner-password\', this)" class="absolute left-2 top-2 text-gray-400 hover:text-gray-600 p-1.5 rounded-lg">';
+    html += '<i class="fa-solid fa-eye"></i>';
+    html += '</button>';
+    html += '</div></div>';
+    // -----------------------------------------------
+    
+    html += '<div class="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-lg text-sm text-amber-800"><i class="fa-solid fa-triangle-exclamation ml-2"></i> تحذير: تغيير بيانات المالك سيؤثر على تسجيل الدخول. احفظ هذه البيانات في مكان آمن.</div>';
+    html += '<div class="flex justify-end pt-2"><button type="button" id="btn-save-owner-only" class="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold shadow-md">حفظ بيانات المالك</button></div>';
+    html += '</div></div>';
+    
+    safeHTML(container, html);
+    
+    _bindSaveButtons();
+}
 
     function _bindSaveButtons() {
         // زر حفظ إعدادات الترخيص
