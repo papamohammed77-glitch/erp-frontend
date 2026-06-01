@@ -246,7 +246,10 @@ _buildMenuHTML(items) {
         if (item.submenu) { 
             html += `<li style="margin-bottom:4px;">
                 <div class="rw-sidebar-link" style="justify-content:space-between;" onclick="event.stopPropagation(); var s=this.nextElementSibling; if(s)s.style.display=s.style.display==='none'?'block':'none';">
-                    <div class="rw-sidebar-link-text">${item.label}</div>
+                    <div style="display:flex;align-items:center;gap:16px;">
+                        <div class="rw-sidebar-link-icon"><i class="fa-solid ${item.icon||'fa-folder'}"></i></div>
+                        <div class="rw-sidebar-link-text">${item.label}</div>
+                    </div>
                     <i class="fa-solid fa-chevron-down" style="font-size:11px;color:#94a3b8;"></i>
                 </div>
                 <div style="display:none;padding-right:16px;" class="rw-sidebar-submenu">${this._buildMenuHTML(item.submenu)}</div>
@@ -2600,7 +2603,179 @@ var RW_Warehouse = (function() {
         Swal.fire({ title: 'تفاصيل الاستلام: ' + opId, html: h, width: '800px', showCloseButton: true, showConfirmButton: false });
     }
 
-    // ==================== VOUCHERS (الأذونات المخزنية) ====================
+    // ==================== VOUCHER FORM – نماذج الأذونات الأربعة ====================
+    var voucherCart = [];
+    var currentVoucherType = '';
+    var currentVoucherConfig = {};
+
+    function loadVoucherForm(type) {
+        voucherCart = [];
+        currentVoucherType = type;
+        var configs = {
+            'Transfer':      { title: 'تحويل مخزني', entityLabel: 'الفرع المحول إليه', showPrice: false, fromType: 'Branch', fromId: 'MAIN', toType: 'Branch', toId: '', endpoint: 'save-voucher' },
+            'DirectSale':    { title: 'صرف سيارة بيع مباشر', entityLabel: 'المندوب / السيارة', showPrice: true, fromType: 'Branch', fromId: 'MAIN', toType: 'Vehicle', toId: '', endpoint: 'save-voucher' },
+            'DirectReturn':  { title: 'استلام مرتجع سيارة', entityLabel: 'المندوب / السيارة', showPrice: true, fromType: 'Vehicle', fromId: '', toType: 'Branch', toId: 'MAIN', endpoint: 'save-voucher' },
+            'SupplierReturn':{ title: 'مرتجع لمورد', entityLabel: 'المورد', showPrice: true, fromType: 'Branch', fromId: 'MAIN', toType: 'Supplier', toId: '', endpoint: 'save-voucher' }
+        };
+        var cfg = configs[type];
+        if (!cfg) { showToast('نوع غير معروف', 'error'); return; }
+        currentVoucherConfig = cfg;
+
+        var c = byId('rw-page-container');
+        if (!c) return;
+        safeText(byId('rw-header-title'), cfg.title);
+        safeHTML(c, `<div class="p-4">
+            <div class="bg-white rounded-2xl shadow-sm border p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold"><i class="fa-solid fa-file-signature ml-2 text-indigo-600"></i>${cfg.title}</h2>
+                    <button onclick="RW_Warehouse.loadVouchers()" class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-bold mb-1">${cfg.entityLabel}</label>
+                        <select id="voucherEntitySelect" class="border rounded-lg p-2 w-full"><option value="">-- اختر --</option></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1">ملاحظات</label>
+                        <textarea id="voucherNotesLarge" rows="2" class="border rounded-lg p-2 w-full" placeholder="ملاحظات..."></textarea>
+                    </div>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-bold mb-1">بحث عن صنف</label>
+                    <div class="relative">
+                        <input type="text" id="voucherItemSearch" oninput="RW_Warehouse._searchVoucherItem(this.value)" autocomplete="off" placeholder="ابحث بالاسم أو الباركود..." class="border rounded-lg p-2 w-full">
+                        <div id="voucherSearchResults" class="absolute z-50 left-0 right-0 mt-1 bg-white shadow-xl rounded-xl max-h-60 overflow-y-auto hidden border"></div>
+                    </div>
+                </div>
+                <div class="mb-4 overflow-y-auto" style="max-height:300px;" id="voucherItemsTable">
+                    <div class="text-center py-8 text-gray-400">أضف أصنافاً</div>
+                </div>
+                <div class="p-3 bg-gray-50 rounded-lg flex justify-between items-center mb-4">
+                    <span class="font-bold">عدد الأصناف: <span id="voucherTotalItems">0</span></span>
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button onclick="RW_Warehouse._clearVoucherCart()" class="px-4 py-2 bg-gray-500 text-white rounded-lg font-bold">مسح الكل</button>
+                    <button onclick="RW_Warehouse._saveAndSendVoucher()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold">حفظ وإرسال (Sent)</button>
+                </div>
+            </div>
+        </div>`);
+
+        _loadVoucherEntityOptions(type);
+        _renderVoucherCart();
+    }
+
+    async function _loadVoucherEntityOptions(type) {
+        var select = byId('voucherEntitySelect');
+        if (!select) return;
+        if (type === 'Transfer') {
+            var branches = await RW_Data.loadBranches();
+            var html = '<option value="">-- اختر فرعاً --</option>';
+            for (var i = 0; i < branches.length; i++) html += '<option value="' + (branches[i].branch_code || branches[i].id || '') + '">' + (branches[i].name || branches[i].branch_name || '') + '</option>';
+            safeHTML(select, html);
+        } else if (type === 'SupplierReturn') {
+            var suppliers = RW_STATE.data.suppliers || [];
+            var html = '<option value="">-- اختر مورداً --</option>';
+            for (var i = 0; i < suppliers.length; i++) html += '<option value="' + (suppliers[i].supplier_code || suppliers[i].code || '') + '">' + (suppliers[i].name || '') + '</option>';
+            safeHTML(select, html);
+        } else if (type === 'DirectSale' || type === 'DirectReturn') {
+            var res = await supabase.from('users').select('email, name').in('role', ['driver','سائق','مندوب']);
+            var drivers = res.data || [];
+            var html = '<option value="">-- اختر مندوباً --</option>';
+            for (var i = 0; i < drivers.length; i++) html += '<option value="' + (drivers[i].email || '') + '">' + (drivers[i].name || '') + ' (' + (drivers[i].email || '') + ')</option>';
+            safeHTML(select, html);
+        }
+    }
+
+    function _searchVoucherItem(query) {
+        var div = byId('voucherSearchResults');
+        if (!div) return;
+        if (!query || query.trim().length < 1) { div.classList.add('hidden'); return; }
+        var items = RW_STATE.data.items || [];
+        var q = query.toLowerCase();
+        var filtered = items.filter(function(i) { return (i.name || '').toLowerCase().indexOf(q) !== -1 || (i.item_code || '').toLowerCase().indexOf(q) !== -1; });
+        if (filtered.length > 0) {
+            var html = '';
+            for (var idx = 0; idx < Math.min(filtered.length, 20); idx++) {
+                var item = filtered[idx];
+                html += '<div onclick="RW_Warehouse._addVoucherItem(\'' + item.item_code + '\')" class="p-3 hover:bg-indigo-50 cursor-pointer flex justify-between border-b"><div><div class="font-bold">' + item.name + '</div><div class="text-xs text-gray-400">' + item.item_code + '</div></div><div class="font-bold text-indigo-600">' + (item.qty || 0) + ' ' + (item.unit || '') + '</div></div>';
+            }
+            safeHTML(div, html); div.classList.remove('hidden');
+        } else { div.classList.add('hidden'); }
+    }
+
+    function _addVoucherItem(itemCode) {
+        var items = RW_STATE.data.items || [];
+        var item = null;
+        for (var i = 0; i < items.length; i++) { if (items[i].item_code === itemCode) { item = items[i]; break; } }
+        if (!item) return;
+        var existing = null;
+        for (var j = 0; j < voucherCart.length; j++) { if (voucherCart[j].code === itemCode) { existing = voucherCart[j]; break; } }
+        if (existing) { existing.qty++; } else {
+            voucherCart.push({ code: item.item_code, name: item.name, unit: item.unit || 'حبة', qty: 1, price: currentVoucherConfig.showPrice ? (Number(item.sales_price) || 0) : 0 });
+        }
+        byId('voucherItemSearch').value = '';
+        byId('voucherSearchResults').classList.add('hidden');
+        _renderVoucherCart();
+    }
+
+    function _renderVoucherCart() {
+        var tbody = byId('voucherItemsTable');
+        var countSpan = byId('voucherTotalItems');
+        if (voucherCart.length === 0) { safeHTML(tbody, '<div class="text-center py-8 text-gray-400">أضف أصنافاً</div>'); if (countSpan) countSpan.innerText = '0'; return; }
+        var html = '<table class="w-full text-right border"><thead class="bg-gray-100 text-xs uppercase"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th>';
+        if (currentVoucherConfig.showPrice) html += '<th class="p-2 text-center">السعر</th>';
+        html += '<th class="p-2 text-center">حذف</th></tr></thead><tbody>';
+        for (var i = 0; i < voucherCart.length; i++) {
+            var item = voucherCart[i];
+            html += '<tr class="border-b"><td class="p-2"><div class="font-bold">' + item.name + '</div><div class="text-xs text-gray-400">' + item.code + '</div></td><td class="p-2 text-center"><input type="number" value="' + item.qty + '" onchange="RW_Warehouse._updateVoucherQty(' + i + ', this.value)" class="w-16 p-1 border rounded text-center" min="1"></td>';
+            if (currentVoucherConfig.showPrice) html += '<td class="p-2 text-center"><input type="number" value="' + item.price + '" onchange="RW_Warehouse._updateVoucherPrice(' + i + ', this.value)" class="w-20 p-1 border rounded text-center" step="0.01" min="0"></td>';
+            html += '<td class="p-2 text-center"><button onclick="RW_Warehouse._removeVoucherItem(' + i + ')" class="text-red-500"><i class="fa-solid fa-trash"></i></button></td></tr>';
+        }
+        html += '</tbody></table>';
+        safeHTML(tbody, html);
+        if (countSpan) countSpan.innerText = String(voucherCart.length);
+    }
+
+    function _updateVoucherQty(idx, val) { var q = parseInt(val); if (q > 0) voucherCart[idx].qty = q; else voucherCart.splice(idx, 1); _renderVoucherCart(); }
+    function _updateVoucherPrice(idx, val) { voucherCart[idx].price = parseFloat(val) || 0; _renderVoucherCart(); }
+    function _removeVoucherItem(idx) { voucherCart.splice(idx, 1); _renderVoucherCart(); }
+    function _clearVoucherCart() { voucherCart = []; _renderVoucherCart(); }
+
+    async function _saveAndSendVoucher() {
+        if (voucherCart.length === 0) { showToast('أضف أصنافاً للإذن', 'warning'); return; }
+        var entity = byId('voucherEntitySelect') ? byId('voucherEntitySelect').value : '';
+        if (!entity) { showToast('يرجى اختيار ' + currentVoucherConfig.entityLabel, 'warning'); return; }
+        var notes = byId('voucherNotesLarge') ? byId('voucherNotesLarge').value : '';
+        var cfg = currentVoucherConfig;
+        var toId = cfg.toId || entity;
+        var fromId = cfg.fromId || entity;
+        if (cfg.toType === 'Branch' && currentVoucherType === 'Transfer') toId = entity;
+        else if (cfg.toType === 'Vehicle') toId = entity;
+        else if (cfg.toType === 'Supplier') toId = entity;
+        else if (cfg.fromType === 'Vehicle') fromId = entity;
+
+        var items = [];
+        for (var i = 0; i < voucherCart.length; i++) {
+            items.push({ itemCode: voucherCart[i].code, qty: voucherCart[i].qty, unitPrice: voucherCart[i].price || 0, notes: '' });
+        }
+
+        showLoader('جاري حفظ وإرسال الإذن...');
+        var ses = await supabase.auth.getSession(), token = ses.data.session ? ses.data.session.access_token : null;
+        try {
+            var createRes = await fetch(SUPABASE_URL + '/functions/v1/create-stock-voucher', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ type: currentVoucherType, reference: '', fromType: cfg.fromType, fromId: fromId, toType: cfg.toType, toId: toId, items: items, notes: notes }) });
+            var createJson = await createRes.json();
+            if (!createJson.success) { hideLoader(); showToast(createJson.msg || 'فشل الحفظ', 'error'); return; }
+            var sendRes = await fetch(SUPABASE_URL + '/functions/v1/send-stock-voucher', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ voucher_code: createJson.voucherId }) });
+            var sendJson = await sendRes.json();
+            hideLoader();
+            if (sendJson.success) {
+                showToast('تم إنشاء وإرسال الإذن ' + createJson.voucherId, 'success');
+                voucherCart = []; _renderVoucherCart();
+            } else { showToast(sendJson.msg || 'فشل الإرسال', 'error'); }
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
+    }
+
+    // ==================== VOUCHERS LIST – عرض الأذونات مع فصل ====================
     async function loadVouchers() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'الأذونات المخزنية');
@@ -2613,19 +2788,26 @@ var RW_Warehouse = (function() {
                     <input type="date" id="v-filter-to" onchange="RW_Warehouse._applyVouchers()" class="p-2 bg-white border rounded-lg text-sm">
                     <input type="text" id="v-search" oninput="RW_Warehouse._applyVouchers()" placeholder="بحث برقم الإذن..." class="p-2 bg-white border rounded-lg text-sm w-40">
                     <button onclick="RW_Warehouse._openNewVoucherModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold text-sm"><i class="fa-solid fa-plus ml-1"></i> إذن جديد</button>
+                    <label class="flex items-center gap-2 ml-3 text-sm"><input type="checkbox" id="v-show-all" onchange="RW_Warehouse._applyVouchers()"> <span class="font-bold">إظهار الكل (يشمل التلقائية)</span></label>
                 </div>
             </div>
             <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh" id="vouchers-table-container">
                 <table class="w-full"><thead class="bg-gray-800 text-white sticky top-0"><tr><th class="p-3">رقم الإذن</th><th class="p-3">النوع</th><th class="p-3">التاريخ</th><th class="p-3">الحالة</th><th class="p-3">المرجع</th><th class="p-3">من</th><th class="p-3">إلى</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="vouchers-tbody"><tr><td colspan="8" class="text-center py-8">جاري التحميل...</td></tr></tbody></table>
             </div>
         </div>`);
-        var res = await supabase.from('stock_vouchers').select('*').or('source.eq.Manual,and(source.is.null,type.not.in.(Picking,Loading,Return,Unloading))');
+        var res = await supabase.from('stock_vouchers').select('*').order('voucher_date', { ascending: false });
         window._vouchersData = res.data || [];
         _applyVouchers();
     }
+
     function _applyVouchers() {
         var d = window._vouchersData || [];
         var type = byId('v-filter-type')?.value, status = byId('v-filter-status')?.value, from = byId('v-filter-from')?.value, to = byId('v-filter-to')?.value, search = (byId('v-search')?.value||'').toLowerCase();
+        var showAll = byId('v-show-all') ? byId('v-show-all').checked : false;
+        
+        if (!showAll) {
+            d = d.filter(v => v.source === 'Manual' || (v.source !== 'Manual' && v.type === 'Adjustment'));
+        }
         if (type) d = d.filter(v => v.type === type);
         if (status) d = d.filter(v => v.status === status);
         if (from) d = d.filter(v => v.voucher_date >= from);
@@ -2636,13 +2818,16 @@ var RW_Warehouse = (function() {
         var h = '';
         d.forEach(v => {
             var statusBadge = { 'Draft':'bg-gray-100 text-gray-600', 'Sent':'bg-blue-100 text-blue-700', 'Received':'bg-purple-100 text-purple-700', 'Completed':'bg-green-100 text-green-700' }[v.status] || 'bg-gray-100 text-gray-700';
+            var isSystem = (v.source === 'Auto' || ['Picking','Loading','Return','Unloading'].indexOf(v.type) !== -1);
             var actions = `<button onclick="RW_Warehouse._viewVoucherDetails('${v.voucher_code}')" class="text-blue-600 mx-1"><i class="fa-solid fa-eye"></i></button>`;
-            if (v.status === 'Draft') actions += `<button onclick="RW_Warehouse._sendVoucher('${v.voucher_code}')" class="text-blue-600 mx-1"><i class="fa-solid fa-paper-plane"></i></button>`;
+            if (v.status === 'Draft' && !isSystem) actions += `<button onclick="RW_Warehouse._sendVoucher('${v.voucher_code}')" class="text-blue-600 mx-1"><i class="fa-solid fa-paper-plane"></i></button>`;
             if (v.status === 'Sent') actions += `<button onclick="RW_Warehouse._receiveVoucher('${v.voucher_code}')" class="text-green-600 mx-1"><i class="fa-solid fa-check-circle"></i></button>`;
-            h += `<tr class="hover:bg-gray-50"><td class="p-3 font-bold text-indigo-700">${v.voucher_code||''}</td><td class="p-3">${v.type||''}</td><td class="p-3">${v.voucher_date||''}</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs ${statusBadge}">${v.status||''}</span></td><td class="p-3">${v.reference||'-'}</td><td class="p-3">${v.from_id||'-'}</td><td class="p-3">${v.to_id||'-'}</td><td class="p-3 text-center">${actions}</td></tr>`;
+            var sourceIndicator = isSystem ? ' <i class="fa-solid fa-robot text-gray-400 text-xs" title="تلقائي"></i>' : '';
+            h += `<tr class="hover:bg-gray-50"><td class="p-3 font-bold text-indigo-700">${v.voucher_code||''}${sourceIndicator}</td><td class="p-3">${v.type||''}</td><td class="p-3">${v.voucher_date||''}</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs ${statusBadge}">${v.status||''}</span></td><td class="p-3">${v.reference||'-'}</td><td class="p-3">${v.from_id||'-'}</td><td class="p-3">${v.to_id||'-'}</td><td class="p-3 text-center">${actions}</td></tr>`;
         });
         safeHTML(tb, h);
     }
+
     async function _viewVoucherDetails(voucherCode) {
         showLoader('جاري التحميل...');
         var detRes = await supabase.from('stock_voucher_details').select('*').eq('voucher_code', voucherCode);
@@ -2654,6 +2839,7 @@ var RW_Warehouse = (function() {
         h += '</tbody></table>';
         Swal.fire({ title: 'تفاصيل الإذن: ' + voucherCode, html: h, width: '600px', showCloseButton: true, showConfirmButton: false });
     }
+
     async function _sendVoucher(voucherCode) {
         var confirm = await Swal.fire({ title: 'تأكيد الإرسال', text: 'سيتم إرسال الإذن ' + voucherCode + ' وخصم المخزون من المصدر. متابعة؟', icon: 'warning', showCancelButton: true, confirmButtonColor: '#2563eb', confirmButtonText: 'نعم، أرسل', cancelButtonText: 'إلغاء' });
         if (!confirm.isConfirmed) return;
@@ -2666,6 +2852,7 @@ var RW_Warehouse = (function() {
             else showToast(json.error || json.msg || 'فشل الإرسال', 'error');
         } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
     }
+
     async function _receiveVoucher(voucherCode) {
         showLoader('جاري تحميل تفاصيل الإذن...');
         var detRes = await supabase.from('stock_voucher_details').select('*').eq('voucher_code', voucherCode);
@@ -2690,6 +2877,7 @@ var RW_Warehouse = (function() {
             else showToast(json.error || json.msg || 'فشل الاستلام', 'error');
         } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
     }
+
     async function _openNewVoucherModal() {
         var typeOptions = '<option value="Transfer">تحويل داخلي</option><option value="DirectSale">صرف سيارة بيع مباشر</option><option value="DirectReturn">استلام مرتجع سيارة</option><option value="SupplierReturn">مرتجع لمورد</option><option value="Adjustment">جرد</option>';
         var html = '<div class="text-right space-y-3"><div><label class="text-xs font-bold">نوع الإذن</label><select id="newVoucherType" class="swal2-input w-full">' + typeOptions + '</select></div><div><label class="text-xs font-bold">المرجع (اختياري)</label><input id="newVoucherRef" class="swal2-input w-full" placeholder="رقم مرجعي"></div><div><label class="text-xs font-bold">ملاحظات</label><textarea id="newVoucherNotes" rows="2" class="swal2-input w-full"></textarea></div></div>';
@@ -2713,7 +2901,6 @@ var RW_Warehouse = (function() {
             else showToast(json.error || json.msg || 'فشل الإنشاء', 'error');
         } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
     }
-    function loadVoucherForm(type) { loadVouchers(); }
 
     // ==================== PICKING ====================
     async function loadPicking() {
@@ -2950,7 +3137,6 @@ var RW_Warehouse = (function() {
         window._invCart = [];
         _renderInvCart('vc');
         
-        // تحميل الرانشيتات
         var runsheetsRes = await supabase.from('runsheets').select('runsheet_code, driver_id').in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning']);
         var sel = byId('vc-runsheet-select');
         if (sel && runsheetsRes.data) {
@@ -3140,19 +3326,15 @@ var RW_Warehouse = (function() {
         if (!rsCode) { byId('settlement-details-container').classList.add('hidden'); return; }
         showLoader('جاري تحميل بيانات التسوية...');
         try {
-            // 1. جلب الرانشيت
             var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', rsCode).maybeSingle();
             var rs = rsRes.data; if (!rs) { hideLoader(); showToast('الرانشيت غير موجود', 'error'); return; }
             
-            // 2. جلب المحمّل من run_sheet_details
             var loadedRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
             var loadedItems = loadedRes.data || [];
             
-            // 3. جلب المسلّم والمرتجع من order_details
             var orderDetailsRes = await supabase.from('order_details').select('*').eq('runsheet_id', rs.id);
             var orderDetails = orderDetailsRes.data || [];
             
-            // 4. جلب المرتجعات من stock_vouchers
             var vouchersRes = await supabase.from('stock_vouchers').select('voucher_code').eq('reference', rsCode).eq('type', 'Return');
             var voucherIds = (vouchersRes.data || []).map(function(v) { return v.voucher_code; });
             var returnDetails = [];
@@ -3161,7 +3343,6 @@ var RW_Warehouse = (function() {
                 returnDetails = retRes.data || [];
             }
             
-            // 5. تجميع البيانات
             var itemsMap = {};
             for (var i = 0; i < loadedItems.length; i++) {
                 var it = loadedItems[i];
@@ -3179,7 +3360,6 @@ var RW_Warehouse = (function() {
                 if (itemsMap[rd.item_code]) itemsMap[rd.item_code].returnedQty += Number(rd.qty) || 0;
             }
             
-            // 6. عرض الجدول
             var html = '';
             var totalShortage = 0, totalShortageValue = 0;
             for (var code in itemsMap) {
@@ -3236,6 +3416,7 @@ var RW_Warehouse = (function() {
     return {
         loadReceiving, _applyReceiving, _showReceivingDetails,
         loadVouchers, _applyVouchers, _viewVoucherDetails, _sendVoucher, _receiveVoucher, _openNewVoucherModal, loadVoucherForm,
+        _searchVoucherItem, _addVoucherItem, _renderVoucherCart, _updateVoucherQty, _updateVoucherPrice, _removeVoucherItem, _clearVoucherCart, _saveAndSendVoucher,
         loadPicking, _applyPicking, _showPickingDetails,
         loadLoading, _applyLoading, _showLoadingDetails,
         loadDelivery, _applyDelivery, _showDeliveryDetails,
