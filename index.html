@@ -5124,80 +5124,93 @@ function _buildFullForm(licenseInfo) {
     _bindSaveButtons();
 }
 
-    function _bindSaveButtons() {
-        // زر حفظ إعدادات الترخيص
-        var btnLicense = byId('btn-save-license-only');
-        if (btnLicense) {
-            btnLicense.addEventListener('click', function() {
-                var payload = {
-                    status: byId('license-status').value,
-                    trial_end_date: byId('license-trial-end').value || null,
-                    subscription_end_date: byId('license-sub-end').value || null
-                };
-                _saveSettings(payload, 'إعدادات الترخيص');
-            });
-        }
-        
-        // زر حفظ بيانات المالك
-        var btnOwner = byId('btn-save-owner-only');
-        if (btnOwner) {
-            btnOwner.addEventListener('click', function() {
-                var ownerEmailVal = byId('license-owner-email').value.trim();
-                var ownerPassword = byId('license-owner-password').value;
-                
-                if (!ownerEmailVal) {
-                    showToast('بريد المالك مطلوب', 'error');
-                    return;
-                }
-                
-                var payload = {
-                    owner_email: ownerEmailVal
-                };
-                
-                if (ownerPassword && ownerPassword.trim() !== '') {
-                    payload.owner_password = ownerPassword;
-                }
-                
-                _saveSettings(payload, 'بيانات المالك');
-            });
-        }
-    }
-
-    function _saveSettings(payload, label) {
-        showLoader('جاري حفظ ' + (label || 'الإعدادات') + '...');
-        
-        supabase.auth.getSession().then(function(sessionRes) {
-            var token = null;
-            if (sessionRes && sessionRes.data && sessionRes.data.session) {
-                token = sessionRes.data.session.access_token;
-            }
-            
-            return fetch(SUPABASE_URL + '/functions/v1/save-settings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + token
-                },
-                body: JSON.stringify(payload)
-            });
-        }).then(function(res) {
-            if (!res.ok) {
-                return res.json().then(function(err) { throw new Error(err.error || 'خطأ في الخادم'); });
-            }
-            return res.json();
-        }).then(function(json) {
-            hideLoader();
-            if (json.success) {
-                showToast('تم حفظ ' + (label || 'الإعدادات') + ' بنجاح', 'success');
-            } else {
-                showToast(json.error || 'فشل حفظ ' + (label || 'الإعدادات'), 'error');
-            }
-        }).catch(function(e) {
-            hideLoader();
-            showToast('فشل الاتصال: ' + (e.message || 'خطأ غير معروف'), 'error');
-            console.error(e);
+function _bindSaveButtons(licenseInfo) {
+    // زر حفظ إعدادات الترخيص
+    var btnLicense = byId('btn-save-license-only');
+    if (btnLicense) {
+        btnLicense.addEventListener('click', function() {
+            var payload = {
+                status: byId('license-status').value,
+                trial_end_date: byId('license-trial-end').value || null,
+                subscription_end_date: byId('license-sub-end').value || null
+            };
+            _saveSettings(payload, 'إعدادات الترخيص', null); // لا نحتاج بيانات المالك هنا
         });
     }
+    
+    // زر حفظ بيانات المالك
+    var btnOwner = byId('btn-save-owner-only');
+    if (btnOwner) {
+        btnOwner.addEventListener('click', function() {
+            var ownerEmailVal = byId('license-owner-email').value.trim();
+            var ownerPassword = byId('license-owner-password').value;
+            
+            if (!ownerEmailVal) {
+                showToast('بريد المالك مطلوب', 'error');
+                return;
+            }
+            
+            var payload = {
+                owner_email: ownerEmailVal
+            };
+            
+            if (ownerPassword && ownerPassword.trim() !== '') {
+                payload.owner_password = ownerPassword;
+            }
+            
+            // نمرر بيانات المالك القديمة للتحقق في Edge Function
+            var oldOwnerEmail = licenseInfo.ownerEmail || '';
+            // نترك كلمة المرور القديمة فارغة لأننا لا نعرفها، لكن Edge Function ستتحقق بالبيانات القديمة من app_settings إذا أرسلناها
+            _saveSettings(payload, 'بيانات المالك', { ownerEmail: oldOwnerEmail });
+        });
+    }
+}
+
+    function _saveSettings(payload, label, ownerAuth) {
+    // إذا كانت هناك بيانات تحقق للمالك، نضيفها للـ payload
+    if (ownerAuth && ownerAuth.ownerEmail) {
+        // سنرسل البريد القديم للمالك، لكن Edge Function ستقارنه مع app_settings
+        // ونحن لا نعرف كلمة المرور القديمة، ولكن يمكننا إرسالها فارغة، وستعتمد Edge Function على الجلسة إن وجدت
+        payload.owner_email_verify = ownerAuth.ownerEmail; // حقل إضافي للتحقق
+    }
+
+    showLoader('جاري حفظ ' + (label || 'الإعدادات') + '...');
+    
+    supabase.auth.getSession().then(function(sessionRes) {
+        var token = null;
+        if (sessionRes && sessionRes.data && sessionRes.data.session) {
+            token = sessionRes.data.session.access_token;
+        }
+        
+        // إذا لم يكن هناك توكين، قد نكون المالك، نرسل الطلب بدون توكين وستتحقق Edge Function من app_settings
+        var headers = { 'Content-Type': 'application/json' };
+        if (token) {
+            headers['Authorization'] = 'Bearer ' + token;
+        }
+        
+        return fetch(SUPABASE_URL + '/functions/v1/save-settings', {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload)
+        });
+    }).then(function(res) {
+        if (!res.ok) {
+            return res.json().then(function(err) { throw new Error(err.error || 'خطأ في الخادم'); });
+        }
+        return res.json();
+    }).then(function(json) {
+        hideLoader();
+        if (json.success) {
+            showToast('تم حفظ ' + (label || 'الإعدادات') + ' بنجاح', 'success');
+        } else {
+            showToast(json.error || 'فشل حفظ ' + (label || 'الإعدادات'), 'error');
+        }
+    }).catch(function(e) {
+        hideLoader();
+        showToast('فشل الاتصال: ' + (e.message || 'خطأ غير معروف'), 'error');
+        console.error(e);
+    });
+}
 
     return { render: render };
 })();
