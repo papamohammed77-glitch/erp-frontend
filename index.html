@@ -955,42 +955,87 @@ var RW_Users = (function() {
     var branchesList = [];
 
     async function render() {
-        const container = byId('rw-page-container'); if (!container) return;
+        var container = byId('rw-page-container');
+        if (!container) return;
         safeText(byId('rw-header-title'), 'المستخدمين والصلاحيات');
         safeHTML(container, `<div class="p-4">
             <div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-users-gear ml-2"></i>إدارة المستخدمين والصلاحيات</h2><button id="btn-add-emp" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة موظف</button></div>
             <input type="text" id="emp-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">
             <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="emp-table-wrapper" style="max-height:65vh"></div>
         </div>`);
-        const { data: users } = await supabase.from('users').select('*');
-        employeesData = users || [];
-        try { const { data: r } = await supabase.from('roles').select('*'); rolesList = r || []; } catch(e) { rolesList = []; }
+        
+        var usersRes = await supabase.from('users').select('*');
+        employeesData = usersRes.data || [];
+        try { var rRes = await supabase.from('roles').select('*'); rolesList = rRes.data || []; } catch(e) { rolesList = []; }
         try { branchesList = await RW_Data.loadBranches(); } catch(e) { branchesList = []; }
+        
         renderTable(employeesData);
-        byId('emp-search')?.addEventListener('input', filterTable);
-        byId('btn-add-emp')?.addEventListener('click', () => openModal(null));
+        
+        var searchInput = byId('emp-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', filterTable);
+        }
+        var addBtn = byId('btn-add-emp');
+        if (addBtn) {
+            addBtn.addEventListener('click', function() { openModal(null); });
+        }
+        
+        // تفويض الأحداث على tbody
+        var tbody = document.getElementById('users-tbody');
+        if (tbody) {
+            tbody.addEventListener('click', function(e) {
+                var target = e.target;
+                // نبحث عن أقرب عنصر tr (صف الجدول)
+                while (target && target.tagName !== 'TR') {
+                    target = target.parentElement;
+                }
+                if (target && target.dataset.email) {
+                    openModal(target.dataset.email);
+                }
+            });
+        }
     }
 
     function renderTable(data) {
-    const w = byId('emp-table-wrapper'); if (!w) return;
-    // إخفاء المالك من القائمة
-    var filtered = data.filter(function(emp) {
-        return emp.role !== 'مالك' && emp.role !== 'Owner' && emp.is_owner !== true;
-    });
-    if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون</div>'); return; }
-    let html = `<table class="w-full text-sm"><thead class="bg-gray-50"><tr>
-        <th class="p-3">الاسم</th><th class="p-3">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">الهاتف</th><th class="p-3">الفروع</th></tr></thead><tbody>`;
-    filtered.forEach(emp => {
-        const statusClass = emp.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
-        html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Users._openModal('${emp.email}')">
-            <td class="p-3 font-semibold">${emp.name||''}</td><td class="p-3">${emp.email||''}</td><td class="p-3">${emp.role||''}</td>
-            <td class="p-3"><span class="px-2 py-1 rounded-full text-xs ${statusClass}">${emp.status==='Active'?'نشط':'غير نشط'}</span></td>
-            <td class="p-3">${emp.phone||''}</td><td class="p-3">${emp.allowed_branch_ids||'*'}</td></tr>`;
-    });
-    html += `</tbody></table>`;
-    safeHTML(w, html);
-}
-
+        var w = byId('emp-table-wrapper');
+        if (!w) return;
+        var filtered = data.filter(function(emp) {
+            return emp.role !== 'مالك' && emp.role !== 'Owner' && emp.is_owner !== true;
+        });
+        if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون</div>'); return; }
+        
+        var searchInput = byId('emp-search');
+        var searchTerm = '';
+        if (searchInput) {
+            searchTerm = (searchInput.value || '').toLowerCase();
+        }
+        if (searchTerm) {
+            filtered = filtered.filter(function(emp) {
+                return (emp.name||'').toLowerCase().indexOf(searchTerm) !== -1 || (emp.email||'').toLowerCase().indexOf(searchTerm) !== -1 || (emp.phone||'').toLowerCase().indexOf(searchTerm) !== -1;
+            });
+        }
+        if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون مطابقون للبحث</div>'); return; }
+        
+        var html = '<table class="w-full text-sm"><thead class="bg-gray-50"><tr>';
+        html += '<th class="p-3">الاسم</th><th class="p-3">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">الهاتف</th><th class="p-3">الفروع</th>';
+        html += '</tr></thead><tbody id="users-tbody">';
+        
+        for (var i = 0; i < filtered.length; i++) {
+            var emp = filtered[i];
+            var statusClass = emp.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+            var statusText = emp.status === 'Active' ? 'نشط' : 'غير نشط';
+            html += '<tr class="border-b hover:bg-gray-50 cursor-pointer" data-email="' + emp.email + '">';
+            html += '<td class="p-3 font-semibold">' + (emp.name||'') + '</td>';
+            html += '<td class="p-3">' + (emp.email||'') + '</td>';
+            html += '<td class="p-3">' + (emp.role||'') + '</td>';
+            html += '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + statusClass + '">' + statusText + '</span></td>';
+            html += '<td class="p-3">' + (emp.phone||'') + '</td>';
+            html += '<td class="p-3">' + (emp.allowed_branch_ids||'*') + '</td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        safeHTML(w, html);
+    }
     function filterTable() {
         const q = (byId('emp-search')?.value||'').toLowerCase();
         renderTable(employeesData.filter(e => (e.name||'').toLowerCase().includes(q) || (e.email||'').toLowerCase().includes(q)));
