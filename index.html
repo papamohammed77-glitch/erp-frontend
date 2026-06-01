@@ -958,11 +958,11 @@ var RW_Users = (function() {
         var container = byId('rw-page-container');
         if (!container) return;
         safeText(byId('rw-header-title'), 'المستخدمين والصلاحيات');
-        safeHTML(container, `<div class="p-4">
-            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-users-gear ml-2"></i>إدارة المستخدمين والصلاحيات</h2><button id="btn-add-emp" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة موظف</button></div>
-            <input type="text" id="emp-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">
-            <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="emp-table-wrapper" style="max-height:65vh"></div>
-        </div>`);
+        safeHTML(container, '<div class="p-4">' +
+            '<div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-users-gear ml-2"></i>إدارة المستخدمين والصلاحيات</h2><button id="btn-add-emp" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة موظف</button></div>' +
+            '<input type="text" id="emp-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">' +
+            '<div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="emp-table-wrapper" style="max-height:65vh"></div>' +
+        '</div>');
         
         var usersRes = await supabase.from('users').select('*');
         employeesData = usersRes.data || [];
@@ -985,11 +985,10 @@ var RW_Users = (function() {
         if (tbody) {
             tbody.addEventListener('click', function(e) {
                 var target = e.target;
-                // نبحث عن أقرب عنصر tr (صف الجدول)
                 while (target && target.tagName !== 'TR') {
                     target = target.parentElement;
                 }
-                if (target && target.dataset.email) {
+                if (target && target.dataset && target.dataset.email) {
                     openModal(target.dataset.email);
                 }
             });
@@ -999,9 +998,12 @@ var RW_Users = (function() {
     function renderTable(data) {
         var w = byId('emp-table-wrapper');
         if (!w) return;
-        var filtered = data.filter(function(emp) {
-            return emp.role !== 'مالك' && emp.role !== 'Owner' && emp.is_owner !== true;
-        });
+        var filtered = [];
+        for (var i = 0; i < data.length; i++) {
+            var emp = data[i];
+            if (emp.role === 'مالك' || emp.role === 'Owner' || emp.is_owner === true) continue;
+            filtered.push(emp);
+        }
         if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون</div>'); return; }
         
         var searchInput = byId('emp-search');
@@ -1010,9 +1012,14 @@ var RW_Users = (function() {
             searchTerm = (searchInput.value || '').toLowerCase();
         }
         if (searchTerm) {
-            filtered = filtered.filter(function(emp) {
-                return (emp.name||'').toLowerCase().indexOf(searchTerm) !== -1 || (emp.email||'').toLowerCase().indexOf(searchTerm) !== -1 || (emp.phone||'').toLowerCase().indexOf(searchTerm) !== -1;
-            });
+            var searchFiltered = [];
+            for (var s = 0; s < filtered.length; s++) {
+                var emp = filtered[s];
+                if ((emp.name||'').toLowerCase().indexOf(searchTerm) !== -1 || (emp.email||'').toLowerCase().indexOf(searchTerm) !== -1 || (emp.phone||'').toLowerCase().indexOf(searchTerm) !== -1) {
+                    searchFiltered.push(emp);
+                }
+            }
+            filtered = searchFiltered;
         }
         if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون مطابقون للبحث</div>'); return; }
         
@@ -1036,130 +1043,216 @@ var RW_Users = (function() {
         html += '</tbody></table>';
         safeHTML(w, html);
     }
+
     function filterTable() {
-        const q = (byId('emp-search')?.value||'').toLowerCase();
-        renderTable(employeesData.filter(e => (e.name||'').toLowerCase().includes(q) || (e.email||'').toLowerCase().includes(q)));
+        var searchInput = byId('emp-search');
+        var q = '';
+        if (searchInput) {
+            q = (searchInput.value || '').toLowerCase();
+        }
+        var filtered = [];
+        for (var i = 0; i < employeesData.length; i++) {
+            var e = employeesData[i];
+            if ((e.name||'').toLowerCase().indexOf(q) !== -1 || (e.email||'').toLowerCase().indexOf(q) !== -1) {
+                filtered.push(e);
+            }
+        }
+        renderTable(filtered);
     }
 
     function openModal(email) {
-        const emp = email ? employeesData.find(e => e.email === email) : null;
-        const isEdit = !!emp;
-        const title = isEdit ? 'تعديل موظف' : 'إضافة موظف جديد';
-        let roleOptions = '<option value="">اختر دوراً</option>';
-        rolesList.forEach(r => { roleOptions += `<option value="${r.role_name}" ${emp?.role===r.role_name?'selected':''}>${r.role_name}</option>`; });
-        if (rolesList.length === 0) roleOptions += '<option value="مدير">مدير</option><option value="محاسب">محاسب</option><option value="مندوب">مندوب</option><option value="سائق">سائق</option><option value="مخزني">مخزني</option>';
-        let branchOptions = '';
-        branchesList.forEach(br => { const code = br.branch_code || br.id || ''; const name = br.name || br.branch_name || ''; const sel = emp?.allowed_branch_ids && emp.allowed_branch_ids.split(',').includes(code) ? 'selected' : ''; branchOptions += `<option value="${code}" ${sel}>${name} (${code})</option>`; });
+        var emp = null;
+        if (email) {
+            for (var i = 0; i < employeesData.length; i++) {
+                if (employeesData[i].email === email) { emp = employeesData[i]; break; }
+            }
+        }
+        var isEdit = !!emp;
+        var title = isEdit ? 'تعديل موظف' : 'إضافة موظف جديد';
+        
+        // خيارات الأدوار
+        var roleOptions = '<option value="">اختر دوراً</option>';
+        for (var r = 0; r < rolesList.length; r++) {
+            var selectedAttr = '';
+            if (emp && emp.role === rolesList[r].role_name) selectedAttr = ' selected';
+            roleOptions += '<option value="' + rolesList[r].role_name + '"' + selectedAttr + '>' + rolesList[r].role_name + '</option>';
+        }
+        if (rolesList.length === 0) {
+            roleOptions += '<option value="مدير">مدير</option><option value="محاسب">محاسب</option><option value="مندوب">مندوب</option><option value="سائق">سائق</option><option value="مخزني">مخزني</option>';
+        }
+        
+        // خيارات الفروع
+        var branchOptions = '';
+        for (var b = 0; b < branchesList.length; b++) {
+            var br = branchesList[b];
+            var code = br.branch_code || br.id || '';
+            var name = br.name || br.branch_name || '';
+            var sel = '';
+            if (emp && emp.allowed_branch_ids) {
+                var allowed = emp.allowed_branch_ids.split(',');
+                for (var a = 0; a < allowed.length; a++) {
+                    if (allowed[a].trim() === code) { sel = ' selected'; break; }
+                }
+            }
+            branchOptions += '<option value="' + code + '"' + sel + '>' + name + ' (' + code + ')</option>';
+        }
+        
+        // القيم الحالية
+        var empName = emp ? (emp.name || '') : '';
+        var empEmail = emp ? (emp.email || '') : '';
+        var empPhone = emp ? (emp.phone || '') : '';
+        var empPassword = '';
+        var passwordPlaceholder = isEdit ? 'اترك فارغاً للإبقاء' : '';
+        var empStatusActive = (!emp || emp.status === 'Active') ? ' selected' : '';
+        var empStatusInactive = (emp && emp.status === 'Inactive') ? ' selected' : '';
+        var empExpiry = emp ? (emp.expiry_date || '') : '';
+        var empOriginalEmail = emp ? (emp.email || '') : '';
+        
+        // قسم الصلاحيات
+        var permLabels = [
+            { key: 'dash', label: 'لوحة التحكم' }, { key: 'items', label: 'الأصناف' }, { key: 'customers', label: 'العملاء' },
+            { key: 'suppliers', label: 'الموردين' }, { key: 'branches', label: 'الفروع' },
+            { key: 'pos', label: 'نقطة البيع' }, { key: 'orders', label: 'الأوردرات' }, { key: 'runsheets', label: 'الرانشيتات' },
+            { key: 'online-store', label: 'المتجر الإلكتروني' }, { key: 'purchases', label: 'المشتريات' },
+            { key: 'warehouse', label: 'المخازن' }, { key: 'receiving', label: 'الاستلام' },
+            { key: 'picking', label: 'التحضير' }, { key: 'loading', label: 'التحميل' },
+            { key: 'delivery', label: 'التوصيل' }, { key: 'return', label: 'المرتجعات' },
+            { key: 'unloading', label: 'التفريغ' }, { key: 'vouchers', label: 'الأذونات المخزنية' },
+            { key: 'transfer', label: 'تحويل مخزني' }, { key: 'direct-sale', label: 'صرف سيارة' },
+            { key: 'direct-return', label: 'مرتجع سيارة' }, { key: 'supplier-return', label: 'مرتجع مورد' },
+            { key: 'vehicle-count', label: 'جرد سيارة' }, { key: 'branch-count', label: 'جرد فرع' },
+            { key: 'general-count', label: 'جرد عام' }, { key: 'finance', label: 'الحسابات' },
+            { key: 'reports', label: 'التقارير' }, { key: 'users', label: 'الموظفين' },
+            { key: 'roles', label: 'إدارة الأدوار' }, { key: 'license', label: 'إدارة الترخيص' },
+            { key: 'settings', label: 'إعدادات النظام' }, { key: 'settlement', label: 'إغلاق اليومية' }
+        ];
+        var permsHTML = '';
+        for (var p = 0; p < permLabels.length; p++) {
+            var checked = '';
+            if (emp && emp.permissions) {
+                var perms = emp.permissions;
+                if (typeof perms === 'string') perms = perms.split(',');
+                for (var c = 0; c < perms.length; c++) {
+                    if (perms[c].trim() === permLabels[p].key) { checked = ' checked'; break; }
+                }
+            }
+            permsHTML += '<label class="flex items-center gap-1 text-xs"><input type="checkbox" value="' + permLabels[p].key + '" class="emp-custom-perm"' + checked + '> ' + permLabels[p].label + '</label>';
+        }
 
-        let html = `<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
-        <div class="bg-indigo-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fas fa-user-cog ml-2"></i>${title}</h3><button onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button></div>
-        <form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">
-        <input type="hidden" id="emp-original-email" value="${emp?.email||''}">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="flex flex-col"><label>الاسم الكامل *</label><input id="emp-name" value="${emp?.name||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>البريد الإلكتروني *</label><input id="emp-email" value="${emp?.email||''}" type="email" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>رقم الهاتف</label><input id="emp-phone" value="${emp?.phone||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>كلمة المرور *</label><input id="emp-password" type="password" class="p-2.5 bg-gray-50 border rounded-lg" placeholder="${isEdit ? 'اترك فارغاً للإبقاء' : ''}"></div>
-        <div class="flex flex-col"><label>الدور الوظيفي *</label><select id="emp-role" class="p-2.5 bg-gray-50 border rounded-lg">${roleOptions}</select></div>
-        <div class="flex flex-col"><label>الحالة</label><select id="emp-status" class="p-2.5 bg-gray-50 border rounded-lg"><option value="Active" ${emp?.status==='Active'?'selected':''}>نشط</option><option value="Inactive" ${emp?.status==='Inactive'?'selected':''}>غير نشط</option></select></div>
-        <div class="flex flex-col"><label>تاريخ انتهاء الصلاحية</label><input id="emp-expiry" type="date" value="${emp?.expiry_date||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="md:col-span-2">
-    <label class="flex items-center gap-2 cursor-pointer mt-2">
-        <input type="checkbox" id="emp-custom-perms-toggle" onchange="document.getElementById('emp-custom-perms-section').classList.toggle('hidden')">
-        <span class="text-sm font-bold">تفعيل صلاحيات مخصصة (تضاف لصلاحيات الدور)</span>
-    </label>
-    <div id="emp-custom-perms-section" class="hidden mt-3 p-3 bg-gray-50 rounded-xl">
-        <label class="text-xs font-bold text-gray-500 block mb-2">الصلاحيات الإضافية:</label>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="emp-permissions-checkboxes">
-            ${[
-                { key: 'dash', label: 'لوحة التحكم' }, { key: 'items', label: 'الأصناف' }, { key: 'customers', label: 'العملاء' },
-                { key: 'suppliers', label: 'الموردين' }, { key: 'branches', label: 'الفروع' },
-                { key: 'pos', label: 'نقطة البيع' }, { key: 'orders', label: 'الأوردرات' }, { key: 'runsheets', label: 'الرانشيتات' },
-                { key: 'online-store', label: 'المتجر الإلكتروني' }, { key: 'purchases', label: 'المشتريات' },
-                { key: 'warehouse', label: 'المخازن' }, { key: 'receiving', label: 'الاستلام' },
-                { key: 'picking', label: 'التحضير' }, { key: 'loading', label: 'التحميل' },
-                { key: 'delivery', label: 'التوصيل' }, { key: 'return', label: 'المرتجعات' },
-                { key: 'unloading', label: 'التفريغ' }, { key: 'vouchers', label: 'الأذونات المخزنية' },
-                { key: 'transfer', label: 'تحويل مخزني' }, { key: 'direct-sale', label: 'صرف سيارة' },
-                { key: 'direct-return', label: 'مرتجع سيارة' }, { key: 'supplier-return', label: 'مرتجع مورد' },
-                { key: 'vehicle-count', label: 'جرد سيارة' }, { key: 'branch-count', label: 'جرد فرع' },
-                { key: 'general-count', label: 'جرد عام' }, { key: 'finance', label: 'الحسابات' },
-                { key: 'reports', label: 'التقارير' }, { key: 'users', label: 'الموظفين' },
-                { key: 'roles', label: 'إدارة الأدوار' }, { key: 'license', label: 'إدارة الترخيص' },
-                { key: 'settings', label: 'إعدادات النظام' }, { key: 'settlement', label: 'إغلاق اليومية' }
-            ].map(p => `<label class="flex items-center gap-1 text-xs"><input type="checkbox" value="${p.key}" class="emp-custom-perm"> ${p.label}</label>`).join('')}
-        </div>
-    </div>
-</div>
-        <div class="flex flex-col"><label>الفروع المسموحة</label><select id="emp-branches" multiple class="p-2.5 bg-gray-50 border rounded-lg" style="min-height:100px">${branchOptions}</select><p class="text-xs text-gray-500 mt-1">اضغط Ctrl/Cmd للاختيار المتعدد. اتركه فارغاً للسماح بجميع الفروع.</p></div>
-        </div>
-        <div class="flex justify-end gap-3 pt-4 border-t">
-        ${isEdit ? '<button type="button" id="btn-delete-emp" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fas fa-trash-alt ml-1"></i> حذف</button>' : ''}
-        <button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>
-        <button type="button" id="btn-save-emp" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold">حفظ</button>
-        </div></form></div></div>`;
+        var html = '<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">' +
+        '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">' +
+        '<div class="bg-indigo-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fas fa-user-cog ml-2"></i>' + title + '</h3><button onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button></div>' +
+        '<form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">' +
+        '<input type="hidden" id="emp-original-email" value="' + empOriginalEmail + '">' +
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
+        '<div class="flex flex-col"><label>الاسم الكامل *</label><input id="emp-name" value="' + empName + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>البريد الإلكتروني *</label><input id="emp-email" value="' + empEmail + '" type="email" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>رقم الهاتف</label><input id="emp-phone" value="' + empPhone + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>كلمة المرور *</label><input id="emp-password" type="password" value="' + empPassword + '" class="p-2.5 bg-gray-50 border rounded-lg" placeholder="' + passwordPlaceholder + '"></div>' +
+        '<div class="flex flex-col"><label>الدور الوظيفي *</label><select id="emp-role" class="p-2.5 bg-gray-50 border rounded-lg">' + roleOptions + '</select></div>' +
+        '<div class="flex flex-col"><label>الحالة</label><select id="emp-status" class="p-2.5 bg-gray-50 border rounded-lg"><option value="Active"' + empStatusActive + '>نشط</option><option value="Inactive"' + empStatusInactive + '>غير نشط</option></select></div>' +
+        '<div class="flex flex-col"><label>تاريخ انتهاء الصلاحية</label><input id="emp-expiry" type="date" value="' + empExpiry + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="md:col-span-2">' +
+        '<label class="flex items-center gap-2 cursor-pointer mt-2">' +
+        '<input type="checkbox" id="emp-custom-perms-toggle" onchange="document.getElementById(\'emp-custom-perms-section\').classList.toggle(\'hidden\')">' +
+        '<span class="text-sm font-bold">تفعيل صلاحيات مخصصة (تضاف لصلاحيات الدور)</span>' +
+        '</label>' +
+        '<div id="emp-custom-perms-section" class="hidden mt-3 p-3 bg-gray-50 rounded-xl">' +
+        '<label class="text-xs font-bold text-gray-500 block mb-2">الصلاحيات الإضافية:</label>' +
+        '<div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="emp-permissions-checkboxes">' + permsHTML + '</div>' +
+        '</div></div>' +
+        '<div class="flex flex-col"><label>الفروع المسموحة</label><select id="emp-branches" multiple class="p-2.5 bg-gray-50 border rounded-lg" style="min-height:100px">' + branchOptions + '</select><p class="text-xs text-gray-500 mt-1">اضغط Ctrl/Cmd للاختيار المتعدد. اتركه فارغاً للسماح بجميع الفروع.</p></div>' +
+        '</div>' +
+        '<div class="flex justify-end gap-3 pt-4 border-t">' +
+        (isEdit ? '<button type="button" id="btn-delete-emp" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fas fa-trash-alt ml-1"></i> حذف</button>' : '') +
+        '<button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>' +
+        '<button type="button" id="btn-save-emp" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold">حفظ</button>' +
+        '</div></form></div></div>';
 
-        Swal.fire({ html, width: '800px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
-            didOpen: () => {
-                byId('btn-save-emp').addEventListener('click', async () => {
-                    const sel = byId('emp-branches');
-                    const selectedBranches = [];
-                    for (let i = 0; i < sel.options.length; i++) { if (sel.options[i].selected) selectedBranches.push(sel.options[i].value); }
-                    const name = byId('emp-name').value.trim();
-                    const email = byId('emp-email').value.trim();
-                    if (!name || !email) { showToast('الاسم والبريد مطلوبان', 'error'); return; }
-                    if (!isEdit && !byId('emp-password').value) { showToast('يجب تعيين كلمة مرور', 'error'); return; }
-                    // تجميع الصلاحيات المخصصة
-                    var customPerms = [];
-                    if (document.getElementById('emp-custom-perms-toggle').checked) {
-                        document.querySelectorAll('.emp-custom-perm:checked').forEach(function(cb) {
-                            customPerms.push(cb.value);
+        Swal.fire({ html: html, width: '800px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
+            didOpen: function() {
+                var saveBtn = byId('btn-save-emp');
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', async function() {
+                        var sel = byId('emp-branches');
+                        var selectedBranches = [];
+                        if (sel) {
+                            for (var i = 0; i < sel.options.length; i++) {
+                                if (sel.options[i].selected) selectedBranches.push(sel.options[i].value);
+                            }
+                        }
+                        var nameInput = byId('emp-name');
+                        var emailInput = byId('emp-email');
+                        var name = nameInput ? nameInput.value.trim() : '';
+                        var emailVal = emailInput ? emailInput.value.trim() : '';
+                        if (!name || !emailVal) { showToast('الاسم والبريد مطلوبان', 'error'); return; }
+                        var passInput = byId('emp-password');
+                        if (!isEdit && passInput && !passInput.value) { showToast('يجب تعيين كلمة مرور', 'error'); return; }
+                        
+                        var customPerms = [];
+                        var toggleEl = document.getElementById('emp-custom-perms-toggle');
+                        if (toggleEl && toggleEl.checked) {
+                            var checkboxes = document.querySelectorAll('.emp-custom-perm:checked');
+                            for (var c = 0; c < checkboxes.length; c++) {
+                                customPerms.push(checkboxes[c].value);
+                            }
+                        }
+                                            
+                        var payload = {
+                            name: name,
+                            email: emailVal,
+                            phone: byId('emp-phone') ? byId('emp-phone').value.trim() : '',
+                            password: passInput ? passInput.value : '',
+                            role: byId('emp-role') ? byId('emp-role').value : '',
+                            status: byId('emp-status') ? byId('emp-status').value : 'Active',
+                            expiry_date: byId('emp-expiry') ? byId('emp-expiry').value : '',
+                            allowed_branch_ids: selectedBranches.join(','),
+                            permissions: customPerms
+                        };
+                        showLoader('جاري الحفظ...');
+                        var sessionRes = await supabase.auth.getSession();
+                        var token = null;
+                        if (sessionRes && sessionRes.data && sessionRes.data.session) {
+                            token = sessionRes.data.session.access_token;
+                        }
+                        try {
+                            var res = await fetch(SUPABASE_URL + '/functions/v1/save-employee', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ employee: payload, isEdit: isEdit, originalEmail: emp ? emp.email : '' }) });
+                            var json = await res.json();
+                            hideLoader();
+                            if (json.success) { showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success'); Swal.close(); var usersRes = await supabase.from('users').select('*'); employeesData = usersRes.data || []; renderTable(employeesData); }
+                            else { showToast(json.error || 'فشل الحفظ', 'error'); }
+                        } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); console.error(e); }
+                    });
+                }
+                if (isEdit) {
+                    var deleteBtn = byId('btn-delete-emp');
+                    if (deleteBtn) {
+                        deleteBtn.addEventListener('click', async function() {
+                            var confirm = await Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا الموظف؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' });
+                            if (!confirm.isConfirmed) return;
+                            showLoader('جاري الحذف...');
+                            var sessionRes = await supabase.auth.getSession();
+                            var token = null;
+                            if (sessionRes && sessionRes.data && sessionRes.data.session) {
+                                token = sessionRes.data.session.access_token;
+                            }
+                            try {
+                                var res = await fetch(SUPABASE_URL + '/functions/v1/delete-employee', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ email: emp.email }) });
+                                var json = await res.json();
+                                hideLoader();
+                                if (json.success) { showToast('تم الحذف', 'success'); Swal.close(); var usersRes = await supabase.from('users').select('*'); employeesData = usersRes.data || []; renderTable(employeesData); }
+                                else { showToast(json.error || 'فشل الحذف', 'error'); }
+                            } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
                         });
                     }
-                                        
-                    const payload = {
-                        name, email,
-                        phone: byId('emp-phone').value.trim(),
-                        password: byId('emp-password').value,
-                        role: byId('emp-role').value,
-                        status: byId('emp-status').value,
-                        expiry_date: byId('emp-expiry').value,
-                        allowed_branch_ids: selectedBranches.join(','),
-                        permissions: customPerms
-                    };
-                    showLoader('جاري الحفظ...');
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const token = session?.access_token;
-                    try {
-                        const res = await fetch(`${SUPABASE_URL}/functions/v1/save-employee`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ employee: payload, isEdit, originalEmail: emp?.email }) });
-                        const json = await res.json();
-                        hideLoader();
-                        if (json.success) { showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success'); Swal.close(); const { data: users } = await supabase.from('users').select('*'); employeesData = users || []; renderTable(employeesData); }
-                        else { showToast(json.error || 'فشل الحفظ', 'error'); }
-                    } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); console.error(e); }
-                });
-                if (isEdit) byId('btn-delete-emp')?.addEventListener('click', async () => {
-                    const confirm = await Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا الموظف؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' });
-                    if (!confirm.isConfirmed) return;
-                    showLoader('جاري الحذف...');
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const token = session?.access_token;
-                    try {
-                        const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-employee`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ email: emp.email }) });
-                        const json = await res.json();
-                        hideLoader();
-                        if (json.success) { showToast('تم الحذف', 'success'); Swal.close(); const { data: users } = await supabase.from('users').select('*'); employeesData = users || []; renderTable(employeesData); }
-                        else { showToast(json.error || 'فشل الحذف', 'error'); }
-                    } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
-                });
+                }
             }
         });
     }
-    return { render, _openModal: openModal };
+
+    return { render: render, _openModal: openModal };
 })();
 window.RW_Users = RW_Users;
-
 // ============================================================
 // RW_POS – نقطة البيع (POS) كاملة
 // ============================================================
