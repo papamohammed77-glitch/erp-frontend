@@ -5012,61 +5012,81 @@ var RW_OwnerLicense = (function() {
         var container = byId('rw-page-container');
         if (!container) return;
         safeText(byId('rw-header-title'), 'إدارة الترخيص');
-        safeText(byId('rw-header-subtitle'), 'التحكم في حالة الشركة وفترة الصلاحية');
-        safeHTML(container, '<div class="p-4"><div class="flex flex-wrap justify-between items-center mb-6 gap-3"><h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-shield-haltered ml-2"></i> إدارة ترخيص الشركة</h2></div><div class="bg-white rounded-lg shadow p-6" id="license-page-content"><div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i> جاري تحميل بيانات الترخيص...</div></div></div>');
+        safeText(byId('rw-header-subtitle'), 'التحكم في حالة الشركة وبيانات المالك');
+        safeHTML(container, '<div class="p-4 max-w-2xl mx-auto space-y-6" id="license-main-container"><div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i> جاري تحميل بيانات الترخيص...</div></div>');
         _loadLicenseData();
     }
 
     function _loadLicenseData() {
         supabase.from('app_settings').select('*').limit(1).single().then(function(res) {
             var s = res.data || {};
-            _buildLicenseForm({ 
+            _buildFullForm({ 
                 licenseStatus: s.status || 'trial', 
                 trialEndDate: s.trial_end_date || '', 
                 subscriptionEndDate: s.subscription_end_date || '',
                 ownerEmail: s.owner_email || ''
             });
         }).catch(function() {
-            _buildLicenseForm({ licenseStatus: 'trial', trialEndDate: '', subscriptionEndDate: '', ownerEmail: '' });
+            _buildFullForm({ licenseStatus: 'trial', trialEndDate: '', subscriptionEndDate: '', ownerEmail: '' });
         });
     }
 
-    function _buildLicenseForm(licenseInfo) {
-        var container = byId('license-page-content');
+    function _buildFullForm(licenseInfo) {
+        var container = byId('license-main-container');
         if (!container) return;
-        var currentStatus = licenseInfo.licenseStatus || 'trial';
-        var trialEnd = licenseInfo.trialEndDate || '';
-        var subEnd = licenseInfo.subscriptionEndDate || '';
-        var ownerEmail = licenseInfo.ownerEmail || '';
         
-        var html = '<form class="space-y-6">';
+        var html = '';
+        
+        // ========== القسم الأول: حالة الشركة ==========
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
+        html += '<h3 class="text-lg font-black text-indigo-600 border-b pb-2 mb-4"><i class="fa-solid fa-shield-haltered ml-2"></i> إعدادات الترخيص</h3>';
+        html += '<div class="space-y-4">';
         html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">حالة الشركة</label><select id="license-status" class="p-2.5 bg-gray-50 border rounded-lg">';
-        html += '<option value="trial"' + (currentStatus === 'trial' ? ' selected' : '') + '>فترة تجربة</option>';
-        html += '<option value="active"' + (currentStatus === 'active' ? ' selected' : '') + '>نشطة</option>';
-        html += '<option value="suspended"' + (currentStatus === 'suspended' ? ' selected' : '') + '>موقوفة</option>';
-        html += '<option value="cancelled"' + (currentStatus === 'cancelled' ? ' selected' : '') + '>ملغاة</option>';
+        html += '<option value="trial"' + (licenseInfo.licenseStatus === 'trial' ? ' selected' : '') + '>فترة تجربة</option>';
+        html += '<option value="active"' + (licenseInfo.licenseStatus === 'active' ? ' selected' : '') + '>نشطة</option>';
+        html += '<option value="suspended"' + (licenseInfo.licenseStatus === 'suspended' ? ' selected' : '') + '>موقوفة</option>';
+        html += '<option value="cancelled"' + (licenseInfo.licenseStatus === 'cancelled' ? ' selected' : '') + '>ملغاة</option>';
         html += '</select></div>';
         html += '<div class="grid grid-cols-2 gap-4">';
-        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء التجربة</label><input id="license-trial-end" type="date" value="' + trialEnd + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
-        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء الاشتراك</label><input id="license-sub-end" type="date" value="' + subEnd + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
+        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء التجربة</label><input id="license-trial-end" type="date" value="' + (licenseInfo.trialEndDate || '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
+        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">تاريخ انتهاء الاشتراك</label><input id="license-sub-end" type="date" value="' + (licenseInfo.subscriptionEndDate || '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
         html += '</div>';
-        html += '<h3 class="text-lg font-black text-red-600 border-b pb-2 mb-4 mt-6"><i class="fa-solid fa-user-shield ml-2"></i> بيانات اعتماد المالك</h3>';
-        html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
-        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">البريد الإلكتروني للمالك</label><input id="license-owner-email" type="email" value="' + ownerEmail + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
+        html += '<div class="flex justify-end pt-2"><button type="button" id="btn-save-license-only" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md">حفظ إعدادات الترخيص</button></div>';
+        html += '</div></div>';
+        
+        // ========== القسم الثاني: بيانات المالك ==========
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
+        html += '<h3 class="text-lg font-black text-red-600 border-b pb-2 mb-4"><i class="fa-solid fa-user-shield ml-2"></i> بيانات اعتماد المالك</h3>';
+        html += '<div class="space-y-4">';
+        html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">البريد الإلكتروني للمالك</label><input id="license-owner-email" type="email" value="' + (licenseInfo.ownerEmail || '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
         html += '<div class="flex flex-col"><label class="text-sm font-bold text-gray-700">كلمة مرور جديدة (اترك فارغاً للإبقاء)</label><input id="license-owner-password" type="password" class="p-2.5 bg-gray-50 border rounded-lg" placeholder="كلمة مرور جديدة"></div>';
-        html += '</div>';
         html += '<div class="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-lg text-sm text-amber-800"><i class="fa-solid fa-triangle-exclamation ml-2"></i> تحذير: تغيير بيانات المالك سيؤثر على تسجيل الدخول. احفظ هذه البيانات في مكان آمن.</div>';
-        html += '<div class="flex justify-end gap-3 pt-4 border-t">';
-        html += '<button type="button" id="btn-save-license" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md">حفظ جميع التغييرات</button>';
-        html += '</div></form>';
+        html += '<div class="flex justify-end pt-2"><button type="button" id="btn-save-owner-only" class="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold shadow-md">حفظ بيانات المالك</button></div>';
+        html += '</div></div>';
+        
         safeHTML(container, html);
         
-        var saveBtn = byId('btn-save-license');
-        if (saveBtn) {
-            saveBtn.addEventListener('click', function() {
-                var newStatus = byId('license-status').value;
-                var trialEndDate = byId('license-trial-end').value;
-                var subEndDate = byId('license-sub-end').value;
+        _bindSaveButtons();
+    }
+
+    function _bindSaveButtons() {
+        // زر حفظ إعدادات الترخيص
+        var btnLicense = byId('btn-save-license-only');
+        if (btnLicense) {
+            btnLicense.addEventListener('click', function() {
+                var payload = {
+                    status: byId('license-status').value,
+                    trial_end_date: byId('license-trial-end').value || null,
+                    subscription_end_date: byId('license-sub-end').value || null
+                };
+                _saveSettings(payload, 'إعدادات الترخيص');
+            });
+        }
+        
+        // زر حفظ بيانات المالك
+        var btnOwner = byId('btn-save-owner-only');
+        if (btnOwner) {
+            btnOwner.addEventListener('click', function() {
                 var ownerEmailVal = byId('license-owner-email').value.trim();
                 var ownerPassword = byId('license-owner-password').value;
                 
@@ -5075,49 +5095,53 @@ var RW_OwnerLicense = (function() {
                     return;
                 }
                 
-                var licensePayload = {
-                    status: newStatus,
-                    trial_end_date: trialEndDate || null,
-                    subscription_end_date: subEndDate || null,
+                var payload = {
                     owner_email: ownerEmailVal
                 };
                 
                 if (ownerPassword && ownerPassword.trim() !== '') {
-                    licensePayload.owner_password = ownerPassword;
+                    payload.owner_password = ownerPassword;
                 }
                 
-                showLoader('جاري حفظ التغييرات...');
-                
-                supabase.auth.getSession().then(function(sessionRes) {
-                    var token = null;
-                    if (sessionRes && sessionRes.data && sessionRes.data.session) {
-                        token = sessionRes.data.session.access_token;
-                    }
-                    
-                    return fetch(SUPABASE_URL + '/functions/v1/save-settings', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Authorization: 'Bearer ' + token
-                        },
-                        body: JSON.stringify(licensePayload)
-                    });
-                }).then(function(res) {
-                    return res.json();
-                }).then(function(json) {
-                    hideLoader();
-                    if (json.success) {
-                        showToast('تم حفظ جميع التغييرات بنجاح', 'success');
-                    } else {
-                        showToast(json.error || 'فشل حفظ التغييرات', 'error');
-                    }
-                }).catch(function(e) {
-                    hideLoader();
-                    showToast('فشل الاتصال', 'error');
-                    console.error(e);
-                });
+                _saveSettings(payload, 'بيانات المالك');
             });
         }
+    }
+
+    function _saveSettings(payload, label) {
+        showLoader('جاري حفظ ' + (label || 'الإعدادات') + '...');
+        
+        supabase.auth.getSession().then(function(sessionRes) {
+            var token = null;
+            if (sessionRes && sessionRes.data && sessionRes.data.session) {
+                token = sessionRes.data.session.access_token;
+            }
+            
+            return fetch(SUPABASE_URL + '/functions/v1/save-settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + token
+                },
+                body: JSON.stringify(payload)
+            });
+        }).then(function(res) {
+            if (!res.ok) {
+                return res.json().then(function(err) { throw new Error(err.error || 'خطأ في الخادم'); });
+            }
+            return res.json();
+        }).then(function(json) {
+            hideLoader();
+            if (json.success) {
+                showToast('تم حفظ ' + (label || 'الإعدادات') + ' بنجاح', 'success');
+            } else {
+                showToast(json.error || 'فشل حفظ ' + (label || 'الإعدادات'), 'error');
+            }
+        }).catch(function(e) {
+            hideLoader();
+            showToast('فشل الاتصال: ' + (e.message || 'خطأ غير معروف'), 'error');
+            console.error(e);
+        });
     }
 
     return { render: render };
