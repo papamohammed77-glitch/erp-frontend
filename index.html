@@ -159,20 +159,47 @@ const showToast = (message, type = 'success') => { try { Swal.fire({ title: mess
 const RW_STATE = { app: { initialized: false, authenticated: false, loading: false, currentView: 'dashboard', currentUser: null, company: { name: 'الروائع ERP', logo: 'ر' } }, data: { items: [], customers: [], suppliers: [], branches: [] }, permissions: [], ui: { sidebarOpen: false, sidebarCollapsed: false } };
 
 const RW_Auth = {
-    login: async function(username, password) {
-        if (!username || !password) { showToast('يرجى إدخال اسم المستخدم وكلمة المرور', 'error'); return; }
-        showLoader('جاري تسجيل الدخول...');
-        try {
-            const { data, error } = await supabase.auth.signInWithPassword({ email: username, password: password });
-            if (error) { hideLoader(); showToast('فشل تسجيل الدخول: ' + error.message, 'error'); return; }
-            const user = data.user;
+login: async function(username, password) {
+    if (!username || !password) { showToast('يرجى إدخال اسم المستخدم وكلمة المرور', 'error'); return; }
+    showLoader('جاري تسجيل الدخول...');
+    try {
+        // 1. التحقق من المالك أولاً من app_settings
+        var appRes = await supabase.from('app_settings').select('owner_email, owner_password, company_name, company_logo').limit(1).single();
+        if (!appRes.error && appRes.data && appRes.data.owner_email === username && appRes.data.owner_password === password) {
+            // دخول المالك
             RW_STATE.app.authenticated = true;
-            RW_STATE.app.currentUser = { name: user.user_metadata?.name || user.email, email: user.email, role: user.user_metadata?.role || 'مدير النظام', isOwner: user.user_metadata?.isOwner === 'true' || user.user_metadata?.isOwner === true };
-            RW_STATE.permissions = user.user_metadata?.permissions || ['*'];
-            RW_STATE.app.company = { name: user.user_metadata?.companyName || 'الروائع ERP', logo: user.user_metadata?.companyLogo || 'ر' };
+            RW_STATE.app.currentUser = {
+                name: 'المالك العام',
+                email: username,
+                role: 'owner',
+                isOwner: true,
+                permissions: ['*']
+            };
+            RW_STATE.permissions = ['*'];
+            RW_STATE.app.company = { name: appRes.data.company_name || 'الروائع ERP', logo: appRes.data.company_logo || 'ر' };
             this.enterSystem();
-        } catch(e) { hideLoader(); showToast('حدث خطأ أثناء الاتصال', 'error'); console.error(e); }
-    },
+            return;
+        }
+
+        // 2. إذا لم يكن المالك، ننتقل إلى المستخدمين العاديين
+        var authRes = await supabase.auth.signInWithPassword({ email: username, password: password });
+        if (authRes.error) { hideLoader(); showToast('فشل تسجيل الدخول: ' + authRes.error.message, 'error'); return; }
+        var user = authRes.data.user;
+        RW_STATE.app.authenticated = true;
+        RW_STATE.app.currentUser = {
+            name: user.user_metadata && user.user_metadata.name ? user.user_metadata.name : user.email,
+            email: user.email,
+            role: user.user_metadata && user.user_metadata.role ? user.user_metadata.role : 'مدير النظام',
+            isOwner: false
+        };
+        RW_STATE.permissions = user.user_metadata && user.user_metadata.permissions ? user.user_metadata.permissions : ['*'];
+        RW_STATE.app.company = {
+            name: user.user_metadata && user.user_metadata.companyName ? user.user_metadata.companyName : 'الروائع ERP',
+            logo: user.user_metadata && user.user_metadata.companyLogo ? user.user_metadata.companyLogo : 'ر'
+        };
+        this.enterSystem();
+    } catch(e) { hideLoader(); showToast('حدث خطأ أثناء الاتصال', 'error'); console.error(e); }
+},
     enterSystem: function() {
         hideLoader();
         try {
