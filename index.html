@@ -5013,8 +5013,7 @@ var RW_OwnerLicense = (function() {
         if (!container) return;
         safeText(byId('rw-header-title'), 'إدارة الترخيص');
         safeText(byId('rw-header-subtitle'), 'التحكم في حالة الشركة وفترة الصلاحية');
-        var html = '<div class="p-4"><div class="flex flex-wrap justify-between items-center mb-6 gap-3"><h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-shield-haltered ml-2"></i> إدارة ترخيص الشركة</h2></div><div class="bg-white rounded-lg shadow p-6" id="license-page-content"><div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i> جاري تحميل بيانات الترخيص...</div></div></div>';
-        safeHTML(container, html);
+        safeHTML(container, '<div class="p-4"><div class="flex flex-wrap justify-between items-center mb-6 gap-3"><h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-shield-haltered ml-2"></i> إدارة ترخيص الشركة</h2></div><div class="bg-white rounded-lg shadow p-6" id="license-page-content"><div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i> جاري تحميل بيانات الترخيص...</div></div></div>');
         _loadLicenseData();
     }
 
@@ -5064,7 +5063,7 @@ var RW_OwnerLicense = (function() {
         
         var saveBtn = byId('btn-save-license');
         if (saveBtn) {
-            saveBtn.addEventListener('click', async function() {
+            saveBtn.addEventListener('click', function() {
                 var newStatus = byId('license-status').value;
                 var trialEndDate = byId('license-trial-end').value;
                 var subEndDate = byId('license-sub-end').value;
@@ -5089,14 +5088,13 @@ var RW_OwnerLicense = (function() {
                 
                 showLoader('جاري حفظ التغييرات...');
                 
-                try {
-                    var sessionRes = await supabase.auth.getSession();
+                supabase.auth.getSession().then(function(sessionRes) {
                     var token = null;
                     if (sessionRes && sessionRes.data && sessionRes.data.session) {
                         token = sessionRes.data.session.access_token;
                     }
                     
-                    var res = await fetch(SUPABASE_URL + '/functions/v1/save-settings', {
+                    return fetch(SUPABASE_URL + '/functions/v1/save-settings', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -5104,23 +5102,24 @@ var RW_OwnerLicense = (function() {
                         },
                         body: JSON.stringify(licensePayload)
                     });
-                    
-                    var json = await res.json();
+                }).then(function(res) {
+                    return res.json();
+                }).then(function(json) {
                     hideLoader();
-                    
                     if (json.success) {
                         showToast('تم حفظ جميع التغييرات بنجاح', 'success');
                     } else {
                         showToast(json.error || 'فشل حفظ التغييرات', 'error');
                     }
-                } catch(e) {
+                }).catch(function(e) {
                     hideLoader();
                     showToast('فشل الاتصال', 'error');
                     console.error(e);
-                }
+                });
             });
         }
     }
+
     return { render: render };
 })();
 window.RW_OwnerLicense = RW_OwnerLicense;
