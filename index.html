@@ -954,47 +954,32 @@ var RW_Users = (function() {
     var rolesList = [];
     var branchesList = [];
 
-        async function render() {
-        var container = byId('rw-page-container');
-        if (!container) return;
-        safeText(byId('rw-header-title'), 'المستخدمين والصلاحيات');
-        safeHTML(container, '<div class="p-4">' +
-            '<div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-users-gear ml-2"></i>إدارة المستخدمين والصلاحيات</h2><button id="btn-add-emp" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة موظف</button></div>' +
-            '<input type="text" id="emp-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">' +
-            '<div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="emp-table-wrapper" style="max-height:65vh"></div>' +
-        '</div>');
-        
-        var usersRes = await supabase.from('users').select('*');
-        employeesData = usersRes.data || [];
-        try { var rRes = await supabase.from('roles').select('*'); rolesList = rRes.data || []; } catch(e) { rolesList = []; }
-        try { branchesList = await RW_Data.loadBranches(); } catch(e) { branchesList = []; }
-        
-        renderTable(employeesData);
-        
-        var searchInput = byId('emp-search');
-        if (searchInput) {
-            searchInput.addEventListener('input', filterTable);
-        }
-        var addBtn = byId('btn-add-emp');
-        if (addBtn) {
-            addBtn.addEventListener('click', function() { openModal(null); });
-        }
-        
-        // تفويض الأحداث على الـ wrapper الثابت
-        var wrapper = byId('emp-table-wrapper');
-        if (wrapper) {
-            wrapper.addEventListener('click', function(e) {
-                var target = e.target;
-                while (target && target !== wrapper) {
-                    if (target.tagName === 'TR' && target.dataset && target.dataset.email) {
-                        openModal(target.dataset.email);
-                        return;
-                    }
-                    target = target.parentElement;
-                }
-            });
-        }
+async function render() {
+    var container = byId('rw-page-container');
+    if (!container) return;
+    safeText(byId('rw-header-title'), 'المستخدمين والصلاحيات');
+    safeHTML(container, '<div class="p-4">' +
+        '<div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-users-gear ml-2"></i>إدارة المستخدمين والصلاحيات</h2><button id="btn-add-emp" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة موظف</button></div>' +
+        '<input type="text" id="emp-search" placeholder="بحث..." class="w-full p-3 border rounded-xl mb-4">' +
+        '<div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="emp-table-wrapper" style="max-height:65vh"></div>' +
+    '</div>');
+
+    var usersRes = await supabase.from('users').select('*');
+    employeesData = usersRes.data || [];
+    try { var rRes = await supabase.from('roles').select('*'); rolesList = rRes.data || []; } catch(e) { rolesList = []; }
+    try { branchesList = await RW_Data.loadBranches(); } catch(e) { branchesList = []; }
+
+    renderTable(employeesData);
+
+    var searchInput = byId('emp-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', filterTable);
     }
+    var addBtn = byId('btn-add-emp');
+    if (addBtn) {
+        addBtn.addEventListener('click', function() { openModal(null); });
+    }
+}
 
     function renderTable(data) {
         var w = byId('emp-table-wrapper');
@@ -5228,6 +5213,23 @@ function boot() {
     }
 }
 document.addEventListener('DOMContentLoaded', boot);
+// ==========================================================
+// المستمع العام الدائم لجدول المستخدمين (يوضع مرة واحدة)
+// ==========================================================
+document.addEventListener('click', function(e) {
+    var target = e.target;
+    while (target && target !== document.body) {
+        var email = target.getAttribute && target.getAttribute('data-email');
+        if (email) {
+            var wrapper = byId('emp-table-wrapper');
+            if (wrapper && wrapper.contains(target)) {
+                RW_Users._openModal(email);
+                return;
+            }
+        }
+        target = target.parentNode;
+    }
+});
 
 })();
 </script>
