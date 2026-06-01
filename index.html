@@ -5018,21 +5018,24 @@ var RW_OwnerLicense = (function() {
         _loadLicenseData();
     }
 
-    function _loadLicenseData() {
-        if (typeof google !== 'undefined' && google.script && google.script.run) {
-            google.script.run.withSuccessHandler(function(data) {
-                if (data.status !== 'success') { showToast(data.msg, 'error'); return; }
-                _buildLicenseForm(data);
-            }).getCompanyLicenseInfo();
-        } else {
-            // قراءة من Supabase مباشرة
-            supabase.from('app_settings').select('*').limit(1).single().then(function(res) {
-                var s = res.data || {};
-                _buildLicenseForm({ licenseStatus: s.status || 'trial', trialEndDate: s.trial_end_date || '', subscriptionEndDate: s.subscription_end_date || '' });
+function _loadLicenseData() {
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run.withSuccessHandler(function(data) {
+            if (data.status !== 'success') { showToast(data.msg, 'error'); return; }
+            _buildLicenseForm(data);
+        }).getCompanyLicenseInfo();
+    } else {
+        supabase.from('app_settings').select('*').limit(1).single().then(function(res) {
+            var s = res.data || {};
+            _buildLicenseForm({ 
+                licenseStatus: s.status || 'trial', 
+                trialEndDate: s.trial_end_date || '', 
+                subscriptionEndDate: s.subscription_end_date || '',
+                ownerEmail: s.owner_email || ''
             });
-        }
+        });
     }
-
+}
     function _buildLicenseForm(licenseInfo) {
         var container = byId('license-page-content');
         if (!container) return;
