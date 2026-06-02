@@ -163,13 +163,21 @@ login: async function(username, password) {
     if (!username || !password) { showToast('يرجى إدخال اسم المستخدم وكلمة المرور', 'error'); return; }
     showLoader('جاري تسجيل الدخول...');
     try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email: username, password: password });
-        if (error) { hideLoader(); showToast('فشل تسجيل الدخول: ' + error.message, 'error'); return; }
-        const user = data.user;
+        var authRes = await supabase.auth.signInWithPassword({ email: username, password: password });
+        if (authRes.error) { hideLoader(); showToast('فشل تسجيل الدخول: ' + authRes.error.message, 'error'); return; }
+        var user = authRes.data.user;
         RW_STATE.app.authenticated = true;
-        RW_STATE.app.currentUser = { name: user.user_metadata?.name || user.email, email: user.email, role: user.user_metadata?.role || 'مدير النظام', isOwner: user.user_metadata?.isOwner === 'true' || user.user_metadata?.isOwner === true };
-        RW_STATE.permissions = user.user_metadata?.permissions || ['*'];
-        RW_STATE.app.company = { name: user.user_metadata?.companyName || 'الروائع ERP', logo: user.user_metadata?.companyLogo || 'ر' };
+        RW_STATE.app.currentUser = {
+            name: user.user_metadata && user.user_metadata.name ? user.user_metadata.name : user.email,
+            email: user.email,
+            role: user.user_metadata && user.user_metadata.role ? user.user_metadata.role : 'مدير النظام',
+            isOwner: user.user_metadata && user.user_metadata.isOwner === true
+        };
+        RW_STATE.permissions = user.user_metadata && user.user_metadata.permissions ? user.user_metadata.permissions : ['*'];
+        RW_STATE.app.company = {
+            name: user.user_metadata && user.user_metadata.companyName ? user.user_metadata.companyName : 'الروائع ERP',
+            logo: user.user_metadata && user.user_metadata.companyLogo ? user.user_metadata.companyLogo : 'ر'
+        };
         this.enterSystem();
     } catch(e) { hideLoader(); showToast('حدث خطأ أثناء الاتصال', 'error'); console.error(e); }
 },
@@ -5052,10 +5060,7 @@ window.togglePasswordVisibility = function(inputId, btn) {
 function _buildFullForm(licenseInfo) {
     var container = byId('license-main-container');
     if (!container) return;
-    
     var html = '';
-    
-    // قسم الترخيص
     html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
     html += '<h3 class="text-lg font-black text-indigo-600 border-b pb-2 mb-4"><i class="fa-solid fa-shield-haltered ml-2"></i> إعدادات الترخيص</h3>';
     html += '<div class="space-y-4">';
@@ -5072,15 +5077,12 @@ function _buildFullForm(licenseInfo) {
     html += '<div class="flex justify-end pt-2"><button type="button" id="btn-save-license-only" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md">حفظ إعدادات الترخيص</button></div>';
     html += '</div></div>';
     
-    // قسم المالك
+    // قسم تغيير كلمة المرور (منفصل)
     html += '<div class="bg-white rounded-2xl shadow-sm border p-6 mt-6">';
-    html += '<h3 class="text-lg font-black text-red-600 border-b pb-2 mb-4"><i class="fa-solid fa-user-shield ml-2"></i> بيانات اعتماد المالك</h3>';
+    html += '<h3 class="text-lg font-black text-red-600 border-b pb-2 mb-4"><i class="fa-solid fa-key ml-2"></i> تغيير كلمة المرور</h3>';
     html += '<div class="space-y-4">';
-    html += '<div><label class="text-sm font-bold">البريد الإلكتروني الجديد للمالك</label><input id="license-owner-email" type="email" value="" class="p-2.5 bg-gray-50 border rounded-lg w-full" placeholder="اتركه فارغاً للإبقاء على الحالي"></div>';
-    html += '<div class="relative"><label class="text-sm font-bold">كلمة مرور جديدة للمالك</label><input id="license-owner-password" type="password" class="p-2.5 bg-gray-50 border rounded-lg w-full" placeholder="اتركه فارغاً للإبقاء على الحالي">';
-    html += '<button type="button" onclick="window.togglePasswordVisibility(\'license-owner-password\', this)" class="absolute left-2 top-8 text-gray-400 hover:text-gray-600 p-1.5 rounded-lg"><i class="fa-solid fa-eye"></i></button></div>';
-    html += '<div class="bg-amber-50 border-r-4 border-amber-500 p-4 rounded-lg text-sm">⚠️ تغيير بيانات الدخول سيؤثر فوراً. احفظ البيانات الجديدة في مكان آمن.</div>';
-    html += '<div class="flex justify-end pt-2"><button type="button" id="btn-save-owner-only" class="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold shadow-md">حفظ بيانات المالك</button></div>';
+    html += '<div><label class="text-sm font-bold">كلمة المرور الجديدة</label><input id="owner-new-password" type="password" class="p-2.5 bg-gray-50 border rounded-lg w-full" placeholder="أدخل كلمة المرور الجديدة"></div>';
+    html += '<div class="flex justify-end pt-2"><button type="button" id="btn-change-password" class="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold shadow-md">تغيير كلمة المرور</button></div>';
     html += '</div></div>';
     
     safeHTML(container, html);
@@ -5100,55 +5102,20 @@ function _bindSaveButtons() {
         });
     }
     
-    var btnOwner = byId('btn-save-owner-only');
-    if (btnOwner) {
-        btnOwner.addEventListener('click', function() {
-            var newEmail = byId('license-owner-email').value.trim();
-            var newPassword = byId('license-owner-password').value;
-            
-            if (!newEmail && !newPassword) {
-                showToast('لم يتم إدخال أي تغييرات', 'info');
-                return;
-            }
-            
-            var payload = {};
-            if (newEmail) payload.email = newEmail;
-            if (newPassword) payload.password = newPassword;
-            
-            showLoader('جاري تحديث بيانات المالك...');
-            
-            supabase.auth.getSession().then(function(sessionRes) {
-                var token = null;
-                if (sessionRes && sessionRes.data && sessionRes.data.session) {
-                    token = sessionRes.data.session.access_token;
-                }
-                
-                return fetch(SUPABASE_URL + '/functions/v1/update-owner-auth', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: 'Bearer ' + token
-                    },
-                    body: JSON.stringify(payload)
-                });
-            }).then(function(res) {
-                if (!res.ok) {
-                    return res.json().then(function(err) { throw new Error(err.error || 'خطأ في الخادم'); });
-                }
-                return res.json();
-            }).then(function(json) {
+    var btnPassword = byId('btn-change-password');
+    if (btnPassword) {
+        btnPassword.addEventListener('click', function() {
+            var newPass = byId('owner-new-password').value;
+            if (!newPass) { showToast('أدخل كلمة المرور الجديدة', 'error'); return; }
+            showLoader('جاري تغيير كلمة المرور...');
+            supabase.auth.updateUser({ password: newPass }).then(function(res) {
                 hideLoader();
-                if (json.success) {
-                    showToast('تم تحديث بيانات المالك بنجاح', 'success');
-                    byId('license-owner-email').value = '';
-                    byId('license-owner-password').value = '';
-                } else {
-                    showToast(json.error || 'فشل التحديث', 'error');
-                }
+                if (res.error) { showToast(res.error.message, 'error'); return; }
+                showToast('تم تغيير كلمة المرور بنجاح', 'success');
+                byId('owner-new-password').value = '';
             }).catch(function(e) {
                 hideLoader();
-                showToast('فشل الاتصال: ' + (e.message || 'خطأ غير معروف'), 'error');
-                console.error(e);
+                showToast('فشل الاتصال', 'error');
             });
         });
     }
