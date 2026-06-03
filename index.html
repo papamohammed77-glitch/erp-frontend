@@ -222,62 +222,60 @@ login: async function(username, password) {
         console.error(e);
     }
 },
-    enterSystem: function() {
-        hideLoader();
-        try {
-            byId('rw-login-page').style.display = 'none';
-            byId('rw-main-shell').style.display = 'flex';
-            const user = RW_STATE.app.currentUser;
-            const userName = user ? (user.name || user.email) : 'مستخدم';
-            safeText(byId('rw-sidebar-company-name'), RW_STATE.app.company.name || 'الروائع ERP');
-            const logoImg = byId('rw-sidebar-brand-logo');
-            safeText(byId('rw-header-user-display'), userName);
-            // جلب شعار واسم الشركة من الإعدادات
-            supabase.from('app_settings')
-.select('company_name, company_logo')
-.limit(1)
-.then(function(r) {
-    if (r && r.data && r.data.length > 0) {
-        var row = r.data[0];
-        safeText(
-            byId('rw-sidebar-company-name'),
-            row.company_name || 'الروائع ERP'
-        );
-        var logoImg = byId('rw-sidebar-brand-logo');
-        if (logoImg && row.company_logo) {
-            logoImg.src = row.company_logo;
-            logoImg.style.objectFit = 'contain';
-            logoImg.style.backgroundColor = '#f8fafc';
-        }
-    }
-});
-                if (r.data) {
-                    safeText(byId('rw-sidebar-company-name'), r.data.company_name || 'الروائع ERP');
+enterSystem: function() {
+    hideLoader();
+    try {
+        byId('rw-login-page').style.display = 'none';
+        byId('rw-main-shell').style.display = 'flex';
+        
+        var user = RW_STATE.app.currentUser;
+        var userName = user ? (user.name || user.email) : 'مستخدم';
+        
+        safeText(byId('rw-sidebar-company-name'), RW_STATE.app.company.name || 'الروائع ERP');
+        safeText(byId('rw-header-user-display'), userName);
+        
+        // جلب شعار واسم الشركة من الإعدادات
+        supabase.from('app_settings')
+            .select('company_name, company_logo')
+            .limit(1)
+            .then(function(r) {
+                if (r && r.data && r.data.length > 0) {
+                    var row = r.data[0];
+                    safeText(byId('rw-sidebar-company-name'), row.company_name || 'الروائع ERP');
                     var logoImg = byId('rw-sidebar-brand-logo');
-                    if (logoImg && r.data.company_logo) { logoImg.src = r.data.company_logo; logoImg.style.objectFit = 'contain'; logoImg.style.backgroundColor = '#f8fafc'; }
+                    if (logoImg && row.company_logo) {
+                        logoImg.src = row.company_logo;
+                        logoImg.style.objectFit = 'contain';
+                        logoImg.style.backgroundColor = '#f8fafc';
+                    }
                 }
             });
-            RW_Navigation.buildSidebar();
-            // ✅ Bootstrap: تحميل البيانات الأساسية مرة واحدة لجميع التبويبات
-            Promise.all([
-                RW_Data.loadItems(),
-                RW_Data.loadCustomers(),
-                RW_Data.loadBranches()
-            ]).then(function() {
-                console.log('✅ Bootstrap data loaded successfully.');
-                // تحميل الموردين (اختياري، لا يمنع الدخول)
-                supabase.from('suppliers').select('*').then(function(r) {
-                    RW_STATE.data.suppliers = r.data || [];
-                    console.log('✅ Suppliers loaded.');
-                });
-            }).catch(function(e) {
-                console.warn('⚠️ Bootstrap data failed:', e);
-            }).finally(function() {
-                // الانتقال للوحة التحكم في جميع الأحوال
-                RW_Navigation.navigate('dashboard');
+        
+        RW_Navigation.buildSidebar();
+        
+        // ✅ Bootstrap: تحميل البيانات الأساسية مرة واحدة لجميع التبويبات
+        Promise.all([
+            RW_Data.loadItems(),
+            RW_Data.loadCustomers(),
+            RW_Data.loadBranches()
+        ]).then(function() {
+            console.log('✅ Bootstrap data loaded successfully.');
+            // تحميل الموردين (اختياري، لا يمنع الدخول)
+            supabase.from('suppliers').select('*').then(function(r) {
+                RW_STATE.data.suppliers = r.data || [];
+                console.log('✅ Suppliers loaded.');
             });
-        } catch(e) { console.error(e); this.forceEnterFallback(); }
-    },
+        }).catch(function(e) {
+            console.warn('⚠️ Bootstrap data failed:', e);
+        }).finally(function() {
+            // الانتقال للوحة التحكم في جميع الأحوال
+            RW_Navigation.navigate('dashboard');
+        });
+    } catch(e) {
+        console.error(e);
+        this.forceEnterFallback();
+    }
+},
     forceEnterFallback: function() { hideLoader(); try { byId('rw-login-page').style.display = 'none'; byId('rw-main-shell').style.display = 'flex'; RW_Navigation.buildSidebar(); RW_Navigation.navigate('dashboard'); showToast('تم تشغيل النظام في الوضع الآمن', 'warning'); } catch(e) { document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:Cairo;"><h1>RAWAEA ERP</h1><p>حدث خطأ أثناء تشغيل النظام</p><button onclick="location.reload()">إعادة التحميل</button></div>'; } },
     logout: async function() { try { await supabase.auth.signOut(); RW_STATE.app.authenticated = false; byId('rw-main-shell').style.display = 'none'; byId('rw-login-page').style.display = 'flex'; } catch(e) { console.error(e); } }
 };
