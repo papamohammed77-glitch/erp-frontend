@@ -141,24 +141,32 @@
     <div id="rw-page-container" class="rw-page-container"></div>
   </main>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js">
+</script>
 <script>
 (function() {
 'use strict';
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: false
-    },
-    global: {
-        headers: {
-            'apikey': SUPABASE_ANON_KEY
-        }
+var RW_SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
+var RW_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+
+var RW_SUPABASE_CLIENT = (function () {
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        console.error('❌ Supabase SDK not loaded correctly');
+        return null;
     }
-});
+    return window.supabase.createClient(RW_SUPABASE_URL, RW_SUPABASE_ANON_KEY, {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false
+        },
+        global: {
+            headers: {
+                apikey: RW_SUPABASE_ANON_KEY
+            }
+        }
+    });
+})();
 const byId = id => document.getElementById(id);
 const safeHTML = (el, html) => { if (!el) return; try { el.innerHTML = html; } catch(e) { console.error(e); } };
 const safeText = (el, text) => { if (!el) return; try { el.innerText = text; } catch(e) { console.error(e); } };
@@ -176,7 +184,12 @@ login: async function(username, password) {
     }
     showLoader('جاري تسجيل الدخول...');
     try {
-        var authRes = await supabase.auth.signInWithPassword({
+        if (!RW_SUPABASE_CLIENT) {
+            hideLoader();
+            showToast('خطأ داخلي: عميل Supabase غير مهيأ', 'error');
+            return;
+        }
+        var authRes = await RW_SUPABASE_CLIENT.auth.signInWithPassword({
             email: username,
             password: password
         });
