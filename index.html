@@ -160,26 +160,42 @@ const RW_STATE = { app: { initialized: false, authenticated: false, loading: fal
 
 const RW_Auth = {
 login: async function(username, password) {
-    if (!username || !password) { showToast('يرجى إدخال اسم المستخدم وكلمة المرور', 'error'); return; }
+    if (!username || !password) {
+        showToast('يرجى إدخال اسم المستخدم وكلمة المرور', 'error');
+        return;
+    }
     showLoader('جاري تسجيل الدخول...');
     try {
-        var authRes = await supabase.auth.signInWithPassword({ email: username, password: password });
-        if (authRes.error) { hideLoader(); showToast('فشل تسجيل الدخول: ' + authRes.error.message, 'error'); return; }
+        var authRes = await supabase.auth.signInWithPassword({
+            email: username,
+            password: password
+        });
+        if (authRes.error) {
+            hideLoader();
+            showToast('فشل تسجيل الدخول: ' + authRes.error.message, 'error');
+            return;
+        }
         var user = authRes.data.user;
+        var meta = user.user_metadata || {};
+
         RW_STATE.app.authenticated = true;
         RW_STATE.app.currentUser = {
-            name: user.user_metadata && user.user_metadata.name ? user.user_metadata.name : user.email,
+            name: meta.name || user.email,
             email: user.email,
-            role: user.user_metadata && user.user_metadata.role ? user.user_metadata.role : 'مدير النظام',
-            isOwner: user.user_metadata && user.user_metadata.isOwner === true
+            role: meta.role || 'مدير النظام',
+            isOwner: meta.isOwner === true
         };
-        RW_STATE.permissions = user.user_metadata && user.user_metadata.permissions ? user.user_metadata.permissions : ['*'];
+        RW_STATE.permissions = meta.permissions || ['*'];
         RW_STATE.app.company = {
-            name: user.user_metadata && user.user_metadata.companyName ? user.user_metadata.companyName : 'الروائع ERP',
-            logo: user.user_metadata && user.user_metadata.companyLogo ? user.user_metadata.companyLogo : 'ر'
+            name: meta.companyName || 'الروائع ERP',
+            logo: meta.companyLogo || 'ر'
         };
         this.enterSystem();
-    } catch(e) { hideLoader(); showToast('حدث خطأ أثناء الاتصال', 'error'); console.error(e); }
+    } catch(e) {
+        hideLoader();
+        showToast('حدث خطأ أثناء الاتصال', 'error');
+        console.error(e);
+    }
 },
     enterSystem: function() {
         hideLoader();
