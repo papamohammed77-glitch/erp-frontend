@@ -234,21 +234,29 @@ enterSystem: function() {
         safeText(byId('rw-sidebar-company-name'), RW_STATE.app.company.name || 'الروائع ERP');
         safeText(byId('rw-header-user-display'), userName);
         
-        // جلب شعار واسم الشركة من الإعدادات
+        // تحديث اسم الشركة والشعار من الإعدادات (اختياري)
         supabase.from('app_settings')
             .select('company_name, company_logo')
             .limit(1)
             .then(function(r) {
-                if (r && r.data && r.data.length > 0) {
-                    var row = r.data[0];
-                    safeText(byId('rw-sidebar-company-name'), row.company_name || 'الروائع ERP');
-                    var logoImg = byId('rw-sidebar-brand-logo');
-                    if (logoImg && row.company_logo) {
-                        logoImg.src = row.company_logo;
-                        logoImg.style.objectFit = 'contain';
-                        logoImg.style.backgroundColor = '#f8fafc';
-                    }
+                if (!r || !r.data || !r.data.length) return;
+
+                var row = r.data[0];
+
+                safeText(
+                    byId('rw-sidebar-company-name'),
+                    row.company_name || RW_STATE.app.company.name || 'الروائع ERP'
+                );
+
+                var logoImg = byId('rw-sidebar-brand-logo');
+                if (logoImg && row.company_logo) {
+                    logoImg.src = row.company_logo;
+                    logoImg.style.objectFit = 'contain';
+                    logoImg.style.backgroundColor = '#f8fafc';
                 }
+            })
+            .catch(function(e) {
+                console.warn('app_settings load failed', e);
             });
         
         RW_Navigation.buildSidebar();
