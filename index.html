@@ -5488,6 +5488,41 @@ window.resetPassword = function() {
         showToast('فشل الاتصال', 'error');
     });
 };
+function generateQRInvoiceBase64(sellerName, vatNumber, invoiceDate, totalAmount, vatAmount) {
+    var text = '';
+    text += (sellerName || '') + '\n';
+    text += (vatNumber || '') + '\n';
+    text += (invoiceDate || '') + '\n';
+    text += (totalAmount || '') + '\n';
+    text += (vatAmount || '');
+
+    var utf8Bytes = [];
+    for (var i = 0; i < text.length; i++) {
+        var charCode = text.charCodeAt(i);
+        if (charCode < 0x80) {
+            utf8Bytes.push(charCode);
+        } else if (charCode < 0x800) {
+            utf8Bytes.push(0xc0 | (charCode >> 6));
+            utf8Bytes.push(0x80 | (charCode & 0x3f));
+        } else if (charCode < 0xd800 || charCode >= 0xe000) {
+            utf8Bytes.push(0xe0 | (charCode >> 12));
+            utf8Bytes.push(0x80 | ((charCode >> 6) & 0x3f));
+            utf8Bytes.push(0x80 | (charCode & 0x3f));
+        } else {
+            i++;
+            charCode = 0x10000 + (((charCode & 0x3ff) << 10) | (text.charCodeAt(i) & 0x3ff));
+            utf8Bytes.push(0xf0 | (charCode >> 18));
+            utf8Bytes.push(0x80 | ((charCode >> 12) & 0x3f));
+            utf8Bytes.push(0x80 | ((charCode >> 6) & 0x3f));
+            utf8Bytes.push(0x80 | (charCode & 0x3f));
+        }
+    }
+    var binary = '';
+    for (var j = 0; j < utf8Bytes.length; j++) {
+        binary += String.fromCharCode(utf8Bytes[j]);
+    }
+    return btoa(binary);
+}
 // ==========================================================
 // المستمع العام الدائم لجدول المستخدمين (يوضع مرة واحدة)
 // ==========================================================
