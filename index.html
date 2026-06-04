@@ -346,7 +346,7 @@ _handleAction(action, arg) { if (action === 'showFinanceTab') {
 } if (action === 'logout') { RW_Auth.logout(); return; } if (typeof RW_Views !== 'undefined' && RW_Views.render) RW_Views.render(action); },
 buildSidebar() { try { const nav = byId('rw-sidebar-nav'); if (!nav) return; const perms = RW_STATE.permissions || []; const hasFullAccess = perms.includes('*'); function isAllowed(item) { if (hasFullAccess) return true; if (item.perm === 'owner') return RW_STATE.app.currentUser?.isOwner === true; if (item.perm) return perms.includes(item.perm); if (item.view) return perms.includes(item.view); return true; } function filterMenu(items) { const filtered = []; for (const item of items) { if (!isAllowed(item)) continue; if (item.submenu) { const sub = filterMenu(item.submenu); if (sub.length) { const n = {...item}; n.submenu = sub; filtered.push(n); } } else filtered.push(item); } return filtered; } const tree = filterMenu(this.menuTree); safeHTML(nav, this._buildMenuHTML(tree)); nav.querySelectorAll('.rw-sidebar-link[data-view]').forEach(btn => { btn.addEventListener('click', function(e) { e.stopPropagation(); RW_Navigation.navigate(btn.dataset.view); }); }); } catch(e) { console.error(e); } },
 toggleSidebar() { const sidebar = byId('rw-sidebar'), main = byId('rw-main-content'); if (!sidebar || !main) return; const collapsed = sidebar.classList.toggle('collapsed'); main.classList.toggle('expanded', collapsed); RW_STATE.ui.sidebarCollapsed = collapsed; try { localStorage.setItem('rw_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {} },
-    navigate(view) { try { RW_STATE.app.currentView = view; document.querySelectorAll('.rw-sidebar-link').forEach(el => el.classList.remove('active')); const active = document.querySelector(`.rw-sidebar-link[data-view="${view}"]`); if (active) active.classList.add('active'); RW_Views.render(view); } catch(e) { console.error(e); showToast('حدث خطأ', 'error'); } }
+    navigate(view) { try { RW_STATE.app.currentView = view; document.querySelectorAll('.rw-sidebar-link').forEach(el => el.classList.remove('active')); const active = document.querySelector(`.rw-sidebar-link[data-view="${view}"]`); if (active) active.classList.add('active'); window.RW_Views.render(view); } catch(e) { console.error(e); showToast('حدث خطأ', 'error'); } }
 };
 window.RW_Navigation = RW_Navigation;
 // ============================================================
@@ -5271,7 +5271,7 @@ var RW_Views = {
     safeHTML(c,'<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">🚧</div><h2>'+(titles[view]||view)+'</h2><p style="color:#6b7280">قيد التطوير</p></div>');
   }
 };
-
+window.RW_Views = RW_Views;
 // ============================================================
 // EVENTS & BOOT
 // ============================================================
