@@ -1017,7 +1017,7 @@ var RW_Settings = (function() {
                         </div>
                     </div>
                 </div>
-                <div class="flex justify-end pt-4"><button id="btn-save-invoice-settings" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold">حفظ إعدادات الفاتورة</button></div>
+                <div class="flex justify-end pt-4"><button id="btn-save-invoice-settings" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold">حفظ الإعدادات </button></div>
                 </div>
             </div>
             <!-- قسم إعدادات الفوترة الإلكترونية -->
@@ -5238,6 +5238,7 @@ function _buildFullForm(licenseInfo) {
 }
 
 function _bindSaveButtons() {
+    // زر حفظ إعدادات الترخيص
     var btnLicense = byId('btn-save-license-only');
     if (btnLicense) {
         btnLicense.addEventListener('click', function() {
@@ -5249,7 +5250,27 @@ function _bindSaveButtons() {
             _saveSettings(payload, 'إعدادات الترخيص');
         });
     }
-    
+
+    // زر تغيير البريد الإلكتروني
+    var btnEmail = byId('btn-change-email');
+    if (btnEmail) {
+        btnEmail.addEventListener('click', function() {
+            var newEmail = byId('owner-new-email').value.trim();
+            if (!newEmail) { showToast('أدخل البريد الإلكتروني الجديد', 'error'); return; }
+            showLoader('جاري تغيير البريد الإلكتروني...');
+            supabase.auth.updateUser({ email: newEmail }).then(function(res) {
+                hideLoader();
+                if (res.error) { showToast(res.error.message, 'error'); return; }
+                showToast('تم تغيير البريد الإلكتروني بنجاح. تم إرسال رابط تأكيد إلى بريدك الجديد.', 'success');
+                byId('owner-new-email').value = '';
+            }).catch(function(e) {
+                hideLoader();
+                showToast('فشل الاتصال', 'error');
+            });
+        });
+    }
+
+    // زر تغيير كلمة المرور
     var btnPassword = byId('btn-change-password');
     if (btnPassword) {
         btnPassword.addEventListener('click', function() {
