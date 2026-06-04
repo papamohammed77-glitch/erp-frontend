@@ -2249,7 +2249,7 @@ var RW_Orders = (function() {
         } catch(e) { hideLoader(); showToast('فشل التحميل', 'error'); console.error(e); }
     }
 
-    // ========== الطباعة مع QR ==========
+    // ========== الطباعة مع QR (ZATCA Compliant) ==========
     function _printOrder(code) {
         showLoader('جاري تحضير الطباعة...');
         supabase.from('orders').select('*').eq('order_code', code).maybeSingle().then(function(oRes) {
@@ -2262,7 +2262,9 @@ var RW_Orders = (function() {
                     var settings = sRes.data || {};
                     var companyName = settings.company_name || 'الروائع';
                     var taxRate = Number(settings.tax_rate) || 0;
-                    var vatNumber = '310000000000003';
+                    var vatNumber = settings.vat_number || '310000000000003';
+                    var registeredName = settings.registered_name || companyName;
+                    var businessAddress = settings.business_address || '';
 
                     var printWindow = window.open('', '_blank');
                     if (!printWindow) { showToast('الرجاء السماح للنوافذ المنبثقة', 'warning'); return; }
@@ -2284,16 +2286,20 @@ var RW_Orders = (function() {
                     var beforeTax = itemsTotal + deliveryFee;
                     var taxAmount = Math.round(beforeTax * taxRate) / 100;
 
-                    var qrBase64 = generateQRInvoiceBase64(companyName, vatNumber, new Date().toISOString(), String(grandTotal), String(taxAmount));
+                    var invoiceDate = order.order_date ? new Date(order.order_date).toISOString() : new Date().toISOString();
+                    var qrBase64 = generateQRInvoiceBase64(registeredName, vatNumber, invoiceDate, String(grandTotal), String(taxAmount));
 
                     var html = '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ' + esc(order.order_code) + '</title>' +
                         '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>' +
-                        '<style>body{font-family:"Cairo",sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:right}th{background:#f2f2f2}</style></head>' +
-                        '<body><div style="text-align:center;border-bottom:2px solid #000;padding-bottom:10px"><h1>فاتورة بيع</h1><p>رقم: ' + esc(order.order_code) + '</p><p>التاريخ: ' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p></div>' +
+                        '<style>body{font-family:"Cairo",sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:right}th{background:#f2f2f2}.invoice-header{text-align:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:15px}.invoice-footer{margin-top:30px;text-align:center;border-top:1px solid #ccc;padding-top:15px}.qr-section{text-align:center;margin-top:20px;padding-top:15px;border-top:1px dashed #ccc}</style></head>' +
+                        '<body>' +
+                        '<div class="invoice-header"><h1>فاتورة بيع</h1><p>رقم: ' + esc(order.order_code) + '</p><p>التاريخ: ' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p></div>' +
+                        '<div><p><strong>البائع:</strong> ' + esc(registeredName) + '</p><p><strong>العنوان:</strong> ' + esc(businessAddress) + '</p><p><strong>رقم التسجيل الضريبي:</strong> ' + esc(vatNumber) + '</p></div>' +
                         '<p><strong>العميل:</strong> ' + esc(order.customer_name || '') + '</p><p><strong>المنطقة:</strong> ' + esc(order.area || '') + '</p>' +
                         '<table><thead><tr><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>' + itemsHtml + '</tbody></table>' +
                         '<div style="font-weight:bold;font-size:18px;margin-top:20px">الإجمالي: ' + Number(order.total_amount || 0).toLocaleString() + ' EGP</div>' +
-                        '<div style="text-align:center;margin-top:20px;padding-top:15px;border-top:1px dashed #ccc;"><p style="font-weight:bold">رمز الفاتورة الإلكترونية</p><div id="print-qrcode-container" style="display:inline-block;"></div><p style="font-size:11px;color:#888">امسح الكود للتحقق من الفاتورة</p></div>' +
+                        '<div class="qr-section"><p style="font-weight:bold">رمز الفاتورة الإلكترونية</p><div id="print-qrcode-container" style="display:inline-block;"></div><p style="font-size:11px;color:#888">امسح الكود للتحقق من الفاتورة</p></div>' +
+                        '<div class="invoice-footer"><p>شكراً لتعاملكم معنا</p></div>' +
                         '<script>window.onload=function(){try{var c=document.getElementById("print-qrcode-container");if(c&&typeof QRCode!=="undefined"){c.innerHTML="";new QRCode(c,{text:"' + qrBase64 + '",width:150,height:150,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}}catch(e){}window.print();};<\/script></body></html>';
                     printWindow.document.write(html);
                     printWindow.document.close();
@@ -2301,7 +2307,6 @@ var RW_Orders = (function() {
             });
         });
     }
-
     // ========== إنشاء وضم الرانشيتات ==========
     async function _createRS() {
         var selected = _getSelectedOrders();
