@@ -5199,6 +5199,17 @@ window.togglePasswordVisibility = function(inputId, btn) {
 function _buildFullForm(licenseInfo) {
     var container = byId('license-main-container');
     if (!container) return;
+
+    // جلب البريد الإلكتروني الحالي
+    var currentEmail = '';
+    supabase.auth.getUser().then(function(userRes) {
+        if (userRes.data && userRes.data.user) {
+            currentEmail = userRes.data.user.email || '';
+            var emailField = byId('owner-new-email');
+            if (emailField) emailField.value = currentEmail;
+        }
+    });
+
     var html = '';
     // قسم الترخيص
     html += '<div class="bg-white rounded-2xl shadow-sm border p-6">';
@@ -5221,6 +5232,7 @@ function _buildFullForm(licenseInfo) {
     html += '<div class="bg-white rounded-2xl shadow-sm border p-6 mt-6">';
     html += '<h3 class="text-lg font-black text-blue-600 border-b pb-2 mb-4"><i class="fa-solid fa-envelope ml-2"></i> تغيير البريد الإلكتروني</h3>';
     html += '<div class="space-y-4">';
+    html += '<div><label class="text-sm font-bold">البريد الإلكتروني الحالي</label><input id="owner-current-email" class="p-2.5 bg-gray-100 border rounded-lg w-full" readonly value="' + currentEmail + '"></div>';
     html += '<div><label class="text-sm font-bold">البريد الإلكتروني الجديد</label><input id="owner-new-email" type="email" class="p-2.5 bg-gray-50 border rounded-lg w-full" placeholder="أدخل البريد الإلكتروني الجديد"></div>';
     html += '<div class="flex justify-end pt-2"><button type="button" id="btn-change-email" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow-md">تغيير البريد الإلكتروني</button></div>';
     html += '</div></div>';
@@ -5229,7 +5241,11 @@ function _buildFullForm(licenseInfo) {
     html += '<div class="bg-white rounded-2xl shadow-sm border p-6 mt-6">';
     html += '<h3 class="text-lg font-black text-red-600 border-b pb-2 mb-4"><i class="fa-solid fa-key ml-2"></i> تغيير كلمة المرور</h3>';
     html += '<div class="space-y-4">';
-    html += '<div><label class="text-sm font-bold">كلمة المرور الجديدة</label><input id="owner-new-password" type="password" class="p-2.5 bg-gray-50 border rounded-lg w-full" placeholder="أدخل كلمة المرور الجديدة"></div>';
+    html += '<div><label class="text-sm font-bold">كلمة المرور الجديدة</label>';
+    html += '<div class="relative">';
+    html += '<input id="owner-new-password" type="password" class="p-2.5 bg-gray-50 border rounded-lg w-full pl-12" placeholder="أدخل كلمة المرور الجديدة">';
+    html += '<button type="button" onclick="window.togglePasswordVisibility(\'owner-new-password\', this)" class="absolute left-2 top-2.5 text-gray-500 hover:text-gray-700 p-1"><i class="fa-solid fa-eye"></i></button>';
+    html += '</div></div>';
     html += '<div class="flex justify-end pt-2"><button type="button" id="btn-change-password" class="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold shadow-md">تغيير كلمة المرور</button></div>';
     html += '</div></div>';
 
@@ -5263,6 +5279,12 @@ function _bindSaveButtons() {
                 if (res.error) { showToast(res.error.message, 'error'); return; }
                 showToast('تم تغيير البريد الإلكتروني بنجاح. تم إرسال رابط تأكيد إلى بريدك الجديد.', 'success');
                 byId('owner-new-email').value = '';
+                // تحديث البريد الحالي المعروض
+                supabase.auth.getUser().then(function(userRes) {
+                    if (userRes.data && userRes.data.user) {
+                        byId('owner-current-email').value = userRes.data.user.email || '';
+                    }
+                });
             }).catch(function(e) {
                 hideLoader();
                 showToast('فشل الاتصال', 'error');
