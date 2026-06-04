@@ -351,6 +351,7 @@ const RW_Navigation = {
     { view: 'reports-comprehensive', label: 'التقارير الشاملة' }
 ] },
     { view: 'hr', icon: 'fa-id-card', label: 'الموارد البشرية' },
+    { view: 'crm', icon: 'fa-handshake', label: 'إدارة علاقات العملاء (CRM)' },
     { view: 'users', icon: 'fa-users-gear', label: 'المستخدمين والصلاحيات' },
     { view: 'roles', icon: 'fa-user-shield', label: 'إدارة أدوار الموظفين' },
     { view: 'license', icon: 'fa-shield-haltered', label: 'إدارة الترخيص', perm: 'owner' },
@@ -5409,6 +5410,7 @@ var RW_Views = {
     if(view==='branches'){ RW_Branches.render(); return; }
     if(view==='settings'){ RW_Settings.render(); return; }
     if(view==='hr'){ RW_HR.render(); return; }
+    if(view==='crm'){ RW_CRM.render(); return; }
     if(view==='users'){ RW_Users.render(); return; }
     if(view==='roles'){ RW_Roles.render(); return; }
     if(view==='license'){ RW_OwnerLicense.render(); return; }
@@ -5548,6 +5550,155 @@ var RW_HR = (function() {
     return { render: render, _openModal: _openModal };
 })();
 window.RW_HR = RW_HR;
+// ============================================================
+// RW_CRM – إدارة علاقات العملاء (CRM)
+// ============================================================
+var RW_CRM = (function() {
+    var followupsData = [];
+
+    function _esc(s) { return String(s||'').replace(/[&<>]/g, function(m) { return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'; }); }
+    function _fmtNum(n) { return Number(n || 0).toLocaleString(); }
+    function _dateFormat(d) { return d ? new Date(d).toLocaleDateString('ar-EG') : ''; }
+
+    async function render() {
+        var container = byId('rw-page-container');
+        if (!container) return;
+        safeText(byId('rw-header-title'), 'إدارة علاقات العملاء (CRM)');
+        safeText(byId('rw-header-subtitle'), 'سجل المتابعات والاتصالات بالعملاء');
+
+        // تحميل العملاء
+        var customers = RW_STATE.data.customers || [];
+        if (!customers.length) { customers = await RW_Data.loadCustomers(); }
+
+        // واجهة البحث والقائمة
+        var html = '<div class="p-4">';
+        html += '<div class="mb-4"><input type="text" id="crm-search" placeholder="🔍 بحث عن عميل..." class="w-full p-3 bg-white rounded-xl border" oninput="RW_CRM._filterCustomers()"></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" style="max-height:65vh" id="crm-customers-list">';
+        html += _buildCustomersTable(customers);
+        html += '</div></div>';
+
+        safeHTML(container, html);
+    }
+
+    function _buildCustomersTable(customers) {
+        if (!customers || !customers.length) return '<div class="text-center py-10 text-gray-500">لا يوجد عملاء</div>';
+        var html = '<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50"><tr><th class="p-3">العميل</th><th class="p-3">الهاتف</th><th class="p-3">المنطقة</th><th class="p-3 text-center">الرصيد</th><th class="p-3 text-center">متابعة</th></tr></thead><tbody>';
+        for (var i = 0; i < customers.length; i++) {
+            var c = customers[i];
+            html += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_CRM._openFollowupModal(\'' + _esc(c.customer_code || '') + '\', \'' + _esc(c.name || '') + '\')">';
+            html += '<td class="p-3"><div class="font-bold">' + _esc(c.name) + '</div><div class="text-xs text-gray-400">' + _esc(c.customer_code || '') + '</div></td>';
+            html += '<td class="p-3">' + _esc(c.phone || '-') + '</td>';
+            html += '<td class="p-3">' + _esc(c.area || '-') + '</td>';
+            html += '<td class="p-3 text-center font-bold ' + (Number(c.debt) > 0 ? 'text-red-500' : 'text-green-600') + '">' + _fmtNum(c.debt) + ' EGP</td>';
+            html += '<td class="p-3 text-center"><button class="bg-blue-100 text-blue-700 px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-plus ml-1"></i> متابعة</button></td>';
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        return html;
+    }
+
+    function _filterCustomers() {
+        var q = (byId('crm-search') ? byId('crm-search').value : '').toLowerCase();
+        var customers = RW_STATE.data.customers || [];
+        var filtered = customers;
+        if (q) {
+            filtered = customers.filter(function(c) {
+                return (c.name||'').toLowerCase().indexOf(q) !== -1 || (c.customer_code||'').toLowerCase().indexOf(q) !== -1 || (c.phone||'').indexOf(q) !== -1;
+            });
+        }
+        var list = byId('crm-customers-list');
+        if (list) safeHTML(list, _buildCustomersTable(filtered));
+    }
+
+    async function _openFollowupModal(customerCode, customerName) {
+        showLoader('جاري تحميل المتابعات...');
+        // جلب المتابعات السابقة
+        var res = await supabase.from('customer_followups').select('*').eq('customer_id', customerCode).order('followup_date', { ascending: false });
+        var followups = res.data || [];
+        hideLoader();
+
+        var html = '<div class="text-right">';
+        // معلومات العميل
+        html += '<div class="bg-blue-50 p-4 rounded-xl mb-4">';
+        html += '<h3 class="font-bold text-lg">' + _esc(customerName) + '</h3>';
+        html += '<p class="text-sm text-gray-500">كود: ' + _esc(customerCode) + '</p>';
+        // روابط اتصال سريعة
+        var cust = null;
+        var customers = RW_STATE.data.customers || [];
+        for (var i = 0; i < customers.length; i++) {
+            if (customers[i].customer_code === customerCode) { cust = customers[i]; break; }
+        }
+        if (cust && cust.phone) {
+            html += '<div class="flex gap-2 mt-3">';
+            html += '<a href="tel:' + _esc(cust.phone) + '" class="bg-green-500 text-white px-4 py-2 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i> اتصال</a>';
+            html += '<a href="https://wa.me/' + _esc(cust.phone.replace(/\D/g,'')) + '" target="_blank" class="bg-emerald-500 text-white px-4 py-2 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i> واتساب</a>';
+            html += '</div>';
+        }
+        html += '</div>';
+
+        // نموذج إضافة متابعة جديدة
+        html += '<div class="bg-gray-50 p-4 rounded-xl mb-4"><h4 class="font-bold mb-3"><i class="fa-solid fa-plus-circle ml-1"></i> إضافة متابعة جديدة</h4>';
+        html += '<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">';
+        html += '<div><label class="text-xs">التاريخ</label><input type="date" id="crm-followup-date" class="p-2 bg-white border rounded w-full text-sm" value="' + new Date().toISOString().slice(0,10) + '"></div>';
+        html += '<div><label class="text-xs">نوع الاتصال</label><select id="crm-followup-type" class="p-2 bg-white border rounded w-full text-sm"><option>هاتف</option><option>واتساب</option><option>زيارة</option><option>بريد إلكتروني</option><option>أخرى</option></select></div>';
+        html += '<div><label class="text-xs">الحالة</label><select id="crm-followup-status" class="p-2 bg-white border rounded w-full text-sm"><option>معلقة</option><option>مكتملة</option><option>ملغاة</option></select></div>';
+        html += '</div>';
+        html += '<div><label class="text-xs">ملاحظات</label><textarea id="crm-followup-notes" class="p-2 bg-white border rounded w-full text-sm" rows="2" placeholder="تفاصيل المتابعة..."></textarea></div>';
+        html += '<div class="flex justify-end mt-3"><button id="btn-save-followup" class="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold text-sm">حفظ المتابعة</button></div>';
+        html += '</div>';
+
+        // سجل المتابعات السابقة
+        html += '<div><h4 class="font-bold mb-3"><i class="fa-solid fa-clock-rotate-left ml-1"></i> سجل المتابعات</h4>';
+        if (followups.length > 0) {
+            html += '<div class="max-h-48 overflow-y-auto space-y-2">';
+            for (var f = 0; f < followups.length; f++) {
+                var fw = followups[f];
+                var statusColor = fw.status === 'مكتملة' ? 'bg-green-100 text-green-700' : (fw.status === 'ملغاة' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700');
+                html += '<div class="bg-white border rounded-lg p-3"><div class="flex justify-between items-start mb-1"><span class="font-bold text-sm">' + _esc(fw.followup_type) + '</span><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + statusColor + '">' + _esc(fw.status) + '</span></div><p class="text-xs text-gray-500 mb-1">' + _dateFormat(fw.followup_date) + '</p><p class="text-sm">' + _esc(fw.notes || '-') + '</p></div>';
+            }
+            html += '</div>';
+        } else {
+            html += '<div class="text-center py-4 text-gray-400">لا توجد متابعات سابقة</div>';
+        }
+        html += '</div>';
+        html += '</div>';
+
+        Swal.fire({
+            title: 'متابعة العميل: ' + _esc(customerName),
+            html: html,
+            width: '800px',
+            showCloseButton: true,
+            showConfirmButton: false,
+            didOpen: function() {
+                var saveBtn = document.getElementById('btn-save-followup');
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', async function() {
+                        var payload = {
+                            customer_id: customerCode,
+                            followup_date: document.getElementById('crm-followup-date').value,
+                            followup_type: document.getElementById('crm-followup-type').value,
+                            status: document.getElementById('crm-followup-status').value,
+                            notes: document.getElementById('crm-followup-notes').value.trim(),
+                            created_by: RW_STATE.app.currentUser ? RW_STATE.app.currentUser.email : ''
+                        };
+                        if (!payload.followup_date) { showToast('يرجى تحديد التاريخ', 'warning'); return; }
+                        showLoader('جاري حفظ المتابعة...');
+                        var insertRes = await supabase.from('customer_followups').insert(payload);
+                        hideLoader();
+                        if (insertRes.error) { showToast('فشل الحفظ: ' + insertRes.error.message, 'error'); return; }
+                        showToast('تم حفظ المتابعة', 'success');
+                        Swal.close();
+                        // إعادة فتح المودال لعرض السجل الجديد
+                        _openFollowupModal(customerCode, customerName);
+                    });
+                }
+            }
+        });
+    }
+
+    return { render: render, _filterCustomers: _filterCustomers, _openFollowupModal: _openFollowupModal };
+})();
+window.RW_CRM = RW_CRM;
 // ============================================================
 // EVENTS & BOOT
 // ============================================================
