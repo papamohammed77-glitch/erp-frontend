@@ -350,6 +350,7 @@ const RW_Navigation = {
     { view: 'reports-detailed', label: 'التقارير التفصيلية' },
     { view: 'reports-comprehensive', label: 'التقارير الشاملة' }
 ] },
+    { view: 'hr', icon: 'fa-id-card', label: 'الموارد البشرية' },
     { view: 'users', icon: 'fa-users-gear', label: 'المستخدمين والصلاحيات' },
     { view: 'roles', icon: 'fa-user-shield', label: 'إدارة أدوار الموظفين' },
     { view: 'license', icon: 'fa-shield-haltered', label: 'إدارة الترخيص', perm: 'owner' },
@@ -5407,6 +5408,7 @@ var RW_Views = {
     if(view==='suppliers'){ RW_Suppliers.render(); return; }
     if(view==='branches'){ RW_Branches.render(); return; }
     if(view==='settings'){ RW_Settings.render(); return; }
+    if(view==='hr'){ RW_HR.render(); return; }
     if(view==='users'){ RW_Users.render(); return; }
     if(view==='roles'){ RW_Roles.render(); return; }
     if(view==='license'){ RW_OwnerLicense.render(); return; }
@@ -5440,6 +5442,112 @@ var RW_Views = {
   }
 };
 window.RW_Views = RW_Views;
+// ============================================================
+// RW_HR – الموارد البشرية (HR) - الوحدة المتقدمة
+// ============================================================
+var RW_HR = (function() {
+    var hrData = [];
+
+    function _esc(s) { return String(s||'').replace(/[&<>]/g, function(m) { return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'; }); }
+    function _fmtNum(n) { return Number(n || 0).toLocaleString(); }
+
+    async function render() {
+        var container = byId('rw-page-container');
+        if (!container) return;
+        safeText(byId('rw-header-title'), 'الموارد البشرية');
+        safeText(byId('rw-header-subtitle'), 'إدارة ملفات الموظفين والرواتب والمستندات');
+
+        showLoader('جاري تحميل بيانات الموظفين...');
+        var res = await supabase.from('users').select('*');
+        hrData = res.data || [];
+        hideLoader();
+
+        if (hrData.length === 0) {
+            safeHTML(container, '<div class="text-center py-10 text-gray-500">لا يوجد موظفون.</div>');
+            return;
+        }
+
+        var html = '<div class="p-4"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="hr-cards-container">';
+        for (var i = 0; i < hrData.length; i++) {
+            var emp = hrData[i];
+            // إخفاء المالك من القائمة
+            if (emp.role === 'مالك' || emp.role === 'Owner' || emp.is_owner === true) continue;
+            
+            var statusClass = emp.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+            var statusText = emp.status === 'Active' ? 'نشط' : 'غير نشط';
+            var initials = (emp.name || '؟').charAt(0);
+            var avatarColor = 'bg-blue-500';
+            if (emp.role === 'مدير') avatarColor = 'bg-indigo-500';
+            else if (emp.role === 'محاسب') avatarColor = 'bg-emerald-500';
+            else if (emp.role === 'مندوب' || emp.role === 'سائق') avatarColor = 'bg-amber-500';
+            else if (emp.role === 'مخزني') avatarColor = 'bg-purple-500';
+
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-6 hover:shadow-md transition cursor-pointer" onclick="RW_HR._openModal(\'' + _esc(emp.email) + '\')">';
+            html += '<div class="flex items-center gap-4 mb-4">';
+            html += '<div class="w-16 h-16 ' + avatarColor + ' rounded-2xl flex items-center justify-center text-white text-2xl font-black">' + _esc(initials) + '</div>';
+            html += '<div>';
+            html += '<h3 class="font-black text-lg text-gray-800">' + _esc(emp.name) + '</h3>';
+            html += '<p class="text-sm text-gray-500">' + _esc(emp.role) + '</p>';
+            html += '</div></div>';
+            html += '<div class="space-y-2 text-sm">';
+            html += '<div class="flex justify-between"><span class="text-gray-500">البريد:</span><span class="font-bold text-gray-700">' + _esc(emp.email) + '</span></div>';
+            html += '<div class="flex justify-between"><span class="text-gray-500">الهاتف:</span><span class="font-bold text-gray-700">' + _esc(emp.phone || '-') + '</span></div>';
+            html += '<div class="flex justify-between items-center"><span class="text-gray-500">الحالة:</span><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + statusClass + '">' + statusText + '</span></div>';
+            html += '</div></div>';
+        }
+        html += '</div></div>';
+
+        safeHTML(container, html);
+    }
+
+    function _openModal(email) {
+        var emp = null;
+        for (var i = 0; i < hrData.length; i++) {
+            if (hrData[i].email === email) { emp = hrData[i]; break; }
+        }
+        if (!emp) { showToast('الموظف غير موجود', 'error'); return; }
+
+        var html = '<div class="text-right space-y-6">';
+        // معلومات أساسية
+        html += '<div class="bg-gray-50 p-4 rounded-xl"><h4 class="font-bold text-lg mb-3"><i class="fa-solid fa-user ml-2"></i>البيانات الأساسية</h4>';
+        html += '<div class="grid grid-cols-2 gap-4">';
+        html += '<div><label class="text-xs text-gray-500">الاسم الكامل</label><p class="font-bold">' + _esc(emp.name) + '</p></div>';
+        html += '<div><label class="text-xs text-gray-500">البريد الإلكتروني</label><p class="font-bold">' + _esc(emp.email) + '</p></div>';
+        html += '<div><label class="text-xs text-gray-500">رقم الهاتف</label><p class="font-bold">' + _esc(emp.phone || '-') + '</p></div>';
+        html += '<div><label class="text-xs text-gray-500">الدور الوظيفي</label><p class="font-bold">' + _esc(emp.role) + '</p></div>';
+        html += '<div><label class="text-xs text-gray-500">الحالة</label><p class="font-bold">' + _esc(emp.status) + '</p></div>';
+        html += '<div><label class="text-xs text-gray-500">تاريخ انتهاء الصلاحية</label><p class="font-bold">' + (emp.expiry_date || 'غير محدد') + '</p></div>';
+        html += '</div></div>';
+
+        // قسم الراتب (للقراءة فقط حالياً)
+        html += '<div class="bg-gray-50 p-4 rounded-xl"><h4 class="font-bold text-lg mb-3"><i class="fa-solid fa-money-bill-wave ml-2"></i>الراتب</h4>';
+        html += '<div class="grid grid-cols-2 gap-4">';
+        html += '<div><label class="text-xs text-gray-500">الراتب الأساسي</label><p class="font-bold text-emerald-600">' + _fmtNum(emp.salary || 0) + ' EGP</p></div>';
+        html += '<div><label class="text-xs text-gray-500">البدلات</label><p class="font-bold text-emerald-600">' + _fmtNum(emp.allowances || 0) + ' EGP</p></div>';
+        html += '<div><label class="text-xs text-gray-500">الخصومات</label><p class="font-bold text-red-600">' + _fmtNum(emp.deductions || 0) + ' EGP</p></div>';
+        html += '<div><label class="text-xs text-gray-500">الصافي</label><p class="font-bold text-blue-600">' + _fmtNum((emp.salary || 0) + (emp.allowances || 0) - (emp.deductions || 0)) + ' EGP</p></div>';
+        html += '</div></div>';
+
+        // قسم المستندات (للرفع لاحقاً)
+        html += '<div class="bg-gray-50 p-4 rounded-xl"><h4 class="font-bold text-lg mb-3"><i class="fa-solid fa-file-arrow-up ml-2"></i>المستندات</h4>';
+        html += '<div class="flex flex-wrap gap-4">';
+        html += '<div class="border-2 border-dashed rounded-xl p-6 text-center w-40"><i class="fa-solid fa-id-card text-3xl text-gray-400"></i><p class="text-xs mt-2">صورة الهوية</p><p class="text-xs text-gray-400">(قيد التطوير)</p></div>';
+        html += '<div class="border-2 border-dashed rounded-xl p-6 text-center w-40"><i class="fa-solid fa-file-contract text-3xl text-gray-400"></i><p class="text-xs mt-2">عقد العمل</p><p class="text-xs text-gray-400">(قيد التطوير)</p></div>';
+        html += '</div></div>';
+        html += '</div>';
+
+        Swal.fire({
+            title: 'ملف الموظف: ' + _esc(emp.name),
+            html: html,
+            width: '800px',
+            showCloseButton: true,
+            showConfirmButton: false
+        });
+    }
+
+    return { render: render, _openModal: _openModal };
+})();
+window.RW_HR = RW_HR;
 // ============================================================
 // EVENTS & BOOT
 // ============================================================
