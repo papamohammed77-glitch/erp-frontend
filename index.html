@@ -319,7 +319,151 @@ function RW_Permissions_applyUI() {
         console.warn('Apply UI permissions error:', e);
     }
 }
+// ============================================================
+// RW_Workflow – محرك السير الذكي
+// ============================================================
+var RW_Workflow = (function() {
+    var rulesCache = [];
+    function loadRules() {
+        supabase.from('workflow_rules').select('*').eq('is_active', true).then(function(res) {
+            rulesCache = res.data || [];
+        }).catch(function(e) { console.warn('Workflow load error:', e); });
+    }
+    function evaluate(tableName, event, recordId, recordData) {
+        if (!rulesCache.length) return;
+        for (var i = 0; i < rulesCache.length; i++) {
+            var rule = rulesCache[i];
+            if (rule.trigger_table !== tableName || rule.trigger_event !== event) continue;
+            if (rule.trigger_condition) {
+                var field = rule.trigger_condition.field;
+                var value = rule.trigger_condition.value;
+                if (!recordData || String(recordData[field]) !== String(value)) continue;
+            }
+            var actions = rule.actions || [];
+            var executed = [];
+            for (var j = 0; j < actions.length; j++) {
+                executed.push({ type: actions[j].type, status: 'pending' });
+            }
+            supabase.from('workflow_log').insert({
+                rule_id: rule.id, rule_name: rule.name,
+                trigger_table: rule.trigger_table, trigger_event: rule.trigger_event,
+                trigger_record_id: String(recordId),
+                trigger_data: recordData || null,
+                actions_executed: executed,
+                status: 'success'
+            }).then(function() {}).catch(function() {});
+        }
+    }
+    return { loadRules: loadRules, evaluate: evaluate };
+})();
+window.RW_Workflow = RW_Workflow;
 
+// ============================================================
+// RW_Notification – نظام الإشعارات
+// ============================================================
+var RW_Notification = (function() {
+    var templatesCache = [];
+    function loadTemplates() {
+        supabase.from('notification_templates').select('*').eq('is_active', true).then(function(res) {
+            templatesCache = res.data || [];
+        }).catch(function() {});
+    }
+    function send(templateCode, variables, userEmail) {
+        var tpl = null;
+        for (var i = 0; i < templatesCache.length; i++) {
+            if (templatesCache[i].code === templateCode) { tpl = templatesCache[i]; break; }
+        }
+        if (!tpl) {
+            supabase.from('notification_templates').select('*').eq('code', templateCode).eq('is_active', true).single().then(function(res) {
+                if (res.data) { templatesCache.push(res.data); _renderAndSave(res.data, variables, userEmail); }
+            }).catch(function() {});
+            return;
+        }
+        _renderAndSave(tpl, variables, userEmail);
+    }
+    function _renderAndSave(tpl, vars, targetEmail) {
+        var title = tpl.title_template, body = tpl.body_template || '';
+        if (vars) {
+            var keys = Object.keys(vars);
+            for (var i = 0; i < keys.length; i++) {
+                var regex = new RegExp('#\\{' + keys[i] + '\\}', 'g');
+                title = title.replace(regex, String(vars[keys[i]] || ''));
+                body = body.replace(regex, String(vars[keys[i]] || ''));
+            }
+        }
+        var userEmail = targetEmail || (RW_STATE.app.currentUser ? RW_STATE.app.currentUser.email : null);
+        if (!userEmail) return;
+        supabase.from('notifications').insert({
+            user_email: userEmail, title: title, body: body,
+            type: 'info', reference_table: (vars && vars.table) || null,
+            reference_id: (vars && (vars.id || vars.order_code)) || null,
+            is_read: false
+        }).then(function() { _updateBadge(); }).catch(function() {});
+    }
+    function _updateBadge() {
+        var email = RW_STATE.app.currentUser ? RW_STATE.app.currentUser.email : null;
+        if (!email) return;
+        supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('user_email', email).eq('is_read', false).then(function(res) {
+            var badge = byId('rw-notification-badge');
+            if (!badge) return;
+            var count = res.count || 0;
+            if (count > 0) { badge.textContent = count > 99 ? '99+' : String(count); badge.style.display = 'flex'; }
+            else { badge.style.display = 'none'; }
+        }).catch(function() {});
+    }
+    function renderBell() {
+        var btns = document.querySelectorAll('.rw-header-icon-btn');
+        var bellBtn = null;
+        for (var i = 0; i < btns.length; i++) {
+            if (btns[i].innerHTML.indexOf('🔔') !== -1) { bellBtn = btns[i]; break; }
+        }
+        if (!bellBtn) return;
+        bellBtn.innerHTML = '🔔<span id="rw-notification-badge" class="rw-notification-badge" style="display:none;">0</span>';
+        bellBtn.onclick = function(e) { e.stopPropagation(); showPanel(); };
+        _updateBadge();
+    }
+    function showPanel() {
+        var email = RW_STATE.app.currentUser ? RW_STATE.app.currentUser.email : null;
+        if (!email) return;
+        supabase.from('notifications').select('*').eq('user_email', email).order('created_at', { ascending: false }).limit(50).then(function(res) {
+            var notifs = res.data || [];
+            var html = '<div dir="rtl" style="width:420px;max-height:500px;overflow-y:auto;">';
+            html += '<div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">';
+            html += '<h3 style="font-size:16px;font-weight:900;color:#111827;">الإشعارات</h3>';
+            if (notifs.length > 0) html += '<button onclick="RW_Notification.markAllRead()" style="font-size:12px;color:#2563eb;font-weight:700;background:none;border:none;cursor:pointer;">قراءة الكل</button>';
+            html += '</div>';
+            if (!notifs.length) {
+                html += '<div style="padding:40px 20px;text-align:center;color:#9ca3af;">لا توجد إشعارات</div>';
+            } else {
+                for (var n = 0; n < notifs.length; n++) {
+                    var notif = notifs[n];
+                    var bg = notif.is_read ? 'background:white;' : 'background:#eff6ff;';
+                    html += '<div onclick="RW_Notification.markRead(\'' + notif.id + '\')" style="padding:12px 20px;border-bottom:1px solid #f1f5f9;cursor:pointer;' + bg + '">';
+                    html += '<div style="font-size:13px;font-weight:800;color:#111827;">' + (notif.title || '') + '</div>';
+                    if (notif.body) html += '<div style="font-size:12px;color:#6b7280;margin-top:4px;">' + notif.body + '</div>';
+                    html += '</div>';
+                }
+            }
+            html += '</div>';
+            Swal.fire({ html: html, showConfirmButton: false, showCloseButton: true, width: 440, padding: 0, customClass: { popup: 'rounded-2xl overflow-hidden' } });
+        }).catch(function() {});
+    }
+    function markAllRead() {
+        var email = RW_STATE.app.currentUser ? RW_STATE.app.currentUser.email : null;
+        if (!email) return;
+        supabase.from('notifications').update({ is_read: true }).eq('user_email', email).eq('is_read', false).then(function() {
+            _updateBadge(); showPanel();
+        }).catch(function() {});
+    }
+    function markRead(notifId) {
+        supabase.from('notifications').update({ is_read: true }).eq('id', notifId).then(function() {
+            _updateBadge();
+        }).catch(function() {});
+    }
+    function init() { loadTemplates(); _updateBadge(); }
+    return { send: send, renderBell: renderBell, markAllRead: markAllRead, markRead: markRead, init: init };
+})();
+window.RW_Notification = RW_Notification;
 // ============================================================
 // RW_Audit_renderTab – تبويب سجل التدقيق (للمالك فقط)
 // ============================================================
@@ -588,6 +732,8 @@ enterSystem: function() {
             });
         
         RW_Navigation.buildSidebar();
+        RW_Workflow.loadRules();
+        RW_Notification.init();
         // ✅ Bootstrap: تحميل البيانات الأساسية مرة واحدة لجميع التبويبات
         Promise.all([
             RW_Data.loadItems(),
@@ -609,6 +755,7 @@ enterSystem: function() {
         }).finally(function() {
             // الانتقال للوحة التحكم في جميع الأحوال
             RW_Navigation.navigate('dashboard');
+          setTimeout(function() { RW_Notification.renderBell(); }, 500);
         });
     } catch(e) {
         console.error(e);
@@ -2875,6 +3022,9 @@ var RW_Orders = (function() {
                         var oldStatus = found.order_status;
                         found.order_status = 'Confirmed';
                         RW_Audit_log('update', 'orders', code, { order_status: oldStatus }, { order_status: 'Confirmed' });
+                        // ✅ Workflow + إشعار
+                        RW_Workflow.evaluate('orders', 'update', code, { order_status: 'Confirmed', order_code: code });
+                        RW_Notification.send('order_confirmed', { order_code: code, customer_name: found.customer_name || '', table: 'orders', id: code }, RW_STATE.app.currentUser.email);
                     }
                     showToast('تم التأكيد', 'success');
                     _applyFilters();
