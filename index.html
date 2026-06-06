@@ -438,14 +438,16 @@ var RW_Notification = (function() {
                 for (var n = 0; n < notifs.length; n++) {
                     var notif = notifs[n];
                     var bg = notif.is_read ? 'background:white;' : 'background:#eff6ff;';
-                    html += '<div onclick="RW_Notification.markRead(\'' + notif.id + '\')" style="padding:12px 20px;border-bottom:1px solid #f1f5f9;cursor:pointer;' + bg + '">';
+                    var refTable = (notif.reference_table || '').replace(/'/g, "\\'");
+                    var refId = (notif.reference_id || '').replace(/'/g, "\\'");
+                    html += '<div onclick="RW_Notification._clickNotif(\'' + notif.id + '\',\'' + refTable + '\',\'' + refId + '\')" style="padding:12px 20px;border-bottom:1px solid #f1f5f9;cursor:pointer;' + bg + '">';
                     html += '<div style="font-size:13px;font-weight:800;color:#111827;">' + (notif.title || '') + '</div>';
                     if (notif.body) html += '<div style="font-size:12px;color:#6b7280;margin-top:4px;">' + notif.body + '</div>';
                     html += '</div>';
                 }
             }
             html += '</div>';
-Swal.fire({ html: html, showConfirmButton: false, showCloseButton: true, width: 600, padding: 0, customClass: { popup: 'rounded-2xl overflow-hidden' } });
+            Swal.fire({ html: html, showConfirmButton: false, showCloseButton: true, width: 600, padding: 0, customClass: { popup: 'rounded-2xl overflow-hidden' } });
         }).catch(function() {});
     }
     function markAllRead() {
@@ -461,7 +463,23 @@ Swal.fire({ html: html, showConfirmButton: false, showCloseButton: true, width: 
         }).catch(function() {});
     }
     function init() { loadTemplates(); _updateBadge(); }
-    return { send: send, renderBell: renderBell, markAllRead: markAllRead, markRead: markRead, init: init };
+    function _clickNotif(notifId, refTable, refId) {
+        // تعليم كمقروء
+        supabase.from('notifications').update({ is_read: true }).eq('id', notifId).then(function() { _updateBadge(); }).catch(function() {});
+        // إغلاق اللوحة
+        Swal.close();
+        // التنقل إلى السجل المرتبط
+        if (refTable && refId) {
+            var viewMap = { 'orders': 'orders', 'items': 'items', 'customers': 'customers', 'purchase_orders': 'purchases', 'suppliers': 'suppliers' };
+            var targetView = viewMap[refTable];
+            if (targetView && typeof RW_Navigation !== 'undefined') {
+                RW_Navigation.navigate(targetView);
+            }
+        }
+    }
+    return {
+        send: send, renderBell: renderBell, markAllRead: markAllRead, markRead: markRead, init: init, _clickNotif: _clickNotif
+    };
 })();
 window.RW_Notification = RW_Notification;
 // ============================================================
