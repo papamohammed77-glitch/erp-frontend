@@ -811,6 +811,8 @@ window.RW_Navigation = RW_Navigation;
 var RW_Dashboard = (function() {
     function _fmtNum(n) { return Number(n || 0).toLocaleString(); }
     var _charts = {};
+    var _currentFrom = '';
+    var _currentTo = '';
 
     function render() {
         var container = byId('rw-page-container');
@@ -828,12 +830,13 @@ var RW_Dashboard = (function() {
         html += '<p class="text-blue-100 text-lg">نظام إدارة موارد المؤسسات المتكامل – جميع عملياتك في مكان واحد</p>';
         html += '</div>';
 
-        // مؤشرات الأداء
-        html += '<div class="grid grid-cols-2 md:grid-cols-4 gap-4">';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">إجمالي المبيعات</p><p class="text-3xl font-black text-blue-600" id="dash-total-sales">---</p></div>';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">عدد الأوردرات</p><p class="text-3xl font-black text-emerald-600" id="dash-order-count">---</p></div>';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">العملاء</p><p class="text-3xl font-black text-orange-600" id="dash-customer-count">---</p></div>';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">الأصناف</p><p class="text-3xl font-black text-purple-600" id="dash-item-count">---</p></div>';
+        // مؤشرات الأداء – 5 بطاقات
+        html += '<div class="grid grid-cols-2 md:grid-cols-5 gap-4">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-4 text-center"><p class="text-gray-400 text-xs font-bold mb-1">إجمالي المبيعات</p><p class="text-2xl font-black text-blue-600" id="dash-total-sales">---</p><p class="text-xs mt-1" id="dash-sales-change"></p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-4 text-center"><p class="text-gray-400 text-xs font-bold mb-1">عدد الأوردرات</p><p class="text-2xl font-black text-emerald-600" id="dash-order-count">---</p><p class="text-xs mt-1" id="dash-order-change"></p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-4 text-center"><p class="text-gray-400 text-xs font-bold mb-1">صافي الربح</p><p class="text-2xl font-black text-teal-600" id="dash-net-profit">---</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-4 text-center"><p class="text-gray-400 text-xs font-bold mb-1">العملاء</p><p class="text-2xl font-black text-orange-600" id="dash-customer-count">---</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-4 text-center"><p class="text-gray-400 text-xs font-bold mb-1">الأصناف</p><p class="text-2xl font-black text-purple-600" id="dash-item-count">---</p></div>';
         html += '</div>';
 
         // فلاتر زمنية
@@ -848,24 +851,22 @@ var RW_Dashboard = (function() {
         // رسوم بيانية – صف 1
         html += '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">';
         html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">المبيعات اليومية</h3><div style="height:300px"><canvas id="chart-sales"></canvas></div></div>';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">المبيعات حسب المنطقة</h3><div style="height:300px"><canvas id="chart-region"></canvas></div></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">المبيعات حسب المنطقة (اضغط للتفاصيل)</h3><div style="height:300px"><canvas id="chart-region"></canvas></div></div>';
         html += '</div>';
 
         // رسوم بيانية – صف 2
         html += '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">أفضل 10 أصناف</h3><div style="height:300px"><canvas id="chart-items"></canvas></div></div>';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">أفضل 10 عملاء</h3><div style="height:300px"><canvas id="chart-customers"></canvas></div></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">أفضل 10 أصناف (اضغط للتفاصيل)</h3><div style="height:300px"><canvas id="chart-items"></canvas></div></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">أفضل 10 عملاء (اضغط للتفاصيل)</h3><div style="height:300px"><canvas id="chart-customers"></canvas></div></div>';
         html += '</div>';
 
         html += '</div>';
         safeHTML(container, html);
 
-        // ربط زر التطبيق
         byId('dash-apply-btn').addEventListener('click', function() {
             loadAll(byId('dash-date-from').value, byId('dash-date-to').value);
         });
 
-        // تحميل افتراضي
         loadAll(firstDay, today);
     }
 
@@ -877,13 +878,16 @@ var RW_Dashboard = (function() {
     }
 
     function loadAll(fromDate, toDate) {
+        _currentFrom = fromDate;
+        _currentTo = toDate;
         safeText(byId('dash-total-sales'), '...');
         safeText(byId('dash-order-count'), '...');
+        safeText(byId('dash-net-profit'), '...');
         safeText(byId('dash-customer-count'), '...');
         safeText(byId('dash-item-count'), '...');
         destroyCharts();
 
-        // جلب الأوردرات
+        // 1. الأوردرات
         supabase.from('orders').select('order_code, customer_id, total_amount, order_date, area').gte('order_date', fromDate).lte('order_date', toDate).then(function(res) {
             var orders = res.data || [];
             var totalSales = 0;
@@ -891,32 +895,73 @@ var RW_Dashboard = (function() {
             safeText(byId('dash-total-sales'), _fmtNum(totalSales) + ' EGP');
             safeText(byId('dash-order-count'), orders.length);
 
-            // رسم المبيعات اليومية
+            // مقارنة بالفترة السابقة
+            var prevFrom = shiftDate(fromDate, -30);
+            var prevTo = shiftDate(toDate, -30);
+            supabase.from('orders').select('total_amount').gte('order_date', prevFrom).lte('order_date', prevTo).then(function(prevRes) {
+                var prevOrders = prevRes.data || [];
+                var prevTotal = 0;
+                for (var p = 0; p < prevOrders.length; p++) { prevTotal += Number(prevOrders[p].total_amount) || 0; }
+                var change = prevTotal > 0 ? Math.round((totalSales - prevTotal) / prevTotal * 100) : 0;
+                var changeEl = byId('dash-sales-change');
+                if (changeEl) {
+                    if (change > 0) { changeEl.innerHTML = '<span class="text-green-600 font-bold">▲ ' + change + '%</span>'; }
+                    else if (change < 0) { changeEl.innerHTML = '<span class="text-red-600 font-bold">▼ ' + Math.abs(change) + '%</span>'; }
+                    else { changeEl.innerHTML = '<span class="text-gray-400">0%</span>'; }
+                }
+                var orderChangeEl = byId('dash-order-change');
+                if (orderChangeEl) {
+                    var orderChange = prevOrders.length > 0 ? Math.round((orders.length - prevOrders.length) / prevOrders.length * 100) : 0;
+                    if (orderChange > 0) { orderChangeEl.innerHTML = '<span class="text-green-600 font-bold">▲ ' + orderChange + '%</span>'; }
+                    else if (orderChange < 0) { orderChangeEl.innerHTML = '<span class="text-red-600 font-bold">▼ ' + Math.abs(orderChange) + '%</span>'; }
+                    else { orderChangeEl.innerHTML = '<span class="text-gray-400">0%</span>'; }
+                }
+            }).catch(function() {});
+
             renderSalesChart(orders, fromDate, toDate);
-
-            // رسم المناطق
             renderRegionChart(orders);
-        }).catch(function() { console.error('Orders load failed'); });
+            renderTopCustomersChart(orders);
+        }).catch(function() {});
 
-        // العملاء
+        // 2. المشتريات لصافي الربح
+        supabase.from('purchase_orders').select('total_amount').gte('po_date', fromDate).lte('po_date', toDate).then(function(poRes) {
+            var poData = poRes.data || [];
+            var totalPurchases = 0;
+            for (var i = 0; i < poData.length; i++) { totalPurchases += Number(poData[i].total_amount) || 0; }
+            supabase.from('orders').select('total_amount').gte('order_date', fromDate).lte('order_date', toDate).then(function(ordRes) {
+                var ordData = ordRes.data || [];
+                var totalSales = 0;
+                for (var j = 0; j < ordData.length; j++) { totalSales += Number(ordData[j].total_amount) || 0; }
+                var net = totalSales - totalPurchases;
+                safeText(byId('dash-net-profit'), _fmtNum(net) + ' EGP');
+                var profitEl = byId('dash-net-profit');
+                if (profitEl) {
+                    if (net >= 0) { profitEl.className = 'text-2xl font-black text-teal-600'; }
+                    else { profitEl.className = 'text-2xl font-black text-red-600'; }
+                }
+            }).catch(function() {});
+        }).catch(function() {});
+
+        // 3. العملاء
         supabase.from('customers').select('customer_code').then(function(res) {
             safeText(byId('dash-customer-count'), (res.data || []).length);
         }).catch(function() {});
 
-        // الأصناف
+        // 4. الأصناف
         supabase.from('items').select('item_code').then(function(res) {
             safeText(byId('dash-item-count'), (res.data || []).length);
         }).catch(function() {});
 
-        // أفضل الأصناف
+        // 5. أفضل الأصناف
         supabase.from('order_details').select('item_code, item_name, qty, unit_price').gte('created_at', fromDate).lte('created_at', toDate).then(function(res) {
             renderTopItemsChart(res.data || []);
         }).catch(function() {});
+    }
 
-        // أفضل العملاء
-        supabase.from('orders').select('customer_name, total_amount').gte('order_date', fromDate).lte('order_date', toDate).then(function(res) {
-            renderTopCustomersChart(res.data || []);
-        }).catch(function() {});
+    function shiftDate(dateStr, days) {
+        var d = new Date(dateStr);
+        d.setDate(d.getDate() + days);
+        return d.toISOString().split('T')[0];
     }
 
     function renderSalesChart(orders, fromDate, toDate) {
@@ -942,14 +987,7 @@ var RW_Dashboard = (function() {
             type: 'line',
             data: {
                 labels: days,
-                datasets: [{
-                    label: 'المبيعات (EGP)',
-                    data: sales,
-                    borderColor: '#2563eb',
-                    backgroundColor: 'rgba(37,99,235,0.1)',
-                    fill: true,
-                    tension: 0.4
-                }]
+                datasets: [{ label: 'المبيعات (EGP)', data: sales, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.4 }]
             },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } } }
         });
@@ -974,7 +1012,21 @@ var RW_Dashboard = (function() {
                 labels: labels,
                 datasets: [{ data: data, backgroundColor: ['#2563eb','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16'] }]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'right' } } }
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: true, position: 'right' } },
+                onClick: function(e, elements) {
+                    if (elements.length > 0) {
+                        var index = elements[0].index;
+                        var region = labels[index];
+                        RW_Navigation.navigate('orders');
+                        setTimeout(function() {
+                            var areaInput = byId('f-area');
+                            if (areaInput) { areaInput.value = region; RW_Orders._applyFilters(); }
+                        }, 500);
+                    }
+                }
+            }
         });
     }
 
@@ -988,7 +1040,7 @@ var RW_Dashboard = (function() {
             var code = details[i].item_code || details[i].item_name;
             var name = details[i].item_name || code;
             var total = (Number(details[i].qty) || 0) * (Number(details[i].unit_price) || 0);
-            if (!map[code]) map[code] = { name: name, total: 0 };
+            if (!map[code]) map[code] = { name: name, total: 0, code: code };
             map[code].total += total;
         }
         var arr = [];
@@ -1002,7 +1054,16 @@ var RW_Dashboard = (function() {
                 labels: arr.map(function(a){ return a.name; }),
                 datasets: [{ label: 'الإجمالي (EGP)', data: arr.map(function(a){ return a.total; }), backgroundColor: '#8b5cf6' }]
             },
-            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                onClick: function(e, elements) {
+                    if (elements.length > 0) {
+                        var index = elements[0].index;
+                        var itemName = arr[index].name;
+                        RW_Navigation.navigate('items');
+                    }
+                }
+            }
         });
     }
 
@@ -1027,7 +1088,20 @@ var RW_Dashboard = (function() {
                 labels: arr.map(function(a){ return a.name; }),
                 datasets: [{ label: 'الإجمالي (EGP)', data: arr.map(function(a){ return a.total; }), backgroundColor: '#f59e0b' }]
             },
-            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                onClick: function(e, elements) {
+                    if (elements.length > 0) {
+                        var index = elements[0].index;
+                        var custName = arr[index].name;
+                        RW_Navigation.navigate('orders');
+                        setTimeout(function() {
+                            var custInput = byId('f-cust');
+                            if (custInput) { custInput.value = custName; RW_Orders._applyFilters(); }
+                        }, 500);
+                    }
+                }
+            }
         });
     }
 
@@ -3772,30 +3846,32 @@ var RW_Warehouse = (function() {
 
     function _applyVouchers() {
         var d = window._vouchersData || [];
-        var type = byId('v-filter-type')?.value, status = byId('v-filter-status')?.value, from = byId('v-filter-from')?.value, to = byId('v-filter-to')?.value, search = (byId('v-search')?.value||'').toLowerCase();
+        var type = byId('v-filter-type') ? byId('v-filter-type').value : '';
+        var status = byId('v-filter-status') ? byId('v-filter-status').value : '';
+        var from = byId('v-filter-from') ? byId('v-filter-from').value : '';
+        var to = byId('v-filter-to') ? byId('v-filter-to').value : '';
+        var search = (byId('v-search') ? byId('v-search').value : '').toLowerCase();
         var showAll = byId('v-show-all') ? byId('v-show-all').checked : false;
         
         if (!showAll) {
-            d = d.filter(v => v.source === 'Manual' || (v.source !== 'Manual' && v.type === 'Adjustment'));
+            d = d.filter(function(v) { return v.source === 'Manual' || (v.source !== 'Manual' && v.type === 'Adjustment'); });
         }
-        if (type) d = d.filter(v => v.type === type);
-        if (status) d = d.filter(v => v.status === status);
-        if (from) d = d.filter(v => v.voucher_date >= from);
-        if (to) d = d.filter(v => v.voucher_date <= to);
-        if (search) d = d.filter(v => (v.voucher_code||'').toLowerCase().indexOf(search) !== -1);
+        if (type) d = d.filter(function(v) { return v.type === type; });
+        if (status) d = d.filter(function(v) { return v.status === status; });
+        if (from) d = d.filter(function(v) { return v.voucher_date >= from; });
+        if (to) d = d.filter(function(v) { return v.voucher_date <= to; });
+        if (search) d = d.filter(function(v) { return (v.voucher_code||'').toLowerCase().indexOf(search) !== -1; });
         var tb = byId('vouchers-tbody'); if (!tb) return;
         if (!d.length) { safeHTML(tb, '<tr><td colspan="8" class="text-center py-8">لا توجد أذونات</td></tr>'); return; }
-        var h = '';
-        d.forEach(v => {
+        RW_Table.paginate('vouchers-tbody', d, 1, 50, function(v) {
             var statusBadge = { 'Draft':'bg-gray-100 text-gray-600', 'Sent':'bg-blue-100 text-blue-700', 'Received':'bg-purple-100 text-purple-700', 'Completed':'bg-green-100 text-green-700' }[v.status] || 'bg-gray-100 text-gray-700';
             var isSystem = (v.source === 'Auto' || ['Picking','Loading','Return','Unloading'].indexOf(v.type) !== -1);
-            var actions = `<button onclick="RW_Warehouse._viewVoucherDetails('${v.voucher_code}')" class="text-blue-600 mx-1"><i class="fa-solid fa-eye"></i></button>`;
-            if (v.status === 'Draft' && !isSystem) actions += `<button onclick="RW_Warehouse._sendVoucher('${v.voucher_code}')" class="text-blue-600 mx-1"><i class="fa-solid fa-paper-plane"></i></button>`;
-            if (v.status === 'Sent') actions += `<button onclick="RW_Warehouse._receiveVoucher('${v.voucher_code}')" class="text-green-600 mx-1"><i class="fa-solid fa-check-circle"></i></button>`;
+            var actions = '<button onclick="RW_Warehouse._viewVoucherDetails(\'' + v.voucher_code + '\')" class="text-blue-600 mx-1"><i class="fa-solid fa-eye"></i></button>';
+            if (v.status === 'Draft' && !isSystem) actions += '<button onclick="RW_Warehouse._sendVoucher(\'' + v.voucher_code + '\')" class="text-blue-600 mx-1"><i class="fa-solid fa-paper-plane"></i></button>';
+            if (v.status === 'Sent') actions += '<button onclick="RW_Warehouse._receiveVoucher(\'' + v.voucher_code + '\')" class="text-green-600 mx-1"><i class="fa-solid fa-check-circle"></i></button>';
             var sourceIndicator = isSystem ? ' <i class="fa-solid fa-robot text-gray-400 text-xs" title="تلقائي"></i>' : '';
-            h += `<tr class="hover:bg-gray-50"><td class="p-3 font-bold text-indigo-700">${v.voucher_code||''}${sourceIndicator}</td><td class="p-3">${v.type||''}</td><td class="p-3">${v.voucher_date||''}</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs ${statusBadge}">${v.status||''}</span></td><td class="p-3">${v.reference||'-'}</td><td class="p-3">${v.from_id||'-'}</td><td class="p-3">${v.to_id||'-'}</td><td class="p-3 text-center">${actions}</td></tr>`;
+            return '<tr class="hover:bg-gray-50"><td class="p-3 font-bold text-indigo-700">' + (v.voucher_code||'') + sourceIndicator + '</td><td class="p-3">' + (v.type||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + statusBadge + '">' + (v.status||'') + '</span></td><td class="p-3">' + (v.reference||'-') + '</td><td class="p-3">' + (v.from_id||'-') + '</td><td class="p-3">' + (v.to_id||'-') + '</td><td class="p-3 text-center">' + actions + '</td></tr>';
         });
-        safeHTML(tb, h);
     }
 
     async function _viewVoucherDetails(voucherCode) {
