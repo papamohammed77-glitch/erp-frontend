@@ -169,6 +169,74 @@ var RW_SUPABASE_CLIENT = (function () {
 })();
 var supabase = RW_SUPABASE_CLIENT;
 // ============================================================
+// RW_Table – نظام Pagination العام
+// ============================================================
+var RW_Table = (function() {
+    var state = {};
+
+    function paginate(tableBodyId, data, page, perPage, renderRowFn) {
+        if (!data || !data.length) {
+            var tbody = byId(tableBodyId);
+            if (tbody) safeHTML(tbody, '<tr><td colspan="10" class="text-center py-8 text-gray-500">لا توجد بيانات</td></tr>');
+            return;
+        }
+        page = page || 1;
+        perPage = perPage || 50;
+        var totalPages = Math.ceil(data.length / perPage);
+        if (page > totalPages) page = totalPages;
+        if (page < 1) page = 1;
+        var start = (page - 1) * perPage;
+        var end = Math.min(start + perPage, data.length);
+        var pageData = data.slice(start, end);
+        var html = '';
+        for (var i = 0; i < pageData.length; i++) {
+            html += renderRowFn(pageData[i], start + i);
+        }
+        var tbody = byId(tableBodyId);
+        if (tbody) safeHTML(tbody, html);
+        state[tableBodyId] = { data: data, page: page, perPage: perPage, totalPages: totalPages, renderRowFn: renderRowFn };
+        renderControls(tableBodyId);
+    }
+
+    function renderControls(tableBodyId) {
+        var st = state[tableBodyId];
+        var pc = byId(tableBodyId + '-controls');
+        if (!pc || !st) return;
+        if (st.totalPages <= 1) {
+            safeHTML(pc, '');
+            return;
+        }
+        var html = '<div class="flex items-center justify-center gap-2 mt-3 text-sm">';
+        html += '<span class="text-gray-500">عرض ' + ((st.page - 1) * st.perPage + 1) + '-' + Math.min(st.page * st.perPage, st.data.length) + ' من ' + st.data.length + '</span>';
+        if (st.page > 1) {
+            html += '<button onclick="RW_Table.goPage(\'' + tableBodyId + '\', ' + (st.page - 1) + ')" class="px-3 py-1 border rounded-lg font-bold hover:bg-gray-100">السابق</button>';
+        }
+        for (var p = 1; p <= st.totalPages; p++) {
+            if (p === st.page) {
+                html += '<span class="px-3 py-1 bg-blue-600 text-white rounded-lg font-bold">' + p + '</span>';
+            } else if (p === 1 || p === st.totalPages || (p >= st.page - 2 && p <= st.page + 2)) {
+                html += '<button onclick="RW_Table.goPage(\'' + tableBodyId + '\', ' + p + ')" class="px-3 py-1 border rounded-lg font-bold hover:bg-gray-100">' + p + '</button>';
+            } else if (p === st.page - 3 || p === st.page + 3) {
+                html += '<span class="px-1">...</span>';
+            }
+        }
+        if (st.page < st.totalPages) {
+            html += '<button onclick="RW_Table.goPage(\'' + tableBodyId + '\', ' + (st.page + 1) + ')" class="px-3 py-1 border rounded-lg font-bold hover:bg-gray-100">التالي</button>';
+        }
+        html += '</div>';
+        safeHTML(pc, html);
+    }
+
+    function goPage(tableBodyId, page) {
+        var st = state[tableBodyId];
+        if (!st) return;
+        paginate(tableBodyId, st.data, page, st.perPage, st.renderRowFn);
+    }
+
+    return { paginate: paginate, renderControls: renderControls, goPage: goPage };
+})();
+window.RW_Table = RW_Table;
+// ============================================================
 // RW_Audit_log – تسجيل الأحداث يدوياً (Fire-and-forget)
 // ============================================================
 function RW_Audit_log(action, tableName, recordId, oldData, newData) {
@@ -881,30 +949,39 @@ var RW_Items = (function() {
     }
 
     function renderTable(data) {
-        const w = byId('items-table-wrapper'); if (!w) return;
+        var w = byId('items-table-wrapper'); if (!w) return;
         if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا توجد أصناف</div>'); return; }
-        const sorted = [...data].sort((a,b) => { let va = a[sortField]||'', vb = b[sortField]||''; if (['qty','sales_price','max_qty'].includes(sortField)) { va=Number(va); vb=Number(vb); } else { va=String(va).toLowerCase(); vb=String(vb).toLowerCase(); } return (va<vb?-1:va>vb?1:0) * (sortAsc?1:-1); });
-        const cols = [{field:'name',label:'المنتج'},{field:'category',label:'التصنيف'},{field:'unit',label:'الوحدة'},{field:'qty',label:'المخزون'},{field:'sales_price',label:'السعر'},{field:'max_qty',label:'الأقصى'}];
-        let html = `<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-100 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"><tr>`;
-        cols.forEach(c => { const icon = sortField===c.field ? (sortAsc?'fa-sort-up':'fa-sort-down') : 'fa-sort'; html += `<th class="p-4 cursor-pointer font-bold" onclick="RW_Items._sort('${c.field}')">${c.label} <i class="fa-solid ${icon}"></i></th>`; });
-        html += `</tr></thead><tbody>`;
-        sorted.forEach(item => {
-            const img = item.image_url || 'https://via.placeholder.com/80';
-            const stockWarn = (Number(item.reorder_point||5) >= Number(item.qty||0)) ? 'color:#ef4444;font-weight:bold' : '';
-            const activeBadge = item.is_active !== false ? '<span class="text-xs text-green-600 font-bold">نشط</span>' : '<span class="text-xs text-red-500 font-bold">غير نشط</span>';
-            html += `<tr class="hover:bg-blue-50 cursor-pointer" onclick="RW_Items._openModal('${item.item_code}')">
-                <td class="p-4"><div class="flex items-center gap-3">
-                    <img src="${img}" class="h-20 w-20 rounded-xl object-cover border-2 border-gray-100 shadow-sm cursor-pointer" onerror="this.src='https://via.placeholder.com/80'" onclick="event.stopPropagation(); RW_Items._viewImage('${img}')" title="اضغط لتكبير الصورة">
-                    <div><span class="font-bold text-base">${item.name||''}</span><br><span class="text-xs text-gray-400">${item.item_code||''}</span></div>
-                </div></td>
-                <td class="p-4 text-gray-500">${item.category||'-'}</td>
-                <td class="p-4 text-gray-500">${item.unit||'-'}</td>
-                <td class="p-4" style="${stockWarn}">${item.qty||0} ${activeBadge}</td>
-                <td class="p-4 font-bold text-blue-600">${Number(item.sales_price||0).toLocaleString()} EGP</td>
-                <td class="p-4">${item.max_qty||'غير محدد'}</td></tr>`;
+        var sorted = data.slice().sort(function(a,b) {
+            var va = a[sortField] || '', vb = b[sortField] || '';
+            if (sortField === 'qty' || sortField === 'sales_price' || sortField === 'max_qty') { va = Number(va); vb = Number(vb); }
+            else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+            return (va < vb ? -1 : va > vb ? 1 : 0) * (sortAsc ? 1 : -1);
         });
-        html += `</tbody></table>`;
-        safeHTML(w, html);
+        var cols = [{field:'name',label:'المنتج'},{field:'category',label:'التصنيف'},{field:'unit',label:'الوحدة'},{field:'qty',label:'المخزون'},{field:'sales_price',label:'السعر'},{field:'max_qty',label:'الأقصى'}];
+        var iconSuffix = sortAsc ? 'fa-sort-up' : 'fa-sort-down';
+        var headerHtml = '<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-100 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"><tr>';
+        for (var c = 0; c < cols.length; c++) {
+            var icon = sortField === cols[c].field ? iconSuffix : 'fa-sort';
+            headerHtml += '<th class="p-4 cursor-pointer font-bold" onclick="RW_Items._sort(\'' + cols[c].field + '\')">' + cols[c].label + ' <i class="fa-solid ' + icon + '"></i></th>';
+        }
+        headerHtml += '</tr></thead><tbody id="items-tbody"></tbody></table>';
+        var controlsHtml = '<div id="items-tbody-controls"></div>';
+        safeHTML(w, headerHtml + controlsHtml);
+        RW_Table.paginate('items-tbody', sorted, 1, 50, function(item, idx) {
+            var img = item.image_url || 'https://via.placeholder.com/80';
+            var stockWarn = (Number(item.reorder_point||5) >= Number(item.qty||0)) ? 'color:#ef4444;font-weight:bold' : '';
+            var activeBadge = item.is_active !== false ? '<span class="text-xs text-green-600 font-bold">نشط</span>' : '<span class="text-xs text-red-500 font-bold">غير نشط</span>';
+            return '<tr class="hover:bg-blue-50 cursor-pointer" onclick="RW_Items._openModal(\'' + item.item_code + '\')">' +
+                '<td class="p-4"><div class="flex items-center gap-3">' +
+                '<img src="' + img + '" class="h-20 w-20 rounded-xl object-cover border-2 border-gray-100 shadow-sm cursor-pointer" onerror="this.src=\'https://via.placeholder.com/80\'" onclick="event.stopPropagation(); RW_Items._viewImage(\'' + img + '\')" title="اضغط لتكبير الصورة">' +
+                '<div><span class="font-bold text-base">' + (item.name||'') + '</span><br><span class="text-xs text-gray-400">' + (item.item_code||'') + '</span></div>' +
+                '</div></td>' +
+                '<td class="p-4 text-gray-500">' + (item.category||'-') + '</td>' +
+                '<td class="p-4 text-gray-500">' + (item.unit||'-') + '</td>' +
+                '<td class="p-4" style="' + stockWarn + '">' + (item.qty||0) + ' ' + activeBadge + '</td>' +
+                '<td class="p-4 font-bold text-blue-600">' + Number(item.sales_price||0).toLocaleString() + ' EGP</td>' +
+                '<td class="p-4">' + (item.max_qty||'غير محدد') + '</td></tr>';
+        });
     }
 
     function filterTable() { const q = (byId('items-search')?.value||'').toLowerCase(); renderTable(itemsData.filter(i => (i.name||'').toLowerCase().includes(q) || (i.item_code||'').toLowerCase().includes(q) || (i.barcode||'').toLowerCase().includes(q))); }
