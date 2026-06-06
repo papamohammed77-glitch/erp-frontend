@@ -2552,38 +2552,42 @@ var RW_Orders = (function() {
         return selected;
     }
 
-    async function _confirm(code) {
-        var cf = await Swal.fire({
+    function _confirm(code) {
+        Swal.fire({
             title: 'تأكيد الأوردر',
             text: 'تحويل ' + code + ' إلى مؤكد؟',
             icon: 'question',
             showCancelButton: true,
             confirmButtonText: 'تأكيد',
             cancelButtonText: 'إلغاء'
+        }).then(function(cf) {
+            if (!cf.isConfirmed) return;
+            showLoader('جاري التأكيد...');
+            supabase.auth.getSession().then(function(ses) {
+                var t = ses.data.session && ses.data.session.access_token;
+                return fetch(SUPABASE_URL + '/functions/v1/confirm-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                    body: JSON.stringify({ order_code: code })
+                }).then(function(res) { return res.json(); });
+            }).then(function(json) {
+                hideLoader();
+                if (json.success) {
+                    var found = ordersData.find(function(o) { return o.order_code === code; });
+                    if (found) {
+                        var oldStatus = found.order_status;
+                        found.order_status = 'Confirmed';
+                        RW_Audit_log('update', 'orders', code, { order_status: oldStatus }, { order_status: 'Confirmed' });
+                    }
+                    showToast('تم التأكيد', 'success');
+                    _applyFilters();
+                } else showToast(json.msg || 'فشل', 'error');
+            }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
         });
-        if (!cf.isConfirmed) return;
-        showLoader('جاري التأكيد...');
-        try {
-            var ses = await supabase.auth.getSession();
-            var t = ses.data.session && ses.data.session.access_token;
-            var res = await fetch(SUPABASE_URL + '/functions/v1/confirm-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
-                body: JSON.stringify({ order_code: code })
-            });
-            var json = await res.json();
-            hideLoader();
-            if (json.success) {
-                showToast('تم التأكيد', 'success');
-                var found = ordersData.find(function(o) { return o.order_code === code; });
-                if (found) found.order_status = 'Confirmed';
-                _applyFilters();
-            } else showToast(json.msg || 'فشل', 'error');
-        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
-    async function _delete(code) {
-        var cf = await Swal.fire({
+    function _delete(code) {
+        Swal.fire({
             title: 'تأكيد الحذف',
             text: 'إلغاء الأوردر ' + code + '؟',
             icon: 'warning',
@@ -2591,26 +2595,30 @@ var RW_Orders = (function() {
             confirmButtonColor: '#d33',
             confirmButtonText: 'نعم، ألغِ',
             cancelButtonText: 'تراجع'
+        }).then(function(cf) {
+            if (!cf.isConfirmed) return;
+            showLoader('جاري الإلغاء...');
+            supabase.auth.getSession().then(function(ses) {
+                var t = ses.data.session && ses.data.session.access_token;
+                return fetch(SUPABASE_URL + '/functions/v1/delete-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                    body: JSON.stringify({ order_code: code })
+                }).then(function(res) { return res.json(); });
+            }).then(function(json) {
+                hideLoader();
+                if (json.success) {
+                    var found = ordersData.find(function(o) { return o.order_code === code; });
+                    if (found) {
+                        var oldStatus = found.order_status;
+                        found.order_status = 'Cancelled';
+                        RW_Audit_log('update', 'orders', code, { order_status: oldStatus }, { order_status: 'Cancelled' });
+                    }
+                    showToast('تم الإلغاء', 'success');
+                    _applyFilters();
+                } else showToast(json.msg || 'فشل', 'error');
+            }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
         });
-        if (!cf.isConfirmed) return;
-        showLoader('جاري الإلغاء...');
-        try {
-            var ses = await supabase.auth.getSession();
-            var t = ses.data.session && ses.data.session.access_token;
-            var res = await fetch(SUPABASE_URL + '/functions/v1/delete-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
-                body: JSON.stringify({ order_code: code })
-            });
-            var json = await res.json();
-            hideLoader();
-            if (json.success) {
-                showToast('تم الإلغاء', 'success');
-                var found = ordersData.find(function(o) { return o.order_code === code; });
-                if (found) found.order_status = 'Cancelled';
-                _applyFilters();
-            } else showToast(json.msg || 'فشل', 'error');
-        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
     // ========== مودال التفاصيل ==========
@@ -4502,21 +4510,36 @@ var RW_Finance = (function() {
         var diff = Math.abs(deb - cred);
         safeHTML(byId('j-balance'), diff < 0.01 ? '<span class="text-green-600 font-bold">✓ متوازن</span>' : '<span class="text-red-600 font-bold">⚠️ غير متوازن ' + _fmtNum(diff) + '</span>');
     }
-    async function _saveJournalEntry() {
+    function _saveJournalEntry() {
         var lines = [];
-        document.querySelectorAll('.journal-line').forEach(function(l) {
-            var acc = l.querySelector('.jl-account'), deb = parseFloat(l.querySelector('.jl-debit').value)||0, cred = parseFloat(l.querySelector('.jl-credit').value)||0;
-            if (acc.value && (deb > 0 || cred > 0)) lines.push({ accountId: acc.value, accountName: acc.selectedOptions[0].text, debit: deb, credit: cred });
-        });
+        var lineEls = document.querySelectorAll('.journal-line');
+        for (var i = 0; i < lineEls.length; i++) {
+            var l = lineEls[i];
+            var acc = l.querySelector('.jl-account');
+            var deb = parseFloat(l.querySelector('.jl-debit').value) || 0;
+            var cred = parseFloat(l.querySelector('.jl-credit').value) || 0;
+            if (acc.value && (deb > 0 || cred > 0)) {
+                lines.push({ accountId: acc.value, accountName: acc.selectedOptions[0].text, debit: deb, credit: cred });
+            }
+        }
         if (!lines.length) { _showToast('أضف سطراً', 'warning'); return; }
         var payload = { entry_date: byId('journal-date').value, reference: byId('journal-ref').value, description: byId('journal-desc').value, entry_type: 'Manual', lines: lines };
         _showLoader();
-        try {
-            var ses = await supabase.auth.getSession(), t = ses.data.session.access_token;
-            var res = await fetch(SUPABASE_URL + '/functions/v1/save-journal-entry', { method:'POST', headers: {'Content-Type':'application/json', Authorization:'Bearer '+t}, body: JSON.stringify(payload) });
-            var json = await res.json(); _hideLoader();
-            if (json.success) { _showToast('تم الحفظ', 'success'); renderSubTab('journal'); } else _showToast(json.error||'فشل', 'error');
-        } catch(e) { _hideLoader(); _showToast('فشل الاتصال', 'error'); }
+        supabase.auth.getSession().then(function(ses) {
+            var t = ses.data.session.access_token;
+            return fetch(SUPABASE_URL + '/functions/v1/save-journal-entry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify(payload)
+            }).then(function(res) { return res.json(); });
+        }).then(function(json) {
+            _hideLoader();
+            if (json.success) {
+                RW_Audit_log('create', 'journal_entries', json.entry_code || '', null, payload);
+                _showToast('تم الحفظ', 'success');
+                renderSubTab('journal');
+            } else _showToast(json.error || 'فشل', 'error');
+        }).catch(function(e) { _hideLoader(); _showToast('فشل الاتصال', 'error'); });
     }
 
     // ==================== سندات القبض والصرف والتحويلات ====================
