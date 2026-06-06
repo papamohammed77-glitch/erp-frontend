@@ -4476,16 +4476,18 @@ var RW_Finance = (function() {
 
     var _cache = { loaded: false, accountsTree: [], accountsFlat: [], treasury: [] };
 
-    async function _loadAllData(callback) {
+    function _loadAllData(callback) {
         if (_cache.loaded) { if (callback) callback(); return; }
         _showLoader('جاري تحميل البيانات المالية...');
-        try {
-            var [tRes, aRes] = await Promise.all([
-                supabase.from('treasury').select('*'),
-                supabase.from('chart_of_accounts').select('*')
-            ]);
+        Promise.all([
+            supabase.from('treasury').select('*'),
+            supabase.from('chart_of_accounts').select('*'),
+            supabase.from('cost_centers').select('*')
+        ]).then(function(results) {
+            var tRes = results[0], aRes = results[1], ccRes = results[2];
             _cache.treasury = tRes.data || [];
             _cache.accountsFlat = aRes.data || [];
+            _cache.costCenters = ccRes.data || [];
             var map = {}, roots = [];
             for (var i = 0; i < _cache.accountsFlat.length; i++) {
                 var a = _cache.accountsFlat[i];
@@ -4503,9 +4505,9 @@ var RW_Finance = (function() {
             }
             _cache.accountsTree = roots;
             _cache.loaded = true;
-        } catch(e) { console.error(e); }
-        _hideLoader();
-        if (callback) callback();
+            _hideLoader();
+            if (callback) callback();
+        }).catch(function(e) { console.error(e); _hideLoader(); });
     }
     function _refreshCache() { _cache.loaded = false; }
 
@@ -4521,7 +4523,7 @@ var RW_Finance = (function() {
                 { id: 'treasury', label: 'الخزائن والبنوك' }, { id: 'accounts', label: 'دليل الحسابات' },
                 { id: 'journal', label: 'قيود يومية' }, { id: 'receipts', label: 'سندات القبض' },
                 { id: 'payments', label: 'سندات الصرف' }, { id: 'transfers', label: 'التحويلات' },
-                { id: 'reports', label: 'التقارير المالية' }
+                { id: 'reports', label: 'التقارير المالية' }, { id: 'budgets', label: 'الموازنات' }
             ];
             var html = '<div class="p-4"><div class="flex flex-wrap gap-2 border-b pb-3 mb-4">';
             for (var i = 0; i < tabs.length; i++) {
@@ -4537,6 +4539,7 @@ var RW_Finance = (function() {
             else if (tab === 'payments') _renderPayments();
             else if (tab === 'transfers') _renderTransfers();
             else if (tab === 'reports') _renderReports();
+            else if (tab === 'budgets') _renderBudgets();
         });
     }
 
@@ -4781,8 +4784,24 @@ var RW_Finance = (function() {
         _recalcJournalTotal();
     }
     function _addJournalLine() {
-        var opts = _cache.accountsFlat.map(function(a) { return '<option value="' + _esc(a.account_code) + '">' + _esc(a.account_name) + ' (' + _esc(a.account_code) + ')</option>'; }).join('');
-        var html = '<div class="journal-line grid grid-cols-12 gap-2 mb-2 bg-gray-50 p-2 rounded-lg"><div class="col-span-5"><select class="border rounded p-1.5 w-full text-sm jl-account"><option value="">اختر الحساب</option>' + opts + '</select></div><div class="col-span-3"><input type="number" step="0.01" min="0" class="border rounded p-1.5 w-full text-sm jl-debit" value="0" oninput="RW_Finance._recalcJournalTotal()"></div><div class="col-span-3"><input type="number" step="0.01" min="0" class="border rounded p-1.5 w-full text-sm jl-credit" value="0" oninput="RW_Finance._recalcJournalTotal()"></div><div class="col-span-1 flex justify-center"><button onclick="RW_Finance._removeJournalLine(this)" class="text-red-500"><i class="fa-solid fa-circle-minus"></i></button></div></div>';
+        var opts = '';
+        for (var i = 0; i < _cache.accountsFlat.length; i++) {
+            var a = _cache.accountsFlat[i];
+            opts += '<option value="' + _esc(a.account_code) + '">' + _esc(a.account_name) + ' (' + _esc(a.account_code) + ')</option>';
+        }
+        var ccOpts = '<option value="">(بدون مركز)</option>';
+        if (_cache.costCenters && _cache.costCenters.length) {
+            for (var c = 0; c < _cache.costCenters.length; c++) {
+                ccOpts += '<option value="' + _esc(_cache.costCenters[c].id) + '">' + _esc(_cache.costCenters[c].name) + '</option>';
+            }
+        }
+        var html = '<div class="journal-line grid grid-cols-12 gap-2 mb-2 bg-gray-50 p-2 rounded-lg">' +
+            '<div class="col-span-3"><select class="border rounded p-1.5 w-full text-sm jl-account"><option value="">اختر الحساب</option>' + opts + '</select></div>' +
+            '<div class="col-span-3"><select class="border rounded p-1.5 w-full text-sm jl-cost-center">' + ccOpts + '</select></div>' +
+            '<div class="col-span-2"><input type="number" step="0.01" min="0" class="border rounded p-1.5 w-full text-sm jl-debit" value="0" oninput="RW_Finance._recalcJournalTotal()"></div>' +
+            '<div class="col-span-2"><input type="number" step="0.01" min="0" class="border rounded p-1.5 w-full text-sm jl-credit" value="0" oninput="RW_Finance._recalcJournalTotal()"></div>' +
+            '<div class="col-span-2 flex justify-center items-center"><button onclick="RW_Finance._removeJournalLine(this)" class="text-red-500"><i class="fa-solid fa-circle-minus"></i></button></div>' +
+            '</div>';
         byId('journal-lines').insertAdjacentHTML('beforeend', html);
     }
     function _removeJournalLine(btn) { btn.closest('.journal-line').remove(); _recalcJournalTotal(); }
@@ -4800,14 +4819,26 @@ var RW_Finance = (function() {
         for (var i = 0; i < lineEls.length; i++) {
             var l = lineEls[i];
             var acc = l.querySelector('.jl-account');
+            var cc = l.querySelector('.jl-cost-center');
             var deb = parseFloat(l.querySelector('.jl-debit').value) || 0;
             var cred = parseFloat(l.querySelector('.jl-credit').value) || 0;
-            if (acc.value && (deb > 0 || cred > 0)) {
-                lines.push({ accountId: acc.value, accountName: acc.selectedOptions[0].text, debit: deb, credit: cred });
+            if (acc && acc.value && (deb > 0 || cred > 0)) {
+                lines.push({
+                    accountId: acc.value,
+                    accountName: acc.selectedOptions[0].text,
+                    costCenterId: cc && cc.value ? cc.value : null,
+                    debit: deb,
+                    credit: cred
+                });
             }
         }
         if (!lines.length) { _showToast('أضف سطراً', 'warning'); return; }
-        var payload = { entry_date: byId('journal-date').value, reference: byId('journal-ref').value, description: byId('journal-desc').value, entry_type: 'Manual', lines: lines };
+        var payload = {
+            date: byId('journal-date').value,
+            reference: byId('journal-ref').value,
+            description: byId('journal-desc').value,
+            lines: lines
+        };
         _showLoader();
         supabase.auth.getSession().then(function(ses) {
             var t = ses.data.session.access_token;
@@ -4819,7 +4850,7 @@ var RW_Finance = (function() {
         }).then(function(json) {
             _hideLoader();
             if (json.success) {
-                RW_Audit_log('create', 'journal_entries', json.entry_code || '', null, payload);
+                RW_Audit_log('create', 'journal_entries', json.entryCode || '', null, payload);
                 _showToast('تم الحفظ', 'success');
                 renderSubTab('journal');
             } else _showToast(json.error || 'فشل', 'error');
@@ -4948,26 +4979,149 @@ var RW_Finance = (function() {
     function _renderReports() {
         var content = byId('finance-content'); if (!content) return;
         var today = new Date().toISOString().slice(0,10);
-        var html = '<div class="bg-white rounded-2xl shadow-sm border p-4"><h2 class="text-xl font-bold mb-4"><i class="fa-solid fa-chart-pie ml-2 text-teal-600"></i>التقارير المالية</h2><div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4"><div><label class="block text-sm font-bold">من تاريخ</label><input id="rp-from" type="date" value="' + today + '" class="border rounded-lg p-2 w-full"></div><div><label class="block text-sm font-bold">إلى تاريخ</label><input id="rp-to" type="date" value="' + today + '" class="border rounded-lg p-2 w-full"></div></div><div class="flex flex-wrap gap-2 mb-4"><button onclick="RW_Finance._trialBalance()" class="bg-teal-600 text-white px-4 py-2 rounded-lg"><i class="fa-solid fa-balance-scale ml-1"></i> ميزان المراجعة</button><button onclick="RW_Finance._profitLoss()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg"><i class="fa-solid fa-chart-line ml-1"></i> قائمة الدخل</button></div><div id="report-output"></div></div>';
+        var html = '<div class="bg-white rounded-2xl shadow-sm border p-4"><h2 class="text-xl font-bold mb-4"><i class="fa-solid fa-chart-pie ml-2 text-teal-600"></i>التقارير المالية</h2><div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4"><div><label class="block text-sm font-bold">من تاريخ</label><input id="rp-from" type="date" value="' + today + '" class="border rounded-lg p-2 w-full"></div><div><label class="block text-sm font-bold">إلى تاريخ</label><input id="rp-to" type="date" value="' + today + '" class="border rounded-lg p-2 w-full"></div></div><div class="flex flex-wrap gap-2 mb-4"><button onclick="RW_Finance._trialBalance()" class="bg-teal-600 text-white px-4 py-2 rounded-lg"><i class="fa-solid fa-balance-scale ml-1"></i> ميزان المراجعة</button><button onclick="RW_Finance._profitLoss()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg"><i class="fa-solid fa-chart-line ml-1"></i> قائمة الدخل</button><button onclick="RW_Finance._balanceSheet()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg"><i class="fa-solid fa-scale-balanced ml-1"></i> الميزانية العمومية</button><button onclick="RW_Finance._costCenterProfitLoss()" class="bg-amber-600 text-white px-4 py-2 rounded-lg"><i class="fa-solid fa-building ml-1"></i> أرباح/خسائر المراكز</button></div><div id="report-output"></div></div>';
         safeHTML(content, html);
     }
-    async function _trialBalance() {
+
+    function _trialBalance() {
         var out = byId('report-output'); if (!out) return;
         out.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>';
-        var ses = await supabase.auth.getSession();
-        var res = await fetch(SUPABASE_URL + '/functions/v1/get-trial-balance', { method:'POST', headers: {'Content-Type':'application/json', Authorization:'Bearer '+ses.data.session.access_token}, body: JSON.stringify({ fromDate: byId('rp-from').value, toDate: byId('rp-to').value }) });
-        var json = await res.json();
-        if (json.success) { var html = '<table class="w-full text-sm border"><thead><tr class="bg-gray-50"><th class="p-2">الكود</th><th class="p-2">الاسم</th><th class="p-2">مدين</th><th class="p-2">دائن</th></tr></thead><tbody>'; for (var i = 0; i < json.data.length; i++) { var r = json.data[i]; html += '<tr><td class="p-2">' + r.accountId + '</td><td class="p-2">' + r.accountName + '</td><td class="p-2">' + _fmtNum(r.totalDebit) + '</td><td class="p-2">' + _fmtNum(r.totalCredit) + '</td></tr>'; } html += '</tbody></table>'; safeHTML(out, html); }
-        else safeHTML(out, '<div class="text-center py-8 text-red-500">فشل التحميل</div>');
+        supabase.auth.getSession().then(function(ses) {
+            return fetch(SUPABASE_URL + '/functions/v1/get-trial-balance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ses.data.session.access_token },
+                body: JSON.stringify({ fromDate: byId('rp-from').value, toDate: byId('rp-to').value })
+            }).then(function(res) { return res.json(); });
+        }).then(function(json) {
+            if (json.success) {
+                var html = '<table class="w-full text-sm border"><thead><tr class="bg-gray-50"><th class="p-2">الكود</th><th class="p-2">الاسم</th><th class="p-2">مدين</th><th class="p-2">دائن</th></tr></thead><tbody>';
+                for (var i = 0; i < json.data.length; i++) { var r = json.data[i]; html += '<tr><td class="p-2">' + r.accountId + '</td><td class="p-2">' + r.accountName + '</td><td class="p-2">' + _fmtNum(r.totalDebit) + '</td><td class="p-2">' + _fmtNum(r.totalCredit) + '</td></tr>'; }
+                html += '</tbody></table>';
+                safeHTML(out, html);
+            } else {
+                safeHTML(out, '<div class="text-center py-8 text-red-500">فشل التحميل</div>');
+            }
+        }).catch(function() { safeHTML(out, '<div class="text-center py-8 text-red-500">فشل التحميل</div>'); });
     }
-    async function _profitLoss() {
+
+    function _profitLoss() {
         var out = byId('report-output'); if (!out) return;
         out.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>';
-        var ses = await supabase.auth.getSession();
-        var res = await fetch(SUPABASE_URL + '/functions/v1/get-profit-loss', { method:'POST', headers: {'Content-Type':'application/json', Authorization:'Bearer '+ses.data.session.access_token}, body: JSON.stringify({ fromDate: byId('rp-from').value, toDate: byId('rp-to').value }) });
-        var json = await res.json();
-        if (json.success) { var data = json.data; var html = '<h3 class="font-bold text-lg mb-2">قائمة الدخل</h3><table class="w-full text-sm border mb-4"><thead><tr class="bg-green-100"><th class="p-2">الإيرادات</th><th class="p-2">المبلغ</th></tr></thead><tbody>'; for (var i = 0; i < data.revenueAccounts.length; i++) { html += '<tr><td class="p-2">' + data.revenueAccounts[i].accountName + '</td><td class="p-2">' + _fmtNum(data.revenueAccounts[i].total) + '</td></tr>'; } html += '</tbody></table>'; safeHTML(out, html); }
-        else safeHTML(out, '<div class="text-center py-8 text-red-500">فشل التحميل</div>');
+        supabase.auth.getSession().then(function(ses) {
+            return fetch(SUPABASE_URL + '/functions/v1/get-profit-loss', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ses.data.session.access_token },
+                body: JSON.stringify({ fromDate: byId('rp-from').value, toDate: byId('rp-to').value })
+            }).then(function(res) { return res.json(); });
+        }).then(function(json) {
+            if (json.success) {
+                var data = json.data;
+                var html = '<h3 class="font-bold text-lg mb-2">قائمة الدخل</h3><table class="w-full text-sm border mb-4"><thead><tr class="bg-green-100"><th class="p-2">الإيرادات</th><th class="p-2">المبلغ</th></tr></thead><tbody>';
+                for (var i = 0; i < data.revenueAccounts.length; i++) { html += '<tr><td class="p-2">' + data.revenueAccounts[i].accountName + '</td><td class="p-2">' + _fmtNum(data.revenueAccounts[i].total) + '</td></tr>'; }
+                html += '</tbody></table>';
+                safeHTML(out, html);
+            } else {
+                safeHTML(out, '<div class="text-center py-8 text-red-500">فشل التحميل</div>');
+            }
+        }).catch(function() { safeHTML(out, '<div class="text-center py-8 text-red-500">فشل التحميل</div>'); });
+    }
+
+    function _renderBudgets() {
+        var content = byId('finance-content'); if (!content) return;
+        var today = new Date();
+        var currentYear = today.getFullYear();
+        var currentMonth = today.getMonth() + 1;
+        var monthNames = ['', 'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+        var html = '<div class="bg-white rounded-2xl shadow-sm border p-4"><h2 class="text-xl font-bold mb-4"><i class="fa-solid fa-chart-pie ml-2 text-indigo-600"></i>الموازنات التقديرية</h2>';
+        html += '<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">';
+        html += '<div><label class="block text-sm font-bold">السنة</label><select id="budget-year" class="border rounded-lg p-2 w-full">';
+        for (var y = currentYear - 2; y <= currentYear + 1; y++) html += '<option value="' + y + '"' + (y === currentYear ? ' selected' : '') + '>' + y + '</option>';
+        html += '</select></div>';
+        html += '<div><label class="block text-sm font-bold">الشهر</label><select id="budget-month" class="border rounded-lg p-2 w-full">';
+        for (var m = 1; m <= 12; m++) html += '<option value="' + m + '"' + (m === currentMonth ? ' selected' : '') + '>' + monthNames[m] + '</option>';
+        html += '</select></div>';
+        html += '<div><label class="block text-sm font-bold">مركز التكلفة</label><select id="budget-cc" class="border rounded-lg p-2 w-full"><option value="">الكل</option>';
+        if (_cache.costCenters) for (var c = 0; c < _cache.costCenters.length; c++) html += '<option value="' + _esc(_cache.costCenters[c].id) + '">' + _esc(_cache.costCenters[c].name) + '</option>';
+        html += '</select></div>';
+        html += '<div class="flex items-end"><button onclick="RW_Finance._loadBudgetsList()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold w-full"><i class="fa-solid fa-search ml-1"></i> عرض</button></div>';
+        html += '</div><div id="budgets-list" class="overflow-x-auto"></div></div>';
+        safeHTML(content, html);
+    }
+
+    function _loadBudgetsList() {
+        var listDiv = byId('budgets-list'); if (!listDiv) return;
+        safeHTML(listDiv, '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
+        var year = parseInt(byId('budget-year').value);
+        var month = parseInt(byId('budget-month').value);
+        var ccId = byId('budget-cc').value || null;
+        supabase.rpc('get_budget_vs_actual', { p_year: year, p_month: month, p_cost_center_id: ccId }).then(function(res) {
+            var data = res.data || [];
+            if (!data.length) { safeHTML(listDiv, '<div class="text-center py-8 text-gray-500">لا توجد بيانات</div>'); return; }
+            var html = '<table class="w-full text-sm border-collapse"><thead><tr class="bg-indigo-50"><th class="p-2 border">الحساب</th><th class="p-2 border text-center">الموازنة</th><th class="p-2 border text-center">الفعلي</th><th class="p-2 border text-center">الانحراف</th><th class="p-2 border text-center">%</th><th class="p-2 border text-center">الحالة</th><th class="p-2 border text-center">تعيين</th></tr></thead><tbody>';
+            for (var i = 0; i < data.length; i++) {
+                var row = data[i];
+                var statusBadge = row.status === 'within' ? '<span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">ضمن</span>' : row.status === 'over' ? '<span class="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs">تجاوز</span>' : row.status === 'under' ? '<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">أقل</span>' : '<span class="bg-gray-100 text-gray-500 px-2 py-1 rounded-full text-xs">بدون</span>';
+                html += '<tr class="border-t hover:bg-gray-50"><td class="p-2">' + _esc(row.account_name) + '</td><td class="p-2 text-center">' + _fmtNum(row.budgeted_amount) + '</td><td class="p-2 text-center">' + _fmtNum(row.actual_amount) + '</td><td class="p-2 text-center">' + _fmtNum(row.variance) + '</td><td class="p-2 text-center">' + (row.variance_percent || 0) + '%</td><td class="p-2 text-center">' + statusBadge + '</td><td class="p-2 text-center"><button onclick="RW_Finance._editBudget(\'' + _esc(row.account_id) + '\',\'' + _esc(row.account_name).replace(/'/g, "\\'") + '\',' + year + ',' + month + ')" class="text-indigo-600"><i class="fa-solid fa-pen-to-square"></i></button></td></tr>';
+            }
+            html += '</tbody></table>';
+            safeHTML(listDiv, html);
+        }).catch(function(e) { safeHTML(listDiv, '<div class="text-center py-8 text-red-500">فشل التحميل</div>'); });
+    }
+
+    function _editBudget(accountId, accountName, year, month) {
+        Swal.fire({
+            title: 'تعيين موازنة: ' + accountName,
+            html: '<div class="text-right"><p class="text-sm text-gray-500 mb-4">' + month + ' / ' + year + '</p><label class="block text-sm font-bold mb-2">المبلغ المخطط</label><input type="number" id="swal-budget-amount" step="0.01" min="0" class="swal2-input w-full" placeholder="0.00"></div>',
+            showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
+            preConfirm: function() { return parseFloat(document.getElementById('swal-budget-amount').value) || 0; }
+        }).then(function(result) {
+            if (result.isConfirmed) {
+                _showLoader('جاري الحفظ...');
+                supabase.from('budgets').upsert({ account_id: accountId, budget_year: year, budget_month: month, budgeted_amount: result.value, cost_center_id: null }, { onConflict: 'cost_center_id,account_id,budget_year,budget_month' }).then(function() {
+                    _hideLoader(); _showToast('تم الحفظ', 'success'); _loadBudgetsList();
+                }).catch(function() { _hideLoader(); _showToast('فشل', 'error'); });
+            }
+        });
+    }
+
+    function _balanceSheet() {
+        var out = byId('report-output'); if (!out) return;
+        safeHTML(out, '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
+        var asOfDate = byId('rp-to') ? byId('rp-to').value : new Date().toISOString().slice(0,10);
+        supabase.rpc('get_balance_sheet_data', { p_as_of: asOfDate }).then(function(res) {
+            if (res.error) { safeHTML(out, '<div class="text-center py-8 text-red-500">فشل</div>'); return; }
+            var d = res.data;
+            var html = '<div class="bg-white p-6 rounded-xl border"><h3 class="font-black text-2xl mb-6 text-center">الميزانية العمومية</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-8">';
+            html += '<div class="bg-blue-50 p-4 rounded-xl"><h4 class="font-black text-blue-700 text-lg mb-3">الأصول</h4><table class="w-full text-sm">';
+            var assets = d.assets || [];
+            for (var a = 0; a < assets.length; a++) html += '<tr class="border-b"><td class="py-2">' + _esc(assets[a].account_name) + '</td><td class="py-2 text-left font-bold">' + _fmtNum(assets[a].balance) + '</td></tr>';
+            html += '</table></div>';
+            html += '<div class="bg-red-50 p-4 rounded-xl"><h4 class="font-black text-red-700 text-lg mb-3">الخصوم</h4><table class="w-full text-sm">';
+            var liabilities = d.liabilities || [];
+            for (var l = 0; l < liabilities.length; l++) html += '<tr class="border-b"><td class="py-2">' + _esc(liabilities[l].account_name) + '</td><td class="py-2 text-left font-bold">' + _fmtNum(liabilities[l].balance) + '</td></tr>';
+            html += '</table></div>';
+            html += '</div></div>';
+            safeHTML(out, html);
+        }).catch(function(e) { safeHTML(out, '<div class="text-center py-8 text-red-500">فشل الاتصال</div>'); });
+    }
+
+    function _costCenterProfitLoss() {
+        var out = byId('report-output'); if (!out) return;
+        safeHTML(out, '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
+        var fromDate = byId('rp-from') ? byId('rp-from').value : '';
+        var toDate = byId('rp-to') ? byId('rp-to').value : '';
+        supabase.rpc('get_pnl_by_cost_center', { p_date_from: fromDate, p_date_to: toDate }).then(function(res) {
+            var data = res.data || [];
+            if (!data.length) { safeHTML(out, '<div class="text-center py-8 text-gray-500">لا توجد بيانات</div>'); return; }
+            var html = '<h4 class="font-bold mb-3">أرباح/خسائر حسب مركز التكلفة</h4><table class="w-full text-sm border"><thead><tr class="bg-gray-50"><th class="p-2">المركز</th><th class="p-2 text-center">الإيرادات</th><th class="p-2 text-center">المصروفات</th><th class="p-2 text-center">الصافي</th></tr></thead><tbody>';
+            for (var i = 0; i < data.length; i++) {
+                var net = data[i].net_income || 0;
+                var netClass = net >= 0 ? 'text-green-600' : 'text-red-600';
+                html += '<tr class="border-t"><td class="p-2">' + _esc(data[i].cost_center_name) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].revenue) + '</td><td class="p-2 text-center">' + _fmtNum(data[i].expenses) + '</td><td class="p-2 text-center font-bold ' + netClass + '">' + _fmtNum(net) + '</td></tr>';
+            }
+            html += '</tbody></table>';
+            safeHTML(out, html);
+        }).catch(function(e) { safeHTML(out, '<div class="text-center py-8 text-red-500">فشل التحميل</div>'); });
     }
 
     return {
@@ -4978,7 +5132,9 @@ var RW_Finance = (function() {
         _newReceipt: _newReceipt, _addReceiptLine: _addReceiptLine, _removeReceiptLine: _removeReceiptLine, _recalcReceiptTotal: _recalcReceiptTotal, _saveReceipt: _saveReceipt,
         _newPayment: _newPayment, _addPaymentLine: _addPaymentLine, _removePaymentLine: _removePaymentLine, _recalcPaymentTotal: _recalcPaymentTotal, _savePayment: _savePayment,
         _newTransfer: _newTransfer, _saveTransfer: _saveTransfer,
-        _trialBalance: _trialBalance, _profitLoss: _profitLoss
+        _trialBalance: _trialBalance, _profitLoss: _profitLoss,
+        _renderBudgets: _renderBudgets, _loadBudgetsList: _loadBudgetsList, _editBudget: _editBudget,
+        _balanceSheet: _balanceSheet, _costCenterProfitLoss: _costCenterProfitLoss
     };
 })();
 window.RW_Finance = RW_Finance;
