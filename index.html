@@ -1158,15 +1158,27 @@ var RW_Customers = (function() {
     }
 
     function renderTable(data) {
-        const w = byId('cust-table-wrapper'); if (!w) return;
+        var w = byId('cust-table-wrapper'); if (!w) return;
         if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد عملاء</div>'); return; }
-        const sorted = [...data].sort((a,b) => { let va = a[sortField]||'', vb = b[sortField]||''; if (sortField === 'debt') { va=Number(va); vb=Number(vb); } else { va=String(va).toLowerCase(); vb=String(vb).toLowerCase(); } return (va<vb?-1:va>vb?1:0) * (sortAsc?1:-1); });
-        const cols = [{field:'customer_code',label:'الكود'},{field:'name',label:'الاسم'},{field:'phone',label:'الهاتف'},{field:'area',label:'المنطقة'},{field:'contact_person',label:'مسؤول التواصل'},{field:'visit_day',label:'يوم الزيارة'},{field:'debt',label:'الرصيد'}];
-        let html = `<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50"><tr>`;
-        cols.forEach(c => { const icon = sortField===c.field ? (sortAsc?'fa-sort-up':'fa-sort-down') : 'fa-sort'; html += `<th class="p-3 cursor-pointer" onclick="RW_Customers._sort('${c.field}')">${c.label} <i class="fa-solid ${icon}"></i></th>`; });
-        html += `</tr></thead><tbody>`;
-        sorted.forEach(c => { html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Customers._openModal('${c.customer_code}')"><td class="p-3">${c.customer_code||''}</td><td class="p-3 font-semibold">${c.name||''}</td><td class="p-3">${c.phone||''}</td><td class="p-3">${c.area||''}</td><td class="p-3">${c.contact_person||''}</td><td class="p-3">${c.visit_day||''}</td><td class="p-3 font-bold ${Number(c.debt)>0?'text-red-500':'text-green-600'}">${Number(c.debt||0).toLocaleString()} EGP</td></tr>`; });
-        html += `</tbody></table>`; safeHTML(w, html);
+        var sorted = data.slice().sort(function(a,b) {
+            var va = a[sortField] || '', vb = b[sortField] || '';
+            if (sortField === 'debt') { va = Number(va); vb = Number(vb); }
+            else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+            return (va < vb ? -1 : va > vb ? 1 : 0) * (sortAsc ? 1 : -1);
+        });
+        var cols = [{field:'customer_code',label:'الكود'},{field:'name',label:'الاسم'},{field:'phone',label:'الهاتف'},{field:'area',label:'المنطقة'},{field:'contact_person',label:'مسؤول التواصل'},{field:'visit_day',label:'يوم الزيارة'},{field:'debt',label:'الرصيد'}];
+        var iconSuffix = sortAsc ? 'fa-sort-up' : 'fa-sort-down';
+        var headerHtml = '<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50"><tr>';
+        for (var c = 0; c < cols.length; c++) {
+            var icon = sortField === cols[c].field ? iconSuffix : 'fa-sort';
+            headerHtml += '<th class="p-3 cursor-pointer" onclick="RW_Customers._sort(\'' + cols[c].field + '\')">' + cols[c].label + ' <i class="fa-solid ' + icon + '"></i></th>';
+        }
+        headerHtml += '</tr></thead><tbody id="cust-tbody"></tbody></table>';
+        var controlsHtml = '<div id="cust-tbody-controls"></div>';
+        safeHTML(w, headerHtml + controlsHtml);
+        RW_Table.paginate('cust-tbody', sorted, 1, 50, function(c) {
+            return '<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Customers._openModal(\'' + c.customer_code + '\')"><td class="p-3">' + (c.customer_code||'') + '</td><td class="p-3 font-semibold">' + (c.name||'') + '</td><td class="p-3">' + (c.phone||'') + '</td><td class="p-3">' + (c.area||'') + '</td><td class="p-3">' + (c.contact_person||'') + '</td><td class="p-3">' + (c.visit_day||'') + '</td><td class="p-3 font-bold ' + (Number(c.debt)>0?'text-red-500':'text-green-600') + '">' + Number(c.debt||0).toLocaleString() + ' EGP</td></tr>';
+        });
     }
 
     function filterTable() { const q = (byId('cust-search')?.value||'').toLowerCase(); renderTable(data.filter(c => (c.name||'').toLowerCase().includes(q) || (c.customer_code||'').toLowerCase().includes(q) || (c.phone||'').includes(q))); }
@@ -1291,15 +1303,27 @@ var RW_Suppliers = (function() {
     }
 
     function renderTable(data) {
-        const w = byId('supp-table-wrapper'); if (!w) return;
+        var w = byId('supp-table-wrapper'); if (!w) return;
         if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موردين</div>'); return; }
-        const sorted = [...data].sort((a,b) => { let va = a[sortField]||'', vb = b[sortField]||''; if (sortField === 'accounts_payable') { va=Number(va); vb=Number(vb); } else { va=String(va).toLowerCase(); vb=String(vb).toLowerCase(); } return (va<vb?-1:va>vb?1:0) * (sortAsc?1:-1); });
-        const cols = [{field:'supplier_code',label:'الكود'},{field:'name',label:'الاسم'},{field:'phone',label:'الهاتف'},{field:'area',label:'المنطقة'},{field:'contact_person',label:'جهة الاتصال'},{field:'accounts_payable',label:'الرصيد'}];
-        let html = `<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50"><tr>`;
-        cols.forEach(c => { const icon = sortField===c.field ? (sortAsc?'fa-sort-up':'fa-sort-down') : 'fa-sort'; html += `<th class="p-3 cursor-pointer" onclick="RW_Suppliers._sort('${c.field}')">${c.label} <i class="fa-solid ${icon}"></i></th>`; });
-        html += `</tr></thead><tbody>`;
-        sorted.forEach(s => { html += `<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Suppliers._openModal('${s.supplier_code}')"><td class="p-3">${s.supplier_code||''}</td><td class="p-3 font-semibold">${s.name||''}</td><td class="p-3">${s.phone||''}</td><td class="p-3">${s.area||''}</td><td class="p-3">${s.contact_person||''}</td><td class="p-3 font-bold text-red-500">${Number(s.accounts_payable||0).toLocaleString()} EGP</td></tr>`; });
-        html += `</tbody></table>`; safeHTML(w, html);
+        var sorted = data.slice().sort(function(a,b) {
+            var va = a[sortField] || '', vb = b[sortField] || '';
+            if (sortField === 'accounts_payable') { va = Number(va); vb = Number(vb); }
+            else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+            return (va < vb ? -1 : va > vb ? 1 : 0) * (sortAsc ? 1 : -1);
+        });
+        var cols = [{field:'supplier_code',label:'الكود'},{field:'name',label:'الاسم'},{field:'phone',label:'الهاتف'},{field:'area',label:'المنطقة'},{field:'contact_person',label:'جهة الاتصال'},{field:'accounts_payable',label:'الرصيد'}];
+        var iconSuffix = sortAsc ? 'fa-sort-up' : 'fa-sort-down';
+        var headerHtml = '<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-50"><tr>';
+        for (var c = 0; c < cols.length; c++) {
+            var icon = sortField === cols[c].field ? iconSuffix : 'fa-sort';
+            headerHtml += '<th class="p-3 cursor-pointer" onclick="RW_Suppliers._sort(\'' + cols[c].field + '\')">' + cols[c].label + ' <i class="fa-solid ' + icon + '"></i></th>';
+        }
+        headerHtml += '</tr></thead><tbody id="supp-tbody"></tbody></table>';
+        var controlsHtml = '<div id="supp-tbody-controls"></div>';
+        safeHTML(w, headerHtml + controlsHtml);
+        RW_Table.paginate('supp-tbody', sorted, 1, 50, function(s) {
+            return '<tr class="hover:bg-gray-50 cursor-pointer" onclick="RW_Suppliers._openModal(\'' + s.supplier_code + '\')"><td class="p-3">' + (s.supplier_code||'') + '</td><td class="p-3 font-semibold">' + (s.name||'') + '</td><td class="p-3">' + (s.phone||'') + '</td><td class="p-3">' + (s.area||'') + '</td><td class="p-3">' + (s.contact_person||'') + '</td><td class="p-3 font-bold text-red-500">' + Number(s.accounts_payable||0).toLocaleString() + ' EGP</td></tr>';
+        });
     }
 
     function filterTable() { const q = (byId('supp-search')?.value||'').toLowerCase(); renderTable(data.filter(s => (s.name||'').toLowerCase().includes(q) || (s.supplier_code||'').toLowerCase().includes(q))); }
@@ -1678,26 +1702,23 @@ async function render() {
         }
         if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد موظفون مطابقون للبحث</div>'); return; }
         
-        var html = '<table class="w-full text-sm"><thead class="bg-gray-50"><tr>';
-        html += '<th class="p-3">الاسم</th><th class="p-3">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">الهاتف</th><th class="p-3">الفروع</th>';
-        html += '</tr></thead><tbody id="users-tbody">';
-        
-        for (var i = 0; i < filtered.length; i++) {
-            var emp = filtered[i];
+        var headerHtml = '<table class="w-full text-sm"><thead class="bg-gray-50"><tr>';
+        headerHtml += '<th class="p-3">الاسم</th><th class="p-3">البريد</th><th class="p-3">الدور</th><th class="p-3">الحالة</th><th class="p-3">الهاتف</th><th class="p-3">الفروع</th>';
+        headerHtml += '</tr></thead><tbody id="users-tbody"></tbody></table>';
+        var controlsHtml = '<div id="users-tbody-controls"></div>';
+        safeHTML(w, headerHtml + controlsHtml);
+        RW_Table.paginate('users-tbody', filtered, 1, 50, function(emp) {
             var statusClass = emp.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
             var statusText = emp.status === 'Active' ? 'نشط' : 'غير نشط';
-            html += '<tr class="border-b hover:bg-gray-50 cursor-pointer" data-email="' + emp.email + '">';
-            html += '<td class="p-3 font-semibold">' + (emp.name||'') + '</td>';
-            html += '<td class="p-3">' + (emp.email||'') + '</td>';
-            html += '<td class="p-3">' + (emp.role||'') + '</td>';
-            html += '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + statusClass + '">' + statusText + '</span></td>';
-            html += '<td class="p-3">' + (emp.phone||'') + '</td>';
-            html += '<td class="p-3">' + (emp.allowed_branch_ids||'*') + '</td>';
-            html += '</tr>';
-        }
-        html += '</tbody></table>';
-        safeHTML(w, html);
-    }
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" data-email="' + emp.email + '">' +
+                '<td class="p-3 font-semibold">' + (emp.name||'') + '</td>' +
+                '<td class="p-3">' + (emp.email||'') + '</td>' +
+                '<td class="p-3">' + (emp.role||'') + '</td>' +
+                '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + statusClass + '">' + statusText + '</span></td>' +
+                '<td class="p-3">' + (emp.phone||'') + '</td>' +
+                '<td class="p-3">' + (emp.allowed_branch_ids||'*') + '</td>' +
+            '</tr>';
+        });
 
     function filterTable() {
         var searchInput = byId('emp-search');
@@ -2582,11 +2603,57 @@ var RW_Orders = (function() {
 
         if (!data || data.length === 0) {
             safeHTML(tbody, '<tr><td colspan="9" class="text-center py-8 text-gray-500">لا توجد أوردرات</td></tr>');
+            var pc = byId('orders-table-body-controls');
+            if (pc) safeHTML(pc, '');
             return;
         }
 
-        var html = '';
-        for (var i = 0; i < data.length; i++) {
+        var iconSuffix = sortAsc ? 'fa-sort-up' : 'fa-sort-down';
+        var headerHtml = '<table class="w-full min-w-[1200px]"><thead class="bg-gray-50 sticky top-0 z-10"><tr>' +
+            '<th class="p-3 text-center"><input type="checkbox" id="check-all" onchange="var cbs=document.querySelectorAll(\'.order-checkbox\');for(var i=0;i<cbs.length;i++)cbs[i].checked=this.checked;"></th>' +
+            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_code\')">رقم الأوردر <i class="fa-solid ' + (sortField==='order_code'?iconSuffix:'fa-sort') + '"></i></th>' +
+            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_date\')">التاريخ <i class="fa-solid ' + (sortField==='order_date'?iconSuffix:'fa-sort') + '"></i></th>' +
+            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'customer_name\')">العميل والمنطقة <i class="fa-solid ' + (sortField==='customer_name'?iconSuffix:'fa-sort') + '"></i></th>' +
+            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'itemsCount\')">عدد الأصناف <i class="fa-solid ' + (sortField==='itemsCount'?iconSuffix:'fa-sort') + '"></i></th>' +
+            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'total_amount\')">القيمة (EGP) <i class="fa-solid ' + (sortField==='total_amount'?iconSuffix:'fa-sort') + '"></i></th>' +
+            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_status\')">الحالة <i class="fa-solid ' + (sortField==='order_status'?iconSuffix:'fa-sort') + '"></i></th>' +
+            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'runsheet_id\')">الرانشيت <i class="fa-solid ' + (sortField==='runsheet_id'?iconSuffix:'fa-sort') + '"></i></th>' +
+            '<th class="p-3 text-center text-xs font-bold uppercase">إجراءات</th>' +
+            '</tr></thead><tbody id="orders-tbody"></tbody></table>';
+        var controlsHtml = '<div id="orders-tbody-controls"></div>';
+        var wrapper = tbody.parentNode;
+        if (wrapper) {
+            safeHTML(wrapper, headerHtml + controlsHtml);
+        }
+        RW_Table.paginate('orders-tbody', data, 1, 50, function(o) {
+            var sc = '';
+            if (o.order_status === 'Draft') sc = 'bg-yellow-100 text-yellow-700';
+            else if (o.order_status === 'Confirmed') sc = 'bg-blue-100 text-blue-700';
+            else if (o.order_status === 'Pending') sc = 'bg-purple-100 text-purple-700';
+            else if (o.order_status === 'Invoiced' || o.order_status === 'Delivered') sc = 'bg-green-100 text-green-700';
+            else if (o.order_status === 'Returned') sc = 'bg-orange-100 text-orange-700';
+            else if (o.order_status === 'Cancelled') sc = 'bg-red-100 text-red-700';
+            else sc = 'bg-gray-100 text-gray-700';
+            var actions = '';
+            if (o.order_status === 'Draft') {
+                actions += '<button onclick="event.stopPropagation();RW_Orders._confirm(\'' + o.order_code + '\')" class="text-green-600 mx-1" title="تأكيد"><i class="fa-solid fa-check-circle"></i></button>';
+            }
+            if (o.order_status === 'Draft' || o.order_status === 'Confirmed') {
+                actions += '<button onclick="event.stopPropagation();RW_Orders._delete(\'' + o.order_code + '\')" class="text-red-500 mx-1" title="حذف"><i class="fa-solid fa-trash-can"></i></button>';
+            }
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Orders._showDetails(\'' + o.order_code + '\')">' +
+                '<td class="p-3 text-center" onclick="event.stopPropagation()"><input type="checkbox" class="order-checkbox" data-id="' + o.order_code + '"></td>' +
+                '<td class="p-3 text-center font-bold text-blue-600">' + (o.order_code || '') + '</td>' +
+                '<td class="p-3 text-center">' + (o.order_date ? new Date(o.order_date).toLocaleDateString('ar-EG') : '') + '</td>' +
+                '<td class="p-3 text-center"><p class="font-semibold">' + (o.customer_name || '') + '</p><p class="text-xs text-gray-500">' + (o.area || '') + '</p></td>' +
+                '<td class="p-3 text-center font-bold">' + (o.itemsCount || 0) + '</td>' +
+                '<td class="p-3 text-center font-bold">' + Number(o.total_amount || 0).toLocaleString() + ' EGP</td>' +
+                '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-semibold ' + sc + '">' + (o.order_status || '') + '</span></td>' +
+                '<td class="p-3 text-center">' + (o.runsheet_id || '---') + '</td>' +
+                '<td class="p-3 text-center">' + actions + '</td>' +
+            '</tr>';
+        });
+    }
             var o = data[i];
             var sc = '';
             if (o.order_status === 'Draft') sc = 'bg-yellow-100 text-yellow-700';
