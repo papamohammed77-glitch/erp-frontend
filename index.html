@@ -810,13 +810,17 @@ window.RW_Navigation = RW_Navigation;
 // ============================================================
 var RW_Dashboard = (function() {
     function _fmtNum(n) { return Number(n || 0).toLocaleString(); }
+    var _charts = {};
 
-    async function render() {
+    function render() {
         var container = byId('rw-page-container');
         if (!container) return;
-        safeText(byId('rw-header-title'), 'مرحبا');
+        safeText(byId('rw-header-title'), 'لوحة التحكم');
+        safeText(byId('rw-header-subtitle'), 'نظرة عامة على أداء المؤسسة');
 
-        // بناء هيكل لوحة التحكم
+        var today = new Date().toISOString().split('T')[0];
+        var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
         var html = '<div class="p-4 space-y-6">';
         // صف الترحيب
         html += '<div class="bg-gradient-to-r from-blue-700 to-indigo-800 rounded-3xl p-8 text-white shadow-xl">';
@@ -824,102 +828,207 @@ var RW_Dashboard = (function() {
         html += '<p class="text-blue-100 text-lg">نظام إدارة موارد المؤسسات المتكامل – جميع عملياتك في مكان واحد</p>';
         html += '</div>';
 
-        // مؤشرات الأداء الرئيسية
+        // مؤشرات الأداء
         html += '<div class="grid grid-cols-2 md:grid-cols-4 gap-4">';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">إجمالي الأصناف</p><p class="text-3xl font-black text-blue-600" id="dash-items">---</p></div>';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">العملاء</p><p class="text-3xl font-black text-emerald-600" id="dash-customers">---</p></div>';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">الموردين</p><p class="text-3xl font-black text-orange-600" id="dash-suppliers">---</p></div>';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">الفروع</p><p class="text-3xl font-black text-purple-600" id="dash-branches">---</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">إجمالي المبيعات</p><p class="text-3xl font-black text-blue-600" id="dash-total-sales">---</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">عدد الأوردرات</p><p class="text-3xl font-black text-emerald-600" id="dash-order-count">---</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">العملاء</p><p class="text-3xl font-black text-orange-600" id="dash-customer-count">---</p></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6 text-center"><p class="text-gray-400 text-sm font-bold mb-2">الأصناف</p><p class="text-3xl font-black text-purple-600" id="dash-item-count">---</p></div>';
         html += '</div>';
 
-        // آخر الأوردرات والتنبيهات
-        html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-6">';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-black text-lg mb-4"><i class="fa-solid fa-clock-rotate-left ml-2 text-blue-600"></i>آخر الأوردرات</h3><div id="dash-recent-orders"><p class="text-gray-400 text-center py-8">جاري التحميل...</p></div></div>';
-        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-black text-lg mb-4"><i class="fa-solid fa-triangle-exclamation ml-2 text-amber-600"></i>تنبيهات</h3><div id="dash-alerts"><p class="text-gray-400 text-center py-8">جاري التحميل...</p></div></div>';
-        html += '</div>';
+        // فلاتر زمنية
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-4 flex flex-wrap items-center gap-3">';
+        html += '<span class="text-sm font-bold text-gray-600">الفترة:</span>';
+        html += '<input type="date" id="dash-date-from" value="' + firstDay + '" class="p-2 bg-gray-50 border rounded-lg text-sm">';
+        html += '<span class="text-gray-400">إلى</span>';
+        html += '<input type="date" id="dash-date-to" value="' + today + '" class="p-2 bg-gray-50 border rounded-lg text-sm">';
+        html += '<button id="dash-apply-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold">تطبيق</button>';
         html += '</div>';
 
+        // رسوم بيانية – صف 1
+        html += '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">المبيعات اليومية</h3><div style="height:300px"><canvas id="chart-sales"></canvas></div></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">المبيعات حسب المنطقة</h3><div style="height:300px"><canvas id="chart-region"></canvas></div></div>';
+        html += '</div>';
+
+        // رسوم بيانية – صف 2
+        html += '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">أفضل 10 أصناف</h3><div style="height:300px"><canvas id="chart-items"></canvas></div></div>';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="font-bold text-lg mb-4">أفضل 10 عملاء</h3><div style="height:300px"><canvas id="chart-customers"></canvas></div></div>';
+        html += '</div>';
+
+        html += '</div>';
         safeHTML(container, html);
 
-        // تحميل البيانات بشكل متوازي
-        try {
-            var items = RW_STATE.data.items;
-            var customers = RW_STATE.data.customers;
-            var suppliers = RW_STATE.data.suppliers;
-            var branches = RW_STATE.data.branches;
-            var orders = [];
+        // ربط زر التطبيق
+        byId('dash-apply-btn').addEventListener('click', function() {
+            loadAll(byId('dash-date-from').value, byId('dash-date-to').value);
+        });
 
-            // تحميل البيانات التي لم تحمل بعد
-            if (!items || !items.length) { items = await RW_Data.loadItems(); }
-            if (!customers || !customers.length) { customers = await RW_Data.loadCustomers(); }
-            if (!suppliers || !suppliers.length) {
-                var sRes = await supabase.from('suppliers').select('*');
-                suppliers = sRes.data || [];
-                RW_STATE.data.suppliers = suppliers;
-            }
-            if (!branches || !branches.length) { branches = await RW_Data.loadBranches(); }
+        // تحميل افتراضي
+        loadAll(firstDay, today);
+    }
 
-            // جلب الأوردرات
-            var oRes = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(10);
-            orders = oRes.data || [];
-
-            // تحديث المؤشرات
-            safeText(byId('dash-items'), _fmtNum(items.length));
-            safeText(byId('dash-customers'), _fmtNum(customers.length));
-            safeText(byId('dash-suppliers'), _fmtNum(suppliers.length));
-            safeText(byId('dash-branches'), _fmtNum(branches.length));
-
-            // عرض آخر الأوردرات
-            var recentHtml = '';
-            if (orders.length > 0) {
-                recentHtml = '<table class="w-full text-sm"><thead><tr class="text-gray-400 text-xs uppercase"><th class="p-2 text-right">الرقم</th><th class="p-2 text-right">العميل</th><th class="p-2 text-right">الحالة</th><th class="p-2 text-right">المبلغ</th></tr></thead><tbody>';
-                for (var i = 0; i < Math.min(orders.length, 10); i++) {
-                    var ord = orders[i];
-                    var statusClass = '';
-                    if (ord.order_status === 'Draft') statusClass = 'text-yellow-600';
-                    else if (ord.order_status === 'Invoiced') statusClass = 'text-green-600';
-                    else if (ord.order_status === 'Confirmed') statusClass = 'text-blue-600';
-                    else statusClass = 'text-gray-600';
-                    recentHtml += '<tr class="border-t border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="RW_Navigation.navigate(\'orders\')"><td class="p-2 font-bold text-blue-600">' + (ord.order_code || '---') + '</td><td class="p-2">' + (ord.customer_name || '---') + '</td><td class="p-2 ' + statusClass + ' font-bold">' + (ord.order_status || '') + '</td><td class="p-2 font-bold">' + _fmtNum(ord.total_amount) + ' EGP</td></tr>';
-                }
-                recentHtml += '</tbody></table>';
-            } else {
-                recentHtml = '<p class="text-gray-400 text-center py-8">لا توجد أوردرات بعد</p>';
-            }
-            safeHTML(byId('dash-recent-orders'), recentHtml);
-
-            // تنبيهات
-            var alertsHtml = '<ul class="space-y-2 text-sm">';
-            // أصناف منخفضة
-            var lowStockCount = 0;
-            for (var j = 0; j < items.length; j++) {
-                var item = items[j];
-                if ((item.reorder_point || 5) >= (item.qty || 0)) lowStockCount++;
-            }
-            if (lowStockCount > 0) {
-                alertsHtml += '<li class="p-3 bg-amber-50 rounded-xl flex items-center gap-2 cursor-pointer" onclick="RW_Navigation.navigate(\'items\')"><i class="fa-solid fa-boxes-stacked text-amber-600"></i><span class="font-bold text-amber-700">' + lowStockCount + ' أصناف منخفضة المخزون</span></li>';
-            } else {
-                alertsHtml += '<li class="p-3 bg-green-50 rounded-xl flex items-center gap-2"><i class="fa-solid fa-circle-check text-green-600"></i><span class="font-bold text-green-700">جميع الأصناف بمستوى آمن</span></li>';
-            }
-            // أوردرات مسودة
-            var draftCount = 0;
-            for (var k = 0; k < orders.length; k++) { if (orders[k].order_status === 'Draft') draftCount++; }
-            if (draftCount > 0) {
-                alertsHtml += '<li class="p-3 bg-blue-50 rounded-xl flex items-center gap-2 cursor-pointer" onclick="RW_Navigation.navigate(\'orders\')"><i class="fa-solid fa-file-lines text-blue-600"></i><span class="font-bold text-blue-700">' + draftCount + ' أوردرات مسودة</span></li>';
-            }
-            // عملاء مديونون
-            var debtCount = 0;
-            for (var l = 0; l < customers.length; l++) { if ((customers[l].debt || 0) > 0) debtCount++; }
-            if (debtCount > 0) {
-                alertsHtml += '<li class="p-3 bg-red-50 rounded-xl flex items-center gap-2 cursor-pointer" onclick="RW_Navigation.navigate(\'customers\')"><i class="fa-solid fa-file-invoice-dollar text-red-600"></i><span class="font-bold text-red-700">' + debtCount + ' عملاء مديونون</span></li>';
-            }
-            alertsHtml += '</ul>';
-            safeHTML(byId('dash-alerts'), alertsHtml);
-        } catch(e) {
-            console.error('Dashboard error:', e);
-            safeHTML(byId('dash-recent-orders'), '<p class="text-red-500 text-center py-8">فشل تحميل البيانات</p>');
-            safeHTML(byId('dash-alerts'), '<p class="text-red-500 text-center py-8">فشل تحميل التنبيهات</p>');
+    function destroyCharts() {
+        var ids = ['chart-sales', 'chart-region', 'chart-items', 'chart-customers'];
+        for (var i = 0; i < ids.length; i++) {
+            if (_charts[ids[i]]) { _charts[ids[i]].destroy(); _charts[ids[i]] = null; }
         }
+    }
+
+    function loadAll(fromDate, toDate) {
+        safeText(byId('dash-total-sales'), '...');
+        safeText(byId('dash-order-count'), '...');
+        safeText(byId('dash-customer-count'), '...');
+        safeText(byId('dash-item-count'), '...');
+        destroyCharts();
+
+        // جلب الأوردرات
+        supabase.from('orders').select('order_code, customer_id, total_amount, order_date, area').gte('order_date', fromDate).lte('order_date', toDate).then(function(res) {
+            var orders = res.data || [];
+            var totalSales = 0;
+            for (var i = 0; i < orders.length; i++) { totalSales += Number(orders[i].total_amount) || 0; }
+            safeText(byId('dash-total-sales'), _fmtNum(totalSales) + ' EGP');
+            safeText(byId('dash-order-count'), orders.length);
+
+            // رسم المبيعات اليومية
+            renderSalesChart(orders, fromDate, toDate);
+
+            // رسم المناطق
+            renderRegionChart(orders);
+        }).catch(function() { console.error('Orders load failed'); });
+
+        // العملاء
+        supabase.from('customers').select('customer_code').then(function(res) {
+            safeText(byId('dash-customer-count'), (res.data || []).length);
+        }).catch(function() {});
+
+        // الأصناف
+        supabase.from('items').select('item_code').then(function(res) {
+            safeText(byId('dash-item-count'), (res.data || []).length);
+        }).catch(function() {});
+
+        // أفضل الأصناف
+        supabase.from('order_details').select('item_code, item_name, qty, unit_price').gte('created_at', fromDate).lte('created_at', toDate).then(function(res) {
+            renderTopItemsChart(res.data || []);
+        }).catch(function() {});
+
+        // أفضل العملاء
+        supabase.from('orders').select('customer_name, total_amount').gte('order_date', fromDate).lte('order_date', toDate).then(function(res) {
+            renderTopCustomersChart(res.data || []);
+        }).catch(function() {});
+    }
+
+    function renderSalesChart(orders, fromDate, toDate) {
+        var canvas = byId('chart-sales');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        var days = [];
+        var sales = [];
+        var start = new Date(fromDate);
+        var end = new Date(toDate);
+        for (var d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+            var label = d.toISOString().split('T')[0];
+            days.push(label);
+            var total = 0;
+            for (var i = 0; i < orders.length; i++) {
+                if (orders[i].order_date === label) total += Number(orders[i].total_amount) || 0;
+            }
+            sales.push(total);
+        }
+        if (typeof Chart === 'undefined') return;
+        _charts['chart-sales'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: days,
+                datasets: [{
+                    label: 'المبيعات (EGP)',
+                    data: sales,
+                    borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37,99,235,0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'top' } } }
+        });
+    }
+
+    function renderRegionChart(orders) {
+        var canvas = byId('chart-region');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        var map = {};
+        for (var i = 0; i < orders.length; i++) {
+            var area = orders[i].area || 'غير محدد';
+            map[area] = (map[area] || 0) + Number(orders[i].total_amount) || 0;
+        }
+        var labels = [], data = [];
+        for (var k in map) { labels.push(k); data.push(map[k]); }
+        if (typeof Chart === 'undefined') return;
+        _charts['chart-region'] = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{ data: data, backgroundColor: ['#2563eb','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16'] }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'right' } } }
+        });
+    }
+
+    function renderTopItemsChart(details) {
+        var canvas = byId('chart-items');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        var map = {};
+        for (var i = 0; i < details.length; i++) {
+            var code = details[i].item_code || details[i].item_name;
+            var name = details[i].item_name || code;
+            var total = (Number(details[i].qty) || 0) * (Number(details[i].unit_price) || 0);
+            if (!map[code]) map[code] = { name: name, total: 0 };
+            map[code].total += total;
+        }
+        var arr = [];
+        for (var k in map) arr.push(map[k]);
+        arr.sort(function(a,b){ return b.total - a.total; });
+        arr = arr.slice(0, 10);
+        if (typeof Chart === 'undefined') return;
+        _charts['chart-items'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: arr.map(function(a){ return a.name; }),
+                datasets: [{ label: 'الإجمالي (EGP)', data: arr.map(function(a){ return a.total; }), backgroundColor: '#8b5cf6' }]
+            },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    }
+
+    function renderTopCustomersChart(orders) {
+        var canvas = byId('chart-customers');
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        var map = {};
+        for (var i = 0; i < orders.length; i++) {
+            var name = orders[i].customer_name || 'غير محدد';
+            map[name] = (map[name] || 0) + Number(orders[i].total_amount) || 0;
+        }
+        var arr = [];
+        for (var k in map) arr.push({ name: k, total: map[k] });
+        arr.sort(function(a,b){ return b.total - a.total; });
+        arr = arr.slice(0, 10);
+        if (typeof Chart === 'undefined') return;
+        _charts['chart-customers'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: arr.map(function(a){ return a.name; }),
+                datasets: [{ label: 'الإجمالي (EGP)', data: arr.map(function(a){ return a.total; }), backgroundColor: '#f59e0b' }]
+            },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
     }
 
     return { render: render };
