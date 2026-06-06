@@ -912,59 +912,150 @@ var RW_Items = (function() {
     function _viewImage(url) { Swal.fire({ imageUrl: url, imageWidth: 800, imageAlt: 'صورة الصنف', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' } }); }
 
     function openModal(itemCode) {
-        const item = itemCode ? itemsData.find(i => i.item_code === itemCode) : null;
-        const isEdit = !!item;
-        const title = isEdit ? 'تعديل الصنف' : 'إضافة صنف جديد';
-        let html = `<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden">
-        <div class="bg-blue-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fa-solid fa-box-open ml-2"></i>${title}</h3><button onclick="Swal.close()"><i class="fa-solid fa-xmark text-xl"></i></button></div>
-        <form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="flex flex-col items-center bg-gray-50 p-4 rounded-xl border"><label class="text-sm font-bold w-full text-right">صورة المنتج</label><div class="w-48 h-48 rounded-xl border-2 border-dashed bg-white relative group mt-2"><img id="item-img-preview" src="${item?.image_url||'https://via.placeholder.com/200'}" class="w-full h-full object-cover cursor-pointer" onclick="RW_Items._viewImage(this.src)"><div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer" onclick="document.getElementById('item-image-file').click()"><span class="text-white text-sm">تغيير الصورة</span></div></div><input type="file" id="item-image-file" accept="image/*" class="mt-3 text-xs"></div>
-        <div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <input type="hidden" id="item-code-hidden" value="${item?.item_code||''}">
-        <div class="flex flex-col"><label>الباركود</label><input id="item-barcode" value="${item?.barcode||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>اسم المنتج *</label><input id="item-name" value="${item?.name||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>التصنيف</label><input id="item-cat" value="${item?.category||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>الوحدة الأساسية</label><input id="item-unit" value="${item?.unit||'حبة'}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>سعر البيع</label><input id="item-price" type="number" value="${item?.sales_price||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>السعر القديم</label><input id="item-oprice" type="number" value="${item?.old_price||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>المخزون الافتتاحي</label><input id="item-stock" type="number" value="${item?.qty||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>حد إعادة الطلب</label><input id="item-reorder" type="number" value="${item?.reorder_point||5}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>الحد الأقصى</label><input id="item-maxqty" type="number" value="${item?.max_qty||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>الوحدة البديلة</label><input id="item-altunit" value="${item?.alt_unit||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>عدد الوحدات البديلة</label><input id="item-altqty" type="number" value="${item?.alt_unit_qty||0}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>الوزن</label><input id="item-weight" value="${item?.weight_kg||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        <div class="flex flex-col"><label>الحجم</label><input id="item-vol" value="${item?.volume_m3||''}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-        </div></div>
-        <div class="flex flex-col"><label>الوصف</label><textarea id="item-desc" rows="2" class="p-2.5 bg-gray-50 border rounded-lg">${item?.description||''}</textarea></div>
-        <div class="flex items-center gap-8 p-4 bg-gray-50 rounded-xl">
-            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="item-is-active" ${item?.is_active !== false ? 'checked' : ''}><span class="font-bold text-sm">نشط</span></label>
-            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="item-show-in-store" ${item?.show_in_store !== false ? 'checked' : ''}><span class="font-bold text-sm">الظهور في المتجر الإلكتروني</span></label>
-        </div>
-        <div class="flex justify-end gap-3 pt-4 border-t">
-        ${isEdit ? '<button type="button" id="btn-delete-item" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fa-solid fa-trash ml-1"></i> حذف</button>' : ''}
-        <button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>
-        <button type="button" id="btn-save-item" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold">حفظ</button>
-        </div></form></div></div>`;
+        var item = itemCode ? itemsData.find(function(i) { return i.item_code === itemCode; }) : null;
+        var isEdit = !!item;
+        var title = isEdit ? 'تعديل الصنف' : 'إضافة صنف جديد';
+        var html = '<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">' +
+        '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden">' +
+        '<div class="bg-blue-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fa-solid fa-box-open ml-2"></i>' + title + '</h3><button onclick="Swal.close()"><i class="fa-solid fa-xmark text-xl"></i></button></div>' +
+        '<form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">' +
+        '<div class="grid grid-cols-1 md:grid-cols-3 gap-6">' +
+        '<div class="flex flex-col items-center bg-gray-50 p-4 rounded-xl border"><label class="text-sm font-bold w-full text-right">صورة المنتج</label><div class="w-48 h-48 rounded-xl border-2 border-dashed bg-white relative group mt-2"><img id="item-img-preview" src="' + (item && item.image_url ? item.image_url : 'https://via.placeholder.com/200') + '" class="w-full h-full object-cover cursor-pointer" onclick="RW_Items._viewImage(this.src)"><div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer" onclick="document.getElementById(\'item-image-file\').click()"><span class="text-white text-sm">تغيير الصورة</span></div></div><input type="file" id="item-image-file" accept="image/*" class="mt-3 text-xs"></div>' +
+        '<div class="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">' +
+        '<input type="hidden" id="item-code-hidden" value="' + (item && item.item_code ? item.item_code : '') + '">' +
+        '<div class="flex flex-col"><label>الباركود</label><input id="item-barcode" value="' + (item && item.barcode ? item.barcode : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>اسم المنتج *</label><input id="item-name" value="' + (item && item.name ? item.name : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>التصنيف</label><input id="item-cat" value="' + (item && item.category ? item.category : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>الوحدة الأساسية</label><input id="item-unit" value="' + (item && item.unit ? item.unit : 'حبة') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>سعر البيع</label><input id="item-price" type="number" value="' + (item && item.sales_price ? item.sales_price : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>السعر القديم</label><input id="item-oprice" type="number" value="' + (item && item.old_price ? item.old_price : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>المخزون الافتتاحي</label><input id="item-stock" type="number" value="' + (item && item.qty ? item.qty : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>حد إعادة الطلب</label><input id="item-reorder" type="number" value="' + (item && item.reorder_point ? item.reorder_point : 5) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>الحد الأقصى</label><input id="item-maxqty" type="number" value="' + (item && item.max_qty ? item.max_qty : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>الوحدة البديلة</label><input id="item-altunit" value="' + (item && item.alt_unit ? item.alt_unit : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>عدد الوحدات البديلة</label><input id="item-altqty" type="number" value="' + (item && item.alt_unit_qty ? item.alt_unit_qty : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>الوزن</label><input id="item-weight" value="' + (item && item.weight_kg ? item.weight_kg : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>الحجم</label><input id="item-vol" value="' + (item && item.volume_m3 ? item.volume_m3 : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '</div></div>' +
+        '<div class="flex flex-col"><label>الوصف</label><textarea id="item-desc" rows="2" class="p-2.5 bg-gray-50 border rounded-lg">' + (item && item.description ? item.description : '') + '</textarea></div>' +
+        '<div class="flex items-center gap-8 p-4 bg-gray-50 rounded-xl">' +
+        '<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="item-is-active" ' + (item && item.is_active !== false ? 'checked' : '') + '><span class="font-bold text-sm">نشط</span></label>' +
+        '<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="item-show-in-store" ' + (item && item.show_in_store !== false ? 'checked' : '') + '><span class="font-bold text-sm">الظهور في المتجر الإلكتروني</span></label>' +
+        '</div>' +
+        '<div class="flex justify-end gap-3 pt-4 border-t">' +
+        (isEdit ? '<button type="button" id="btn-delete-item" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fa-solid fa-trash ml-1"></i> حذف</button>' : '') +
+        '<button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>' +
+        '<button type="button" id="btn-save-item" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold">حفظ</button>' +
+        '</div></form></div></div>';
 
-        Swal.fire({ html, width: '1000px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
-            didOpen: () => {
-                let selectedFile = null;
-                byId('item-image-file')?.addEventListener('change', function() {
-                    selectedFile = this.files[0];
-                    if (selectedFile) {
-                        const reader = new FileReader();
-                        reader.onload = e => { const preview = byId('item-img-preview'); if (preview) preview.src = e.target.result; };
-                        reader.readAsDataURL(selectedFile);
-                    }
-                });
+        Swal.fire({ html: html, width: '1000px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
+            didOpen: function() {
+                var selectedFile = null;
+                var fileInput = byId('item-image-file');
+                if (fileInput) {
+                    fileInput.addEventListener('change', function() {
+                        selectedFile = this.files[0];
+                        if (selectedFile) {
+                            var reader = new FileReader();
+                            reader.onload = function(e) {
+                                var preview = byId('item-img-preview');
+                                if (preview) preview.src = e.target.result;
+                            };
+                            reader.readAsDataURL(selectedFile);
+                        }
+                    });
+                }
 
                 byId('btn-save-item').addEventListener('click', function() { RW_Items._handleSave(item, isEdit, selectedFile); });
-                if (isEdit) { var deleteBtn = byId('btn-delete-item'); if (deleteBtn) deleteBtn.addEventListener('click', function() { RW_Items._handleDelete(item); }); }
+                if (isEdit) {
+                    var deleteBtn = byId('btn-delete-item');
+                    if (deleteBtn) deleteBtn.addEventListener('click', function() { RW_Items._handleDelete(item); });
+                }
             }
         });
     }
+
+    var _handleSave = function(item, isEdit, selectedFile) {
+        var name = byId('item-name').value.trim();
+        if (!name) { showToast('اسم الصنف مطلوب', 'error'); return; }
+        showLoader('جاري الحفظ...');
+        var imageUrl = item ? item.image_url : null;
+        var uploadAndSave = function() {
+            var payload = {
+                name: name,
+                barcode: byId('item-barcode').value.trim(),
+                category: byId('item-cat').value.trim(),
+                unit: byId('item-unit').value.trim(),
+                sales_price: parseFloat(byId('item-price').value) || 0,
+                old_price: parseFloat(byId('item-oprice').value) || 0,
+                qty: parseFloat(byId('item-stock').value) || 0,
+                reorder_point: parseFloat(byId('item-reorder').value) || 5,
+                max_qty: parseFloat(byId('item-maxqty').value) || 0,
+                alt_unit: byId('item-altunit').value.trim(),
+                alt_unit_qty: parseFloat(byId('item-altqty').value) || 0,
+                weight_kg: parseFloat(byId('item-weight').value) || 0,
+                volume_m3: parseFloat(byId('item-vol').value) || 0,
+                description: byId('item-desc').value.trim(),
+                image_url: imageUrl,
+                is_active: byId('item-is-active').checked,
+                show_in_store: byId('item-show-in-store').checked
+            };
+            supabase.auth.getSession().then(function(ses) {
+                var token = ses.data.session ? ses.data.session.access_token : null;
+                fetch(SUPABASE_URL + '/functions/v1/save-item', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token},
+                    body: JSON.stringify({ item: payload, isEdit: isEdit, item_code: item ? item.item_code : null })
+                }).then(function(res) { return res.json(); }).then(function(json) {
+                    hideLoader();
+                    if (json.success) {
+                        RW_Audit_log(isEdit ? 'update' : 'create', 'items', json.item_code || (item ? item.item_code : ''), isEdit ? item : null, payload);
+                        showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success');
+                        Swal.close();
+                        RW_Data.loadItems().then(function(newData) { itemsData = newData; renderTable(itemsData); });
+                    } else {
+                        showToast(json.error || 'فشل الحفظ', 'error');
+                    }
+                }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+            });
+        };
+        if (selectedFile) {
+            var fileName = 'items/' + Date.now() + '-' + selectedFile.name;
+            supabase.storage.from('product-images').upload(fileName, selectedFile, { upsert: true }).then(function(res) {
+                if (!res.error) {
+                    var urlData = supabase.storage.from('product-images').getPublicUrl(fileName);
+                    imageUrl = urlData.publicUrl;
+                }
+                uploadAndSave();
+            });
+        } else {
+            uploadAndSave();
+        }
+    };
+    var _handleDelete = function(item) {
+        Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا الصنف؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' }).then(function(confirm) {
+            if (!confirm.isConfirmed) return;
+            showLoader('جاري الحذف...');
+            supabase.auth.getSession().then(function(ses) {
+                var token = ses.data.session ? ses.data.session.access_token : null;
+                fetch(SUPABASE_URL + '/functions/v1/delete-item', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token},
+                    body: JSON.stringify({ item_code: item.item_code })
+                }).then(function(res) { return res.json(); }).then(function(json) {
+                    hideLoader();
+                    if (json.success) {
+                        RW_Audit_log('delete', 'items', item.item_code, item, null);
+                        showToast('تم الحذف', 'success');
+                        Swal.close();
+                        RW_Data.loadItems().then(function(newData) { itemsData = newData; renderTable(itemsData); });
+                    } else {
+                        showToast(json.error || 'فشل الحذف', 'error');
+                    }
+                }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+            });
+        });
+    };
 
     return { render: render, _sort: _sort, _openModal: openModal, _viewImage: _viewImage, _handleSave: _handleSave, _handleDelete: _handleDelete };
 })();
