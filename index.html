@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:'Cairo',sans-serif;background:#f8fafc;overflow-x:hidden;color:#111827}:root{--rw-primary:#2563eb;--rw-primary-dark:#1d4ed8;--rw-primary-light:#eff6ff;--rw-success:#10b981;--rw-warning:#f59e0b;--rw-danger:#ef4444;--rw-info:#06b6d4;--rw-dark:#111827;--rw-dark-2:#1f2937;--rw-gray:#6b7280;--rw-gray-light:#e5e7eb;--rw-bg:#f8fafc;--rw-card:#ffffff;--rw-sidebar:#ffffff;--rw-sidebar-hover:#f1f5f9;--rw-radius:22px;--rw-shadow:0 10px 30px rgba(0,0,0,0.06);--transition-speed:0.3s}
     .rw-login-page{width:100%;min-height:100vh;display:flex;position:relative;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 35%,#2563eb 100%)}
@@ -1719,6 +1720,7 @@ async function render() {
                 '<td class="p-3">' + (emp.allowed_branch_ids||'*') + '</td>' +
             '</tr>';
         });
+    }
 
     function filterTable() {
         var searchInput = byId('emp-search');
@@ -2654,38 +2656,6 @@ var RW_Orders = (function() {
             '</tr>';
         });
     }
-            var o = data[i];
-            var sc = '';
-            if (o.order_status === 'Draft') sc = 'bg-yellow-100 text-yellow-700';
-            else if (o.order_status === 'Confirmed') sc = 'bg-blue-100 text-blue-700';
-            else if (o.order_status === 'Pending') sc = 'bg-purple-100 text-purple-700';
-            else if (o.order_status === 'Invoiced' || o.order_status === 'Delivered') sc = 'bg-green-100 text-green-700';
-            else if (o.order_status === 'Returned') sc = 'bg-orange-100 text-orange-700';
-            else if (o.order_status === 'Cancelled') sc = 'bg-red-100 text-red-700';
-            else sc = 'bg-gray-100 text-gray-700';
-
-            var actions = '';
-            if (o.order_status === 'Draft') {
-                actions += '<button onclick="event.stopPropagation();RW_Orders._confirm(\'' + o.order_code + '\')" class="text-green-600 mx-1" title="تأكيد"><i class="fa-solid fa-check-circle"></i></button>';
-            }
-            if (o.order_status === 'Draft' || o.order_status === 'Confirmed') {
-                actions += '<button onclick="event.stopPropagation();RW_Orders._delete(\'' + o.order_code + '\')" class="text-red-500 mx-1" title="حذف"><i class="fa-solid fa-trash-can"></i></button>';
-            }
-
-            html += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Orders._showDetails(\'' + o.order_code + '\')">' +
-                '<td class="p-3 text-center" onclick="event.stopPropagation()"><input type="checkbox" class="order-checkbox" data-id="' + o.order_code + '"></td>' +
-                '<td class="p-3 text-center font-bold text-blue-600">' + (o.order_code || '') + '</td>' +
-                '<td class="p-3 text-center">' + (o.order_date ? new Date(o.order_date).toLocaleDateString('ar-EG') : '') + '</td>' +
-                '<td class="p-3 text-center"><p class="font-semibold">' + (o.customer_name || '') + '</p><p class="text-xs text-gray-500">' + (o.area || '') + '</p></td>' +
-                '<td class="p-3 text-center font-bold">' + (o.itemsCount || 0) + '</td>' +
-                '<td class="p-3 text-center font-bold">' + Number(o.total_amount || 0).toLocaleString() + ' EGP</td>' +
-                '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-semibold ' + sc + '">' + (o.order_status || '') + '</span></td>' +
-                '<td class="p-3 text-center">' + (o.runsheet_id || '---') + '</td>' +
-                '<td class="p-3 text-center">' + actions + '</td>' +
-            '</tr>';
-        }
-        safeHTML(tbody, html);
-    }
 
     // ========== الإجراءات الأساسية ==========
     function _getSelectedOrders() {
@@ -3113,19 +3083,17 @@ var RW_Runsheets = (function() {
         if (!tb) return;
         if (!d.length) {
             safeHTML(tb, '<tr><td colspan="7" class="text-center py-8">لا توجد رانشيتات</td></tr>');
+            var pc = byId('rs-table-body-controls');
+            if (pc) safeHTML(pc, '');
             return;
         }
-        var h = '';
-        for (var i = 0; i < d.length; i++) {
-            var r = d[i];
+        RW_Table.paginate('rs-table-body', d, 1, 50, function(r) {
             var sc = '';
             if (r.status === 'Open') sc = 'bg-blue-100 text-blue-700';
             else if (r.status === 'Picking' || r.status === 'Picked') sc = 'bg-purple-100 text-purple-700';
             else if (r.status === 'Loading' || r.status === 'Loaded') sc = 'bg-orange-100 text-orange-700';
             else if (r.status === 'Delivering' || r.status === 'Delivered') sc = 'bg-green-100 text-green-700';
             else sc = 'bg-gray-100 text-gray-600';
-
-            // إجراءات حسب الحالة
             var btns = '';
             if (r.status === 'Open') {
                 btns += '<button onclick="event.stopPropagation(); RW_Runsheets._assignDriverVehicle(\'' + r.runsheet_code + '\')" class="bg-yellow-500 text-white px-2 py-1 rounded text-xs ml-1" title="تعيين السائق والمركبة"><i class="fa-solid fa-user-check"></i> تعيين</button>';
@@ -3142,12 +3110,10 @@ var RW_Runsheets = (function() {
             if (r.status === 'Delivered') {
                 btns += '<button onclick="event.stopPropagation(); RW_Warehouse._startReturn(\'' + r.runsheet_code + '\')" class="bg-red-600 text-white px-2 py-1 rounded text-xs ml-1">بدء المرتجعات</button>';
             }
-            // زر التفريغ متاح عند Loaded
             if (r.status === 'Loaded') {
                 btns += '<button onclick="event.stopPropagation(); RW_Warehouse._confirmUnload(\'' + r.runsheet_code + '\')" class="bg-gray-600 text-white px-2 py-1 rounded text-xs ml-1"><i class="fa-solid fa-box-archive"></i></button>';
             }
-
-            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Runsheets._details(\'' + r.runsheet_code + '\')">' +
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Runsheets._details(\'' + r.runsheet_code + '\')">' +
                 '<td class="p-3 text-center font-bold text-emerald-600">' + (r.runsheet_code||'') + '</td>' +
                 '<td class="p-3 text-center">' + (r.run_date ? new Date(r.run_date).toLocaleDateString('ar-EG') : '') + '</td>' +
                 '<td class="p-3 text-center">' + (r.driver_id ? '<span class="text-xs font-bold">' + (driversCache.find(function(d){ return d.email === r.driver_id; })||{}).name || r.driver_id : '---') + '</td>' +
@@ -3156,8 +3122,7 @@ var RW_Runsheets = (function() {
                 '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs ' + sc + '">' + (r.status||'') + '</span></td>' +
                 '<td class="p-3 text-center">' + btns + '</td>' +
             '</tr>';
-        }
-        safeHTML(tb, h);
+        });
     }
 
     async function _assignDriverVehicle(runsheetCode) {
@@ -3817,15 +3782,13 @@ var RW_Warehouse = (function() {
     function _applyPicking() {
         var d = window._pickingData || [];
         var id = (byId('pk-f-id')?.value||'').toLowerCase(), st = byId('pk-f-st')?.value;
-        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
-        if (st) d = d.filter(r => r.status === st);
+        if (id) d = d.filter(function(r) { return (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1; });
+        if (st) d = d.filter(function(r) { return r.status === st; });
         var tb = byId('pk-table'); if (!tb) return;
         if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات محضّرة</td></tr>'); return; }
-        var h = '';
-        d.forEach(r => {
-            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showPickingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">Picked</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        RW_Table.paginate('pk-table', d, 1, 50, function(r) {
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showPickingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">Picked</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
         });
-        safeHTML(tb, h);
     }
     async function _showPickingDetails(code) {
         showLoader('جاري التحميل...');
@@ -3859,15 +3822,13 @@ var RW_Warehouse = (function() {
     function _applyLoading() {
         var d = window._loadingData || [];
         var id = (byId('ld-f-id')?.value||'').toLowerCase(), st = byId('ld-f-st')?.value;
-        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
-        if (st) d = d.filter(r => r.status === st);
+        if (id) d = d.filter(function(r) { return (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1; });
+        if (st) d = d.filter(function(r) { return r.status === st; });
         var tb = byId('ld-table'); if (!tb) return;
         if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات محمّلة</td></tr>'); return; }
-        var h = '';
-        d.forEach(r => {
-            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showLoadingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-700">Loaded</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        RW_Table.paginate('ld-table', d, 1, 50, function(r) {
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showLoadingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-700">Loaded</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
         });
-        safeHTML(tb, h);
     }
     async function _showLoadingDetails(code) {
         showLoader('جاري التحميل...');
@@ -3900,14 +3861,12 @@ var RW_Warehouse = (function() {
     function _applyDelivery() {
         var d = window._deliveryData || [];
         var id = (byId('dv-f-id')?.value||'').toLowerCase();
-        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        if (id) d = d.filter(function(r) { return (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1; });
         var tb = byId('dv-table'); if (!tb) return;
         if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات موصّلة</td></tr>'); return; }
-        var h = '';
-        d.forEach(r => {
-            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showDeliveryDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">Delivered</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        RW_Table.paginate('dv-table', d, 1, 50, function(r) {
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showDeliveryDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">Delivered</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
         });
-        safeHTML(tb, h);
     }
     async function _showDeliveryDetails(code) {
         showLoader('جاري التحميل...');
@@ -3940,14 +3899,12 @@ var RW_Warehouse = (function() {
     function _applyReturn() {
         var d = window._returnData || [];
         var id = (byId('rt-f-id')?.value||'').toLowerCase();
-        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        if (id) d = d.filter(function(r) { return (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1; });
         var tb = byId('rt-table'); if (!tb) return;
         if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات مرتجعة</td></tr>'); return; }
-        var h = '';
-        d.forEach(r => {
-            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showReturnDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-rose-100 text-rose-700">Returned</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        RW_Table.paginate('rt-table', d, 1, 50, function(r) {
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showReturnDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-rose-100 text-rose-700">Returned</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
         });
-        safeHTML(tb, h);
     }
     async function _showReturnDetails(code) {
         showLoader('جاري التحميل...');
@@ -3980,14 +3937,12 @@ var RW_Warehouse = (function() {
     function _applyUnloading() {
         var d = window._unloadingData || [];
         var id = (byId('ul-f-id')?.value||'').toLowerCase();
-        if (id) d = d.filter(r => (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1);
+        if (id) d = d.filter(function(r) { return (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1; });
         var tb = byId('ul-table'); if (!tb) return;
         if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات مفرّغة</td></tr>'); return; }
-        var h = '';
-        d.forEach(r => {
-            h += '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showUnloadingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">' + (r.status||'') + '</span></td><td class="p-3 text-center"><button class="text-blue-600" onclick="RW_Warehouse._showUnloadingDetails(\'' + r.runsheet_code + '\')"><i class="fa-solid fa-eye"></i></button></td></tr>';
+        RW_Table.paginate('ul-table', d, 1, 50, function(r) {
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showUnloadingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">' + (r.status||'') + '</span></td><td class="p-3 text-center"><button class="text-blue-600" onclick="RW_Warehouse._showUnloadingDetails(\'' + r.runsheet_code + '\')"><i class="fa-solid fa-eye"></i></button></td></tr>';
         });
-        safeHTML(tb, h);
     }
     async function _showUnloadingDetails(code) { showToast('التفاصيل قيد التطوير', 'info'); }
 
