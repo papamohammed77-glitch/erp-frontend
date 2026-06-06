@@ -1257,39 +1257,71 @@ var RW_Suppliers = (function() {
 
         Swal.fire({ html, width: '900px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
             didOpen: () => {
-                byId('btn-save-supp').addEventListener('click', async () => {
-                    const name = byId('supp-name').value.trim();
-                    if (!name) { showToast('اسم المورد مطلوب', 'error'); return; }
-                    const payload = { name, phone: byId('supp-phone').value.trim(), area: byId('supp-area').value.trim(), address: byId('supp-address').value.trim(), supplier_type: byId('supp-type').value, payment_type: byId('supp-payment').value, accounts_payable: parseFloat(byId('supp-balance').value)||0, contact_person: byId('supp-contact').value.trim(), purchase_rep: byId('supp-rep').value.trim(), notes: byId('supp-notes').value.trim() };
-                    showLoader('جاري الحفظ...');
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const token = session?.access_token;
-                    try {
-                        const res = await fetch(`${SUPABASE_URL}/functions/v1/save-supplier`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ supplier: payload, isEdit, supplier_code: s?.supplier_code }) });
-                        const json = await res.json();
-                        hideLoader();
-                        if (json.success) { showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success'); Swal.close(); const { data: d } = await supabase.from('suppliers').select('*'); data = d || []; renderTable(data); }
-                        else { showToast(json.error || 'فشل الحفظ', 'error'); }
-                    } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); console.error(e); }
-                });
-                if (isEdit) byId('btn-delete-supp')?.addEventListener('click', async () => {
-                    const confirm = await Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا المورد؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' });
-                    if (!confirm.isConfirmed) return;
-                    showLoader('جاري الحذف...');
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const token = session?.access_token;
-                    try {
-                        const res = await fetch(`${SUPABASE_URL}/functions/v1/delete-supplier`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ supplier_code: s.supplier_code }) });
-                        const json = await res.json();
-                        hideLoader();
-                        if (json.success) { showToast('تم الحذف', 'success'); Swal.close(); const { data: d } = await supabase.from('suppliers').select('*'); data = d || []; renderTable(data); }
-                        else { showToast(json.error || 'فشل الحذف', 'error'); }
-                    } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
-                });
+                byId('btn-save-supp').addEventListener('click', function() { RW_Suppliers._handleSave(s, isEdit); });
+                if (isEdit) { var deleteBtn = byId('btn-delete-supp'); if (deleteBtn) deleteBtn.addEventListener('click', function() { RW_Suppliers._handleDelete(s); }); }
             }
         });
     }
-    return { render, _sort, _openModal: openModal };
+    var _handleSave = function(s, isEdit) {
+        var name = byId('supp-name').value.trim();
+        if (!name) { showToast('اسم المورد مطلوب', 'error'); return; }
+        var payload = {
+            name: name,
+            phone: byId('supp-phone').value.trim(),
+            area: byId('supp-area').value.trim(),
+            address: byId('supp-address').value.trim(),
+            supplier_type: byId('supp-type').value,
+            payment_type: byId('supp-payment').value,
+            accounts_payable: parseFloat(byId('supp-balance').value) || 0,
+            contact_person: byId('supp-contact').value.trim(),
+            purchase_rep: byId('supp-rep').value.trim(),
+            notes: byId('supp-notes').value.trim()
+        };
+        showLoader('جاري الحفظ...');
+        supabase.auth.getSession().then(function(sessionRes) {
+            var token = sessionRes.data && sessionRes.data.session ? sessionRes.data.session.access_token : null;
+            return fetch(SUPABASE_URL + '/functions/v1/save-supplier', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify({ supplier: payload, isEdit: isEdit, supplier_code: s ? s.supplier_code : null })
+            }).then(function(res) { return res.json(); });
+        }).then(function(json) {
+            hideLoader();
+            if (json.success) {
+                RW_Audit_log(isEdit ? 'update' : 'create', 'suppliers', json.supplier_code || (s ? s.supplier_code : ''), isEdit ? s : null, payload);
+                showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success');
+                Swal.close();
+                supabase.from('suppliers').select('*').then(function(res) { data = res.data || []; renderTable(data); });
+            } else {
+                showToast(json.error || 'فشل الحفظ', 'error');
+            }
+        }).catch(function(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); console.error(e); });
+    };
+    var _handleDelete = function(s) {
+        Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا المورد؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' }).then(function(confirm) {
+            if (!confirm.isConfirmed) return;
+            showLoader('جاري الحذف...');
+            supabase.auth.getSession().then(function(sessionRes) {
+                var token = sessionRes.data && sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                return fetch(SUPABASE_URL + '/functions/v1/delete-supplier', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                    body: JSON.stringify({ supplier_code: s.supplier_code })
+                }).then(function(res) { return res.json(); });
+            }).then(function(json) {
+                hideLoader();
+                if (json.success) {
+                    RW_Audit_log('delete', 'suppliers', s.supplier_code, s, null);
+                    showToast('تم الحذف', 'success');
+                    Swal.close();
+                    supabase.from('suppliers').select('*').then(function(res) { data = res.data || []; renderTable(data); });
+                } else {
+                    showToast(json.error || 'فشل الحذف', 'error');
+                }
+            }).catch(function(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); });
+        });
+    };
+    return { render: render, _sort: _sort, _openModal: openModal, _handleSave: _handleSave, _handleDelete: _handleDelete };
 })();
 window.RW_Suppliers = RW_Suppliers;
 
