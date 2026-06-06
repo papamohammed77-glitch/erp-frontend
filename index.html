@@ -960,39 +960,7 @@ var RW_Items = (function() {
                     }
                 });
 
-                byId('btn-save-item').addEventListener('click', async () => {
-                    const name = byId('item-name').value.trim();
-                    if (!name) { showToast('اسم الصنف مطلوب', 'error'); return; }
-                    showLoader('جاري الحفظ...');
-                    let imageUrl = item?.image_url || null;
-                    // رفع الصورة إلى Supabase Storage إذا وُجدت
-                    if (selectedFile) {
-                        const fileName = `items/${Date.now()}-${selectedFile.name}`;
-                        const { data: uploadData, error: uploadError } = await supabase.storage.from('product-images').upload(fileName, selectedFile, { upsert: true });
-                        if (!uploadError) {
-                            const { data: publicUrl } = supabase.storage.from('product-images').getPublicUrl(fileName);
-                            imageUrl = publicUrl.publicUrl;
-                        } else { console.error('Upload error:', uploadError); }
-                    }
-                    const payload = {
-                        name, barcode: byId('item-barcode').value.trim(), category: byId('item-cat').value.trim(), unit: byId('item-unit').value.trim(),
-                        sales_price: parseFloat(byId('item-price').value)||0, old_price: parseFloat(byId('item-oprice').value)||0,
-                        qty: parseFloat(byId('item-stock').value)||0, reorder_point: parseFloat(byId('item-reorder').value)||5,
-                        max_qty: parseFloat(byId('item-maxqty').value)||0, alt_unit: byId('item-altunit').value.trim(),
-                        alt_unit_qty: parseFloat(byId('item-altqty').value)||0, weight_kg: parseFloat(byId('item-weight').value)||0,
-                        volume_m3: parseFloat(byId('item-vol').value)||0, description: byId('item-desc').value.trim(),
-                        image_url: imageUrl, is_active: byId('item-is-active').checked, show_in_store: byId('item-show-in-store').checked
-                    };
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const token = session?.access_token;
-                    try {
-                        const res = await fetch(`${SUPABASE_URL}/functions/v1/save-item`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ item: payload, isEdit, item_code: item?.item_code }) });
-                        const json = await res.json();
-                        hideLoader();
-                        if (json.success) { showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success'); Swal.close(); itemsData = await RW_Data.loadItems(); renderTable(itemsData); }
-                        else { showToast(json.error || 'فشل الحفظ', 'error'); }
-                    } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); console.error(e); }
-                });
+                byId('btn-save-item').addEventListener('click', function() { RW_Items._handleSave(item, isEdit, selectedFile); });
                 if (isEdit) byId('btn-delete-item')?.addEventListener('click', async () => {
                     const confirm = await Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا الصنف؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' });
                     if (!confirm.isConfirmed) return;
