@@ -168,6 +168,255 @@ var RW_SUPABASE_CLIENT = (function () {
     });
 })();
 var supabase = RW_SUPABASE_CLIENT;
+// ============================================================
+// RW_Audit_log – تسجيل الأحداث يدوياً (Fire-and-forget)
+// ============================================================
+function RW_Audit_log(action, tableName, recordId, oldData, newData) {
+    try {
+        var payload = {
+            action: action,
+            table_name: tableName || null,
+            record_id: recordId || null,
+            old_data: oldData || null,
+            new_data: newData || null
+        };
+        // استخدام Edge Function بصمت
+        if (typeof supabase !== 'undefined' && supabase && supabase.functions) {
+            supabase.functions.invoke('log-action', { body: payload }).then(function(res) {
+                if (res.error) {
+                    console.warn('Audit log failed:', res.error.message);
+                }
+            }).catch(function(e) {
+                console.warn('Audit log error:', e);
+            });
+        }
+    } catch (e) {
+        // لا توقف سير العمل
+        console.warn('Audit log exception:', e);
+    }
+}
+
+// ============================================================
+// RW_Permissions_check – التحقق من صلاحية محددة
+// ============================================================
+function RW_Permissions_check(permissionKey) {
+    try {
+        // المالك لديه صلاحية مطلقة
+        if (window.RW_STATE && RW_STATE.app && RW_STATE.app.currentUser) {
+            if (RW_STATE.app.currentUser.isOwner === true) {
+                return true;
+            }
+        }
+        // إذا كانت الصلاحيات تحتوي على نجمة = صلاحية مطلقة
+        if (window.RW_STATE && Array.isArray(RW_STATE.permissions)) {
+            if (RW_STATE.permissions.indexOf('*') !== -1) {
+                return true;
+            }
+            // البحث عن المفتاح
+            return RW_STATE.permissions.indexOf(permissionKey) !== -1;
+        }
+        return false;
+    } catch (e) {
+        console.warn('Permission check error:', e);
+        return false;
+    }
+}
+
+// ============================================================
+// RW_Permissions_applyUI – إخفاء/إظهار العناصر حسب الصلاحية
+// ============================================================
+function RW_Permissions_applyUI() {
+    try {
+        // معالجة الأزرار التي تحمل data-btn-permission
+        var buttons = document.querySelectorAll('[data-btn-permission]');
+        for (var i = 0; i < buttons.length; i++) {
+            var btn = buttons[i];
+            var perm = btn.getAttribute('data-btn-permission');
+            if (perm && !RW_Permissions_check(perm)) {
+                btn.style.display = 'none';
+            }
+        }
+
+        // معالجة الأقسام التي تحمل data-section-permission
+        var sections = document.querySelectorAll('[data-section-permission]');
+        for (var j = 0; j < sections.length; j++) {
+            var sec = sections[j];
+            var perm = sec.getAttribute('data-section-permission');
+            if (perm && !RW_Permissions_check(perm)) {
+                sec.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        console.warn('Apply UI permissions error:', e);
+    }
+}
+
+// ============================================================
+// RW_Audit_renderTab – تبويب سجل التدقيق (للمالك فقط)
+// ============================================================
+function RW_Audit_renderTab() {
+    var container = byId('rw-page-container');
+    if (!container) return;
+    safeText(byId('rw-header-title'), 'سجل التدقيق');
+    safeText(byId('rw-header-subtitle'), 'جميع الأحداث والتغييرات في النظام');
+
+    var html = '<div class="p-4">';
+    html += '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">';
+    html += '<div class="flex flex-wrap gap-2">';
+    html += '<input type="text" id="audit-search" placeholder="بحث بالبريد أو الجدول..." class="p-2 border rounded-lg text-sm w-64" oninput="RW_Audit_filterTable()">';
+    html += '<select id="audit-filter-action" class="p-2 border rounded-lg text-sm" onchange="RW_Audit_filterTable()"><option value="">كل الإجراءات</option><option value="create">إنشاء</option><option value="update">تعديل</option><option value="delete">حذف</option><option value="login">دخول</option><option value="logout">خروج</option></select>';
+    html += '<input type="date" id="audit-filter-from" class="p-2 border rounded-lg text-sm" onchange="RW_Audit_filterTable()">';
+    html += '<input type="date" id="audit-filter-to" class="p-2 border rounded-lg text-sm" onchange="RW_Audit_filterTable()">';
+    html += '<button onclick="RW_Audit_filterTable()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold">تطبيق</button>';
+    html += '</div></div>';
+    html += '<div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh" id="audit-table-container">';
+    html += '<div class="text-center py-10 text-gray-400">جاري تحميل سجل التدقيق...</div>';
+    html += '</div>';
+    html += '<div id="audit-pagination-controls" class="mt-3 flex justify-center gap-2"></div>';
+    html += '</div>';
+
+    safeHTML(container, html);
+    RW_Audit_loadData();
+}
+
+// متغيرات داخلية للتبويب
+var RW_AUDIT_PAGE = 1;
+var RW_AUDIT_PAGE_SIZE = 50;
+var RW_AUDIT_TOTAL = 0;
+var RW_AUDIT_DATA = [];
+
+async function RW_Audit_loadData() {
+    var container = byId('audit-table-container');
+    if (!container) return;
+    safeHTML(container, '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
+
+    try {
+        var from = (RW_AUDIT_PAGE - 1) * RW_AUDIT_PAGE_SIZE;
+        var to = from + RW_AUDIT_PAGE_SIZE - 1;
+
+        var query = supabase
+            .from('audit_log')
+            .select('*', { count: 'exact' })
+            .order('created_at', { ascending: false })
+            .range(from, to);
+
+        // تطبيق الفلاتر
+        var searchVal = (byId('audit-search') ? byId('audit-search').value : '');
+        if (searchVal) {
+            query = query.or('user_email.ilike.%' + searchVal + '%,table_name.ilike.%' + searchVal + '%');
+        }
+        var actionVal = byId('audit-filter-action') ? byId('audit-filter-action').value : '';
+        if (actionVal) {
+            query = query.eq('action', actionVal);
+        }
+        var fromDate = byId('audit-filter-from') ? byId('audit-filter-from').value : '';
+        var toDate = byId('audit-filter-to') ? byId('audit-filter-to').value : '';
+        if (fromDate) {
+            query = query.gte('created_at', fromDate);
+        }
+        if (toDate) {
+            query = query.lte('created_at', toDate + 'T23:59:59');
+        }
+
+        var res = await query;
+        if (res.error) {
+            safeHTML(container, '<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');
+            return;
+        }
+
+        RW_AUDIT_DATA = res.data || [];
+        RW_AUDIT_TOTAL = res.count || 0;
+        RW_Audit_renderTable(RW_AUDIT_DATA);
+    } catch (e) {
+        console.error('Audit load error:', e);
+        safeHTML(container, '<div class="text-center py-10 text-red-500">فشل الاتصال</div>');
+    }
+}
+
+function RW_Audit_renderTable(data) {
+    var container = byId('audit-table-container');
+    if (!container) return;
+    if (!data || data.length === 0) {
+        safeHTML(container, '<div class="text-center py-10 text-gray-400">لا توجد سجلات</div>');
+        return;
+    }
+    var html = '<table class="w-full text-sm"><thead class="bg-gray-50 sticky top-0"><tr>';
+    html += '<th class="p-2">التاريخ</th><th class="p-2">المستخدم</th><th class="p-2">الإجراء</th><th class="p-2">الجدول</th><th class="p-2">رقم السجل</th><th class="p-2 text-center">تفاصيل</th>';
+    html += '</tr></thead><tbody>';
+    for (var i = 0; i < data.length; i++) {
+        var log = data[i];
+        var dateStr = log.created_at ? new Date(log.created_at).toLocaleString('ar-EG') : '';
+        var actionLabel = log.action === 'create' ? 'إنشاء' : log.action === 'update' ? 'تعديل' : log.action === 'delete' ? 'حذف' : log.action === 'login' ? 'دخول' : log.action === 'logout' ? 'خروج' : log.action;
+        html += '<tr class="border-t hover:bg-gray-50">';
+        html += '<td class="p-2 text-xs">' + dateStr + '</td>';
+        html += '<td class="p-2">' + (log.user_email || '') + '</td>';
+        html += '<td class="p-2">' + actionLabel + '</td>';
+        html += '<td class="p-2">' + (log.table_name || '-') + '</td>';
+        html += '<td class="p-2 text-xs">' + (log.record_id ? log.record_id.substring(0, 8) + '...' : '-') + '</td>';
+        html += '<td class="p-2 text-center"><button onclick="RW_Audit_showDetails(\'' + log.id + '\')" class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td>';
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    safeHTML(container, html);
+    RW_Audit_renderPagination();
+}
+
+function RW_Audit_renderPagination() {
+    var pc = byId('audit-pagination-controls');
+    if (!pc) return;
+    var totalPages = Math.ceil(RW_AUDIT_TOTAL / RW_AUDIT_PAGE_SIZE);
+    if (totalPages <= 1) {
+        safeHTML(pc, '');
+        return;
+    }
+    var html = '<span class="text-sm text-gray-500 ml-4">صفحة ' + RW_AUDIT_PAGE + ' من ' + totalPages + ' (إجمالي ' + RW_AUDIT_TOTAL + ' سجل)</span>';
+    if (RW_AUDIT_PAGE > 1) {
+        html += '<button onclick="RW_Audit_goPage(' + (RW_AUDIT_PAGE - 1) + ')" class="px-3 py-1 border rounded-lg text-sm font-bold">السابق</button>';
+    }
+    if (RW_AUDIT_PAGE < totalPages) {
+        html += '<button onclick="RW_Audit_goPage(' + (RW_AUDIT_PAGE + 1) + ')" class="px-3 py-1 border rounded-lg text-sm font-bold">التالي</button>';
+    }
+    safeHTML(pc, html);
+}
+
+function RW_Audit_goPage(page) {
+    RW_AUDIT_PAGE = page;
+    RW_Audit_loadData();
+}
+
+function RW_Audit_filterTable() {
+    RW_AUDIT_PAGE = 1;
+    RW_Audit_loadData();
+}
+
+function RW_Audit_showDetails(logId) {
+    var log = null;
+    for (var i = 0; i < RW_AUDIT_DATA.length; i++) {
+        if (RW_AUDIT_DATA[i].id === logId) {
+            log = RW_AUDIT_DATA[i];
+            break;
+        }
+    }
+    if (!log) return;
+    var oldDataText = log.old_data ? JSON.stringify(log.old_data, null, 2) : 'لا يوجد';
+    var newDataText = log.new_data ? JSON.stringify(log.new_data, null, 2) : 'لا يوجد';
+    var html = '<div class="text-right text-sm">' +
+        '<p><b>المستخدم:</b> ' + (log.user_email || '') + '</p>' +
+        '<p><b>الإجراء:</b> ' + log.action + '</p>' +
+        '<p><b>الجدول:</b> ' + (log.table_name || '-') + '</p>' +
+        '<p><b>رقم السجل:</b> ' + (log.record_id || '-') + '</p>' +
+        '<p><b>التاريخ:</b> ' + (log.created_at ? new Date(log.created_at).toLocaleString('ar-EG') : '') + '</p>' +
+        '<div class="mt-4"><b>البيانات القديمة:</b><pre class="bg-gray-100 p-2 rounded-lg mt-1 text-xs overflow-auto max-h-32">' + oldDataText + '</pre></div>' +
+        '<div class="mt-2"><b>البيانات الجديدة:</b><pre class="bg-gray-100 p-2 rounded-lg mt-1 text-xs overflow-auto max-h-32">' + newDataText + '</pre></div>' +
+        '</div>';
+    Swal.fire({
+        title: 'تفاصيل سجل التدقيق',
+        html: html,
+        width: '800px',
+        showCloseButton: true,
+        showConfirmButton: false
+    });
+}
 const byId = id => document.getElementById(id);
 const safeHTML = (el, html) => { if (!el) return; try { el.innerHTML = html; } catch(e) { console.error(e); } };
 const safeText = (el, text) => { if (!el) return; try { el.innerText = text; } catch(e) { console.error(e); } };
@@ -178,50 +427,54 @@ const showToast = (message, type = 'success') => { try { Swal.fire({ title: mess
 const RW_STATE = { app: { initialized: false, authenticated: false, loading: false, currentView: 'dashboard', currentUser: null, company: { name: 'الروائع ERP', logo: 'ر' } }, data: { items: [], customers: [], suppliers: [], branches: [] }, permissions: [], ui: { sidebarOpen: false, sidebarCollapsed: false } };
 window.RW_STATE = RW_STATE;
 const RW_Auth = {
-login: async function(username, password) {
-    if (!username || !password) {
-        showToast('يرجى إدخال اسم المستخدم وكلمة المرور', 'error');
-        return;
-    }
-    showLoader('جاري تسجيل الدخول...');
-    try {
+    login: function(username, password) {
+        if (!username || !password) {
+            showToast('يرجى إدخال اسم المستخدم وكلمة المرور', 'error');
+            return;
+        }
+        showLoader('جاري تسجيل الدخول...');
         if (!RW_SUPABASE_CLIENT) {
             hideLoader();
             showToast('خطأ داخلي: عميل Supabase غير مهيأ', 'error');
             return;
         }
-        var authRes = await RW_SUPABASE_CLIENT.auth.signInWithPassword({
+        var self = this;
+        RW_SUPABASE_CLIENT.auth.signInWithPassword({
             email: username,
             password: password
-        });
-        if (authRes.error) {
-            hideLoader();
-            var msg = authRes.error.message || 'بيانات الدخول غير صحيحة';
-            showToast('فشل الدخول: ' + msg, 'error');
-            return;
-        }
-        var user = authRes.data.user;
-        var meta = user.user_metadata || {};
+        }).then(function(authRes) {
+            if (authRes.error) {
+                hideLoader();
+                var msg = authRes.error.message || 'بيانات الدخول غير صحيحة';
+                RW_Audit_log('failed_login', 'auth', username, null, { reason: msg });
+                showToast('فشل الدخول: ' + msg, 'error');
+                return;
+            }
+            var user = authRes.data.user;
+            var meta = user.user_metadata || {};
 
-        RW_STATE.app.authenticated = true;
-        RW_STATE.app.currentUser = {
-            name: meta.name || user.email,
-            email: user.email,
-            role: meta.role || 'مدير النظام',
-            isOwner: meta.isOwner === true || meta.isOwner === 'true'
-        };
-        RW_STATE.permissions = meta.permissions || ['*'];
-        RW_STATE.app.company = {
-            name: meta.companyName || 'الروائع ERP',
-            logo: meta.companyLogo || 'ر'
-        };
-        this.enterSystem();
-    } catch(e) {
-        hideLoader();
-        showToast('حدث خطأ أثناء الاتصال', 'error');
-        console.error(e);
-    }
-},
+            RW_STATE.app.authenticated = true;
+            RW_STATE.app.currentUser = {
+                name: meta.name || user.email,
+                email: user.email,
+                role: meta.role || 'مدير النظام',
+                isOwner: meta.isOwner === true || meta.isOwner === 'true'
+            };
+            RW_STATE.permissions = meta.permissions || ['*'];
+            RW_STATE.app.company = {
+                name: meta.companyName || 'الروائع ERP',
+                logo: meta.companyLogo || 'ر'
+            };
+
+            RW_Audit_log('login', 'auth', user.id, null, { email: user.email, role: meta.role || 'مدير النظام' });
+
+            self.enterSystem();
+        }).catch(function(e) {
+            hideLoader();
+            showToast('حدث خطأ أثناء الاتصال', 'error');
+            console.error(e);
+        });
+    },
 enterSystem: function() {
     hideLoader();
     try {
@@ -294,8 +547,21 @@ enterSystem: function() {
     }
 },
     forceEnterFallback: function() { hideLoader(); try { byId('rw-login-page').style.display = 'none'; byId('rw-main-shell').style.display = 'flex'; RW_Navigation.buildSidebar(); RW_Navigation.navigate('dashboard'); showToast('تم تشغيل النظام في الوضع الآمن', 'warning'); } catch(e) { document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:Cairo;"><h1>RAWAEA ERP</h1><p>حدث خطأ أثناء تشغيل النظام</p><button onclick="location.reload()">إعادة التحميل</button></div>'; } },
-    logout: async function() { try { await supabase.auth.signOut(); RW_STATE.app.authenticated = false; byId('rw-main-shell').style.display = 'none'; byId('rw-login-page').style.display = 'flex'; } catch(e) { console.error(e); } }
-};
+    logout: function() {
+        var userEmail = 'unknown';
+        if (RW_STATE.app.currentUser && RW_STATE.app.currentUser.email) {
+            userEmail = RW_STATE.app.currentUser.email;
+        }
+        RW_Audit_log('logout', 'auth', userEmail, null, null);
+
+        supabase.auth.signOut().then(function() {
+            RW_STATE.app.authenticated = false;
+            byId('rw-main-shell').style.display = 'none';
+            byId('rw-login-page').style.display = 'flex';
+        }).catch(function(e) {
+            console.error(e);
+        });
+    },
 
 const RW_Data = {
     loadItems: async () => {
@@ -398,7 +664,68 @@ _handleAction(action, arg) { if (action === 'showFinanceTab') {
     }
     return;
 } if (action === 'logout') { RW_Auth.logout(); return; } if (typeof RW_Views !== 'undefined' && RW_Views.render) RW_Views.render(action); },
-buildSidebar() { try { const nav = byId('rw-sidebar-nav'); if (!nav) return; const perms = RW_STATE.permissions || []; const hasFullAccess = perms.includes('*'); function isAllowed(item) { if (hasFullAccess) return true; if (item.perm === 'owner') return RW_STATE.app.currentUser?.isOwner === true; if (item.perm) return perms.includes(item.perm); if (item.view) return perms.includes(item.view); return true; } function filterMenu(items) { const filtered = []; for (const item of items) { if (!isAllowed(item)) continue; if (item.submenu) { const sub = filterMenu(item.submenu); if (sub.length) { const n = {...item}; n.submenu = sub; filtered.push(n); } } else filtered.push(item); } return filtered; } const tree = filterMenu(this.menuTree); safeHTML(nav, this._buildMenuHTML(tree)); nav.querySelectorAll('.rw-sidebar-link[data-view]').forEach(btn => { btn.addEventListener('click', function(e) { e.stopPropagation(); RW_Navigation.navigate(btn.dataset.view); }); }); } catch(e) { console.error(e); } },
+    buildSidebar() {
+        try {
+            var nav = byId('rw-sidebar-nav');
+            if (!nav) return;
+
+            // إضافة تبويب سجل التدقيق لقائمة إدارة النظام (للمالك فقط)
+            var existingAudit = this.menuTree.find(function(item) { return item.view === 'audit-log'; });
+            if (!existingAudit) {
+                this.menuTree.push({ view: 'audit-log', icon: 'fa-clock-rotate-left', label: 'سجل التدقيق', perm: 'owner' });
+            }
+
+            function isAllowed(item) {
+                if (item.perm === 'owner') {
+                    return (RW_STATE.app.currentUser && RW_STATE.app.currentUser.isOwner === true);
+                }
+                if (item.perm) {
+                    return RW_Permissions_check(item.perm);
+                }
+                if (item.view) {
+                    return RW_Permissions_check(item.view);
+                }
+                return true;
+            }
+
+            function filterMenu(items) {
+                var filtered = [];
+                for (var i = 0; i < items.length; i++) {
+                    var item = items[i];
+                    if (!isAllowed(item)) continue;
+                    if (item.submenu) {
+                        var sub = filterMenu(item.submenu);
+                        if (sub.length > 0) {
+                            var n = {};
+                            n.icon = item.icon;
+                            n.label = item.label;
+                            n.submenu = sub;
+                            filtered.push(n);
+                        }
+                    } else {
+                        filtered.push(item);
+                    }
+                }
+                return filtered;
+            }
+
+            var tree = filterMenu(this.menuTree);
+            safeHTML(nav, this._buildMenuHTML(tree));
+
+            // إضافة مستمعات الأحداث وإخفاء البنود حسب الصلاحية
+            var links = nav.querySelectorAll('.rw-sidebar-link[data-view]');
+            for (var i = 0; i < links.length; i++) {
+                (function(btn) {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        RW_Navigation.navigate(btn.getAttribute('data-view'));
+                    });
+                })(links[i]);
+            }
+        } catch(e) {
+            console.error(e);
+        }
+    },
 toggleSidebar() { const sidebar = byId('rw-sidebar'), main = byId('rw-main-content'); if (!sidebar || !main) return; const collapsed = sidebar.classList.toggle('collapsed'); main.classList.toggle('expanded', collapsed); RW_STATE.ui.sidebarCollapsed = collapsed; try { localStorage.setItem('rw_sidebar_collapsed', collapsed ? '1' : '0'); } catch(e) {} },
     navigate(view) { try { RW_STATE.app.currentView = view; document.querySelectorAll('.rw-sidebar-link').forEach(el => el.classList.remove('active')); const active = document.querySelector(`.rw-sidebar-link[data-view="${view}"]`); if (active) active.classList.add('active'); window.RW_Views.render(view); } catch(e) { console.error(e); showToast('حدث خطأ', 'error'); } }
 };
@@ -5386,62 +5713,120 @@ window.RW_OwnerLicense = RW_OwnerLicense;
 // ============================================================
 // RW_Views – نظام التوجيه النهائي
 // ============================================================
-var RW_Views = {
-  async render(view){
-    var c=byId('rw-page-container'); if(!c)return;
-    var titles={
-      'dashboard':'لوحة التحكم','items':'الأصناف','customers':'العملاء','suppliers':'الموردين',
-      'branches':'المخازن والفروع','pos':'نقطة البيع','purchase-pos':'نقطة شراء','purchases':'أوردرات الشراء',
-      'orders':'أوردرات المبيعات','runsheets':'الرانشيتات','online-store':'المتجر الإلكتروني',
-      'users':'المستخدمين والصلاحيات','roles':'إدارة أدوار الموظفين','license':'إدارة الترخيص',
-      'settings':'إعدادات النظام','settlement':'إغلاق اليومية','receiving':'الاستلام',
-      'picking':'التحضير','loading':'التحميل','delivery':'التوصيل','return':'المرتجعات',
-      'unloading':'التفريغ','vouchers':'الأذونات المخزنية','transfer':'تحويل مخزني',
-      'direct-sale':'صرف سيارة بيع مباشر','direct-return':'استلام مرتجع سيارة',
-      'supplier-return':'مرتجع لمورد','vehicle-count':'جرد سيارة','branch-count':'جرد فرع',
-      'general-count':'جرد عام','reports-dashboard':'لوحة القيادة','reports-detailed':'التقارير التفصيلية'
-    };
-    safeText(byId('rw-header-title'), titles[view]||view);
+    render: function(view) {
+        var c = byId('rw-page-container');
+        if (!c) return;
 
-    if(view==='dashboard'){ safeText(byId('rw-header-title'), 'الإنترو'); RW_Dashboard.render(); return; }
-    if(view==='items'){ RW_Items.render(); return; }
-    if(view==='customers'){ RW_Customers.render(); return; }
-    if(view==='suppliers'){ RW_Suppliers.render(); return; }
-    if(view==='branches'){ RW_Branches.render(); return; }
-    if(view==='settings'){ RW_Settings.render(); return; }
-    if(view==='hr'){ RW_HR.render(); return; }
-    if(view==='crm'){ RW_CRM.render(); return; }
-    if(view==='users'){ RW_Users.render(); return; }
-    if(view==='roles'){ RW_Roles.render(); return; }
-    if(view==='license'){ RW_OwnerLicense.render(); return; }
-    if(view==='pos'){ RW_POS.render(); return; }
-    if(view==='orders'){ RW_Orders.render(); return; }
-    if(view==='runsheets'){ RW_Runsheets.render(); return; }
-    if(view==='online-store'){ RW_OnlineStore.render(); return; }
-    if(view==='purchases'){ RW_Purchases.renderOrders(); return; }
-    if(view==='purchase-pos'){ RW_Purchases.renderPOS(); return; }
-    if(view==='picking'){ RW_Warehouse.loadPicking(); return; }
-    if(view==='loading'){ RW_Warehouse.loadLoading(); return; }
-    if(view==='delivery'){ RW_Warehouse.loadDelivery(); return; }
-    if(view==='return'){ RW_Warehouse.loadReturn(); return; }
-    if(view==='unloading'){ RW_Warehouse.loadUnloading(); return; }
-    if(view==='receiving'){ RW_Warehouse.loadReceiving(); return; }
-    if(view==='vouchers'){ RW_Warehouse.loadVouchers(); return; }
-    if(view==='transfer'){ RW_Warehouse.loadVoucherForm('Transfer'); return; }
-    if(view==='direct-sale'){ RW_Warehouse.loadVoucherForm('DirectSale'); return; }
-    if(view==='direct-return'){ RW_Warehouse.loadVoucherForm('DirectReturn'); return; }
-    if(view==='supplier-return'){ RW_Warehouse.loadVoucherForm('SupplierReturn'); return; }
-    if(view==='vehicle-count'){ RW_Warehouse.loadVehicleCount(); return; }
-    if(view==='branch-count'){ RW_Warehouse.loadBranchCount(); return; }
-    if(view==='general-count'){ RW_Warehouse.loadGeneralCount(); return; }
-    if(view==='settlement'){ RW_Warehouse.loadSettlement(); return; }
-    if(view==='finance'){ RW_Finance.render(); return; }
-    if(view==='reports-dashboard'){ RW_Reports.renderDashboard(); return; }
-    if(view==='reports-detailed'){ RW_Reports.renderDetailedReports(); return; }
-    if(view==='reports-comprehensive'){ RW_Reports_Comprehensive.render(); return; }
+        // التحقق من الصلاحية
+        var permissionMap = {
+            'dashboard': 'dash',
+            'items': 'items',
+            'customers': 'customers',
+            'suppliers': 'suppliers',
+            'branches': 'branches',
+            'pos': 'pos',
+            'purchase-pos': 'purchases',
+            'purchases': 'purchases',
+            'orders': 'orders',
+            'runsheets': 'runsheets',
+            'online-store': 'online-store',
+            'users': 'users',
+            'roles': 'roles',
+            'license': 'license',
+            'settings': 'settings',
+            'settlement': 'settlement',
+            'receiving': 'receiving',
+            'picking': 'picking',
+            'loading': 'loading',
+            'delivery': 'delivery',
+            'return': 'return',
+            'unloading': 'unloading',
+            'vouchers': 'vouchers',
+            'transfer': 'transfer',
+            'direct-sale': 'direct-sale',
+            'direct-return': 'direct-return',
+            'supplier-return': 'supplier-return',
+            'vehicle-count': 'vehicle-count',
+            'branch-count': 'branch-count',
+            'general-count': 'general-count',
+            'reports-dashboard': 'reports',
+            'reports-detailed': 'reports',
+            'reports-comprehensive': 'reports',
+            'audit-log': 'owner',
+            'hr': 'users',
+            'crm': 'customers'
+        };
 
-    safeHTML(c,'<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">🚧</div><h2>'+(titles[view]||view)+'</h2><p style="color:#6b7280">قيد التطوير</p></div>');
-  }
+        var permKey = permissionMap[view];
+        if (permKey === 'owner') {
+            var isOwner = (RW_STATE.app.currentUser && RW_STATE.app.currentUser.isOwner === true);
+            if (!isOwner) {
+                safeHTML(c, '<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">🔒</div><h2>غير مصرح</h2><p>هذا التبويب مخصص للمالك فقط</p></div>');
+                return;
+            }
+        } else if (permKey) {
+            if (!RW_Permissions_check(permKey)) {
+                safeHTML(c, '<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">🔒</div><h2>غير مصرح</h2><p>ليس لديك صلاحية الوصول إلى هذا التبويب</p></div>');
+                return;
+            }
+        }
+
+        var titles = {
+            'dashboard':'لوحة التحكم','items':'الأصناف','customers':'العملاء','suppliers':'الموردين',
+            'branches':'المخازن والفروع','pos':'نقطة البيع','purchase-pos':'نقطة شراء','purchases':'أوردرات الشراء',
+            'orders':'أوردرات المبيعات','runsheets':'الرانشيتات','online-store':'المتجر الإلكتروني',
+            'users':'المستخدمين والصلاحيات','roles':'إدارة أدوار الموظفين','license':'إدارة الترخيص',
+            'settings':'إعدادات النظام','settlement':'إغلاق اليومية','receiving':'الاستلام',
+            'picking':'التحضير','loading':'التحميل','delivery':'التوصيل','return':'المرتجعات',
+            'unloading':'التفريغ','vouchers':'الأذونات المخزنية','transfer':'تحويل مخزني',
+            'direct-sale':'صرف سيارة بيع مباشر','direct-return':'استلام مرتجع سيارة',
+            'supplier-return':'مرتجع لمورد','vehicle-count':'جرد سيارة','branch-count':'جرد فرع',
+            'general-count':'جرد عام','reports-dashboard':'لوحة القيادة','reports-detailed':'التقارير التفصيلية',
+            'audit-log':'سجل التدقيق'
+        };
+        safeText(byId('rw-header-title'), titles[view] || view);
+
+        // استدعاء التبويب المناسب
+        if (view === 'dashboard') { RW_Dashboard.render(); return; }
+        if (view === 'items') { RW_Items.render(); return; }
+        if (view === 'customers') { RW_Customers.render(); return; }
+        if (view === 'suppliers') { RW_Suppliers.render(); return; }
+        if (view === 'branches') { RW_Branches.render(); return; }
+        if (view === 'settings') { RW_Settings.render(); return; }
+        if (view === 'hr') { RW_HR.render(); return; }
+        if (view === 'crm') { RW_CRM.render(); return; }
+        if (view === 'users') { RW_Users.render(); return; }
+        if (view === 'roles') { RW_Roles.render(); return; }
+        if (view === 'license') { RW_OwnerLicense.render(); return; }
+        if (view === 'pos') { RW_POS.render(); return; }
+        if (view === 'orders') { RW_Orders.render(); return; }
+        if (view === 'runsheets') { RW_Runsheets.render(); return; }
+        if (view === 'online-store') { RW_OnlineStore.render(); return; }
+        if (view === 'purchases') { RW_Purchases.renderOrders(); return; }
+        if (view === 'purchase-pos') { RW_Purchases.renderPOS(); return; }
+        if (view === 'picking') { RW_Warehouse.loadPicking(); return; }
+        if (view === 'loading') { RW_Warehouse.loadLoading(); return; }
+        if (view === 'delivery') { RW_Warehouse.loadDelivery(); return; }
+        if (view === 'return') { RW_Warehouse.loadReturn(); return; }
+        if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
+        if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
+        if (view === 'vouchers') { RW_Warehouse.loadVouchers(); return; }
+        if (view === 'transfer') { RW_Warehouse.loadVoucherForm('Transfer'); return; }
+        if (view === 'direct-sale') { RW_Warehouse.loadVoucherForm('DirectSale'); return; }
+        if (view === 'direct-return') { RW_Warehouse.loadVoucherForm('DirectReturn'); return; }
+        if (view === 'supplier-return') { RW_Warehouse.loadVoucherForm('SupplierReturn'); return; }
+        if (view === 'vehicle-count') { RW_Warehouse.loadVehicleCount(); return; }
+        if (view === 'branch-count') { RW_Warehouse.loadBranchCount(); return; }
+        if (view === 'general-count') { RW_Warehouse.loadGeneralCount(); return; }
+        if (view === 'settlement') { RW_Warehouse.loadSettlement(); return; }
+        if (view === 'finance') { RW_Finance.render(); return; }
+        if (view === 'reports-dashboard') { RW_Reports.renderDashboard(); return; }
+        if (view === 'reports-detailed') { RW_Reports.renderDetailedReports(); return; }
+        if (view === 'reports-comprehensive') { RW_Reports_Comprehensive.render(); return; }
+        if (view === 'audit-log') { RW_Audit_renderTab(); return; }
+
+        safeHTML(c, '<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">🚧</div><h2>' + (titles[view] || view) + '</h2><p style="color:#6b7280">قيد التطوير</p></div>');
+    }
 };
 window.RW_Views = RW_Views;
 // ============================================================
