@@ -2779,7 +2779,7 @@ var RW_Roles = (function() {
 })();
 window.RW_Roles = RW_Roles;
 // ============================================================
-// RW_TeleSales – التلي سيلز (المبيعات الهاتفية) - الإصدار 2.0
+// RW_TeleSales – التلي سيلز (المبيعات الهاتفية) - كامل ومُحدث
 // ============================================================
 var RW_TeleSales = (function() {
   var cart = [];
@@ -2840,7 +2840,7 @@ var RW_TeleSales = (function() {
     h += '<label class="text-xs font-black mb-2 block">اختيار العميل</label>';
     h += '<div class="flex gap-2">';
     h += '<div class="relative flex-1">';
-    h += '<input type="text" id="ts-customer-search" oninput="RW_TeleSales._searchCustomers(this.value)" autocomplete="off" placeholder="ابحث باسم أو كود العميل..." class="w-full p-3 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm">';
+    h += '<input type="text" id="ts-customer-search" oninput="RW_TeleSales._searchCustomers(this.value)" autocomplete="off" placeholder="ابحث باسم، كود، هاتف أو منطقة العميل..." class="w-full p-3 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm">';
     h += '<div id="ts-customer-results" class="absolute z-50 left-0 right-0 mt-2 bg-white shadow-2xl rounded-2xl max-h-60 overflow-y-auto hidden border"></div>';
     h += '</div>';
     h += '<button id="ts-add-customer-btn" class="bg-emerald-500 text-white px-4 py-2 rounded-2xl font-bold text-sm whitespace-nowrap hover:bg-emerald-600 transition"><i class="fa-solid fa-plus ml-1"></i> عميل جديد</button>';
@@ -2918,7 +2918,10 @@ var RW_TeleSales = (function() {
     var customers = RW_STATE.data.customers || [];
     var q = query.toLowerCase();
     var filtered = customers.filter(function(c) {
-      return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.customer_code || '').toLowerCase().indexOf(q) !== -1 || (c.phone || '').indexOf(q) !== -1;
+      return (c.name || '').toLowerCase().indexOf(q) !== -1 || 
+             (c.customer_code || '').toLowerCase().indexOf(q) !== -1 || 
+             (c.phone || '').indexOf(q) !== -1 ||
+             (c.area || '').toLowerCase().indexOf(q) !== -1;
     });
     if (!filtered.length) {
       safeHTML(div, '<div class="p-3 text-center text-gray-400">لا توجد نتائج</div>');
@@ -2928,9 +2931,9 @@ var RW_TeleSales = (function() {
     var h = '';
     for (var i = 0; i < Math.min(filtered.length, 15); i++) {
       var c = filtered[i];
-      h += '<div onclick="RW_TeleSales._selectCustomer(\'' + esc(c.customer_code) + '\')" class="p-3 hover:bg-blue-50 cursor-pointer flex justify-between border-b">';
-      h += '<div><div class="font-bold">' + esc(c.name) + '</div><div class="text-xs text-gray-400">' + esc(c.customer_code) + '</div></div>';
-      h += '<div class="text-left text-xs text-gray-500">' + esc(c.area || '') + ' | ' + _fmtNum(c.debt) + ' EGP</div>';
+      h += '<div onclick="RW_TeleSales._selectCustomer(\'' + c.customer_code + '\')" class="p-3 hover:bg-blue-50 cursor-pointer flex justify-between border-b">';
+      h += '<div><div class="font-bold">' + (c.name || '') + '</div><div class="text-xs text-gray-400">' + (c.customer_code || '') + '</div></div>';
+      h += '<div class="text-left text-xs text-gray-500">' + (c.area || '') + ' | ' + _fmtNum(c.debt) + ' EGP</div>';
       h += '</div>';
     }
     safeHTML(div, h);
@@ -2953,13 +2956,12 @@ var RW_TeleSales = (function() {
       safeText(byId('ts-cust-name'), selectedCustomer.name);
       
       var detailsHtml = '';
-      detailsHtml += '<div><i class="fa-solid fa-map-pin ml-1 text-blue-400"></i> المنطقة: <strong>' + esc(selectedCustomer.area || 'غير محددة') + '</strong></div>';
-      detailsHtml += '<div><i class="fa-solid fa-credit-card ml-1 text-blue-400"></i> طريقة الدفع: <strong>' + esc(selectedCustomer.payment_type || 'غير محدد') + '</strong></div>';
-      detailsHtml += '<div><i class="fa-solid fa-phone ml-1 text-blue-400"></i> هاتف: <strong>' + esc(selectedCustomer.phone || 'غير مسجل') + '</strong></div>';
+      detailsHtml += '<div><i class="fa-solid fa-map-pin ml-1 text-blue-400"></i> المنطقة: <strong>' + (selectedCustomer.area || 'غير محددة') + '</strong></div>';
+      detailsHtml += '<div><i class="fa-solid fa-credit-card ml-1 text-blue-400"></i> طريقة الدفع: <strong>' + (selectedCustomer.payment_type || 'غير محدد') + '</strong></div>';
+      detailsHtml += '<div><i class="fa-solid fa-phone ml-1 text-blue-400"></i> هاتف: <strong>' + (selectedCustomer.phone || 'غير مسجل') + '</strong></div>';
       detailsHtml += '<div><i class="fa-solid fa-money-bill-wave ml-1 text-blue-400"></i> الرصيد: <strong>' + _fmtNum(selectedCustomer.debt) + ' EGP</strong></div>';
       safeHTML(byId('ts-cust-details'), detailsHtml);
 
-      // تحديث قائمة العملاء في الذاكرة
       if (!RW_STATE.data.customers) RW_STATE.data.customers = [];
     }
   }
@@ -3020,9 +3022,7 @@ var RW_TeleSales = (function() {
       if (json.success) {
         RW_Audit_log('create', 'customers', json.customer_code || '', null, customerData);
         showToast('تم إضافة العميل بنجاح', 'success');
-        // إعادة تحميل قائمة العملاء
         await RW_Data.loadCustomers();
-        // اختيار العميل الجديد تلقائياً
         _selectCustomer(json.customer_code);
       } else {
         showToast(json.error || 'فشل الحفظ', 'error');
@@ -3054,8 +3054,8 @@ var RW_TeleSales = (function() {
     var h = '';
     for (var i = 0; i < Math.min(filtered.length, 20); i++) {
       var it = filtered[i];
-      h += '<div onclick="RW_TeleSales._addToCart(\'' + esc(it.item_code) + '\')" class="p-3 hover:bg-blue-50 cursor-pointer flex justify-between border-b">';
-      h += '<div><div class="font-bold">' + esc(it.name) + '</div><div class="text-xs text-gray-400">' + esc(it.item_code) + ' | متاح: ' + (it.qty || 0) + '</div></div>';
+      h += '<div onclick="RW_TeleSales._addToCart(\'' + it.item_code + '\')" class="p-3 hover:bg-blue-50 cursor-pointer flex justify-between border-b">';
+      h += '<div><div class="font-bold">' + (it.name || '') + '</div><div class="text-xs text-gray-400">' + (it.item_code || '') + ' | متاح: ' + (it.qty || 0) + '</div></div>';
       h += '<div class="font-bold text-blue-600">' + _fmtNum(it.sales_price) + ' EGP</div>';
       h += '</div>';
     }
@@ -3142,7 +3142,7 @@ var RW_TeleSales = (function() {
       var line = it.price * it.qty;
       subtotal += line;
       h += '<tr class="bg-white shadow-sm rounded-2xl overflow-hidden">';
-      h += '<td class="p-4 rounded-r-2xl border-y border-r"><p class="font-black">' + esc(it.name) + '</p><p class="text-xs text-gray-400">' + esc(it.code) + '</p></td>';
+      h += '<td class="p-4 rounded-r-2xl border-y border-r"><p class="font-black">' + (it.name || '') + '</p><p class="text-xs text-gray-400">' + (it.code || '') + '</p></td>';
       h += '<td class="p-4 border-y font-bold text-blue-600">' + _fmtNum(it.price) + ' EGP</td>';
       h += '<td class="p-4 border-y"><input type="number" value="' + it.qty + '" onchange="RW_TeleSales._updateQty(' + i + ',this.value)" class="w-20 p-2 bg-slate-50 border-2 rounded-xl text-center font-black" min="1"></td>';
       h += '<td class="p-4 border-y font-black">' + _fmtNum(line) + ' EGP</td>';
