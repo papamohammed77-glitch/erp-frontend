@@ -2967,35 +2967,58 @@ var RW_TeleSales = (function() {
   }
 
   function _showNewCustomerForm() {
-    var html = '<div class="text-right space-y-4">';
-    html += '<div><label class="text-xs font-bold block mb-1">اسم العميل <span class="text-red-500">*</span></label><input id="new-cust-name" class="swal2-input w-full" placeholder="أدخل اسم العميل"></div>';
-    html += '<div><label class="text-xs font-bold block mb-1">رقم الهاتف</label><input id="new-cust-phone" class="swal2-input w-full" placeholder="أدخل رقم الهاتف"></div>';
-    html += '<div><label class="text-xs font-bold block mb-1">المنطقة</label><input id="new-cust-area" class="swal2-input w-full" placeholder="أدخل المنطقة"></div>';
-    html += '<div><label class="text-xs font-bold block mb-1">طريقة الدفع</label><select id="new-cust-payment" class="swal2-input w-full"><option value="أجل">أجل</option><option value="نقدي">نقدي</option></select></div>';
-    html += '</div>';
+    var isEdit = false;
+    var title = 'إضافة عميل جديد';
+    // نفس تصميم مودال RW_Customers.openModal
+    var html = '<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">' +
+    '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">' +
+    '<div class="bg-emerald-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fas fa-user-tie ml-2"></i>' + title + '</h3><button onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button></div>' +
+    '<form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">' +
+    '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
+    '<div class="flex flex-col"><label>كود العميل</label><input id="cust-code" value="جديد" readonly class="p-2.5 bg-gray-100 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>اسم العميل *</label><input id="cust-name" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>رقم الهاتف</label><input id="cust-phone" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>المنطقة</label><input id="cust-area" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>العنوان التفصيلي</label><input id="cust-location" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>نوع العميل</label><select id="cust-type" class="p-2.5 bg-gray-50 border rounded-lg"><option value="عادي">عادي</option><option value="جملة">جملة</option><option value="VIP">VIP</option></select></div>' +
+    '<div class="flex flex-col"><label>طريقة الدفع</label><select id="cust-payment" class="p-2.5 bg-gray-50 border rounded-lg"><option value="نقدي">نقدي</option><option value="أجل">أجل</option></select></div>' +
+    '<div class="flex flex-col"><label>الرصيد الحالي (EGP)</label><input id="cust-debt" type="number" value="0" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>يوم الزيارة</label><select id="cust-visit" class="p-2.5 bg-gray-50 border rounded-lg"><option value="">اختر</option>' + ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس'].map(function(d) { return '<option value="' + d + '">' + d + '</option>'; }).join('') + '</select></div>' +
+    '<div class="flex flex-col"><label>مسؤول التواصل</label><input id="cust-contact" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="md:col-span-2 flex flex-col"><label>ملاحظات</label><textarea id="cust-notes" rows="2" class="p-2.5 bg-gray-50 border rounded-lg"></textarea></div>' +
+    '</div>' +
+    '<div class="flex justify-end gap-3 pt-4 border-t">' +
+    '<button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>' +
+    '<button type="button" id="btn-save-cust" class="px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold">حفظ</button>' +
+    '</div></form></div></div>';
 
     Swal.fire({
-      title: 'إضافة عميل جديد',
       html: html,
-      showCancelButton: true,
-      confirmButtonText: 'حفظ',
-      cancelButtonText: 'إلغاء',
-      preConfirm: function() {
-        var name = document.getElementById('new-cust-name').value.trim();
-        if (!name) {
-          Swal.showValidationMessage('اسم العميل مطلوب');
-          return false;
+      width: '900px',
+      showConfirmButton: false,
+      showCancelButton: false,
+      customClass: { popup: '!bg-transparent !shadow-none !p-0' },
+      didOpen: function() {
+        var saveBtn = document.getElementById('btn-save-cust');
+        if (saveBtn) {
+          saveBtn.addEventListener('click', function() {
+            var name = document.getElementById('cust-name').value.trim();
+            if (!name) { showToast('اسم العميل مطلوب', 'error'); return; }
+            var payload = {
+              name: name,
+              phone: document.getElementById('cust-phone').value.trim(),
+              area: document.getElementById('cust-area').value.trim(),
+              location: document.getElementById('cust-location').value.trim(),
+              customer_type: document.getElementById('cust-type').value,
+              payment_type: document.getElementById('cust-payment').value,
+              debt: parseFloat(document.getElementById('cust-debt').value) || 0,
+              visit_day: document.getElementById('cust-visit').value,
+              contact_person: document.getElementById('cust-contact').value.trim(),
+              notes: document.getElementById('cust-notes').value.trim()
+            };
+            _saveNewCustomer(payload);
+          });
         }
-        return {
-          name: name,
-          phone: document.getElementById('new-cust-phone').value.trim(),
-          area: document.getElementById('new-cust-area').value.trim(),
-          payment_type: document.getElementById('new-cust-payment').value
-        };
-      }
-    }).then(function(result) {
-      if (result.isConfirmed) {
-        _saveNewCustomer(result.value);
       }
     });
   }
@@ -3007,21 +3030,15 @@ var RW_TeleSales = (function() {
       var token = ses.data.session && ses.data.session.access_token;
       var res = await fetch(SUPABASE_URL + '/functions/v1/save-customer', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + token
-        },
-        body: JSON.stringify({
-          customer: customerData,
-          isEdit: false,
-          customer_code: null
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ customer: customerData, isEdit: false, customer_code: null })
       });
       var json = await res.json();
       hideLoader();
       if (json.success) {
         RW_Audit_log('create', 'customers', json.customer_code || '', null, customerData);
         showToast('تم إضافة العميل بنجاح', 'success');
+        Swal.close();
         await RW_Data.loadCustomers();
         _selectCustomer(json.customer_code);
       } else {
