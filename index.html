@@ -2779,7 +2779,7 @@ var RW_Roles = (function() {
 })();
 window.RW_Roles = RW_Roles;
 // ============================================================
-// RW_TeleSales – التلي سيلز (المبيعات الهاتفية)
+// RW_TeleSales – التلي سيلز (المبيعات الهاتفية) - الإصدار 2.0
 // ============================================================
 var RW_TeleSales = (function() {
   var cart = [];
@@ -2838,14 +2838,17 @@ var RW_TeleSales = (function() {
     // بحث عن عميل
     h += '<div class="bg-white p-5 rounded-[30px] shadow-sm border">';
     h += '<label class="text-xs font-black mb-2 block">اختيار العميل</label>';
-    h += '<div class="relative">';
+    h += '<div class="flex gap-2">';
+    h += '<div class="relative flex-1">';
     h += '<input type="text" id="ts-customer-search" oninput="RW_TeleSales._searchCustomers(this.value)" autocomplete="off" placeholder="ابحث باسم أو كود العميل..." class="w-full p-3 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm">';
     h += '<div id="ts-customer-results" class="absolute z-50 left-0 right-0 mt-2 bg-white shadow-2xl rounded-2xl max-h-60 overflow-y-auto hidden border"></div>';
+    h += '</div>';
+    h += '<button id="ts-add-customer-btn" class="bg-emerald-500 text-white px-4 py-2 rounded-2xl font-bold text-sm whitespace-nowrap hover:bg-emerald-600 transition"><i class="fa-solid fa-plus ml-1"></i> عميل جديد</button>';
     h += '</div>';
     h += '<div id="ts-customer-info" class="mt-4 p-4 bg-blue-50 rounded-2xl hidden">';
     h += '<p class="text-xs text-blue-400 font-black">العميل المختار</p>';
     h += '<p id="ts-cust-name" class="font-black text-blue-800 text-lg"></p>';
-    h += '<p id="ts-cust-details" class="text-sm text-blue-600 font-bold mt-1"></p>';
+    h += '<div id="ts-cust-details" class="text-sm text-blue-600 font-bold mt-2 space-y-1"></div>';
     h += '</div>';
     h += '</div>';
 
@@ -2896,10 +2899,15 @@ var RW_TeleSales = (function() {
   }
 
   function bindEvents() {
-    var container = byId('rw-page-container');
-    if (!container) return;
+    var btn = byId('ts-add-customer-btn');
+    if (btn) {
+      btn.addEventListener('click', function() {
+        _showNewCustomerForm();
+      });
+    }
   }
 
+  // ---------- العملاء ----------
   function _searchCustomers(query) {
     var div = byId('ts-customer-results');
     if (!div) return;
@@ -2931,6 +2939,7 @@ var RW_TeleSales = (function() {
 
   function _selectCustomer(code) {
     var customers = RW_STATE.data.customers || [];
+    selectedCustomer = null;
     for (var i = 0; i < customers.length; i++) {
       if (customers[i].customer_code === code) {
         selectedCustomer = customers[i];
@@ -2942,10 +2951,89 @@ var RW_TeleSales = (function() {
       byId('ts-customer-results').classList.add('hidden');
       byId('ts-customer-info').classList.remove('hidden');
       safeText(byId('ts-cust-name'), selectedCustomer.name);
-      safeText(byId('ts-cust-details'), (selectedCustomer.area || '') + ' | الرصيد: ' + _fmtNum(selectedCustomer.debt) + ' EGP | ' + (selectedCustomer.phone || ''));
+      
+      var detailsHtml = '';
+      detailsHtml += '<div><i class="fa-solid fa-map-pin ml-1 text-blue-400"></i> المنطقة: <strong>' + esc(selectedCustomer.area || 'غير محددة') + '</strong></div>';
+      detailsHtml += '<div><i class="fa-solid fa-credit-card ml-1 text-blue-400"></i> طريقة الدفع: <strong>' + esc(selectedCustomer.payment_type || 'غير محدد') + '</strong></div>';
+      detailsHtml += '<div><i class="fa-solid fa-phone ml-1 text-blue-400"></i> هاتف: <strong>' + esc(selectedCustomer.phone || 'غير مسجل') + '</strong></div>';
+      detailsHtml += '<div><i class="fa-solid fa-money-bill-wave ml-1 text-blue-400"></i> الرصيد: <strong>' + _fmtNum(selectedCustomer.debt) + ' EGP</strong></div>';
+      safeHTML(byId('ts-cust-details'), detailsHtml);
+
+      // تحديث قائمة العملاء في الذاكرة
+      if (!RW_STATE.data.customers) RW_STATE.data.customers = [];
     }
   }
 
+  function _showNewCustomerForm() {
+    var html = '<div class="text-right space-y-4">';
+    html += '<div><label class="text-xs font-bold block mb-1">اسم العميل <span class="text-red-500">*</span></label><input id="new-cust-name" class="swal2-input w-full" placeholder="أدخل اسم العميل"></div>';
+    html += '<div><label class="text-xs font-bold block mb-1">رقم الهاتف</label><input id="new-cust-phone" class="swal2-input w-full" placeholder="أدخل رقم الهاتف"></div>';
+    html += '<div><label class="text-xs font-bold block mb-1">المنطقة</label><input id="new-cust-area" class="swal2-input w-full" placeholder="أدخل المنطقة"></div>';
+    html += '<div><label class="text-xs font-bold block mb-1">طريقة الدفع</label><select id="new-cust-payment" class="swal2-input w-full"><option value="أجل">أجل</option><option value="نقدي">نقدي</option></select></div>';
+    html += '</div>';
+
+    Swal.fire({
+      title: 'إضافة عميل جديد',
+      html: html,
+      showCancelButton: true,
+      confirmButtonText: 'حفظ',
+      cancelButtonText: 'إلغاء',
+      preConfirm: function() {
+        var name = document.getElementById('new-cust-name').value.trim();
+        if (!name) {
+          Swal.showValidationMessage('اسم العميل مطلوب');
+          return false;
+        }
+        return {
+          name: name,
+          phone: document.getElementById('new-cust-phone').value.trim(),
+          area: document.getElementById('new-cust-area').value.trim(),
+          payment_type: document.getElementById('new-cust-payment').value
+        };
+      }
+    }).then(function(result) {
+      if (result.isConfirmed) {
+        _saveNewCustomer(result.value);
+      }
+    });
+  }
+
+  async function _saveNewCustomer(customerData) {
+    showLoader('جاري حفظ العميل...');
+    try {
+      var ses = await supabase.auth.getSession();
+      var token = ses.data.session && ses.data.session.access_token;
+      var res = await fetch(SUPABASE_URL + '/functions/v1/save-customer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token
+        },
+        body: JSON.stringify({
+          customer: customerData,
+          isEdit: false,
+          customer_code: null
+        })
+      });
+      var json = await res.json();
+      hideLoader();
+      if (json.success) {
+        RW_Audit_log('create', 'customers', json.customer_code || '', null, customerData);
+        showToast('تم إضافة العميل بنجاح', 'success');
+        // إعادة تحميل قائمة العملاء
+        await RW_Data.loadCustomers();
+        // اختيار العميل الجديد تلقائياً
+        _selectCustomer(json.customer_code);
+      } else {
+        showToast(json.error || 'فشل الحفظ', 'error');
+      }
+    } catch(e) {
+      hideLoader();
+      showToast('فشل الاتصال', 'error');
+    }
+  }
+
+  // ---------- الأصناف ----------
   function _searchItems(query) {
     var div = byId('ts-item-results');
     if (!div) return;
@@ -3002,6 +3090,7 @@ var RW_TeleSales = (function() {
     updateCartDisplay();
   }
 
+  // ---------- السلة ----------
   function _updateQty(idx, val) {
     var q = parseFloat(val);
     if (isNaN(q) || q <= 0) {
@@ -3082,6 +3171,7 @@ var RW_TeleSales = (function() {
     safeText(byId('ts-cart-count'), String(cart.length));
   }
 
+  // ---------- الحفظ ----------
   async function _saveOrder() {
     if (!selectedCustomer) {
       showToast('يرجى اختيار عميل أولاً', 'warning');
@@ -3107,7 +3197,7 @@ var RW_TeleSales = (function() {
       total: total,
       deliveryFees: del,
       status: 'Confirmed',
-      paymentType: 'أجل',
+      paymentType: selectedCustomer.payment_type || 'أجل',
       taxAmount: taxAmt,
       taxRate: taxRate
     };
