@@ -3189,68 +3189,79 @@ var RW_TeleSales = (function() {
   }
 
   // ---------- الحفظ ----------
-  async function _saveOrder() {
+function _saveOrder() {
     if (!selectedCustomer) {
-      showToast('يرجى اختيار عميل أولاً', 'warning');
-      return;
+        showToast('يرجى اختيار عميل أولاً', 'warning');
+        return;
     }
     if (!cart.length) {
-      showToast('أضف أصنافاً إلى السلة', 'warning');
-      return;
+        showToast('أضف أصنافاً إلى السلة', 'warning');
+        return;
     }
+
     var subtotal = 0;
     for (var i = 0; i < cart.length; i++) {
-      subtotal += cart[i].price * cart[i].qty;
+        subtotal += cart[i].price * cart[i].qty;
     }
+
     var del = deliveryFee || 0;
     var before = subtotal + del;
     var taxAmt = Math.round(before * taxRate) / 100;
     var total = before + taxAmt;
 
     var orderHeader = {
-      custId: selectedCustomer.customer_code,
-      custName: selectedCustomer.name,
-      area: selectedCustomer.area || '',
-      total: total,
-      deliveryFees: del,
-      status: 'Confirmed',
-      paymentType: selectedCustomer.payment_type || 'أجل',
-      taxAmount: taxAmt,
-      taxRate: taxRate
+        customer_code: selectedCustomer.customer_code,
+        custName: selectedCustomer.name,
+        area: selectedCustomer.area || '',
+        total: total,
+        deliveryFees: del,
+        status: 'Confirmed',
+        paymentType: selectedCustomer.payment_type || 'أجل',
+        taxAmount: taxAmt,
+        taxRate: taxRate
     };
 
     var itemsList = [];
     for (var j = 0; j < cart.length; j++) {
-      itemsList.push({
-        code: cart[j].code,
-        name: cart[j].name,
-        price: cart[j].price,
-        qty: cart[j].qty,
-        unit: cart[j].unit
-      });
+        itemsList.push({
+            code: cart[j].code,
+            name: cart[j].name,
+            price: cart[j].price,
+            qty: cart[j].qty,
+            unit: cart[j].unit
+        });
     }
+
     showLoader('جاري حفظ الأوردر...');
-    var ses = await supabase.auth.getSession();
-    var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-    var res = await fetch(RW_SUPABASE_URL + '/functions/v1/save-sales-invoice', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ orderHeader: orderHeader, itemsList: itemsList, branchId: 'MAIN' })
+
+    supabase.auth.getSession().then(function(ses) {
+        var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+        return fetch(RW_SUPABASE_URL + '/functions/v1/save-sales-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ orderHeader: orderHeader, itemsList: itemsList, branchCode: 'MAIN' })
+        });
+    }).then(function(res) {
+        return res.json();
+    }).then(function(json) {
+        hideLoader();
+        if (json.success) {
+            RW_Audit_log('create', 'orders', json.orderID || '', null, orderHeader);
+            showToast('تم حفظ الأوردر بنجاح: ' + (json.orderID || ''), 'success');
+            cart = [];
+            selectedCustomer = null;
+            byId('ts-customer-search').value = '';
+            byId('ts-customer-info').classList.add('hidden');
+            updateCartDisplay();
+        } else {
+            showToast(json.msg || 'فشل حفظ الأوردر', 'error');
+        }
+    }).catch(function(e) {
+        hideLoader();
+        showToast('فشل الاتصال', 'error');
+        console.error(e);
     });
-    var json = await res.json();
-    hideLoader();
-    if (json.success) {
-      RW_Audit_log('create', 'orders', json.orderID || '', null, orderHeader);
-      showToast('تم حفظ الأوردر بنجاح: ' + (json.orderID || ''), 'success');
-      cart = [];
-      selectedCustomer = null;
-      byId('ts-customer-search').value = '';
-      byId('ts-customer-info').classList.add('hidden');
-      updateCartDisplay();
-    } else {
-      showToast(json.msg || 'فشل حفظ الأوردر', 'error');
-    }
-  }
+}
 
   return {
     render: render,
