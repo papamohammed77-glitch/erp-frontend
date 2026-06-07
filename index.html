@@ -2917,51 +2917,31 @@ var RW_TeleSales = (function() {
     }
     var customers = RW_STATE.data.customers || [];
     var q = query.toLowerCase();
+    
+    // البحث بالاسم أو الكود أو الهاتف أو المنطقة
     var filtered = customers.filter(function(c) {
-      return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.customer_code || '').toLowerCase().indexOf(q) !== -1 || (c.phone || '').indexOf(q) !== -1;
+      return (c.name || '').toLowerCase().indexOf(q) !== -1 || 
+             (c.customer_code || '').toLowerCase().indexOf(q) !== -1 || 
+             (c.phone || '').indexOf(q) !== -1 ||
+             (c.area || '').toLowerCase().indexOf(q) !== -1;
     });
+    
     if (!filtered.length) {
       safeHTML(div, '<div class="p-3 text-center text-gray-400">لا توجد نتائج</div>');
       div.classList.remove('hidden');
       return;
     }
+    
     var h = '';
     for (var i = 0; i < Math.min(filtered.length, 15); i++) {
       var c = filtered[i];
       h += '<div onclick="RW_TeleSales._selectCustomer(\'' + esc(c.customer_code) + '\')" class="p-3 hover:bg-blue-50 cursor-pointer flex justify-between border-b">';
-      h += '<div><div class="font-bold">' + esc(c.name) + '</div><div class="text-xs text-gray-400">' + esc(c.customer_code) + '</div></div>';
-      h += '<div class="text-left text-xs text-gray-500">' + esc(c.area || '') + ' | ' + _fmtNum(c.debt) + ' EGP</div>';
+      h += '<div><div class="font-bold">' + esc(c.name) + '</div><div class="text-xs text-gray-400">' + esc(c.customer_code) + ' - ' + esc(c.area || '') + '</div></div>';
+      h += '<div class="text-left text-xs text-gray-500">' + esc(c.phone || '') + ' | ' + _fmtNum(c.debt) + ' EGP</div>';
       h += '</div>';
     }
     safeHTML(div, h);
     div.classList.remove('hidden');
-  }
-
-  function _selectCustomer(code) {
-    var customers = RW_STATE.data.customers || [];
-    selectedCustomer = null;
-    for (var i = 0; i < customers.length; i++) {
-      if (customers[i].customer_code === code) {
-        selectedCustomer = customers[i];
-        break;
-      }
-    }
-    if (selectedCustomer) {
-      byId('ts-customer-search').value = selectedCustomer.name + ' (' + selectedCustomer.customer_code + ')';
-      byId('ts-customer-results').classList.add('hidden');
-      byId('ts-customer-info').classList.remove('hidden');
-      safeText(byId('ts-cust-name'), selectedCustomer.name);
-      
-      var detailsHtml = '';
-      detailsHtml += '<div><i class="fa-solid fa-map-pin ml-1 text-blue-400"></i> المنطقة: <strong>' + esc(selectedCustomer.area || 'غير محددة') + '</strong></div>';
-      detailsHtml += '<div><i class="fa-solid fa-credit-card ml-1 text-blue-400"></i> طريقة الدفع: <strong>' + esc(selectedCustomer.payment_type || 'غير محدد') + '</strong></div>';
-      detailsHtml += '<div><i class="fa-solid fa-phone ml-1 text-blue-400"></i> هاتف: <strong>' + esc(selectedCustomer.phone || 'غير مسجل') + '</strong></div>';
-      detailsHtml += '<div><i class="fa-solid fa-money-bill-wave ml-1 text-blue-400"></i> الرصيد: <strong>' + _fmtNum(selectedCustomer.debt) + ' EGP</strong></div>';
-      safeHTML(byId('ts-cust-details'), detailsHtml);
-
-      // تحديث قائمة العملاء في الذاكرة
-      if (!RW_STATE.data.customers) RW_STATE.data.customers = [];
-    }
   }
 
   function _showNewCustomerForm() {
@@ -3032,7 +3012,6 @@ var RW_TeleSales = (function() {
       showToast('فشل الاتصال', 'error');
     }
   }
-
   // ---------- الأصناف ----------
   function _searchItems(query) {
     var div = byId('ts-item-results');
