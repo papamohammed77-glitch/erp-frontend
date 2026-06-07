@@ -3230,21 +3230,16 @@ var RW_TeleSales = (function() {
       });
     }
     showLoader('جاري حفظ الأوردر...');
-    var { data: jsonData, error: invokeError } = await supabase.functions.invoke('save-sales-invoice', {
-      body: {
-        orderHeader: orderHeader,
-        itemsList: itemsList,
-        branchId: 'MAIN'
-      }
+    var ses = await supabase.auth.getSession();
+    var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+    var res = await fetch(RW_SUPABASE_URL + '/functions/v1/save-sales-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ orderHeader: orderHeader, itemsList: itemsList, branchId: 'MAIN' })
     });
-    if (invokeError) {
-      hideLoader();
-      showToast('فشل الاتصال: ' + (invokeError.message || 'خطأ غير معروف'), 'error');
-      return;
-    }
-    var json = jsonData;
+    var json = await res.json();
     hideLoader();
-    if (json && json.success) {
+    if (json.success) {
       RW_Audit_log('create', 'orders', json.orderID || '', null, orderHeader);
       showToast('تم حفظ الأوردر بنجاح: ' + (json.orderID || ''), 'success');
       cart = [];
@@ -3253,7 +3248,7 @@ var RW_TeleSales = (function() {
       byId('ts-customer-info').classList.add('hidden');
       updateCartDisplay();
     } else {
-      showToast((json && json.msg) || 'فشل حفظ الأوردر', 'error');
+      showToast(json.msg || 'فشل حفظ الأوردر', 'error');
     }
   }
 
