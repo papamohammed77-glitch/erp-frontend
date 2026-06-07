@@ -2823,6 +2823,7 @@ var RW_TeleSales = (function() {
     }
 
     safeHTML(container, buildHTML());
+    loadBranches();
     bindEvents();
     updateCartDisplay();
   }
@@ -2851,7 +2852,11 @@ var RW_TeleSales = (function() {
     h += '<div id="ts-cust-details" class="text-sm text-blue-600 font-bold mt-2 space-y-1"></div>';
     h += '</div>';
     h += '</div>';
-
+      // اختيار الفرع
+    h += '<div class="bg-white p-5 rounded-[30px] shadow-sm border">';
+    h += '<label class="text-xs font-black mb-2 block">الفرع المصروف منه</label>';
+    h += '<select id="ts-branch-select" class="w-full p-3 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm"><option value="">جاري تحميل الفروع...</option></select>';
+    h += '</div>';
     // بحث عن منتج
     h += '<div class="bg-white p-5 rounded-[30px] shadow-sm border relative border-2 border-blue-50">';
     h += '<label class="text-xs font-black text-blue-400 mb-2 block">البحث عن منتج</label>';
@@ -3239,7 +3244,8 @@ function _saveOrder() {
         return fetch(RW_SUPABASE_URL + '/functions/v1/save-sales-invoice', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-            body: JSON.stringify({ orderHeader: orderHeader, itemsList: itemsList, branchCode: 'MAIN' })
+            var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : null;
+            body: JSON.stringify({ orderHeader: orderHeader, itemsList: itemsList, branchCode: branchCode || 'MAIN' })
         });
     }).then(function(res) {
         return res.json();
@@ -3262,6 +3268,20 @@ function _saveOrder() {
         console.error(e);
     });
 }
+  function loadBranches() {
+    var sel = byId('ts-branch-select');
+    if (!sel) return;
+    supabase.from('branches').select('branch_code, name').then(function(res) {
+      var branches = res.data || [];
+      var h = '<option value="">-- اختر الفرع --</option>';
+      for (var i = 0; i < branches.length; i++) {
+        h += '<option value="' + branches[i].branch_code + '">' + (branches[i].name || branches[i].branch_code) + '</option>';
+      }
+      safeHTML(sel, h);
+    }).catch(function() {
+      safeHTML(sel, '<option value="">تعذر تحميل الفروع</option>');
+    });
+  }
 
   return {
     render: render,
