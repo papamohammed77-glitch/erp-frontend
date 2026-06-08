@@ -1283,6 +1283,7 @@ var RW_Items = (function() {
     var sortField = 'item_code';
     var sortAsc = true;
     var itemsData = [];
+    var currentSubTab = 'list';
 
     function _esc(s) {
         return String(s || '').replace(/[&<>]/g, function(m) {
@@ -1294,77 +1295,187 @@ var RW_Items = (function() {
         return Number(n || 0).toLocaleString();
     }
 
+    function _getStockStatus(item) {
+        var total = item._totalStock || 0;
+        var reorder = Number(item.reorder_point) || 5;
+        var maxQty = Number(item.max_qty) || 0;
+        if (total <= 0) return { label: 'نافد', color: 'bg-red-100 text-red-700', cls: 'critical' };
+        if (total <= reorder) return { label: 'منخفض', color: 'bg-orange-100 text-orange-700', cls: 'low' };
+        if (maxQty > 0 && total > maxQty) return { label: 'متكدس', color: 'bg-purple-100 text-purple-700', cls: 'overstock' };
+        return { label: 'متوفر', color: 'bg-green-100 text-green-700', cls: 'normal' };
+    }
+
+    async function _loadStockData() {
+        var branches = window._itemsBranches || RW_STATE.data.branches || [];
+        if (!branches.length) {
+            try { branches = await RW_Data.loadBranches(); } catch(e) {}
+        }
+        var stockRes = await supabase.from('stock_branches').select('item_id, branch_id, qty, allocated_qty');
+        var stockRows = stockRes.data || [];
+        var stockMap = {};
+        for (var s = 0; s < stockRows.length; s++) {
+            var row = stockRows[s];
+            if (!stockMap[row.item_id]) stockMap[row.item_id] = {};
+            stockMap[row.item_id][row.branch_id] = { qty: Number(row.qty) || 0, allocated: Number(row.allocated_qty) || 0 };
+        }
+        var branchIds = [];
+        for (var b = 0; b < branches.length; b++) {
+            branchIds.push(branches[b].id || branches[b].branch_code);
+        }
+        window._itemsBranchIds = branchIds;
+        window._itemsBranches = branches;
+        for (var i = 0; i < itemsData.length; i++) {
+            var item = itemsData[i];
+            var itemStock = stockMap[item.id] || {};
+            var branchStock = {};
+            var totalQty = 0;
+            for (var j = 0; j < branchIds.length; j++) {
+                var bid = branchIds[j];
+                var st = itemStock[bid] || { qty: 0, allocated: 0 };
+                branchStock[bid] = { qty: st.qty, allocated: st.allocated };
+                totalQty += st.qty;
+            }
+            item._branchStock = branchStock;
+            item._totalStock = totalQty;
+            item._branches = branchIds;
+        }
+    }
+
     async function render() {
         var container = byId('rw-page-container');
         if (!container) return;
-        safeText(byId('rw-header-title'), 'الأصناف');
+        safeText(byId('rw-header-title'), 'الأصناف والمخزون');
+        safeText(byId('rw-header-subtitle'), 'مركز إدارة المخزون المتكامل');
 
-        safeHTML(container, '<div class="flex flex-col h-full">' +
-            '<div class="flex flex-wrap gap-3 mb-4">' +
-                '<input type="text" id="items-search" placeholder="🔍 بحث بالاسم، الكود، الباركود..." class="flex-1 min-w-[250px] p-3 bg-white rounded-xl border">' +
-                '<button id="btn-add-item" class="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> صنف جديد</button>' +
-            '</div>' +
-            '<div class="flex-1 bg-white rounded-2xl shadow-sm border overflow-y-auto" id="items-table-wrapper"></div>' +
-        '</div>');
-
-        var searchInput = byId('items-search');
-        if (searchInput) searchInput.addEventListener('input', filterTable);
-        var addBtn = byId('btn-add-item');
-        if (addBtn) addBtn.addEventListener('click', function() { openModal(null); });
-
+        currentSubTab = 'list';
         showLoader('جاري تحميل الأصناف والمخزون...');
         try {
             itemsData = await RW_Data.loadItems();
-            var branches = RW_STATE.data.branches || [];
-            if (!branches.length) {
-                try { branches = await RW_Data.loadBranches(); } catch(e) {}
-            }
-            var stockRes = await supabase.from('stock_branches').select('item_id, branch_id, qty, allocated_qty');
-            var stockRows = stockRes.data || [];
-            var stockMap = {};
-            for (var s = 0; s < stockRows.length; s++) {
-                var row = stockRows[s];
-                if (!stockMap[row.item_id]) stockMap[row.item_id] = {};
-                stockMap[row.item_id][row.branch_id] = { qty: Number(row.qty) || 0, allocated: Number(row.allocated_qty) || 0 };
-            }
-            var branchIds = [];
-            for (var b = 0; b < branches.length; b++) {
-                branchIds.push(branches[b].id || branches[b].branch_code);
-            }
-            window._itemsBranchIds = branchIds;
-            window._itemsBranches = branches;
-            for (var i = 0; i < itemsData.length; i++) {
-                var item = itemsData[i];
-                var itemStock = stockMap[item.id] || {};
-                var branchStock = {};
-                var totalQty = 0;
-                for (var j = 0; j < branchIds.length; j++) {
-                    var bid = branchIds[j];
-                    var st = itemStock[bid] || { qty: 0, allocated: 0 };
-                    branchStock[bid] = { qty: st.qty, allocated: st.allocated };
-                    totalQty += st.qty;
-                }
-                item._branchStock = branchStock;
-                item._totalStock = totalQty;
-                item._branches = branchIds;
-            }
+            await _loadStockData();
             hideLoader();
         } catch(e) {
             hideLoader();
-            console.error('فشل تحميل المخزون', e);
+            console.error('فشل تحميل بيانات المخزون', e);
         }
-        renderTable(itemsData);
+        _renderSubTabs();
+        _renderListView();
     }
 
-    function renderTable(data) {
+    function _renderSubTabs() {
+        var container = byId('rw-page-container');
+        if (!container) return;
+        var html = '<div class="p-4">';
+        // تبويبات فرعية علوية
+        html += '<div class="flex flex-wrap gap-2 border-b pb-3 mb-4">';
+        var tabs = [
+            { id: 'list', label: '📋 قائمة الأصناف' },
+            { id: 'movement', label: '📊 حركة صنف' },
+            { id: 'matrix', label: '📍 الأرصدة حسب الفروع' }
+        ];
+        for (var t = 0; t < tabs.length; t++) {
+            var activeClass = currentSubTab === tabs[t].id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200';
+            html += '<button onclick="RW_Items._switchSubTab(\'' + tabs[t].id + '\')" class="px-4 py-2 rounded-xl font-bold text-sm transition ' + activeClass + '">' + tabs[t].label + '</button>';
+        }
+        html += '</div>';
+        html += '<div id="items-sub-content"></div>';
+        html += '</div>';
+        safeHTML(container, html);
+    }
+
+    function _switchSubTab(tabId) {
+        currentSubTab = tabId;
+        _renderSubTabs();
+        if (tabId === 'list') _renderListView();
+        else if (tabId === 'movement') _renderStockMovementReport(null, null, null);
+        else if (tabId === 'matrix') _renderBranchStockMatrix();
+    }
+
+    // ==================== قائمة الأصناف ====================
+    function _renderListView() {
+        var content = byId('items-sub-content');
+        if (!content) return;
+
+        var categories = [];
+        for (var i = 0; i < itemsData.length; i++) {
+            var cat = itemsData[i].category || '';
+            if (cat && categories.indexOf(cat) === -1) categories.push(cat);
+        }
+        var catOptions = '<option value="">كل التصنيفات</option>';
+        for (var c = 0; c < categories.length; c++) {
+            catOptions += '<option value="' + _esc(categories[c]) + '">' + categories[c] + '</option>';
+        }
+
+        var html = '';
+        // صف الفلاتر
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">';
+        html += '<div class="grid grid-cols-2 md:grid-cols-5 gap-2">';
+        html += '<input type="text" id="items-search" placeholder="🔍 بحث بالاسم، الكود، الباركود..." class="p-2.5 bg-gray-50 border rounded-lg text-sm" oninput="RW_Items._applyFilters()">';
+        html += '<select id="items-cat-filter" class="p-2.5 bg-gray-50 border rounded-lg text-sm" onchange="RW_Items._applyFilters()">' + catOptions + '</select>';
+        html += '<select id="items-status-filter" class="p-2.5 bg-gray-50 border rounded-lg text-sm" onchange="RW_Items._applyFilters()"><option value="">كل الحالات</option><option value="low">🔴 منخفض</option><option value="normal">🟢 متوفر</option><option value="overstock">🟣 متكدس</option><option value="critical">⚫ نافد</option></select>';
+        html += '<button onclick="RW_Items._resetFilters()" class="p-2.5 bg-gray-100 border rounded-lg text-sm font-bold hover:bg-gray-200">إعادة تعيين</button>';
+        html += '<button id="btn-add-item-main" class="p-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-plus ml-1"></i> صنف جديد</button>';
+        html += '</div></div>';
+
+        // جدول الأصناف
+        html += '<div class="bg-white rounded-2xl shadow-sm border overflow-auto" id="items-table-wrapper" style="max-height:60vh"></div>';
+
+        safeHTML(content, html);
+
+        var addBtn = byId('btn-add-item-main');
+        if (addBtn) addBtn.addEventListener('click', function() { openModal(null); });
+
+        _applyFilters();
+    }
+
+    function _applyFilters() {
+        var q = (byId('items-search') ? byId('items-search').value : '').toLowerCase();
+        var cat = byId('items-cat-filter') ? byId('items-cat-filter').value : '';
+        var st = byId('items-status-filter') ? byId('items-status-filter').value : '';
+
+        var filtered = itemsData.slice();
+        if (q) {
+            filtered = filtered.filter(function(i) {
+                return (i.name||'').toLowerCase().indexOf(q) !== -1 ||
+                       (i.item_code||'').toLowerCase().indexOf(q) !== -1 ||
+                       (i.barcode||'').toLowerCase().indexOf(q) !== -1;
+            });
+        }
+        if (cat) {
+            filtered = filtered.filter(function(i) { return (i.category||'') === cat; });
+        }
+        if (st) {
+            filtered = filtered.filter(function(i) {
+                var status = _getStockStatus(i);
+                return status.cls === st;
+            });
+        }
+        _renderTable(filtered);
+    }
+
+    function _resetFilters() {
+        var searchEl = byId('items-search');
+        var catEl = byId('items-cat-filter');
+        var stEl = byId('items-status-filter');
+        if (searchEl) searchEl.value = '';
+        if (catEl) catEl.value = '';
+        if (stEl) stEl.value = '';
+        _applyFilters();
+    }
+
+    function _renderTable(data) {
         var w = byId('items-table-wrapper');
         if (!w) return;
-        if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا توجد أصناف</div>'); return; }
+        if (!data.length) { safeHTML(w, '<div class="text-center p-10 text-gray-500">لا توجد أصناف</div>'); return; }
 
         var sorted = data.slice().sort(function(a,b) {
             var va = a[sortField] || '', vb = b[sortField] || '';
             if (sortField === 'totalStock' || sortField === 'sales_price' || sortField === 'max_qty') {
                 va = Number(va); vb = Number(vb);
+            } else if (sortField && sortField.indexOf('branch_') === 0) {
+                var bid = sortField.replace('branch_', '');
+                var bsa = (a._branchStock && a._branchStock[bid]) ? (a._branchStock[bid].qty || 0) : 0;
+                var bsb = (b._branchStock && b._branchStock[bid]) ? (b._branchStock[bid].qty || 0) : 0;
+                va = Number(bsa); vb = Number(bsb);
             } else {
                 va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
             }
@@ -1377,69 +1488,298 @@ var RW_Items = (function() {
 
         var html = '<table class="w-full text-sm"><thead class="sticky top-0 bg-gray-100 z-20">' +
             '<tr>' +
-                '<th class="p-4 cursor-pointer font-bold" onclick="RW_Items._sort(\'name\')">المنتج <i class="fa-solid ' + (sortField==='name'?iconSuffix:'fa-sort') + '"></i></th>' +
+                '<th class="p-3 text-center text-xs">#</th>' +
+                '<th class="p-4 cursor-pointer font-bold" onclick="RW_Items._sort(\'name\')">الصنف <i class="fa-solid ' + (sortField==='name'?iconSuffix:'fa-sort') + '"></i></th>' +
                 '<th class="p-4 cursor-pointer font-bold" onclick="RW_Items._sort(\'category\')">التصنيف <i class="fa-solid ' + (sortField==='category'?iconSuffix:'fa-sort') + '"></i></th>' +
-                '<th class="p-4 cursor-pointer font-bold" onclick="RW_Items._sort(\'unit\')">الوحدة <i class="fa-solid ' + (sortField==='unit'?iconSuffix:'fa-sort') + '"></i></th>' +
-                '<th class="p-4 cursor-pointer font-bold" onclick="RW_Items._sort(\'sales_price\')">السعر <i class="fa-solid ' + (sortField==='sales_price'?iconSuffix:'fa-sort') + '"></i></th>' +
-                '<th class="p-4 cursor-pointer font-bold" onclick="RW_Items._sort(\'max_qty\')">الأقصى <i class="fa-solid ' + (sortField==='max_qty'?iconSuffix:'fa-sort') + '"></i></th>';
+                '<th class="p-4 cursor-pointer font-bold text-center" onclick="RW_Items._sort(\'sales_price\')">السعر <i class="fa-solid ' + (sortField==='sales_price'?iconSuffix:'fa-sort') + '"></i></th>' +
+                '<th class="p-4 cursor-pointer font-bold text-center" onclick="RW_Items._sort(\'totalStock\')">إجمالي المخزون <i class="fa-solid ' + (sortField==='totalStock'?iconSuffix:'fa-sort') + '"></i></th>';
 
         for (var b = 0; b < branchIds.length; b++) {
+            var bid = branchIds[b];
             var branchName = '';
             for (var bn = 0; bn < branches.length; bn++) {
-                if ((branches[bn].id || branches[bn].branch_code) === branchIds[b]) {
-                    branchName = branches[bn].name || branches[bn].branch_code || branchIds[b];
+                if ((branches[bn].id || branches[bn].branch_code) === bid) {
+                    branchName = branches[bn].name || branches[bn].branch_code || bid;
                     break;
                 }
             }
-            html += '<th class="p-4 text-center font-bold text-xs">' + (branchName || branchIds[b]) + '</th>';
+            html += '<th class="p-4 cursor-pointer font-bold text-center text-xs" onclick="RW_Items._sort(\'branch_' + bid + '\')">' +
+                (branchName || bid) + ' <i class="fa-solid ' + (sortField===('branch_'+bid)?iconSuffix:'fa-sort') + '"></i></th>';
         }
 
-        html += '<th class="p-4 cursor-pointer font-bold text-center" onclick="RW_Items._sort(\'totalStock\')">إجمالي المخزون <i class="fa-solid ' + (sortField==='totalStock'?iconSuffix:'fa-sort') + '"></i></th>' +
+        html += '<th class="p-4 text-center text-xs font-bold">الحالة</th>' +
             '</tr></thead><tbody id="items-tbody"></tbody></table>';
         var controlsHtml = '<div id="items-tbody-controls"></div>';
         safeHTML(w, html + controlsHtml);
 
         RW_Table.paginate('items-tbody', sorted, 1, 50, function(item, idx) {
             var img = item.image_url || 'https://via.placeholder.com/80';
-            var activeBadge = item.is_active !== false ? '<span class="text-xs text-green-600 font-bold">نشط</span>' : '<span class="text-xs text-red-500 font-bold">غير نشط</span>';
-            var rowHtml = '<tr class="hover:bg-blue-50 cursor-pointer" onclick="RW_Items._openModal(\'' + _esc(item.item_code) + '\')">' +
-                '<td class="p-4"><div class="flex items-center gap-3">' +
-                '<img src="' + img + '" class="h-20 w-20 rounded-xl object-cover border-2 border-gray-100 shadow-sm" onerror="this.src=\'https://via.placeholder.com/80\'" onclick="event.stopPropagation(); RW_Items._viewImage(\'' + img + '\')">' +
+            var status = _getStockStatus(item);
+            var rowHtml = '<tr class="hover:bg-blue-50">' +
+                '<td class="p-3 text-center text-xs text-gray-400">' + (idx + 1) + '</td>' +
+                '<td class="p-4 cursor-pointer" onclick="RW_Items._openModal(\'' + _esc(item.item_code) + '\')"><div class="flex items-center gap-3">' +
+                '<img src="' + img + '" class="h-20 w-20 rounded-xl object-cover border-2 border-gray-100 shadow-sm" onerror="this.src=\'https://via.placeholder.com/80\'">' +
                 '<div><span class="font-bold text-base">' + (item.name||'') + '</span><br><span class="text-xs text-gray-400">' + (item.item_code||'') + '</span></div></div></td>' +
                 '<td class="p-4 text-gray-500">' + (item.category||'-') + '</td>' +
-                '<td class="p-4 text-gray-500">' + (item.unit||'-') + '</td>' +
-                '<td class="p-4 font-bold text-blue-600">' + _fmtNum(item.sales_price) + ' EGP</td>' +
-                '<td class="p-4">' + (item.max_qty||'غير محدد') + '</td>';
+                '<td class="p-4 text-center font-bold text-blue-600">' + _fmtNum(item.sales_price) + ' EGP</td>';
 
+            // إجمالي المخزون (قابل للنقر → يفتح حركة الصنف لكل الفروع)
+            var totalStock = item._totalStock || 0;
+            rowHtml += '<td class="p-4 text-center font-bold cursor-pointer underline text-blue-600" onclick="RW_Items._switchSubTab(\'movement\'); setTimeout(function(){ RW_Items._renderStockMovementReport(\'' + _esc(item.item_code) + '\',\'' + _esc(item.name).replace(/'/g, "\\'") + '\',null); },200);">' + totalStock + '</td>';
+
+            // أعمدة الفروع (قابلة للنقر → تفتح حركة الصنف لهذا الفرع)
             var branchStock = item._branchStock || {};
             for (var b2 = 0; b2 < branchIds.length; b2++) {
-                var bid = branchIds[b2];
-                var st = branchStock[bid] || { qty: 0, allocated: 0 };
-                rowHtml += '<td class="p-4 text-center cursor-pointer underline text-blue-600" onclick="event.stopPropagation(); RW_Items._showBranchStockMovement(\'' + _esc(item.item_code) + '\',\'' + _esc(item.name).replace(/'/g, "\\'") + '\',\'' + _esc(bid) + '\',\'' + _esc(branchName || bid) + '\')">' + st.qty + '</td>';
+                var bid2 = branchIds[b2];
+                var st = branchStock[bid2] || { qty: 0, allocated: 0 };
+                var branchName2 = '';
+                for (var bn2 = 0; bn2 < branches.length; bn2++) {
+                    if ((branches[bn2].id || branches[bn2].branch_code) === bid2) {
+                        branchName2 = branches[bn2].name || branches[bn2].branch_code || bid2;
+                        break;
+                    }
+                }
+                rowHtml += '<td class="p-4 text-center cursor-pointer underline text-blue-600 text-xs" onclick="RW_Items._switchSubTab(\'movement\'); setTimeout(function(){ RW_Items._renderStockMovementReport(\'' + _esc(item.item_code) + '\',\'' + _esc(item.name).replace(/'/g, "\\'") + '\',\'' + _esc(bid2) + '\',\'' + _esc(branchName2).replace(/'/g, "\\'") + '\'); },200);">' + st.qty + '</td>';
             }
 
-            var totalStock = item._totalStock || 0;
-            var stockWarn = (Number(item.reorder_point||5) >= totalStock) ? 'color:#ef4444;font-weight:bold' : '';
-            rowHtml += '<td class="p-4 text-center font-bold" style="' + stockWarn + '">' + totalStock + ' ' + activeBadge + '</td></tr>';
+            // شارة الحالة
+            rowHtml += '<td class="p-4 text-center"><span class="px-2 py-1 rounded-full text-xs font-bold ' + status.color + '">' + status.label + '</span></td></tr>';
             return rowHtml;
         });
-    }
-
-    function filterTable() {
-        var q = (byId('items-search') ? byId('items-search').value : '').toLowerCase();
-        var filtered = itemsData.filter(function(i) {
-            return (i.name||'').toLowerCase().indexOf(q) !== -1 ||
-                   (i.item_code||'').toLowerCase().indexOf(q) !== -1 ||
-                   (i.barcode||'').toLowerCase().indexOf(q) !== -1;
-        });
-        renderTable(filtered);
     }
 
     function _sort(field) {
         if (sortField === field) sortAsc = !sortAsc;
         else { sortField = field; sortAsc = true; }
-        renderTable(itemsData);
+        if (currentSubTab === 'list') _applyFilters();
+        else if (currentSubTab === 'matrix') _renderBranchStockMatrix();
     }
+
+    // ==================== تقرير حركة صنف (شاشة داخلية) ====================
+    function _renderStockMovementReport(itemCode, itemName, branchId, branchName) {
+        var content = byId('items-sub-content');
+        if (!content) return;
+
+        var html = '<div class="bg-white rounded-2xl shadow-sm border p-6">';
+        html += '<h3 class="text-xl font-black mb-4"><i class="fa-solid fa-timeline ml-2 text-indigo-600"></i>تقرير حركة صنف</h3>';
+
+        // نموذج الإدخال
+        html += '<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">';
+        html += '<div><label class="text-xs font-bold block mb-1">الصنف</label><select id="mov-item-select" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"><option value="">اختر صنفاً</option></select></div>';
+        html += '<div><label class="text-xs font-bold block mb-1">من تاريخ</label><input type="date" id="mov-date-from" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"></div>';
+        html += '<div><label class="text-xs font-bold block mb-1">إلى تاريخ</label><input type="date" id="mov-date-to" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"></div>';
+        html += '<div class="flex items-end"><button onclick="RW_Items._loadMovementReport()" class="w-full p-2.5 bg-indigo-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-search ml-1"></i> عرض الحركات</button></div>';
+        html += '</div>';
+
+        html += '<div id="movement-report-result" class="overflow-auto" style="max-height:55vh">';
+        html += '<div class="text-center py-8 text-gray-400">اختر صنفاً واضغط "عرض الحركات"</div>';
+        html += '</div></div>';
+
+        safeHTML(content, html);
+
+        // ملء قائمة الأصناف
+        var sel = byId('mov-item-select');
+        if (sel) {
+            for (var i = 0; i < itemsData.length; i++) {
+                var it = itemsData[i];
+                var selected = '';
+                if (itemCode && it.item_code === itemCode) selected = ' selected';
+                sel.innerHTML += '<option value="' + _esc(it.item_code) + '"' + selected + '>' + (it.name||'') + ' (' + (it.item_code||'') + ')</option>';
+            }
+        }
+
+        // إذا كان هناك صنف محدد مسبقاً، نحمّل التقرير تلقائياً
+        if (itemCode) {
+            window._movementItemCode = itemCode;
+            window._movementItemName = itemName || '';
+            window._movementBranchId = branchId || null;
+            window._movementBranchName = branchName || '';
+            setTimeout(function() { _loadMovementReport(); }, 300);
+        }
+    }
+
+    async function _loadMovementReport() {
+        var itemCode = byId('mov-item-select') ? byId('mov-item-select').value : '';
+        if (!itemCode) { showToast('يرجى اختيار صنف', 'warning'); return; }
+
+        var fromDate = byId('mov-date-from') ? byId('mov-date-from').value : '';
+        var toDate = byId('mov-date-to') ? byId('mov-date-to').value : '';
+
+        showLoader('جاري تحميل الحركات...');
+        try {
+            var vouchersRes = await supabase.from('stock_vouchers')
+                .select('id, voucher_code, voucher_date, type, reference, from_branch_id, to_branch_id')
+                .order('voucher_date', { ascending: true });
+
+            var vouchers = vouchersRes.data || [];
+            var voucherIds = vouchers.map(function(v) { return v.id; });
+
+            if (voucherIds.length === 0) {
+                hideLoader();
+                safeHTML(byId('movement-report-result'), '<div class="text-center py-8 text-gray-500">لا توجد حركات مسجلة بعد</div>');
+                return;
+            }
+
+            var detailsRes = await supabase.from('stock_voucher_details')
+                .select('*')
+                .in('voucher_id', voucherIds)
+                .eq('item_code', itemCode);
+
+            var details = detailsRes.data || [];
+            if (details.length === 0) {
+                hideLoader();
+                safeHTML(byId('movement-report-result'), '<div class="text-center py-8 text-gray-500">لا توجد حركات لهذا الصنف</div>');
+                return;
+            }
+
+            var voucherMap = {};
+            for (var v = 0; v < vouchers.length; v++) {
+                voucherMap[vouchers[v].id] = vouchers[v];
+            }
+
+            var branchIds = window._itemsBranchIds || [];
+            var branches = window._itemsBranches || [];
+
+            var html = '<table class="w-full text-sm border"><thead><tr class="bg-gray-100">' +
+                '<th class="p-2">#</th><th class="p-2">التاريخ</th><th class="p-2">نوع الحركة</th>' +
+                '<th class="p-2 text-center">الكمية</th><th class="p-2 text-center">الرصيد التراكمي</th>' +
+                '<th class="p-2">الفرع</th><th class="p-2">المرجع</th></tr></thead><tbody>';
+
+            var runningBalance = 0;
+            for (var d = 0; d < details.length; d++) {
+                var det = details[d];
+                var qty = Number(det.qty) || 0;
+                var voucher = voucherMap[det.voucher_id] || {};
+
+                var branchName = '';
+                var isOut = false;
+                for (var b = 0; b < branches.length; b++) {
+                    var bid = branches[b].id || branches[b].branch_code;
+                    if (bid === voucher.from_branch_id) { branchName = branches[b].name || bid; isOut = true; break; }
+                    if (bid === voucher.to_branch_id) { branchName = branches[b].name || bid; isOut = false; break; }
+                }
+
+                var movementQty = isOut ? -qty : qty;
+                runningBalance += movementQty;
+
+                html += '<tr class="border-t">' +
+                    '<td class="p-2 text-xs">' + (d + 1) + '</td>' +
+                    '<td class="p-2">' + (voucher.voucher_date || '') + '</td>' +
+                    '<td class="p-2">' + (voucher.type || '') + '</td>' +
+                    '<td class="p-2 text-center font-bold ' + (movementQty >= 0 ? 'text-green-600' : 'text-red-600') + '">' +
+                        (movementQty >= 0 ? '+' : '') + movementQty + '</td>' +
+                    '<td class="p-2 text-center font-bold">' + runningBalance + '</td>' +
+                    '<td class="p-2">' + (branchName || '-') + '</td>' +
+                    '<td class="p-2 text-xs">' + (voucher.voucher_code || '') + '</td></tr>';
+            }
+
+            html += '</tbody></table>';
+            hideLoader();
+            safeHTML(byId('movement-report-result'), html);
+        } catch(e) {
+            hideLoader();
+            console.error(e);
+            showToast('فشل تحميل الحركات', 'error');
+        }
+    }
+
+    // ==================== الأرصدة حسب الفروع (Matrix) ====================
+    function _renderBranchStockMatrix() {
+        var content = byId('items-sub-content');
+        if (!content) return;
+
+        var branchIds = window._itemsBranchIds || [];
+        var branches = window._itemsBranches || [];
+
+        if (branchIds.length === 0 || !itemsData.length) {
+            safeHTML(content, '<div class="text-center py-10 text-gray-500">لا توجد بيانات كافية لعرض المصفوفة</div>');
+            return;
+        }
+
+        var sorted = itemsData.slice().sort(function(a,b) {
+            var va = a[sortField] || '', vb = b[sortField] || '';
+            if (sortField === 'totalStock') { va = Number(a._totalStock||0); vb = Number(b._totalStock||0); }
+            else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+            return (va < vb ? -1 : va > vb ? 1 : 0) * (sortAsc ? 1 : -1);
+        });
+
+        var html = '<div class="bg-white rounded-2xl shadow-sm border p-6">';
+        html += '<h3 class="text-xl font-black mb-4"><i class="fa-solid fa-table ml-2 text-emerald-600"></i>الأرصدة حسب الفروع</h3>';
+        html += '<div class="mb-4"><input type="text" id="matrix-search" placeholder="🔍 بحث عن صنف..." class="p-2.5 bg-gray-50 border rounded-lg text-sm w-full md:w-80" oninput="RW_Items._filterMatrix()"></div>';
+        html += '<div class="overflow-auto" style="max-height:55vh">';
+        html += '<table class="w-full text-sm border"><thead class="sticky top-0 bg-gray-100"><tr>';
+        html += '<th class="p-3 cursor-pointer font-bold" onclick="RW_Items._sort(\'name\')">الصنف</th>';
+        html += '<th class="p-3 cursor-pointer font-bold text-center" onclick="RW_Items._sort(\'totalStock\')">إجمالي المخزون</th>';
+        for (var b = 0; b < branchIds.length; b++) {
+            var bid = branchIds[b];
+            var branchName = '';
+            for (var bn = 0; bn < branches.length; bn++) {
+                if ((branches[bn].id || branches[bn].branch_code) === bid) { branchName = branches[bn].name || bid; break; }
+            }
+            html += '<th class="p-3 text-center text-xs font-bold">' + (branchName || bid) + '</th>';
+        }
+        html += '</tr></thead><tbody id="matrix-tbody"></tbody></table>';
+        html += '</div></div>';
+        var controlsHtml = '<div id="matrix-tbody-controls"></div>';
+        safeHTML(content, html + controlsHtml);
+
+        RW_Table.paginate('matrix-tbody', sorted, 1, 50, function(item, idx) {
+            var rowHtml = '<tr class="border-t hover:bg-gray-50">' +
+                '<td class="p-3 cursor-pointer font-bold text-blue-600" onclick="RW_Items._switchSubTab(\'movement\'); setTimeout(function(){ RW_Items._renderStockMovementReport(\'' + _esc(item.item_code) + '\',\'' + _esc(item.name).replace(/'/g, "\\'") + '\',null); },200);">' +
+                (item.name||'') + ' <span class="text-xs text-gray-400">(' + (item.item_code||'') + ')</span></td>' +
+                '<td class="p-3 text-center font-bold">' + (item._totalStock||0) + '</td>';
+            var branchStock = item._branchStock || {};
+            for (var b2 = 0; b2 < branchIds.length; b2++) {
+                var bid2 = branchIds[b2];
+                var st = branchStock[bid2] || { qty: 0, allocated: 0 };
+                var branchName2 = '';
+                for (var bn2 = 0; bn2 < branches.length; bn2++) {
+                    if ((branches[bn2].id || branches[bn2].branch_code) === bid2) { branchName2 = branches[bn2].name || bid2; break; }
+                }
+                rowHtml += '<td class="p-3 text-center cursor-pointer underline text-blue-600 text-xs" onclick="RW_Items._switchSubTab(\'movement\'); setTimeout(function(){ RW_Items._renderStockMovementReport(\'' + _esc(item.item_code) + '\',\'' + _esc(item.name).replace(/'/g, "\\'") + '\',\'' + _esc(bid2) + '\',\'' + _esc(branchName2).replace(/'/g, "\\'") + '\'); },200);">' + st.qty + '</td>';
+            }
+            rowHtml += '</tr>';
+            return rowHtml;
+        });
+    }
+
+    function _filterMatrix() {
+        var q = (byId('matrix-search') ? byId('matrix-search').value : '').toLowerCase();
+        var filtered = itemsData;
+        if (q) {
+            filtered = itemsData.filter(function(i) {
+                return (i.name||'').toLowerCase().indexOf(q) !== -1 || (i.item_code||'').toLowerCase().indexOf(q) !== -1;
+            });
+        }
+        _renderBranchStockMatrixFiltered(filtered);
+    }
+
+    function _renderBranchStockMatrixFiltered(data) {
+        var tbody = byId('matrix-tbody');
+        if (!tbody) return;
+        var branchIds = window._itemsBranchIds || [];
+        var branches = window._itemsBranches || [];
+        RW_Table.paginate('matrix-tbody', data, 1, 50, function(item, idx) {
+            var rowHtml = '<tr class="border-t hover:bg-gray-50">' +
+                '<td class="p-3 cursor-pointer font-bold text-blue-600" onclick="RW_Items._switchSubTab(\'movement\'); setTimeout(function(){ RW_Items._renderStockMovementReport(\'' + _esc(item.item_code) + '\',\'' + _esc(item.name).replace(/'/g, "\\'") + '\',null); },200);">' +
+                (item.name||'') + ' <span class="text-xs text-gray-400">(' + (item.item_code||'') + ')</span></td>' +
+                '<td class="p-3 text-center font-bold">' + (item._totalStock||0) + '</td>';
+            var branchStock = item._branchStock || {};
+            for (var b2 = 0; b2 < branchIds.length; b2++) {
+                var bid2 = branchIds[b2];
+                var st = branchStock[bid2] || { qty: 0, allocated: 0 };
+                var branchName2 = '';
+                for (var bn2 = 0; bn2 < branches.length; bn2++) {
+                    if ((branches[bn2].id || branches[bn2].branch_code) === bid2) { branchName2 = branches[bn2].name || bid2; break; }
+                }
+                rowHtml += '<td class="p-3 text-center cursor-pointer underline text-blue-600 text-xs" onclick="RW_Items._switchSubTab(\'movement\'); setTimeout(function(){ RW_Items._renderStockMovementReport(\'' + _esc(item.item_code) + '\',\'' + _esc(item.name).replace(/'/g, "\\'") + '\',\'' + _esc(bid2) + '\',\'' + _esc(branchName2).replace(/'/g, "\\'") + '\'); },200);">' + st.qty + '</td>';
+            }
+            rowHtml += '</tr>';
+            return rowHtml;
+        });
+    }
+
+    // ==================== دوال محفوظة من النسخة السابقة ====================
 
     function _viewImage(url) {
         Swal.fire({ imageUrl: url, imageWidth: 800, imageAlt: 'صورة الصنف', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' } });
@@ -1449,6 +1789,13 @@ var RW_Items = (function() {
         var item = itemCode ? itemsData.find(function(i) { return i.item_code === itemCode; }) : null;
         var isEdit = !!item;
         var title = isEdit ? 'تعديل الصنف' : 'إضافة صنف جديد';
+        var branches = window._itemsBranches || RW_STATE.data.branches || [];
+        var branchOptions = '<option value="">-- اختر فرعاً --</option>';
+        for (var br = 0; br < branches.length; br++) {
+            var bv = branches[br].branch_code || branches[br].id || '';
+            var bn = branches[br].name || bv;
+            branchOptions += '<option value="' + bv + '">' + bn + '</option>';
+        }
         var html = '<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">' +
         '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden">' +
         '<div class="bg-blue-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fa-solid fa-box-open ml-2"></i>' + title + '</h3><button onclick="Swal.close()"><i class="fa-solid fa-xmark text-xl"></i></button></div>' +
@@ -1464,7 +1811,7 @@ var RW_Items = (function() {
         '<div class="flex flex-col"><label>سعر البيع</label><input id="item-price" type="number" value="' + (item && item.sales_price ? item.sales_price : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
         '<div class="flex flex-col"><label>السعر القديم</label><input id="item-oprice" type="number" value="' + (item && item.old_price ? item.old_price : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
         '<div class="flex flex-col"><label>حد إعادة الطلب</label><input id="item-reorder" type="number" value="' + (item && item.reorder_point ? item.reorder_point : 5) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
-        '<div class="flex flex-col"><label>الحد الأقصى</label><input id="item-maxqty" type="number" value="' + (item && item.max_qty ? item.max_qty : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+        '<div class="flex flex-col"><label>الحد الأقصى للطلب</label><input id="item-maxqty" type="number" value="' + (item && item.max_qty ? item.max_qty : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
         '<div class="flex flex-col"><label>الوحدة البديلة</label><input id="item-altunit" value="' + (item && item.alt_unit ? item.alt_unit : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
         '<div class="flex flex-col"><label>عدد الوحدات البديلة</label><input id="item-altqty" type="number" value="' + (item && item.alt_unit_qty ? item.alt_unit_qty : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
         '<div class="flex flex-col"><label>الوزن</label><input id="item-weight" value="' + (item && item.weight_kg ? item.weight_kg : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
@@ -1475,6 +1822,7 @@ var RW_Items = (function() {
         '<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="item-is-active" ' + (item && item.is_active !== false ? 'checked' : '') + '><span class="font-bold text-sm">نشط</span></label>' +
         '<label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="item-show-in-store" ' + (item && item.show_in_store !== false ? 'checked' : '') + '><span class="font-bold text-sm">الظهور في المتجر الإلكتروني</span></label>' +
         '</div>' +
+        (!isEdit ? '<div class="bg-amber-50 border border-amber-200 rounded-xl p-4"><h4 class="font-bold text-amber-700 mb-3"><i class="fa-solid fa-boxes-stacked ml-2"></i>الرصيد الافتتاحي (اختياري)</h4><div class="grid grid-cols-2 gap-4"><div class="flex flex-col"><label class="text-sm text-amber-700">الفرع</label><select id="item-opening-branch" class="p-2.5 bg-white border rounded-lg">' + branchOptions + '</select></div><div class="flex flex-col"><label class="text-sm text-amber-700">الكمية الافتتاحية</label><input id="item-opening-qty" type="number" value="0" min="0" class="p-2.5 bg-white border rounded-lg"></div></div></div>' : '') +
         '<div class="flex justify-end gap-3 pt-4 border-t">' +
         (isEdit ? '<button type="button" id="btn-delete-item" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fa-solid fa-trash ml-1"></i> حذف</button>' : '') +
         '<button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>' +
@@ -1482,10 +1830,7 @@ var RW_Items = (function() {
         '</div></form></div></div>';
 
         Swal.fire({
-            html: html,
-            width: '1000px',
-            showConfirmButton: false,
-            showCancelButton: false,
+            html: html, width: '1000px', showConfirmButton: false, showCancelButton: false,
             customClass: { popup: '!bg-transparent !shadow-none !p-0' },
             didOpen: function() {
                 var selectedFile = null;
@@ -1495,26 +1840,16 @@ var RW_Items = (function() {
                         selectedFile = this.files[0];
                         if (selectedFile) {
                             var reader = new FileReader();
-                            reader.onload = function(e) {
-                                var preview = byId('item-img-preview');
-                                if (preview) preview.src = e.target.result;
-                            };
+                            reader.onload = function(e) { var preview = byId('item-img-preview'); if (preview) preview.src = e.target.result; };
                             reader.readAsDataURL(selectedFile);
                         }
                     });
                 }
-
                 var saveBtn = byId('btn-save-item');
-                if (saveBtn) {
-                    saveBtn.addEventListener('click', function() {
-                        RW_Items._handleSave(item, isEdit, selectedFile);
-                    });
-                }
+                if (saveBtn) saveBtn.addEventListener('click', function() { _handleSave(item, isEdit, selectedFile); });
                 if (isEdit) {
                     var deleteBtn = byId('btn-delete-item');
-                    if (deleteBtn) {
-                        deleteBtn.addEventListener('click', function() { RW_Items._handleDelete(item); });
-                    }
+                    if (deleteBtn) deleteBtn.addEventListener('click', function() { _handleDelete(item); });
                 }
             }
         });
@@ -1527,7 +1862,14 @@ var RW_Items = (function() {
         if (!name) { showToast('اسم الصنف مطلوب', 'error'); return; }
         showLoader('جاري الحفظ...');
         var imageUrl = item ? item.image_url : null;
-
+        var openingBranch = '';
+        var openingQty = 0;
+        if (!isEdit) {
+            var ob = byId('item-opening-branch');
+            var oq = byId('item-opening-qty');
+            if (ob && ob.value) openingBranch = ob.value;
+            if (oq && oq.value) openingQty = parseFloat(oq.value) || 0;
+        }
         function uploadAndSave() {
             var payload = {
                 name: name,
@@ -1547,67 +1889,59 @@ var RW_Items = (function() {
                 is_active: byId('item-is-active') ? byId('item-is-active').checked : true,
                 show_in_store: byId('item-show-in-store') ? byId('item-show-in-store').checked : true
             };
-
             supabase.auth.getSession().then(function(ses) {
                 var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-                if (!token) {
-                    hideLoader();
-                    showToast('خطأ: لم يتم العثور على جلسة صالحة. يرجى إعادة تسجيل الدخول.', 'error');
-                    return;
-                }
+                if (!token) { hideLoader(); showToast('خطأ: لم يتم العثور على جلسة صالحة', 'error'); return; }
                 return fetch(RW_SUPABASE_URL + '/functions/v1/save-item', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token},
                     body: JSON.stringify({ item: payload, isEdit: isEdit, item_code: item ? item.item_code : null })
                 });
-            }).then(function(res) {
-                if (!res) return;
-                return res.json();
-            }).then(function(json) {
-                hideLoader();
+            }).then(function(res) { if (!res) return; return res.json(); }).then(function(json) {
                 if (json && json.success) {
                     RW_Audit_log(isEdit ? 'update' : 'create', 'items', json.item_code || (item ? item.item_code : ''), isEdit ? item : null, payload);
-                    showToast(isEdit ? 'تم التعديل بنجاح' : 'تمت الإضافة بنجاح', 'success');
-                    Swal.close();
-                    RW_Data.loadItems().then(function(newData) {
-                        itemsData = newData;
-                        renderTable(itemsData);
-                    });
-                } else {
-                    showToast((json && json.error) || 'فشل الحفظ - تحقق من اتصالك أو صلاحياتك', 'error');
-                }
-            }).catch(function(e) {
-                hideLoader();
-                console.error('Save error:', e);
-                showToast('فشل الاتصال بالخادم. راجع اتصالك.', 'error');
-            });
+                    var savedItemCode = json.item_code || (item ? item.item_code : '');
+                    if (!isEdit && openingQty > 0 && openingBranch && savedItemCode) {
+                        showLoader('جاري حفظ الرصيد الافتتاحي...');
+                        supabase.auth.getSession().then(function(ses2) {
+                            var token2 = (ses2 && ses2.data && ses2.data.session) ? ses2.data.session.access_token : null;
+                            return fetch(RW_SUPABASE_URL + '/functions/v1/save-inventory-count', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token2},
+                                body: JSON.stringify({ type: 'branch', entityId: openingBranch, reference: 'رصيد افتتاحي: ' + savedItemCode, items: [{ itemCode: savedItemCode, itemName: name, unit: payload.unit || 'حبة', qty: openingQty, unitPrice: 0, notes: 'رصيد افتتاحي' }] })
+                            });
+                        }).then(function(res2) { return res2 ? res2.json() : null; }).then(function(json2) {
+                            hideLoader();
+                            showToast(json2 && json2.success ? 'تم حفظ الصنف والرصيد الافتتاحي' : 'تم حفظ الصنف (الرصيد الافتتاحي: ' + ((json2&&json2.msg)||'فشل') + ')', json2 && json2.success ? 'success' : 'warning');
+                            Swal.close();
+                            RW_Data.loadItems().then(function(nd) { itemsData = nd; _loadStockData().then(function(){ if(currentSubTab==='list')_applyFilters(); }); });
+                        }).catch(function() { hideLoader(); showToast('تم حفظ الصنف لكن فشل الرصيد الافتتاحي', 'warning'); Swal.close(); });
+                    } else {
+                        hideLoader();
+                        showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success');
+                        Swal.close();
+                        RW_Data.loadItems().then(function(nd) { itemsData = nd; _loadStockData().then(function(){ if(currentSubTab==='list')_applyFilters(); }); });
+                    }
+                } else { hideLoader(); showToast((json&&json.error)||'فشل الحفظ', 'error'); }
+            }).catch(function(e) { hideLoader(); console.error(e); showToast('فشل الاتصال', 'error'); });
         }
-
         if (selectedFile) {
             var fileName = 'items/' + Date.now() + '-' + selectedFile.name;
             supabase.storage.from('product-images').upload(fileName, selectedFile, { upsert: true }).then(function(res) {
-                if (!res.error) {
-                    var urlData = supabase.storage.from('product-images').getPublicUrl(fileName);
-                    imageUrl = urlData.publicUrl;
-                }
+                if (!res.error) { var ud = supabase.storage.from('product-images').getPublicUrl(fileName); imageUrl = ud.publicUrl; }
                 uploadAndSave();
-            }).catch(function() {
-                uploadAndSave();
-            });
-        } else {
-            uploadAndSave();
-        }
+            }).catch(function() { uploadAndSave(); });
+        } else { uploadAndSave(); }
     }
 
     function _handleDelete(item) {
-        Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا الصنف؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' }).then(function(confirm) {
-            if (!confirm.isConfirmed) return;
+        Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا الصنف؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' }).then(function(cf) {
+            if (!cf.isConfirmed) return;
             showLoader('جاري الحذف...');
             supabase.auth.getSession().then(function(ses) {
                 var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
                 return fetch(RW_SUPABASE_URL + '/functions/v1/delete-item', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token},
+                    method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token},
                     body: JSON.stringify({ item_code: item.item_code })
                 }).then(function(res) { return res.json(); });
             }).then(function(json) {
@@ -1616,10 +1950,8 @@ var RW_Items = (function() {
                     RW_Audit_log('delete', 'items', item.item_code, item, null);
                     showToast('تم الحذف', 'success');
                     Swal.close();
-                    RW_Data.loadItems().then(function(newData) { itemsData = newData; renderTable(itemsData); });
-                } else {
-                    showToast(json.error || 'فشل الحذف', 'error');
-                }
+                    RW_Data.loadItems().then(function(nd) { itemsData = nd; _loadStockData().then(function(){ if(currentSubTab==='list')_applyFilters(); }); });
+                } else { showToast(json.error || 'فشل الحذف', 'error'); }
             }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
         });
     }
@@ -1631,67 +1963,26 @@ var RW_Items = (function() {
                 .select('id, voucher_code, voucher_date, type, reference, from_branch_id, to_branch_id')
                 .or('from_branch_id.eq.' + branchId + ',to_branch_id.eq.' + branchId)
                 .order('voucher_date', { ascending: true });
-
             var vouchers = vouchersRes.data || [];
-            if (vouchers.length === 0) {
-                hideLoader();
-                Swal.fire({ title: 'حركة المخزون', text: 'لا توجد حركات لهذا الفرع', icon: 'info' });
-                return;
-            }
-
+            if (vouchers.length === 0) { hideLoader(); Swal.fire({ title: 'حركة المخزون', text: 'لا توجد حركات لهذا الفرع', icon: 'info' }); return; }
             var voucherIds = vouchers.map(function(v) { return v.id; });
-            var detailsRes = await supabase.from('stock_voucher_details')
-                .select('*')
-                .in('voucher_id', voucherIds)
-                .eq('item_code', itemCode);
-
+            var detailsRes = await supabase.from('stock_voucher_details').select('*').in('voucher_id', voucherIds).eq('item_code', itemCode);
             var details = detailsRes.data || [];
-            if (details.length === 0) {
-                hideLoader();
-                Swal.fire({ title: 'حركة المخزون', text: 'لا توجد حركات لهذا الصنف في الفرع', icon: 'info' });
-                return;
-            }
-
+            if (details.length === 0) { hideLoader(); Swal.fire({ title: 'حركة المخزون', text: 'لا توجد حركات لهذا الصنف في الفرع', icon: 'info' }); return; }
             var voucherMap = {};
-            for (var v = 0; v < vouchers.length; v++) {
-                voucherMap[vouchers[v].id] = vouchers[v];
-            }
-
-            var html = '<div class="text-right">';
-            html += '<h4 class="font-bold mb-3">حركة المخزون: ' + _esc(itemName) + ' (' + _esc(itemCode) + ') - ' + _esc(branchName) + '</h4>';
-            html += '<table class="w-full border text-sm"><thead><tr class="bg-gray-100">' +
-                '<th class="p-2">التاريخ</th><th class="p-2">نوع الحركة</th>' +
-                '<th class="p-2 text-center">الكمية</th><th class="p-2">المرجع</th></tr></thead><tbody>';
-
-            var runningBalance = 0;
+            for (var v = 0; v < vouchers.length; v++) { voucherMap[vouchers[v].id] = vouchers[v]; }
+            var html = '<div class="text-right"><h4 class="font-bold mb-3">حركة: ' + _esc(itemName) + ' - ' + _esc(branchName) + '</h4>';
+            html += '<table class="w-full border text-sm"><thead><tr class="bg-gray-100"><th class="p-2">التاريخ</th><th class="p-2">النوع</th><th class="p-2 text-center">الكمية</th><th class="p-2">المرجع</th></tr></thead><tbody>';
+            var rb = 0;
             for (var d = 0; d < details.length; d++) {
-                var det = details[d];
-                var qty = Number(det.qty) || 0;
-                var voucher = voucherMap[det.voucher_id] || {};
-                var isOut = (voucher.from_branch_id === branchId);
-                var movementQty = isOut ? -qty : qty;
-                runningBalance += movementQty;
-
-                html += '<tr class="border-t">' +
-                    '<td class="p-2">' + (voucher.voucher_date || '') + '</td>' +
-                    '<td class="p-2">' + (voucher.type || '') + '</td>' +
-                    '<td class="p-2 text-center font-bold ' + (movementQty >= 0 ? 'text-green-600' : 'text-red-600') + '">' +
-                        (movementQty >= 0 ? '+' : '') + movementQty + '</td>' +
-                    '<td class="p-2">' + (voucher.voucher_code || '') + '</td></tr>';
+                var det = details[d]; var qty = Number(det.qty)||0; var voucher = voucherMap[det.voucher_id]||{};
+                var isOut = (voucher.from_branch_id === branchId); var mq = isOut ? -qty : qty; rb += mq;
+                html += '<tr class="border-t"><td class="p-2">'+(voucher.voucher_date||'')+'</td><td class="p-2">'+(voucher.type||'')+'</td><td class="p-2 text-center font-bold '+(mq>=0?'text-green-600':'text-red-600')+'">'+(mq>=0?'+':'')+mq+'</td><td class="p-2">'+(voucher.voucher_code||'')+'</td></tr>';
             }
-
-            html += '<tr class="font-bold bg-gray-50"><td colspan="3" class="p-2 text-left">الرصيد النهائي</td>' +
-                '<td class="p-2 text-center">' + runningBalance + '</td></tr>';
-            html += '</tbody></table></div>';
-
+            html += '<tr class="font-bold bg-gray-50"><td colspan="3" class="p-2 text-left">الرصيد النهائي</td><td class="p-2 text-center">'+rb+'</td></tr></tbody></table></div>';
             hideLoader();
             Swal.fire({ title: 'حركة المخزون', html: html, width: '800px', showCloseButton: true, showConfirmButton: false });
-
-        } catch(e) {
-            hideLoader();
-            console.error(e);
-            showToast('فشل تحميل الحركة', 'error');
-        }
+        } catch(e) { hideLoader(); console.error(e); showToast('فشل التحميل', 'error'); }
     }
 
     return {
@@ -1701,7 +1992,13 @@ var RW_Items = (function() {
         _viewImage: _viewImage,
         _handleSave: _handleSave,
         _handleDelete: _handleDelete,
-        _showBranchStockMovement: _showBranchStockMovement
+        _showBranchStockMovement: _showBranchStockMovement,
+        _switchSubTab: _switchSubTab,
+        _applyFilters: _applyFilters,
+        _resetFilters: _resetFilters,
+        _renderStockMovementReport: _renderStockMovementReport,
+        _loadMovementReport: _loadMovementReport,
+        _filterMatrix: _filterMatrix
     };
 })();
 window.RW_Items = RW_Items;
