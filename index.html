@@ -3321,6 +3321,8 @@ var RW_TeleSales = (function() {
 
     cart = [];
     selectedCustomer = null;
+    window._teleStockCache = {};
+    window._teleBranchMap = {};
 
     var settingsRes = await supabase.from('app_settings').select('*').limit(1).single();
     if (!settingsRes.error && settingsRes.data) {
@@ -3338,12 +3340,36 @@ var RW_TeleSales = (function() {
       await RW_Data.loadCustomers();
     }
 
+    // تحميل الفروع مع المعرفات
+    var branchesRes = await supabase.from('branches').select('id, branch_code, name');
+    var branches = branchesRes.data || [];
+    var branchMap = {};
+    for (var b = 0; b < branches.length; b++) {
+      branchMap[branches[b].branch_code] = branches[b].id;
+    }
+    window._teleBranchMap = branchMap;
+    window._teleBranches = branches;
+
+    // تحميل المخزون الفعلي من stock_branches
+    try {
+      var stockRes = await supabase.from('stock_branches').select('item_id, branch_id, qty');
+      var stockRows = stockRes.data || [];
+      var stockCache = {};
+      for (var s = 0; s < stockRows.length; s++) {
+        var row = stockRows[s];
+        if (!stockCache[row.item_id]) stockCache[row.item_id] = {};
+        stockCache[row.item_id][row.branch_id] = Number(row.qty) || 0;
+      }
+      window._teleStockCache = stockCache;
+    } catch(e) {
+      console.error('فشل تحميل المخزون', e);
+    }
+
     safeHTML(container, buildHTML());
     loadBranches();
     bindEvents();
     updateCartDisplay();
   }
-
   function buildHTML() {
     var h = '';
     h += '<div class="max-w-[1400px] mx-auto p-4 md:p-6">';
@@ -3589,10 +3615,28 @@ var RW_TeleSales = (function() {
       div.classList.remove('hidden');
       return;
     }
+
+    // الحصول على الفرع المختار
+    var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : '';
+    var branchId = window._teleBranchMap ? (window._teleBranchMap[branchCode] || null) : null;
+    var stockCache = window._teleStockCache || {};
+
     var h = '';
     for (var i = 0; i < Math.min(filtered.length, 20); i++) {
       var it = filtered[i];
-      var availableQty = (it.qty || 0);
+      // البحث عن الرصيد الصحيح من stock_branches
+      var availableQty = 0;
+      if (branchId && stockCache[it.id] && typeof stockCache[it.id][branchId] !== 'undefined') {
+        availableQty = stockCache[it.id][branchId];
+      } else if (stockCache[it.id]) {
+        // إذا لم يُحدد فرع، نجمع كل الأرصدة
+        var branchStock = stockCache[it.id];
+        for (var bid in branchStock) {
+          if (branchStock.hasOwnProperty(bid)) {
+            availableQty += branchStock[bid];
+          }
+        }
+      }
       var maxQty = it.max_qty ? Number(it.max_qty) : 0;
       var qtyInfo = 'المتاح: ' + availableQty;
       if (maxQty > 0) qtyInfo += ' | الأقصى للطلب: ' + maxQty;
@@ -3612,9 +3656,48 @@ var RW_TeleSales = (function() {
       if (items[i].item_code === code) { item = items[i]; break; }
     }
     if (!item) return;
-    var existing = null;
+
+    // الحصول على الفرع المختار
+    var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : '';
+    var branchId = window._teleBranchMap ? (window._teleBranchMap[branchCode] || null) : null;
+    var stockCache = window._teleStockCache || {};
+
+    // الحصول على الرصيد الصحيح
+    var availableQty = 0;
+    if (branchId && stockCache[item.id] && typeof stockCache[item.id][branchId] !== 'undefined') {
+      availableQty = stockCache[item.id][branchId];
+    } else if (stockCache[item.id]) {
+      var branchStock = stockCache[item.id];
+      for (var bid in branchStock) {
+        if (branchStock.hasOwnProperty(bid)) {
+          availableQty += branchStock[bid];
+        }
+      }
+    }
+
+    // حساب الكمية الحالية في السلة لهذا الصنف
+    var currentInCart = 0;
     for (var j = 0; j < cart.length; j++) {
-      if (cart[j].code === code) { existing = cart[j]; break; }
+      if (cart[j].code === code) { currentInCart = cart[j].qty; break; }
+    }
+    var newQty = currentInCart + 1;
+
+    // فحص الحد الأقصى للصنف (max_qty)
+    var maxQty = item.max_qty ? Number(item.max_qty) : 0;
+    if (maxQty > 0 && newQty > maxQty) {
+      showToast('لا يمكن تجاوز الحد الأقصى للطلب لهذا الصنف: ' + maxQty, 'warning');
+      return;
+    }
+
+    // فحص الرصيد المتاح
+    if (newQty > availableQty) {
+      showToast('الرصيد المتاح غير كافٍ. المتاح: ' + availableQty, 'warning');
+      return;
+    }
+
+    var existing = null;
+    for (var k = 0; k < cart.length; k++) {
+      if (cart[k].code === code) { existing = cart[k]; break; }
     }
     if (existing) {
       existing.qty++;
@@ -3624,7 +3707,9 @@ var RW_TeleSales = (function() {
         name: item.name,
         price: Number(item.sales_price) || 0,
         unit: item.unit || 'حبة',
-        qty: 1
+        qty: 1,
+        maxQty: maxQty,
+        availableQty: availableQty
       });
     }
     byId('ts-item-search').value = '';
@@ -3652,6 +3737,24 @@ var RW_TeleSales = (function() {
     }
 
     if (item) {
+      // الحصول على الفرع المختار
+      var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : '';
+      var branchId = window._teleBranchMap ? (window._teleBranchMap[branchCode] || null) : null;
+      var stockCache = window._teleStockCache || {};
+
+      // الحصول على الرصيد الصحيح
+      var availableQty = 0;
+      if (branchId && stockCache[item.id] && typeof stockCache[item.id][branchId] !== 'undefined') {
+        availableQty = stockCache[item.id][branchId];
+      } else if (stockCache[item.id]) {
+        var branchStock = stockCache[item.id];
+        for (var bid in branchStock) {
+          if (branchStock.hasOwnProperty(bid)) {
+            availableQty += branchStock[bid];
+          }
+        }
+      }
+
       // فحص الحد الأقصى للصنف (max_qty)
       var maxQty = item.max_qty ? Number(item.max_qty) : 0;
       if (maxQty > 0 && q > maxQty) {
@@ -3661,7 +3764,6 @@ var RW_TeleSales = (function() {
       }
 
       // فحص الرصيد المتاح
-      var availableQty = Number(item.qty) || 0;
       if (q > availableQty) {
         showToast('الرصيد المتاح غير كافٍ. المتاح: ' + availableQty, 'warning');
         updateCartDisplay();
