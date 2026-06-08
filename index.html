@@ -3315,63 +3315,63 @@ var RW_Orders = (function() {
         safeText(byId('rw-header-title'), 'أوردرات المبيعات');
         safeText(byId('rw-header-subtitle'), 'عرض وإدارة جميع أوردرات المبيعات');
 
-        // بناء واجهة المستخدم
-        safeHTML(c, `
-        <div class="p-4">
-            <!-- منطقة الفلترة -->
-            <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">
-                <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
-                    <h3 class="font-bold text-lg">فلترة الأوردرات</h3>
-                    <div class="flex gap-2">
-                        <button onclick="RW_Orders._applyFilters()" class="bg-blue-50 text-blue-600 px-3 py-1 rounded text-sm font-bold">تحديث</button>
-                        <button onclick="RW_Orders._showWithoutRS()" class="bg-amber-50 text-amber-600 px-3 py-1 rounded text-sm font-bold">بدون رانشيت</button>
-                        <button onclick="RW_Orders._resetFilters()" class="bg-gray-50 text-gray-600 px-3 py-1 rounded text-sm font-bold">إعادة تعيين</button>
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
-                    <input type="date" id="f-date-from" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">
-                    <input type="date" id="f-date-to" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">
-                    <input type="text" id="f-cust" oninput="RW_Orders._applyFilters()" placeholder="العميل" class="p-2 bg-gray-50 rounded text-sm">
-                    <select id="f-status" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">
-                        <option value="">الحالة</option>
-                        <option>Draft</option><option>Confirmed</option><option>Pending</option>
-                        <option>Invoiced</option><option>Delivered</option><option>Returned</option><option>Cancelled</option>
-                    </select>
-                    <input type="text" id="f-area" oninput="RW_Orders._applyFilters()" placeholder="المنطقة" class="p-2 bg-gray-50 rounded text-sm">
-                    <input type="text" id="f-rs" oninput="RW_Orders._applyFilters()" placeholder="الرانشيت" class="p-2 bg-gray-50 rounded text-sm">
-                </div>
-            </div>
-            <!-- أزرار الإجراءات الجماعية -->
-            <div class="flex flex-wrap gap-3 mb-4">
-                <button onclick="RW_Orders._createRS()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow">
-                    <i class="fa-solid fa-truck-fast ml-2"></i> رانشيت جديد
-                </button>
-                <button onclick="RW_Orders._appendRS()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold shadow">
-                    <i class="fa-solid fa-folder-plus ml-2"></i> ضم لرانشيت مفتوح
-                </button>
-            </div>
-            <!-- جدول الأوردرات -->
-            <div class="bg-white rounded-2xl shadow-sm border overflow-auto orders-table-container" style="max-height:65vh">
-                <table class="w-full min-w-[1200px]">
-                    <thead class="bg-gray-50 sticky top-0 z-10">
-                        <tr>
-                            <th class="p-3 text-center"><input type="checkbox" id="check-all" onchange="var cbs=document.querySelectorAll('.order-checkbox');for(var i=0;i<cbs.length;i++)cbs[i].checked=this.checked;"></th>
-                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('order_code')">رقم الأوردر <i class="fa-solid ${_sortIcons['order_code']||'fa-sort'}"></i></th>
-                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('order_date')">التاريخ <i class="fa-solid ${_sortIcons['order_date']||'fa-sort'}"></i></th>
-                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('customer_name')">العميل والمنطقة <i class="fa-solid ${_sortIcons['customer_name']||'fa-sort'}"></i></th>
-                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('itemsCount')">عدد الأصناف <i class="fa-solid ${_sortIcons['itemsCount']||'fa-sort'}"></i></th>
-                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('total_amount')">القيمة (EGP) <i class="fa-solid ${_sortIcons['total_amount']||'fa-sort'}"></i></th>
-                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('order_status')">الحالة <i class="fa-solid ${_sortIcons['order_status']||'fa-sort'}"></i></th>
-                            <th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort('runsheet_id')">الرانشيت <i class="fa-solid ${_sortIcons['runsheet_id']||'fa-sort'}"></i></th>
-                            <th class="p-3 text-center text-xs font-bold uppercase">إجراءات</th>
-                        </tr>
-                    </thead>
-                    <tbody id="orders-table-body">
-                        <tr><td colspan="9" class="text-center py-8 text-gray-500">جاري التحميل...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>`);
+        // بناء واجهة المستخدم مع thead ثابت (يُبنى مرة واحدة)
+        safeHTML(c, '<div class="p-4">' +
+            '<!-- منطقة الفلترة -->' +
+            '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">' +
+                '<div class="flex flex-wrap justify-between items-center gap-2 mb-3">' +
+                    '<h3 class="font-bold text-lg">فلترة الأوردرات</h3>' +
+                    '<div class="flex gap-2">' +
+                        '<button onclick="RW_Orders._applyFilters()" class="bg-blue-50 text-blue-600 px-3 py-1 rounded text-sm font-bold">تحديث</button>' +
+                        '<button onclick="RW_Orders._showWithoutRS()" class="bg-amber-50 text-amber-600 px-3 py-1 rounded text-sm font-bold">بدون رانشيت</button>' +
+                        '<button onclick="RW_Orders._resetFilters()" class="bg-gray-50 text-gray-600 px-3 py-1 rounded text-sm font-bold">إعادة تعيين</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="grid grid-cols-2 md:grid-cols-6 gap-2">' +
+                    '<input type="date" id="f-date-from" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">' +
+                    '<input type="date" id="f-date-to" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">' +
+                    '<input type="text" id="f-cust" oninput="RW_Orders._applyFilters()" placeholder="العميل" class="p-2 bg-gray-50 rounded text-sm">' +
+                    '<select id="f-status" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">' +
+                        '<option value="">الحالة</option>' +
+                        '<option>Draft</option><option>Confirmed</option><option>Pending</option>' +
+                        '<option>Invoiced</option><option>Delivered</option><option>Returned</option><option>Cancelled</option>' +
+                    '</select>' +
+                    '<input type="text" id="f-area" oninput="RW_Orders._applyFilters()" placeholder="المنطقة" class="p-2 bg-gray-50 rounded text-sm">' +
+                    '<input type="text" id="f-rs" oninput="RW_Orders._applyFilters()" placeholder="الرانشيت" class="p-2 bg-gray-50 rounded text-sm">' +
+                '</div>' +
+            '</div>' +
+            '<!-- أزرار الإجراءات الجماعية -->' +
+            '<div class="flex flex-wrap gap-3 mb-4">' +
+                '<button onclick="RW_Orders._createRS()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow">' +
+                    '<i class="fa-solid fa-truck-fast ml-2"></i> رانشيت جديد' +
+                '</button>' +
+                '<button onclick="RW_Orders._appendRS()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold shadow">' +
+                    '<i class="fa-solid fa-folder-plus ml-2"></i> ضم لرانشيت مفتوح' +
+                '</button>' +
+            '</div>' +
+            '<!-- جدول الأوردرات -->' +
+            '<div class="bg-white rounded-2xl shadow-sm border overflow-auto orders-table-container" style="max-height:65vh">' +
+                '<table class="w-full min-w-[1200px]" id="orders-main-table">' +
+                    '<thead class="bg-gray-50 sticky top-0 z-10" id="orders-thead">' +
+                        '<tr>' +
+                            '<th class="p-3 text-center"><input type="checkbox" id="check-all" onchange="var cbs=document.querySelectorAll(\'.order-checkbox\');for(var i=0;i<cbs.length;i++)cbs[i].checked=this.checked;"></th>' +
+                            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_code\')">رقم الأوردر <i class="fa-solid fa-sort"></i></th>' +
+                            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_date\')">التاريخ <i class="fa-solid fa-sort"></i></th>' +
+                            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'customer_name\')">العميل والمنطقة <i class="fa-solid fa-sort"></i></th>' +
+                            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'itemsCount\')">عدد الأصناف <i class="fa-solid fa-sort"></i></th>' +
+                            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'total_amount\')">القيمة (EGP) <i class="fa-solid fa-sort"></i></th>' +
+                            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_status\')">الحالة <i class="fa-solid fa-sort"></i></th>' +
+                            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'runsheet_id\')">الرانشيت <i class="fa-solid fa-sort"></i></th>' +
+                            '<th class="p-3 text-center text-xs font-bold uppercase">إجراءات</th>' +
+                        '</tr>' +
+                    '</thead>' +
+                    '<tbody id="orders-table-body">' +
+                        '<tr><td colspan="9" class="text-center py-8 text-gray-500">جاري التحميل...</td></tr>' +
+                    '</tbody>' +
+                '</table>' +
+                '<div id="orders-table-body-controls"></div>' +
+            '</div>' +
+        '</div>');
 
         // تحميل البيانات (الأوردرات + تفاصيلها لحساب عدد الأصناف)
         showLoader('جاري تحميل الأوردرات...');
@@ -3455,15 +3455,25 @@ var RW_Orders = (function() {
             sortField = field;
             sortAsc = true;
         }
-        // تحديث الأيقونات
-        _sortIcons = {};
-        _sortIcons[field] = sortAsc ? 'fa-sort-up' : 'fa-sort-down';
-        // إعادة البناء لتحديث الأيقونات في الـ thead
+        // تحديث أيقونات الفرز في thead الثابت (دون إعادة بناء DOM)
+        var thead = byId('orders-thead');
+        if (thead) {
+            var ths = thead.querySelectorAll('th');
+            for (var i = 0; i < ths.length; i++) {
+                var th = ths[i];
+                var icon = th.querySelector('i');
+                if (!icon) continue;
+                var onclick = th.getAttribute('onclick') || '';
+                var match = onclick.match(/'([^']+)'/);
+                if (match && match[1] === field) {
+                    icon.className = 'fa-solid ' + (sortAsc ? 'fa-sort-up' : 'fa-sort-down');
+                } else {
+                    icon.className = 'fa-solid fa-sort';
+                }
+            }
+        }
         _applyFilters();
-        // تحديث الأيقونات يدوياً (لأننا لم نعد نبني HTML كامل)
-        document.querySelectorAll('#orders-table-body').forEach(function(el) {});
     }
-
     // ========== عرض الجدول ==========
     function _renderTable(data) {
         var tbody = byId('orders-table-body');
@@ -3476,24 +3486,12 @@ var RW_Orders = (function() {
             return;
         }
 
-        var iconSuffix = sortAsc ? 'fa-sort-up' : 'fa-sort-down';
-        var headerHtml = '<table class="w-full min-w-[1200px]"><thead class="bg-gray-50 sticky top-0 z-10"><tr>' +
-            '<th class="p-3 text-center"><input type="checkbox" id="check-all" onchange="var cbs=document.querySelectorAll(\'.order-checkbox\');for(var i=0;i<cbs.length;i++)cbs[i].checked=this.checked;"></th>' +
-            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_code\')">رقم الأوردر <i class="fa-solid ' + (sortField==='order_code'?iconSuffix:'fa-sort') + '"></i></th>' +
-            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_date\')">التاريخ <i class="fa-solid ' + (sortField==='order_date'?iconSuffix:'fa-sort') + '"></i></th>' +
-            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'customer_name\')">العميل والمنطقة <i class="fa-solid ' + (sortField==='customer_name'?iconSuffix:'fa-sort') + '"></i></th>' +
-            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'itemsCount\')">عدد الأصناف <i class="fa-solid ' + (sortField==='itemsCount'?iconSuffix:'fa-sort') + '"></i></th>' +
-            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'total_amount\')">القيمة (EGP) <i class="fa-solid ' + (sortField==='total_amount'?iconSuffix:'fa-sort') + '"></i></th>' +
-            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_status\')">الحالة <i class="fa-solid ' + (sortField==='order_status'?iconSuffix:'fa-sort') + '"></i></th>' +
-            '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'runsheet_id\')">الرانشيت <i class="fa-solid ' + (sortField==='runsheet_id'?iconSuffix:'fa-sort') + '"></i></th>' +
-            '<th class="p-3 text-center text-xs font-bold uppercase">إجراءات</th>' +
-            '</tr></thead><tbody id="orders-tbody"></tbody></table>';
-        var controlsHtml = '<div id="orders-tbody-controls"></div>';
-        var wrapper = tbody.parentNode;
-        if (wrapper) {
-            safeHTML(wrapper, headerHtml + controlsHtml);
-        }
-        RW_Table.paginate('orders-tbody', data, 1, 50, function(o) {
+        // تحديث أيقونة check-all
+        var checkAll = byId('check-all');
+        if (checkAll) checkAll.checked = false;
+
+        // استخدام RW_Table.paginate مباشرة على tbody (دون إعادة بناء thead)
+        RW_Table.paginate('orders-table-body', data, 1, 50, function(o) {
             var sc = '';
             if (o.order_status === 'Draft') sc = 'bg-yellow-100 text-yellow-700';
             else if (o.order_status === 'Confirmed') sc = 'bg-blue-100 text-blue-700';
