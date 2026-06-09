@@ -3321,8 +3321,8 @@ var RW_TeleSales = (function() {
 
     cart = [];
     selectedCustomer = null;
-    window._teleStockCache = {};
-    window._teleBranchMap = {};
+    window._teleStockCache = {};    // { itemId: { branchId: { qty, allocated } } }
+    window._teleBranchMap = {};     // { branchCode: branchId }
 
     var settingsRes = await supabase.from('app_settings').select('*').limit(1).single();
     if (!settingsRes.error && settingsRes.data) {
@@ -3340,7 +3340,6 @@ var RW_TeleSales = (function() {
       await RW_Data.loadCustomers();
     }
 
-    // تحميل الفروع مع المعرفات
     var branchesRes = await supabase.from('branches').select('id, branch_code, name');
     var branches = branchesRes.data || [];
     var branchMap = {};
@@ -3350,15 +3349,17 @@ var RW_TeleSales = (function() {
     window._teleBranchMap = branchMap;
     window._teleBranches = branches;
 
-    // تحميل المخزون الفعلي من stock_branches
     try {
-      var stockRes = await supabase.from('stock_branches').select('item_id, branch_id, qty');
+      var stockRes = await supabase.from('stock_branches').select('item_id, branch_id, qty, allocated_qty');
       var stockRows = stockRes.data || [];
       var stockCache = {};
       for (var s = 0; s < stockRows.length; s++) {
         var row = stockRows[s];
         if (!stockCache[row.item_id]) stockCache[row.item_id] = {};
-        stockCache[row.item_id][row.branch_id] = Number(row.qty) || 0;
+        stockCache[row.item_id][row.branch_id] = {
+          qty: Number(row.qty) || 0,
+          allocated: Number(row.allocated_qty) || 0
+        };
       }
       window._teleStockCache = stockCache;
     } catch(e) {
@@ -3370,15 +3371,14 @@ var RW_TeleSales = (function() {
     bindEvents();
     updateCartDisplay();
   }
+
   function buildHTML() {
     var h = '';
     h += '<div class="max-w-[1400px] mx-auto p-4 md:p-6">';
     h += '<div class="grid grid-cols-1 lg:grid-cols-4 gap-6">';
 
-    // العمود الأيسر: العميل + الكتالوج
     h += '<div class="lg:col-span-1 space-y-6">';
 
-    // بحث عن عميل
     h += '<div class="bg-white p-5 rounded-[30px] shadow-sm border">';
     h += '<label class="text-xs font-black mb-2 block">اختيار العميل</label>';
     h += '<div class="flex gap-2">';
@@ -3394,12 +3394,12 @@ var RW_TeleSales = (function() {
     h += '<div id="ts-cust-details" class="text-sm text-blue-600 font-bold mt-2 space-y-1"></div>';
     h += '</div>';
     h += '</div>';
-      // اختيار الفرع
+
     h += '<div class="bg-white p-5 rounded-[30px] shadow-sm border">';
     h += '<label class="text-xs font-black mb-2 block">الفرع المصروف منه</label>';
-    h += '<select id="ts-branch-select" class="w-full p-3 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm"><option value="">جاري تحميل الفروع...</option></select>';
+    h += '<select id="ts-branch-select" class="w-full p-3 bg-slate-50 rounded-2xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm"><option value="">-- اختر الفرع --</option></select>';
     h += '</div>';
-    // بحث عن منتج
+
     h += '<div class="bg-white p-5 rounded-[30px] shadow-sm border relative border-2 border-blue-50">';
     h += '<label class="text-xs font-black text-blue-400 mb-2 block">البحث عن منتج</label>';
     h += '<div class="relative">';
@@ -3410,7 +3410,6 @@ var RW_TeleSales = (function() {
 
     h += '</div>';
 
-    // العمود الأيمن: سلة الأوردر
     h += '<div class="lg:col-span-3 bg-white rounded-[40px] shadow-xl overflow-hidden flex flex-col min-h-[600px]">';
     h += '<div class="p-6 bg-slate-800 text-white flex justify-between items-center">';
     h += '<h2 class="font-black text-xl">سلة الأوردر</h2>';
@@ -3448,9 +3447,7 @@ var RW_TeleSales = (function() {
   function bindEvents() {
     var btn = byId('ts-add-customer-btn');
     if (btn) {
-      btn.addEventListener('click', function() {
-        _showNewCustomerForm();
-      });
+      btn.addEventListener('click', function() { _showNewCustomerForm(); });
     }
   }
 
@@ -3458,23 +3455,16 @@ var RW_TeleSales = (function() {
   function _searchCustomers(query) {
     var div = byId('ts-customer-results');
     if (!div) return;
-    if (!query || !query.trim()) {
-      div.classList.add('hidden');
-      return;
-    }
+    if (!query || !query.trim()) { div.classList.add('hidden'); return; }
     var customers = RW_STATE.data.customers || [];
     var q = query.toLowerCase();
     var filtered = customers.filter(function(c) {
-      return (c.name || '').toLowerCase().indexOf(q) !== -1 || 
-             (c.customer_code || '').toLowerCase().indexOf(q) !== -1 || 
+      return (c.name || '').toLowerCase().indexOf(q) !== -1 ||
+             (c.customer_code || '').toLowerCase().indexOf(q) !== -1 ||
              (c.phone || '').indexOf(q) !== -1 ||
              (c.area || '').toLowerCase().indexOf(q) !== -1;
     });
-    if (!filtered.length) {
-      safeHTML(div, '<div class="p-3 text-center text-gray-400">لا توجد نتائج</div>');
-      div.classList.remove('hidden');
-      return;
-    }
+    if (!filtered.length) { safeHTML(div, '<div class="p-3 text-center text-gray-400">لا توجد نتائج</div>'); div.classList.remove('hidden'); return; }
     var h = '';
     for (var i = 0; i < Math.min(filtered.length, 15); i++) {
       var c = filtered[i];
@@ -3491,47 +3481,39 @@ var RW_TeleSales = (function() {
     var customers = RW_STATE.data.customers || [];
     selectedCustomer = null;
     for (var i = 0; i < customers.length; i++) {
-      if (customers[i].customer_code === code) {
-        selectedCustomer = customers[i];
-        break;
-      }
+      if (customers[i].customer_code === code) { selectedCustomer = customers[i]; break; }
     }
     if (selectedCustomer) {
       byId('ts-customer-search').value = selectedCustomer.name + ' (' + selectedCustomer.customer_code + ')';
       byId('ts-customer-results').classList.add('hidden');
       byId('ts-customer-info').classList.remove('hidden');
       safeText(byId('ts-cust-name'), selectedCustomer.name);
-      
       var detailsHtml = '';
       detailsHtml += '<div><i class="fa-solid fa-map-pin ml-1 text-blue-400"></i> المنطقة: <strong>' + (selectedCustomer.area || 'غير محددة') + '</strong></div>';
       detailsHtml += '<div><i class="fa-solid fa-credit-card ml-1 text-blue-400"></i> طريقة الدفع: <strong>' + (selectedCustomer.payment_type || 'غير محدد') + '</strong></div>';
       detailsHtml += '<div><i class="fa-solid fa-phone ml-1 text-blue-400"></i> هاتف: <strong>' + (selectedCustomer.phone || 'غير مسجل') + '</strong></div>';
       detailsHtml += '<div><i class="fa-solid fa-money-bill-wave ml-1 text-blue-400"></i> الرصيد: <strong>' + _fmtNum(selectedCustomer.debt) + ' EGP</strong></div>';
       safeHTML(byId('ts-cust-details'), detailsHtml);
-
-      if (!RW_STATE.data.customers) RW_STATE.data.customers = [];
     }
   }
 
   function _showNewCustomerForm() {
-    var isEdit = false;
     var title = 'إضافة عميل جديد';
-    // نفس تصميم مودال RW_Customers.openModal
     var html = '<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">' +
     '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">' +
     '<div class="bg-emerald-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fas fa-user-tie ml-2"></i>' + title + '</h3><button onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button></div>' +
     '<form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">' +
     '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
     '<div class="flex flex-col"><label>كود العميل</label><input id="cust-code" value="جديد" readonly class="p-2.5 bg-gray-100 border rounded-lg"></div>' +
-    '<div class="flex flex-col"><label>اسم العميل *</label><input id="cust-name" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
-    '<div class="flex flex-col"><label>رقم الهاتف</label><input id="cust-phone" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
-    '<div class="flex flex-col"><label>المنطقة</label><input id="cust-area" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
-    '<div class="flex flex-col"><label>العنوان التفصيلي</label><input id="cust-location" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>اسم العميل *</label><input id="cust-name" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>رقم الهاتف</label><input id="cust-phone" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>المنطقة</label><input id="cust-area" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>العنوان التفصيلي</label><input id="cust-location" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
     '<div class="flex flex-col"><label>نوع العميل</label><select id="cust-type" class="p-2.5 bg-gray-50 border rounded-lg"><option value="عادي">عادي</option><option value="جملة">جملة</option><option value="VIP">VIP</option></select></div>' +
     '<div class="flex flex-col"><label>طريقة الدفع</label><select id="cust-payment" class="p-2.5 bg-gray-50 border rounded-lg"><option value="نقدي">نقدي</option><option value="أجل">أجل</option></select></div>' +
     '<div class="flex flex-col"><label>الرصيد الحالي (EGP)</label><input id="cust-debt" type="number" value="0" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
-    '<div class="flex flex-col"><label>يوم الزيارة</label><select id="cust-visit" class="p-2.5 bg-gray-50 border rounded-lg"><option value="">اختر</option>' + ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس'].map(function(d) { return '<option value="' + d + '">' + d + '</option>'; }).join('') + '</select></div>' +
-    '<div class="flex flex-col"><label>مسؤول التواصل</label><input id="cust-contact" value="" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
+    '<div class="flex flex-col"><label>يوم الزيارة</label><select id="cust-visit" class="p-2.5 bg-gray-50 border rounded-lg"><option value="">اختر</option>' + ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس'].map(function(d){return '<option value="'+d+'">'+d+'</option>';}).join('') + '</select></div>' +
+    '<div class="flex flex-col"><label>مسؤول التواصل</label><input id="cust-contact" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
     '<div class="md:col-span-2 flex flex-col"><label>ملاحظات</label><textarea id="cust-notes" rows="2" class="p-2.5 bg-gray-50 border rounded-lg"></textarea></div>' +
     '</div>' +
     '<div class="flex justify-end gap-3 pt-4 border-t">' +
@@ -3539,12 +3521,7 @@ var RW_TeleSales = (function() {
     '<button type="button" id="btn-save-cust" class="px-6 py-2.5 bg-emerald-600 text-white rounded-xl font-bold">حفظ</button>' +
     '</div></form></div></div>';
 
-    Swal.fire({
-      html: html,
-      width: '900px',
-      showConfirmButton: false,
-      showCancelButton: false,
-      customClass: { popup: '!bg-transparent !shadow-none !p-0' },
+    Swal.fire({ html: html, width: '900px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
       didOpen: function() {
         var saveBtn = document.getElementById('btn-save-cust');
         if (saveBtn) {
@@ -3558,7 +3535,7 @@ var RW_TeleSales = (function() {
               location: document.getElementById('cust-location').value.trim(),
               customer_type: document.getElementById('cust-type').value,
               payment_type: document.getElementById('cust-payment').value,
-              debt: parseFloat(document.getElementById('cust-debt').value) || 0,
+              debt: parseFloat(document.getElementById('cust-debt').value)||0,
               visit_day: document.getElementById('cust-visit').value,
               contact_person: document.getElementById('cust-contact').value.trim(),
               notes: document.getElementById('cust-notes').value.trim()
@@ -3576,460 +3553,207 @@ var RW_TeleSales = (function() {
       var ses = await supabase.auth.getSession();
       var token = ses.data.session && ses.data.session.access_token;
       var res = await fetch(RW_SUPABASE_URL + '/functions/v1/save-customer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        method: 'POST', headers: { 'Content-Type':'application/json', Authorization:'Bearer '+token },
         body: JSON.stringify({ customer: customerData, isEdit: false, customer_code: null })
       });
-      var json = await res.json();
-      hideLoader();
+      var json = await res.json(); hideLoader();
       if (json.success) {
-        RW_Audit_log('create', 'customers', json.customer_code || '', null, customerData);
-        showToast('تم إضافة العميل بنجاح', 'success');
+        RW_Audit_log('create','customers',json.customer_code||'',null,customerData);
+        showToast('تم إضافة العميل بنجاح','success');
         Swal.close();
         await RW_Data.loadCustomers();
         _selectCustomer(json.customer_code);
-      } else {
-        showToast(json.error || 'فشل الحفظ', 'error');
-      }
-    } catch(e) {
-      hideLoader();
-      showToast('فشل الاتصال', 'error');
+      } else showToast(json.error||'فشل الحفظ','error');
+    } catch(e) { hideLoader(); showToast('فشل الاتصال','error'); }
+  }
+
+  // ---------- حساب المتاح من الـ Cache ----------
+  function _getAvailable(itemId) {
+    var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : '';
+    var branchId = window._teleBranchMap ? (window._teleBranchMap[branchCode] || null) : null;
+    var cache = window._teleStockCache || {};
+    var itemStock = cache[itemId];
+    if (!itemStock) return 0;
+    if (branchId && itemStock[branchId]) {
+      var s = itemStock[branchId];
+      return Math.max(0, s.qty - s.allocated);
     }
+    // لا يوجد فرع محدد: مجموع المتاح لكل الفروع
+    var total = 0;
+    for (var bid in itemStock) {
+      if (itemStock.hasOwnProperty(bid)) {
+        var st = itemStock[bid];
+        total += Math.max(0, st.qty - st.allocated);
+      }
+    }
+    return total;
   }
 
   // ---------- الأصناف ----------
   function _searchItems(query) {
     var div = byId('ts-item-results');
     if (!div) return;
-    if (!query || !query.trim()) {
-      div.classList.add('hidden');
-      return;
-    }
+    if (!query || !query.trim()) { div.classList.add('hidden'); return; }
     var items = RW_STATE.data.items || [];
     var q = query.toLowerCase();
     var filtered = items.filter(function(i) {
-      return (i.name || '').toLowerCase().indexOf(q) !== -1 || (i.item_code || '').toLowerCase().indexOf(q) !== -1 || (i.barcode || '').toLowerCase().indexOf(q) !== -1;
+      return (i.name||'').toLowerCase().indexOf(q)!==-1 || (i.item_code||'').toLowerCase().indexOf(q)!==-1 || (i.barcode||'').toLowerCase().indexOf(q)!==-1;
     });
-    if (!filtered.length) {
-      safeHTML(div, '<div class="p-3 text-center text-gray-400">لا توجد نتائج</div>');
-      div.classList.remove('hidden');
-      return;
-    }
-
-    // الحصول على الفرع المختار
+    if (!filtered.length) { safeHTML(div,'<div class="p-3 text-center text-gray-400">لا توجد نتائج</div>'); div.classList.remove('hidden'); return; }
     var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : '';
-    var branchId = window._teleBranchMap ? (window._teleBranchMap[branchCode] || null) : null;
-    var stockCache = window._teleStockCache || {};
-
     var h = '';
-    for (var i = 0; i < Math.min(filtered.length, 20); i++) {
+    for (var i=0; i<Math.min(filtered.length,20); i++) {
       var it = filtered[i];
-      // البحث عن الرصيد الصحيح من stock_branches
-      var availableQty = 0;
-      if (branchId && stockCache[it.id] && typeof stockCache[it.id][branchId] !== 'undefined') {
-        availableQty = stockCache[it.id][branchId];
-      } else if (stockCache[it.id]) {
-        // إذا لم يُحدد فرع، نجمع كل الأرصدة
-        var branchStock = stockCache[it.id];
-        for (var bid in branchStock) {
-          if (branchStock.hasOwnProperty(bid)) {
-            availableQty += branchStock[bid];
-          }
-        }
-      }
+      var available = _getAvailable(it.id);
       var maxQty = it.max_qty ? Number(it.max_qty) : 0;
-      var qtyInfo = 'المتاح: ' + availableQty;
-      if (maxQty > 0) qtyInfo += ' | الأقصى للطلب: ' + maxQty;
-      h += '<div onclick="RW_TeleSales._addToCart(\'' + it.item_code + '\')" class="p-3 hover:bg-blue-50 cursor-pointer flex justify-between border-b">';
-      h += '<div><div class="font-bold">' + (it.name || '') + '</div><div class="text-xs text-gray-400">' + (it.item_code || '') + ' | ' + qtyInfo + '</div></div>';
-      h += '<div class="font-bold text-blue-600">' + _fmtNum(it.sales_price) + ' EGP</div>';
+      var qtyInfo = 'المتاح: ' + available;
+      if (maxQty>0) qtyInfo += ' | الأقصى للطلب: ' + maxQty;
+      if (!branchCode) qtyInfo += ' (اختر فرعاً)';
+      h += '<div onclick="RW_TeleSales._addToCart(\''+it.item_code+'\')" class="p-3 hover:bg-blue-50 cursor-pointer flex justify-between border-b">';
+      h += '<div><div class="font-bold">'+(it.name||'')+'</div><div class="text-xs text-gray-400">'+(it.item_code||'')+' | '+qtyInfo+'</div></div>';
+      h += '<div class="font-bold text-blue-600">'+_fmtNum(it.sales_price)+' EGP</div>';
       h += '</div>';
     }
-    safeHTML(div, h);
+    safeHTML(div,h);
     div.classList.remove('hidden');
   }
 
   function _addToCart(code) {
     var items = RW_STATE.data.items || [];
     var item = null;
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].item_code === code) { item = items[i]; break; }
-    }
+    for (var i=0;i<items.length;i++) { if (items[i].item_code===code) { item=items[i]; break; } }
     if (!item) return;
-
-    // الحصول على الفرع المختار
-    var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : '';
-    var branchId = window._teleBranchMap ? (window._teleBranchMap[branchCode] || null) : null;
-    var stockCache = window._teleStockCache || {};
-
-    // الحصول على الرصيد الصحيح
-    var availableQty = 0;
-        // إذا لم نجد أي رصيد، نعرض صفر ولا نمنع الإضافة (لأن البيانات قد تكون غير مهيأة)
-    if (availableQty === 0 && !branchId) {
-      // لم يُختر فرع، لا نستطيع تحديد الرصيد
-    }
-    if (branchId && stockCache[item.id] && typeof stockCache[item.id][branchId] !== 'undefined') {
-      availableQty = stockCache[item.id][branchId];
-    } else if (stockCache[item.id]) {
-      var branchStock = stockCache[item.id];
-      for (var bid in branchStock) {
-        if (branchStock.hasOwnProperty(bid)) {
-          availableQty += branchStock[bid];
-        }
-      }
-    }
-
-    // حساب الكمية الحالية في السلة لهذا الصنف
+    var available = _getAvailable(item.id);
     var currentInCart = 0;
-    for (var j = 0; j < cart.length; j++) {
-      if (cart[j].code === code) { currentInCart = cart[j].qty; break; }
-    }
+    for (var j=0;j<cart.length;j++) { if (cart[j].code===code) { currentInCart=cart[j].qty; break; } }
     var newQty = currentInCart + 1;
-
-    // فحص الحد الأقصى للصنف (max_qty)
     var maxQty = item.max_qty ? Number(item.max_qty) : 0;
-    if (maxQty > 0 && newQty > maxQty) {
-      showToast('لا يمكن تجاوز الحد الأقصى للطلب لهذا الصنف: ' + maxQty, 'warning');
-      return;
-    }
-
-    // فحص الرصيد المتاح
-    if (newQty > availableQty) {
-      showToast('الرصيد المتاح غير كافٍ. المتاح: ' + availableQty, 'warning');
-      return;
-    }
-
+    if (maxQty>0 && newQty>maxQty) { showToast('لا يمكن تجاوز الحد الأقصى للطلب: '+maxQty,'warning'); return; }
+    if (newQty > available) { showToast('الرصيد المتاح غير كافٍ. المتاح: '+available,'warning'); return; }
     var existing = null;
-    for (var k = 0; k < cart.length; k++) {
-      if (cart[k].code === code) { existing = cart[k]; break; }
-    }
-    if (existing) {
-      existing.qty++;
-    } else {
-      cart.push({
-        code: item.item_code,
-        name: item.name,
-        price: Number(item.sales_price) || 0,
-        unit: item.unit || 'حبة',
-        qty: 1,
-        maxQty: maxQty,
-        availableQty: availableQty
-      });
-    }
+    for (var k=0;k<cart.length;k++) { if (cart[k].code===code) { existing=cart[k]; break; } }
+    if (existing) { existing.qty++; }
+    else { cart.push({ code: item.item_code, name: item.name, price: Number(item.sales_price)||0, unit: item.unit||'حبة', qty: 1 }); }
     byId('ts-item-search').value = '';
     byId('ts-item-results').classList.add('hidden');
     updateCartDisplay();
   }
 
-  // ---------- السلة ----------
   function _updateQty(idx, val) {
     var q = parseFloat(val);
-    if (isNaN(q) || q <= 0) {
-      cart.splice(idx, 1);
-      updateCartDisplay();
-      return;
-    }
-
+    if (isNaN(q)||q<=0) { cart.splice(idx,1); updateCartDisplay(); return; }
     var cartItem = cart[idx];
-    var code = cartItem.code;
-
-    // جلب بيانات الصنف من الذاكرة
     var items = RW_STATE.data.items || [];
     var item = null;
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].item_code === code) { item = items[i]; break; }
-    }
-
+    for (var i=0;i<items.length;i++) { if (items[i].item_code===cartItem.code) { item=items[i]; break; } }
     if (item) {
-      // الحصول على الفرع المختار
-      var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : '';
-      var branchId = window._teleBranchMap ? (window._teleBranchMap[branchCode] || null) : null;
-      var stockCache = window._teleStockCache || {};
-
-      // الحصول على الرصيد الصحيح
-      var availableQty = 0;
-          // إذا لم نجد أي رصيد، نعرض صفر ولا نمنع الإضافة (لأن البيانات قد تكون غير مهيأة)
-    if (availableQty === 0 && !branchId) {
-      // لم يُختر فرع، لا نستطيع تحديد الرصيد
-    }
-      if (branchId && stockCache[item.id] && typeof stockCache[item.id][branchId] !== 'undefined') {
-        availableQty = stockCache[item.id][branchId];
-      } else if (stockCache[item.id]) {
-        var branchStock = stockCache[item.id];
-        for (var bid in branchStock) {
-          if (branchStock.hasOwnProperty(bid)) {
-            availableQty += branchStock[bid];
-          }
-        }
-      }
-
-      // فحص الحد الأقصى للصنف (max_qty)
+      var available = _getAvailable(item.id);
       var maxQty = item.max_qty ? Number(item.max_qty) : 0;
-      if (maxQty > 0 && q > maxQty) {
-        showToast('لا يمكن تجاوز الحد الأقصى للطلب: ' + maxQty, 'warning');
-        updateCartDisplay();
-        return;
-      }
-
-      // فحص الرصيد المتاح
-      if (q > availableQty) {
-        showToast('الرصيد المتاح غير كافٍ. المتاح: ' + availableQty, 'warning');
-        updateCartDisplay();
-        return;
-      }
+      if (maxQty>0 && q>maxQty) { showToast('لا يمكن تجاوز الحد الأقصى للطلب: '+maxQty,'warning'); updateCartDisplay(); return; }
+      if (q > available) { showToast('الرصيد المتاح غير كافٍ. المتاح: '+available,'warning'); updateCartDisplay(); return; }
     }
-
     cart[idx].qty = q;
     updateCartDisplay();
   }
-  function _removeItem(idx) {
-    cart.splice(idx, 1);
-    updateCartDisplay();
+
+  function _removeItem(idx) { cart.splice(idx,1); updateCartDisplay(); }
+
+  function _clearCart() {
+    if (!cart.length) { showToast('السلة فارغة','info'); return; }
+    Swal.fire({ title:'تأكيد مسح السلة', text:'حذف جميع الأصناف؟', icon:'warning', showCancelButton:true, confirmButtonText:'نعم', cancelButtonText:'إلغاء' })
+    .then(function(r){ if (r.isConfirmed) { cart=[]; updateCartDisplay(); showToast('تم مسح السلة','success'); } });
   }
-    function _clearCart() {
-    if (!cart.length) { showToast('السلة فارغة', 'info'); return; }
-    Swal.fire({
-      title: 'تأكيد مسح السلة',
-      text: 'حذف جميع الأصناف؟',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonText: 'نعم',
-      cancelButtonText: 'إلغاء'
-    }).then(function(r) {
-      if (r.isConfirmed) {
-        cart = [];
-        updateCartDisplay();
-        showToast('تم مسح السلة', 'success');
-      }
-    });
-  }
+
   function updateCartDisplay() {
     var tb = byId('ts-cart-body');
     var subtotal = 0;
     if (!cart.length) {
-      safeHTML(tb, '<tr><td colspan="5" class="p-6 text-center text-gray-400">لا توجد أصناف في السلة</td></tr>');
-      safeText(byId('ts-subtotal'), '0');
-      safeText(byId('ts-delivery'), '0');
-      safeText(byId('ts-tax'), '0');
-      safeText(byId('ts-total'), '0.00');
-      safeText(byId('ts-cart-count'), '0');
+      safeHTML(tb,'<tr><td colspan="5" class="p-6 text-center text-gray-400">لا توجد أصناف في السلة</td></tr>');
+      safeText(byId('ts-subtotal'),'0'); safeText(byId('ts-delivery'),'0'); safeText(byId('ts-tax'),'0');
+      safeText(byId('ts-total'),'0.00'); safeText(byId('ts-cart-count'),'0');
       return;
     }
     var h = '';
-    for (var i = 0; i < cart.length; i++) {
-      var it = cart[i];
-      var line = it.price * it.qty;
-      subtotal += line;
+    for (var i=0;i<cart.length;i++) {
+      var it = cart[i]; var line = it.price * it.qty; subtotal += line;
       h += '<tr class="bg-white shadow-sm rounded-2xl overflow-hidden">';
-      h += '<td class="p-4 rounded-r-2xl border-y border-r"><p class="font-black">' + (it.name || '') + '</p><p class="text-xs text-gray-400">' + (it.code || '') + '</p></td>';
-      h += '<td class="p-4 border-y font-bold text-blue-600">' + _fmtNum(it.price) + ' EGP</td>';
-      h += '<td class="p-4 border-y"><input type="number" value="' + it.qty + '" onchange="RW_TeleSales._updateQty(' + i + ',this.value)" class="w-20 p-2 bg-slate-50 border-2 rounded-xl text-center font-black" min="1"></td>';
-      h += '<td class="p-4 border-y font-black">' + _fmtNum(line) + ' EGP</td>';
-      h += '<td class="p-4 rounded-l-2xl border-y border-l text-center"><button onclick="RW_TeleSales._removeItem(' + i + ')" class="text-red-400"><i class="fa-solid fa-circle-xmark text-xl"></i></button></td>';
+      h += '<td class="p-4 rounded-r-2xl border-y border-r"><p class="font-black">'+(it.name||'')+'</p><p class="text-xs text-gray-400">'+(it.code||'')+'</p></td>';
+      h += '<td class="p-4 border-y font-bold text-blue-600">'+_fmtNum(it.price)+' EGP</td>';
+      h += '<td class="p-4 border-y"><input type="number" value="'+it.qty+'" onchange="RW_TeleSales._updateQty('+i+',this.value)" class="w-20 p-2 bg-slate-50 border-2 rounded-xl text-center font-black" min="1"></td>';
+      h += '<td class="p-4 border-y font-black">'+_fmtNum(line)+' EGP</td>';
+      h += '<td class="p-4 rounded-l-2xl border-y border-l text-center"><button onclick="RW_TeleSales._removeItem('+i+')" class="text-red-400"><i class="fa-solid fa-circle-xmark text-xl"></i></button></td>';
       h += '</tr>';
     }
-    safeHTML(tb, h);
-    var del = deliveryFee || 0;
-    var before = subtotal + del;
-    var taxAmt = Math.round(before * taxRate) / 100;
-    var total = before + taxAmt;
-    safeText(byId('ts-subtotal'), _fmtNum(subtotal));
-    if (del > 0) {
-      byId('ts-del-row').classList.remove('hidden');
-      safeText(byId('ts-delivery'), _fmtNum(del));
-    } else {
-      byId('ts-del-row').classList.add('hidden');
-    }
-    if (taxRate > 0 && subtotal > 0) {
-      byId('ts-tax-row').classList.remove('hidden');
-      safeText(byId('ts-tax'), _fmtNum(taxAmt));
-    } else {
-      byId('ts-tax-row').classList.add('hidden');
-    }
-    safeText(byId('ts-total'), _fmtNum(total));
-    safeText(byId('ts-cart-count'), String(cart.length));
+    safeHTML(tb,h);
+    var del = deliveryFee||0, before = subtotal+del, taxAmt = Math.round(before*taxRate)/100, total = before+taxAmt;
+    safeText(byId('ts-subtotal'),_fmtNum(subtotal));
+    if (del>0) { byId('ts-del-row').classList.remove('hidden'); safeText(byId('ts-delivery'),_fmtNum(del)); }
+    else { byId('ts-del-row').classList.add('hidden'); }
+    if (taxRate>0 && subtotal>0) { byId('ts-tax-row').classList.remove('hidden'); safeText(byId('ts-tax'),_fmtNum(taxAmt)); }
+    else { byId('ts-tax-row').classList.add('hidden'); }
+    safeText(byId('ts-total'),_fmtNum(total));
+    safeText(byId('ts-cart-count'),String(cart.length));
   }
 
-  // ---------- الحفظ ----------
-function _saveOrder() {
-    if (!selectedCustomer) {
-        showToast('يرجى اختيار عميل أولاً', 'warning');
-        return;
-    }
-    if (!cart.length) {
-        showToast('أضف أصنافاً إلى السلة', 'warning');
-        return;
-    }
-
-    // جلب الإعدادات للتحقق من الحد الأدنى للفاتورة
-    supabase.from('app_settings').select('min_invoice_amount, delivery_fee, tax_rate').limit(1).single().then(function(sRes) {
-        var settings = sRes.data || {};
-        var minInvoice = Number(settings.min_invoice_amount) || 0;
-        var deliveryFeeSetting = Number(settings.delivery_fee) || 0;
-        var taxRateSetting = Number(settings.tax_rate) || 0;
-
-        var subtotal = 0;
-        var itemsList = [];
-        for (var i = 0; i < cart.length; i++) {
-            var line = cart[i].price * cart[i].qty;
-            subtotal += line;
-            itemsList.push({
-                code: cart[i].code,
-                name: cart[i].name,
-                price: cart[i].price,
-                qty: cart[i].qty,
-                unit: cart[i].unit
-            });
+  function _saveOrder() {
+    if (!selectedCustomer) { showToast('يرجى اختيار عميل أولاً','warning'); return; }
+    if (!cart.length) { showToast('أضف أصنافاً إلى السلة','warning'); return; }
+    supabase.from('app_settings').select('min_invoice_amount, delivery_fee, tax_rate').limit(1).single().then(function(sRes){
+      var settings = sRes.data||{};
+      var minInvoice = Number(settings.min_invoice_amount)||0;
+      var delSet = Number(settings.delivery_fee)||0;
+      var taxSet = Number(settings.tax_rate)||0;
+      var subtotal = 0; var itemsList = [];
+      for (var i=0;i<cart.length;i++) { var ln = cart[i].price*cart[i].qty; subtotal+=ln; itemsList.push({code:cart[i].code,name:cart[i].name,price:cart[i].price,qty:cart[i].qty,unit:cart[i].unit}); }
+      var del = deliveryFee||delSet, before = subtotal+del, taxAmt = Math.round(before*taxRate)/100, total = before+taxAmt;
+      if (minInvoice>0 && total<minInvoice) { showToast('الحد الأدنى للفاتورة: '+minInvoice+' EGP','warning'); return; }
+      // التحقق النهائي من المتاح
+      for (var k=0;k<cart.length;k++) {
+        var ci = cart[k]; var item = null; var itemsAll = RW_STATE.data.items||[];
+        for (var m=0;m<itemsAll.length;m++) { if (itemsAll[m].item_code===ci.code) { item=itemsAll[m]; break; } }
+        if (item) {
+          var avail = _getAvailable(item.id);
+          if (ci.qty > avail) { showToast('الرصيد المتاح للصنف "'+(item.name||ci.code)+'" غير كافٍ. المتاح: '+avail,'warning'); return; }
         }
-
-        var del = deliveryFee || deliveryFeeSetting;
-        var before = subtotal + del;
-        var taxAmt = Math.round(before * taxRate) / 100;
-        var total = before + taxAmt;
-
-        // التحقق من الحد الأدنى للفاتورة
-        if (minInvoice > 0 && total < minInvoice) {
-            showToast('الحد الأدنى للفاتورة: ' + minInvoice + ' EGP. الإجمالي الحالي: ' + total.toLocaleString() + ' EGP', 'warning');
-            return;
-        }
-
-        // التحقق النهائي من الرصيد المتاح لجميع الأصناف
-        var items = RW_STATE.data.items || [];
-        for (var k = 0; k < cart.length; k++) {
-            var cartItem = cart[k];
-            var item = null;
-            for (var m = 0; m < items.length; m++) {
-                if (items[m].item_code === cartItem.code) { item = items[m]; break; }
-            }
-            if (item) {
-                var availableQty = Number(item.qty) || 0;
-                if (cartItem.qty > availableQty) {
-                    showToast('الرصيد المتاح للصنف "' + (item.name || cartItem.code) + '" غير كافٍ. المتاح: ' + availableQty, 'warning');
-                    return;
-                }
-                var maxQty = item.max_qty ? Number(item.max_qty) : 0;
-                if (maxQty > 0 && cartItem.qty > maxQty) {
-                    showToast('الكمية المطلوبة للصنف "' + (item.name || cartItem.code) + '" تتجاوز الحد الأقصى: ' + maxQty, 'warning');
-                    return;
-                }
-            }
-        }
-
-        var orderHeader = {
-            customer_code: selectedCustomer.customer_code,
-            custName: selectedCustomer.name,
-            area: selectedCustomer.area || '',
-            total: total,
-            deliveryFees: del,
-            status: 'Confirmed',
-            paymentType: selectedCustomer.payment_type || 'أجل',
-            taxAmount: taxAmt,
-            taxRate: taxRate
-        };
-
-        showLoader('جاري حفظ الأوردر...');
-
-        supabase.auth.getSession().then(function(ses) {
-            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-            var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : null;
-            return fetch(RW_SUPABASE_URL + '/functions/v1/save-sales-invoice', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                body: JSON.stringify({ orderHeader: orderHeader, itemsList: itemsList, branchCode: branchCode || 'MAIN' })
-            });
-        }).then(function(res) {
-            return res.json();
-        }).then(function(json) {
-            hideLoader();
-            if (json.success) {
-                RW_Audit_log('create', 'orders', json.orderID || '', null, orderHeader);
-                showToast('تم حفظ الأوردر بنجاح: ' + (json.orderID || ''), 'success');
-                cart = [];
-                selectedCustomer = null;
-                byId('ts-customer-search').value = '';
-                byId('ts-customer-info').classList.add('hidden');
-                updateCartDisplay();
-            } else {
-                showToast(json.msg || 'فشل حفظ الأوردر', 'error');
-            }
-        }).catch(function(e) {
-            hideLoader();
-            showToast('فشل الاتصال', 'error');
-            console.error(e);
-        });
-    }).catch(function(e) {
-        console.error('فشل جلب الإعدادات:', e);
-        // في حالة فشل جلب الإعدادات، نستخدم القيم المحلية
-        var subtotal = 0;
-        var itemsList = [];
-        for (var i = 0; i < cart.length; i++) {
-            subtotal += cart[i].price * cart[i].qty;
-            itemsList.push({
-                code: cart[i].code,
-                name: cart[i].name,
-                price: cart[i].price,
-                qty: cart[i].qty,
-                unit: cart[i].unit
-            });
-        }
-        var total = subtotal + (deliveryFee || 0);
-
-        var orderHeader = {
-            customer_code: selectedCustomer.customer_code,
-            custName: selectedCustomer.name,
-            area: selectedCustomer.area || '',
-            total: total,
-            deliveryFees: deliveryFee || 0,
-            status: 'Confirmed',
-            paymentType: selectedCustomer.payment_type || 'أجل',
-            taxAmount: 0,
-            taxRate: 0
-        };
-
-        showLoader('جاري حفظ الأوردر...');
-        supabase.auth.getSession().then(function(ses) {
-            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-            var branchCode = byId('ts-branch-select') ? byId('ts-branch-select').value : null;
-            return fetch(RW_SUPABASE_URL + '/functions/v1/save-sales-invoice', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                body: JSON.stringify({ orderHeader: orderHeader, itemsList: itemsList, branchCode: branchCode || 'MAIN' })
-            });
-        }).then(function(res) {
-            return res.json();
-        }).then(function(json) {
-            hideLoader();
-            if (json.success) {
-                showToast('تم حفظ الأوردر بنجاح: ' + (json.orderID || ''), 'success');
-                cart = [];
-                selectedCustomer = null;
-                byId('ts-customer-search').value = '';
-                byId('ts-customer-info').classList.add('hidden');
-                updateCartDisplay();
-            } else {
-                showToast(json.msg || 'فشل حفظ الأوردر', 'error');
-            }
-        }).catch(function(e2) {
-            hideLoader();
-            showToast('فشل الاتصال', 'error');
-            console.error(e2);
-        });
+      }
+      var orderHeader = { customer_code: selectedCustomer.customer_code, custName: selectedCustomer.name, area: selectedCustomer.area||'', total:total, deliveryFees:del, status:'Confirmed', paymentType: selectedCustomer.payment_type||'أجل', taxAmount:taxAmt, taxRate:taxRate };
+      showLoader('جاري حفظ الأوردر...');
+      supabase.auth.getSession().then(function(ses){
+        var token = (ses&&ses.data&&ses.data.session)?ses.data.session.access_token:null;
+        var branchCode = byId('ts-branch-select')?byId('ts-branch-select').value:null;
+        return fetch(RW_SUPABASE_URL+'/functions/v1/save-sales-invoice',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({orderHeader:orderHeader,itemsList:itemsList,branchCode:branchCode||'MAIN'})});
+      }).then(function(res){return res.json();}).then(function(json){
+        hideLoader();
+        if (json.success) { showToast('تم حفظ الأوردر: '+(json.orderID||''),'success'); cart=[]; selectedCustomer=null; byId('ts-customer-search').value=''; byId('ts-customer-info').classList.add('hidden'); updateCartDisplay(); }
+        else showToast(json.msg||'فشل','error');
+      }).catch(function(e){ hideLoader(); showToast('فشل الاتصال','error'); });
+    }).catch(function(e){
+      var subtotal=0; var itemsList=[];
+      for (var i=0;i<cart.length;i++) { subtotal+=cart[i].price*cart[i].qty; itemsList.push({code:cart[i].code,name:cart[i].name,price:cart[i].price,qty:cart[i].qty,unit:cart[i].unit}); }
+      var total = subtotal+(deliveryFee||0);
+      var orderHeader = { customer_code:selectedCustomer.customer_code, custName:selectedCustomer.name, area:selectedCustomer.area||'', total:total, deliveryFees:deliveryFee||0, status:'Confirmed', paymentType:selectedCustomer.payment_type||'أجل', taxAmount:0, taxRate:0 };
+      showLoader('جاري حفظ الأوردر...');
+      supabase.auth.getSession().then(function(ses){
+        var token = (ses&&ses.data&&ses.data.session)?ses.data.session.access_token:null;
+        var branchCode = byId('ts-branch-select')?byId('ts-branch-select').value:null;
+        return fetch(RW_SUPABASE_URL+'/functions/v1/save-sales-invoice',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({orderHeader:orderHeader,itemsList:itemsList,branchCode:branchCode||'MAIN'})});
+      }).then(function(res){return res.json();}).then(function(json){
+        hideLoader();
+        if (json.success) { showToast('تم حفظ الأوردر: '+(json.orderID||''),'success'); cart=[]; selectedCustomer=null; byId('ts-customer-search').value=''; byId('ts-customer-info').classList.add('hidden'); updateCartDisplay(); }
+        else showToast(json.msg||'فشل','error');
+      }).catch(function(e2){ hideLoader(); showToast('فشل الاتصال','error'); });
     });
-}
+  }
 
   function loadBranches() {
     var sel = byId('ts-branch-select');
     if (!sel) return;
-    supabase.from('branches').select('branch_code, name').then(function(res) {
-      var branches = res.data || [];
+    supabase.from('branches').select('branch_code, name').then(function(res){
+      var branches = res.data||[];
       var h = '<option value="">-- اختر الفرع --</option>';
-      for (var i = 0; i < branches.length; i++) {
-        h += '<option value="' + branches[i].branch_code + '">' + (branches[i].name || branches[i].branch_code) + '</option>';
-      }
-      safeHTML(sel, h);
-    }).catch(function() {
-      safeHTML(sel, '<option value="">تعذر تحميل الفروع</option>');
-    });
+      for (var i=0;i<branches.length;i++) { h += '<option value="'+branches[i].branch_code+'">'+(branches[i].name||branches[i].branch_code)+'</option>'; }
+      safeHTML(sel,h);
+    }).catch(function(){ safeHTML(sel,'<option value="">تعذر تحميل الفروع</option>'); });
   }
 
   return {
