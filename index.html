@@ -4366,9 +4366,17 @@ var RW_Orders = (function() {
         });
         if (!cf.isConfirmed) return;
         showLoader('جاري إنشاء الرانشيت...');
+
+        // ✅ التحقق من الجلسة والتوكن
+        var ses = await supabase.auth.getSession();
+        var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+        if (!t) {
+            hideLoader();
+            showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
+            return;
+        }
+
         try {
-            var ses = await supabase.auth.getSession();
-            var t = ses.data.session && ses.data.session.access_token;
             var res = await fetch(RW_SUPABASE_URL + '/functions/v1/create-runsheet', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
@@ -4406,9 +4414,17 @@ var RW_Orders = (function() {
                 cancelButtonText: 'إلغاء'
             });
             if (!v.value) return;
-            showLoader('جاري الضم...');
+
+            // ✅ التحقق من الجلسة والتوكن
             var ses = await supabase.auth.getSession();
-            var t = ses.data.session && ses.data.session.access_token;
+            var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+            if (!t) {
+                hideLoader();
+                showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
+                return;
+            }
+
+            showLoader('جاري الضم...');
             var res = await fetch(RW_SUPABASE_URL + '/functions/v1/append-to-runsheet', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
