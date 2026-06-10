@@ -4855,6 +4855,28 @@ async function _cancelRunsheet(code) {
     _apply();
     showToast('تم إلغاء الرانشيت وتحرير الأوردرات بنجاح', 'success');
 }
+function _changeStatus(code, funcName) {
+    showLoader('جاري تحديث الحالة...');
+    supabase.auth.getSession().then(function(ses) {
+        var t = ses.data.session ? ses.data.session.access_token : null;
+        return fetch(RW_SUPABASE_URL + '/functions/v1/' + funcName, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+            body: JSON.stringify({ runsheet_code: code })
+        });
+    }).then(function(res) { return res.json(); }).then(function(json) {
+        hideLoader();
+        if (json.success) {
+            showToast('تم بنجاح', 'success');
+            _apply();
+        } else {
+            showToast(json.msg || 'فشل', 'error');
+        }
+    }).catch(function(e) {
+        hideLoader();
+        showToast('فشل الاتصال', 'error');
+    });
+}
     return {
         render: render, _apply: _apply, _sort: _sort,
         _assignDriverVehicle: _assignDriverVehicle,
