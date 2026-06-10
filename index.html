@@ -4586,22 +4586,23 @@ var RW_Runsheets = (function() {
     }
 
     function _actionButtons(r) {
-        var code = escAttr(r.runsheet_code || '');
-        var h = '<div class="flex flex-wrap gap-1 justify-center">';
-        if (r.status === 'Open') {
-            h += '<button onclick="event.stopPropagation(); RW_Runsheets._assignDriverVehicle(\'' + code + '\')" class="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100" title="تعيين سائق ومركبة"><i class="fa-solid fa-user-plus"></i></button>';
-            h += '<button onclick="event.stopPropagation(); RW_Runsheets._cancelRunsheet(\'' + code + '\')" class="px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100" title="إلغاء الرانشيت"><i class="fa-solid fa-ban"></i></button>';
-        } else if (r.status === 'Picked') {
-            h += '<button onclick="event.stopPropagation(); RW_Runsheets._changeStatus(\'' + code + '\', \'Loading\', \'بدء التحميل\')" class="px-2 py-1 bg-orange-50 text-orange-600 rounded text-xs hover:bg-orange-100" title="بدء التحميل"><i class="fa-solid fa-boxes-stacked"></i></button>';
-        } else if (r.status === 'Loaded') {
-            h += '<button onclick="event.stopPropagation(); RW_Runsheets._changeStatus(\'' + code + '\', \'Delivering\', \'بدء التوصيل\')" class="px-2 py-1 bg-green-50 text-green-600 rounded text-xs hover:bg-green-100" title="بدء التوصيل"><i class="fa-solid fa-truck-fast"></i></button>';
-            h += '<button onclick="event.stopPropagation(); RW_Runsheets._changeStatus(\'' + code + '\', \'Picked\', \'تفريغ\')" class="px-2 py-1 bg-gray-50 text-gray-600 rounded text-xs hover:bg-gray-100" title="تفريغ للمخزن"><i class="fa-solid fa-warehouse"></i></button>';
-        } else if (r.status === 'Delivered') {
-            h += '<button onclick="event.stopPropagation(); RW_Runsheets._changeStatus(\'' + code + '\', \'Returning\', \'بدء المرتجعات\')" class="px-2 py-1 bg-purple-50 text-purple-600 rounded text-xs hover:bg-purple-100" title="بدء المرتجعات"><i class="fa-solid fa-rotate-left"></i></button>';
-        }
-        h += '</div>';
-        return h;
+    var code = r.runsheet_code || '';
+    var h = '<div class="flex flex-wrap gap-1 justify-center">';
+    if (r.status === 'Open' || r.status === 'Confirmed') {
+        h += '<button onclick="event.stopPropagation(); RW_Runsheets._assignDriverVehicle(\'' + code + '\')" class="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100" title="تعيين سائق ومركبة"><i class="fa-solid fa-user-plus"></i></button>';
+        h += '<button onclick="event.stopPropagation(); RW_Warehouse._openPickingModal(\'' + code + '\')" class="px-2 py-1 bg-purple-50 text-purple-600 rounded text-xs hover:bg-purple-100" title="بدء التحضير"><i class="fa-solid fa-hand-fist"></i></button>';
+        h += '<button onclick="event.stopPropagation(); RW_Runsheets._cancelRunsheet(\'' + code + '\')" class="px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100" title="إلغاء الرانشيت"><i class="fa-solid fa-ban"></i></button>';
+    } else if (r.status === 'Picked') {
+        h += '<button onclick="event.stopPropagation(); RW_Warehouse._openLoadingModal(\'' + code + '\')" class="px-2 py-1 bg-orange-50 text-orange-600 rounded text-xs hover:bg-orange-100" title="بدء التحميل"><i class="fa-solid fa-boxes-stacked"></i></button>';
+    } else if (r.status === 'Loaded') {
+        h += '<button onclick="event.stopPropagation(); RW_Warehouse._openDeliveryModal(\'' + code + '\')" class="px-2 py-1 bg-green-50 text-green-600 rounded text-xs hover:bg-green-100" title="بدء التوصيل"><i class="fa-solid fa-truck-fast"></i></button>';
+        h += '<button onclick="event.stopPropagation(); RW_Warehouse._confirmUnload(\'' + code + '\')" class="px-2 py-1 bg-gray-50 text-gray-600 rounded text-xs hover:bg-gray-100" title="تفريغ للمخزن"><i class="fa-solid fa-warehouse"></i></button>';
+    } else if (r.status === 'Delivered') {
+        h += '<button onclick="event.stopPropagation(); RW_Warehouse._openReturnModal(\'' + code + '\')" class="px-2 py-1 bg-rose-50 text-rose-600 rounded text-xs hover:bg-rose-100" title="بدء المرتجعات"><i class="fa-solid fa-rotate-left"></i></button>';
     }
+    h += '</div>';
+    return h;
+}
 
     function _renderTable(d) {
         var tb = byId('rs-table-body');
@@ -5801,19 +5802,373 @@ var RW_Warehouse = (function() {
             else showToast(json.msg || 'فشل', 'error');
         } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
+function _openPickingModal(rsCode) {
+    if (!rsCode) { showToast('رقم الرانشيت غير صالح', 'error'); return; }
+    showLoader('جاري تحميل بيانات التحضير...');
+    supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsCode).then(function(itemsRes) {
+        var items = itemsRes.data || [];
+        if (items.length === 0) { hideLoader(); showToast('لا توجد أصناف في هذا الرانشيت', 'info'); return; }
+        showLoader('جاري بدء التحضير...');
+        supabase.auth.getSession().then(function(ses) {
+            var t = ses.data.session ? ses.data.session.access_token : null;
+            return fetch(RW_SUPABASE_URL + '/functions/v1/start-picking', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ runsheet_code: rsCode })
+            });
+        }).then(function(res) { return res.json(); }).then(function(startJson) {
+            hideLoader();
+            if (!startJson.success) { showToast(startJson.msg || 'فشل بدء التحضير', 'error'); return; }
+            var html = '<div class="text-right" dir="rtl"><div class="max-h-[400px] overflow-y-auto"><table class="w-full border"><thead class="bg-slate-100"><tr>' +
+                '<th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية المطلوبة</th><th class="p-2 text-center">الكمية المحضرة</th></tr></thead><tbody>';
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                html += '<tr><td class="p-2 border"><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs">' + (it.item_code || '') + '</p></td>' +
+                    '<td class="p-2 border text-center">' + (it.unit || 'حبة') + '</td>' +
+                    '<td class="p-2 border text-center font-bold">' + (it.qty_ordered || 0) + '</td>' +
+                    '<td class="p-2 border text-center"><input type="number" id="picked_qty_' + i + '" class="w-24 p-2 border rounded text-center" step="1" min="0" value="' + (it.qty_ordered || 0) + '"></td></tr>';
+            }
+            html += '</tbody></table></div></div>';
+            Swal.fire({
+                title: 'تحضير الرانشيت: ' + rsCode,
+                html: html,
+                width: '800px',
+                showCancelButton: true,
+                confirmButtonText: 'إنهاء التحضير',
+                cancelButtonText: 'إلغاء',
+                preConfirm: function() {
+                    var itemsData = [];
+                    var allZero = true;
+                    for (var j = 0; j < items.length; j++) {
+                        var qty = parseFloat(document.getElementById('picked_qty_' + j).value) || 0;
+                        if (qty > 0) allZero = false;
+                        itemsData.push({ itemCode: items[j].item_code, pickedQty: qty, notes: '' });
+                    }
+                    if (allZero) { Swal.showValidationMessage('يجب تحضير كمية واحدة على الأقل'); return false; }
+                    return itemsData;
+                }
+            }).then(function(result) {
+                if (!result.isConfirmed) return;
+                showLoader('جاري إنهاء التحضير...');
+                supabase.auth.getSession().then(function(ses2) {
+                    var t2 = ses2.data.session ? ses2.data.session.access_token : null;
+                    return fetch(RW_SUPABASE_URL + '/functions/v1/complete-picking', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t2 },
+                        body: JSON.stringify({ runsheet_code: rsCode, items: result.value })
+                    });
+                }).then(function(res) { return res.json(); }).then(function(compJson) {
+                    hideLoader();
+                    if (compJson.success) {
+                        showToast('تم إنهاء التحضير بنجاح', 'success');
+                        if (typeof RW_Runsheets !== 'undefined' && RW_Runsheets._apply) RW_Runsheets._apply();
+                    } else {
+                        showToast(compJson.msg || 'فشل إنهاء التحضير', 'error');
+                    }
+                }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+            });
+        }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+    }).catch(function(e) { hideLoader(); showToast('فشل تحميل بيانات الرانشيت', 'error'); });
+}
+function _openLoadingModal(rsCode) {
+    if (!rsCode) { showToast('رقم الرانشيت غير صالح', 'error'); return; }
+    showLoader('جاري تحميل بيانات التحميل...');
+    supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsCode).then(function(itemsRes) {
+        var items = itemsRes.data || [];
+        if (items.length === 0) { hideLoader(); showToast('لا توجد أصناف في هذا الرانشيت', 'info'); return; }
+        showLoader('جاري بدء التحميل...');
+        supabase.auth.getSession().then(function(ses) {
+            var t = ses.data.session ? ses.data.session.access_token : null;
+            return fetch(RW_SUPABASE_URL + '/functions/v1/start-loading', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ runsheet_code: rsCode })
+            });
+        }).then(function(res) { return res.json(); }).then(function(startJson) {
+            hideLoader();
+            if (!startJson.success) { showToast(startJson.msg || 'فشل بدء التحميل', 'error'); return; }
+            var html = '<div class="text-right" dir="rtl"><div class="max-h-[400px] overflow-y-auto"><table class="w-full border"><thead class="bg-slate-100"><tr>' +
+                '<th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية المحضّرة</th><th class="p-2 text-center">الكمية المحمّلة</th></tr></thead><tbody>';
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                var picked = it.qty_picked || 0;
+                html += '<tr><td class="p-2 border"><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs">' + (it.item_code || '') + '</p></td>' +
+                    '<td class="p-2 border text-center">' + (it.unit || 'حبة') + '</td>' +
+                    '<td class="p-2 border text-center font-bold">' + picked + '</td>' +
+                    '<td class="p-2 border text-center"><input type="number" id="loaded_qty_' + i + '" class="w-24 p-2 border rounded text-center" step="1" min="0" max="' + picked + '" value="' + picked + '"></td></tr>';
+            }
+            html += '</tbody></table></div></div>';
+            Swal.fire({
+                title: 'تحميل الرانشيت: ' + rsCode,
+                html: html,
+                width: '800px',
+                showCancelButton: true,
+                confirmButtonText: 'إنهاء التحميل',
+                cancelButtonText: 'إلغاء',
+                preConfirm: function() {
+                    var itemsData = [];
+                    var allZero = true;
+                    for (var j = 0; j < items.length; j++) {
+                        var qty = parseFloat(document.getElementById('loaded_qty_' + j).value) || 0;
+                        if (qty > 0) allZero = false;
+                        itemsData.push({ itemCode: items[j].item_code, loadedQty: qty, notes: '' });
+                    }
+                    if (allZero) { Swal.showValidationMessage('يجب تحميل كمية واحدة على الأقل'); return false; }
+                    return itemsData;
+                }
+            }).then(function(result) {
+                if (!result.isConfirmed) return;
+                showLoader('جاري إنهاء التحميل...');
+                supabase.auth.getSession().then(function(ses2) {
+                    var t2 = ses2.data.session ? ses2.data.session.access_token : null;
+                    return fetch(RW_SUPABASE_URL + '/functions/v1/complete-loading', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t2 },
+                        body: JSON.stringify({ runsheet_code: rsCode, items: result.value })
+                    });
+                }).then(function(res) { return res.json(); }).then(function(compJson) {
+                    hideLoader();
+                    if (compJson.success) {
+                        showToast('تم إنهاء التحميل بنجاح', 'success');
+                        if (typeof RW_Runsheets !== 'undefined' && RW_Runsheets._apply) RW_Runsheets._apply();
+                    } else {
+                        showToast(compJson.msg || 'فشل إنهاء التحميل', 'error');
+                    }
+                }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+            });
+        }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+    }).catch(function(e) { hideLoader(); showToast('فشل تحميل بيانات الرانشيت', 'error'); });
+}
+function _openDeliveryModal(rsCode) {
+    if (!rsCode) { showToast('رقم الرانشيت غير صالح', 'error'); return; }
+    showLoader('جاري تحميل بيانات التوصيل...');
+    supabase.from('runsheets').select('id').eq('runsheet_code', rsCode).maybeSingle().then(function(rsRes) {
+        var rs = rsRes.data;
+        if (!rs) { hideLoader(); showToast('الرانشيت غير موجود', 'error'); return; }
+        supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsCode).then(function(itemsRes) {
+            var items = itemsRes.data || [];
+            if (items.length === 0) { hideLoader(); showToast('لا توجد أصناف في هذا الرانشيت', 'info'); return; }
+            showLoader('جاري بدء التوصيل...');
+            supabase.auth.getSession().then(function(ses) {
+                var t = ses.data.session ? ses.data.session.access_token : null;
+                return fetch(RW_SUPABASE_URL + '/functions/v1/start-delivery', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                    body: JSON.stringify({ runsheet_code: rsCode })
+                });
+            }).then(function(res) { return res.json(); }).then(function(startJson) {
+                hideLoader();
+                if (!startJson.success) { showToast(startJson.msg || 'فشل بدء التوصيل', 'error'); return; }
+                supabase.from('orders').select('order_code, customer_name').eq('runsheet_id', rs.id).then(function(ordersRes) {
+                    var orders = ordersRes.data || [];
+                    var html = '<div class="text-right" dir="rtl"><div class="max-h-[400px] overflow-y-auto">';
+                    for (var o = 0; o < orders.length; o++) {
+                        var order = orders[o];
+                        html += '<div class="mb-4 p-3 bg-gray-50 rounded-lg"><h4 class="font-bold text-blue-600 mb-2">' + (order.order_code || '') + ' - ' + (order.customer_name || '') + '</h4>';
+                        html += '<p class="text-xs text-gray-500">سيتم إنهاء التوصيل لهذا الأوردر مع جميع كمياته المحمّلة.</p>';
+                        html += '</div>';
+                    }
+                    html += '<p class="text-sm text-gray-500 mt-4">سيتم إنشاء قيد محاسبي تلقائي (مدين: العميل، دائن: إيرادات المبيعات) لجميع الأوردرات.</p>';
+                    html += '</div></div>';
+                    Swal.fire({
+                        title: 'توصيل الرانشيت: ' + rsCode,
+                        html: html,
+                        width: '700px',
+                        showCancelButton: true,
+                        confirmButtonText: 'إنهاء التوصيل',
+                        cancelButtonText: 'إلغاء'
+                    }).then(function(result) {
+                        if (!result.isConfirmed) return;
+                        var ordersData = [];
+                        for (var o2 = 0; o2 < orders.length; o2++) {
+                            var ord = orders[o2];
+                            var orderItems = [];
+                            for (var it = 0; it < items.length; it++) {
+                                orderItems.push({
+                                    itemCode: items[it].item_code,
+                                    deliveredQty: items[it].qty_loaded || 0,
+                                    refusedQty: 0,
+                                    reason: ''
+                                });
+                            }
+                            ordersData.push({ orderId: ord.order_code, items: orderItems });
+                        }
+                        showLoader('جاري إنهاء التوصيل...');
+                        supabase.auth.getSession().then(function(ses2) {
+                            var t2 = ses2.data.session ? ses2.data.session.access_token : null;
+                            return fetch(RW_SUPABASE_URL + '/functions/v1/complete-delivery', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t2 },
+                                body: JSON.stringify({ runsheet_code: rsCode, ordersData: ordersData })
+                            });
+                        }).then(function(res) { return res.json(); }).then(function(compJson) {
+                            hideLoader();
+                            if (compJson.success) {
+                                showToast('تم إنهاء التوصيل بنجاح', 'success');
+                                if (typeof RW_Runsheets !== 'undefined' && RW_Runsheets._apply) RW_Runsheets._apply();
+                            } else {
+                                showToast(compJson.msg || 'فشل إنهاء التوصيل', 'error');
+                            }
+                        }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+                    });
+                }).catch(function(e) { hideLoader(); showToast('فشل جلب الأوردرات', 'error'); });
+            }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+        }).catch(function(e) { hideLoader(); showToast('فشل تحميل بيانات الرانشيت', 'error'); });
+    }).catch(function(e) { hideLoader(); showToast('فشل تحميل بيانات الرانشيت', 'error'); });
+}
+function _openReturnModal(rsCode) {
+    if (!rsCode) { showToast('رقم الرانشيت غير صالح', 'error'); return; }
+    showLoader('جاري تحميل بيانات المرتجعات...');
+    supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsCode).then(function(itemsRes) {
+        var items = itemsRes.data || [];
+        if (items.length === 0) { hideLoader(); showToast('لا توجد أصناف في هذا الرانشيت', 'info'); return; }
+        showLoader('جاري بدء المرتجعات...');
+        supabase.auth.getSession().then(function(ses) {
+            var t = ses.data.session ? ses.data.session.access_token : null;
+            return fetch(RW_SUPABASE_URL + '/functions/v1/start-return', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ runsheet_code: rsCode })
+            });
+        }).then(function(res) { return res.json(); }).then(function(startJson) {
+            hideLoader();
+            if (!startJson.success) { showToast(startJson.msg || 'فشل بدء المرتجعات', 'error'); return; }
+            var html = '<div class="text-right" dir="rtl"><div class="max-h-[400px] overflow-y-auto"><table class="w-full border"><thead class="bg-slate-100"><tr>' +
+                '<th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية المسلّمة</th><th class="p-2 text-center">الكمية المرتجعة</th></tr></thead><tbody>';
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                var delivered = it.qty_delivered || 0;
+                html += '<tr><td class="p-2 border"><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs">' + (it.item_code || '') + '</p></td>' +
+                    '<td class="p-2 border text-center">' + (it.unit || 'حبة') + '</td>' +
+                    '<td class="p-2 border text-center font-bold">' + delivered + '</td>' +
+                    '<td class="p-2 border text-center"><input type="number" id="returned_qty_' + i + '" class="w-24 p-2 border rounded text-center" step="1" min="0" max="' + delivered + '" value="0"></td></tr>';
+            }
+            html += '</tbody></table></div></div>';
+            Swal.fire({
+                title: 'مرتجعات الرانشيت: ' + rsCode,
+                html: html,
+                width: '800px',
+                showCancelButton: true,
+                confirmButtonText: 'إنهاء المرتجعات',
+                cancelButtonText: 'إلغاء',
+                preConfirm: function() {
+                    var itemsData = [];
+                    var allZero = true;
+                    for (var j = 0; j < items.length; j++) {
+                        var qty = parseFloat(document.getElementById('returned_qty_' + j).value) || 0;
+                        if (qty > 0) allZero = false;
+                        itemsData.push({ itemCode: items[j].item_code, returnedQty: qty, reason: '' });
+                    }
+                    if (allZero) { Swal.showValidationMessage('يجب إدخال كمية مرتجعة واحدة على الأقل'); return false; }
+                    return itemsData;
+                }
+            }).then(function(result) {
+                if (!result.isConfirmed) return;
+                showLoader('جاري إنهاء المرتجعات...');
+                supabase.auth.getSession().then(function(ses2) {
+                    var t2 = ses2.data.session ? ses2.data.session.access_token : null;
+                    return fetch(RW_SUPABASE_URL + '/functions/v1/complete-return', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t2 },
+                        body: JSON.stringify({ runsheet_code: rsCode, items: result.value })
+                    });
+                }).then(function(res) { return res.json(); }).then(function(compJson) {
+                    hideLoader();
+                    if (compJson.success) {
+                        showToast('تم إنهاء المرتجعات بنجاح', 'success');
+                        if (typeof RW_Runsheets !== 'undefined' && RW_Runsheets._apply) RW_Runsheets._apply();
+                    } else {
+                        showToast(compJson.msg || 'فشل إنهاء المرتجعات', 'error');
+                    }
+                }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+            });
+        }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+    }).catch(function(e) { hideLoader(); showToast('فشل تحميل بيانات الرانشيت', 'error'); });
+}
+function _confirmUnload(code) {
+    Swal.fire({ title: 'تأكيد التفريغ', text: 'إعادة جميع الكميات للمخزون؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم', cancelButtonText: 'لا' }).then(function(cf) {
+        if (!cf.isConfirmed) return;
+        showLoader('جاري التفريغ...');
+        supabase.auth.getSession().then(function(ses) {
+            var t = ses.data.session ? ses.data.session.access_token : null;
+            return fetch(RW_SUPABASE_URL + '/functions/v1/unload-runsheet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ runsheet_code: code })
+            });
+        }).then(function(res) { return res.json(); }).then(function(json) {
+            hideLoader();
+            if (json.success) {
+                showToast('تم التفريغ بنجاح', 'success');
+                if (typeof RW_Runsheets !== 'undefined' && RW_Runsheets._apply) RW_Runsheets._apply();
+            } else {
+                showToast(json.msg || 'فشل التفريغ', 'error');
+            }
+        }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+    });
+}
 
     return {
-        loadReceiving, _applyReceiving, _showReceivingDetails,
-        loadVouchers, _applyVouchers, _viewVoucherDetails, _sendVoucher, _receiveVoucher, _openNewVoucherModal, loadVoucherForm,
-        _searchVoucherItem, _addVoucherItem, _renderVoucherCart, _updateVoucherQty, _updateVoucherPrice, _removeVoucherItem, _clearVoucherCart, _saveAndSendVoucher,
-        loadPicking, _applyPicking, _showPickingDetails,
-        loadLoading, _applyLoading, _showLoadingDetails,
-        loadDelivery, _applyDelivery, _showDeliveryDetails,
-        loadReturn, _applyReturn, _showReturnDetails,
-        loadUnloading, _applyUnloading, _showUnloadingDetails,
-        loadVehicleCount, loadBranchCount, loadGeneralCount, loadSettlement,
-        _searchDriver, _selectDriver, _searchInvItem, _addToInvCart, _renderInvCart, _updateInvCartQty, _removeInvCartItem, _saveVehicleCount, _saveBranchCount, _saveGeneralCount, _saveInvCount, _onSettlementRsChange, _saveSettlement,
-        _startPicking, _startLoading, _startDelivery, _startReturn, _confirmUnload
+            loadReceiving: loadReceiving,
+    _applyReceiving: _applyReceiving,
+    _showReceivingDetails: _showReceivingDetails,
+    loadVouchers: loadVouchers,
+    _applyVouchers: _applyVouchers,
+    _viewVoucherDetails: _viewVoucherDetails,
+    _sendVoucher: _sendVoucher,
+    _receiveVoucher: _receiveVoucher,
+    _openNewVoucherModal: _openNewVoucherModal,
+    loadVoucherForm: loadVoucherForm,
+    _searchVoucherItem: _searchVoucherItem,
+    _addVoucherItem: _addVoucherItem,
+    _renderVoucherCart: _renderVoucherCart,
+    _updateVoucherQty: _updateVoucherQty,
+    _updateVoucherPrice: _updateVoucherPrice,
+    _removeVoucherItem: _removeVoucherItem,
+    _clearVoucherCart: _clearVoucherCart,
+    _saveAndSendVoucher: _saveAndSendVoucher,
+    loadPicking: loadPicking,
+    _applyPicking: _applyPicking,
+    _showPickingDetails: _showPickingDetails,
+    loadLoading: loadLoading,
+    _applyLoading: _applyLoading,
+    _showLoadingDetails: _showLoadingDetails,
+    loadDelivery: loadDelivery,
+    _applyDelivery: _applyDelivery,
+    _showDeliveryDetails: _showDeliveryDetails,
+    loadReturn: loadReturn,
+    _applyReturn: _applyReturn,
+    _showReturnDetails: _showReturnDetails,
+    loadUnloading: loadUnloading,
+    _applyUnloading: _applyUnloading,
+    _showUnloadingDetails: _showUnloadingDetails,
+    loadVehicleCount: loadVehicleCount,
+    loadBranchCount: loadBranchCount,
+    loadGeneralCount: loadGeneralCount,
+    loadSettlement: loadSettlement,
+    _searchDriver: _searchDriver,
+    _selectDriver: _selectDriver,
+    _searchInvItem: _searchInvItem,
+    _addToInvCart: _addToInvCart,
+    _renderInvCart: _renderInvCart,
+    _updateInvCartQty: _updateInvCartQty,
+    _removeInvCartItem: _removeInvCartItem,
+    _saveVehicleCount: _saveVehicleCount,
+    _saveBranchCount: _saveBranchCount,
+    _saveGeneralCount: _saveGeneralCount,
+    _saveInvCount: _saveInvCount,
+    _onSettlementRsChange: _onSettlementRsChange,
+    _saveSettlement: _saveSettlement,
+    _openPickingModal: _openPickingModal,
+    _openLoadingModal: _openLoadingModal,
+    _openDeliveryModal: _openDeliveryModal,
+    _openReturnModal: _openReturnModal,
+    _startPicking: _changeStatus,
+    _startLoading: _changeStatus,
+    _startDelivery: _changeStatus,
+    _startReturn: _changeStatus,
+    _confirmUnload: _confirmUnload,
+    _changeStatus: _changeStatus
     };
 })();
 window.RW_Warehouse = RW_Warehouse;
