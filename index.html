@@ -4353,50 +4353,59 @@ var RW_Orders = (function() {
         printWindow.document.close();
     }
         // ========== إنشاء وضم الرانشيتات ==========
-    async function _createRS() {
-        var selected = _getSelectedOrders();
-        if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
-        var cf = await Swal.fire({
-            title: 'إنشاء رانشيت جديد',
-            text: 'سيتم تجميع ' + selected.length + ' أوردر في رانشيت جديد. متابعة؟',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، إنشاء',
-            cancelButtonText: 'إلغاء'
-        });
-        if (!cf.isConfirmed) return;
-        showLoader('جاري إنشاء الرانشيت...');
+async function _createRS() {
+    var selected = _getSelectedOrders();
+    if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
+    var cf = await Swal.fire({
+        title: 'إنشاء رانشيت جديد',
+        text: 'سيتم تجميع ' + selected.length + ' أوردر في رانشيت جديد. متابعة؟',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، إنشاء',
+        cancelButtonText: 'إلغاء'
+    });
+    if (!cf.isConfirmed) return;
+    showLoader('جاري إنشاء الرانشيت...');
 
-        // ✅ التحقق من الجلسة والتوكن
-        var ses = await supabase.auth.getSession();
-        var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-        if (!t) {
-            hideLoader();
-            showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
-            return;
-        }
-
-        try {
-            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/create-runsheet', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
-                body: JSON.stringify({ selectedOrders: selected })
-            });
-var json = await res.json();
-hideLoader();
-            if (json.success) {
-                showToast('تم إنشاء الرانشيت: ' + json.rsId, 'success');
-                // تحديث محلي
-                for (var i = 0; i < ordersData.length; i++) {
-                    if (selected.indexOf(ordersData[i].order_code) !== -1) {
-                        ordersData[i].runsheet_id = json.rsId;
-                        ordersData[i].order_status = 'Pending';
-                    }
-                }
-                _applyFilters();
-            } else showToast(json.msg || 'فشل', 'error');
-        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
+    var ses = await supabase.auth.getSession();
+    var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+    if (!t) {
+        hideLoader();
+        showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
+        return;
     }
+
+    try {
+        // ✅ تنظيف الأوردرات المحددة قبل إنشاء الرانشيت
+        await supabase
+            .from('orders')
+            .update({ runsheet_id: null, order_status: 'Confirmed' })
+            .in('order_code', selected);
+
+        var res = await fetch(RW_SUPABASE_URL + '/functions/v1/create-runsheet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+            body: JSON.stringify({ selectedOrders: selected })
+        });
+        var json = await res.json();
+        hideLoader();
+        if (json.success) {
+            showToast('تم إنشاء الرانشيت: ' + json.rsId, 'success');
+            for (var i = 0; i < ordersData.length; i++) {
+                if (selected.indexOf(ordersData[i].order_code) !== -1) {
+                    ordersData[i].runsheet_id = json.rsId;
+                    ordersData[i].order_status = 'Pending';
+                }
+            }
+            _applyFilters();
+        } else {
+            showToast(json.msg || 'فشل', 'error');
+        }
+    } catch(e) {
+        hideLoader();
+        showToast('فشل الاتصال', 'error');
+    }
+}
 
     async function _appendRS() {
         var selected = _getSelectedOrders();
