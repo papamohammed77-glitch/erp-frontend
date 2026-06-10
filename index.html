@@ -4618,7 +4618,6 @@ var RW_Runsheets = (function() {
         }
         RW_Table.paginate('rs-table-body', d, 1, 50, function(r) {
             var driverName = r.driver_id || '---';
-            // محاولة جلب اسم السائق من الكاش
             for (var i = 0; i < driversCache.length; i++) {
                 if (driversCache[i].email === r.driver_id) { driverName = driversCache[i].name; break; }
             }
@@ -4639,244 +4638,248 @@ var RW_Runsheets = (function() {
     }
 
     // ========== مودال التفاصيل المُعاد إحياؤه ==========
-async function _details(code) {
-    showLoader('جاري تحميل تفاصيل الرانشيت...');
-    try {
-        var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle();
-        var rs = rsRes.data;
-        if (!rs) { hideLoader(); showToast('الرانشيت غير موجود', 'error'); return; }
+    async function _details(code) {
+        showLoader('جاري تحميل تفاصيل الرانشيت...');
+        try {
+            var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle();
+            var rs = rsRes.data;
+            if (!rs) { hideLoader(); showToast('الرانشيت غير موجود', 'error'); return; }
 
-        var ordersRes = await supabase.from('orders').select('order_code, customer_name, total_amount').eq('runsheet_id', rs.id);
-        var orders = ordersRes.data || [];
+            var ordersRes = await supabase.from('orders').select('order_code, customer_name, total_amount').eq('runsheet_id', rs.id);
+            var orders = ordersRes.data || [];
 
-        var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
-        var items = itemsRes.data || [];
+            var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
+            var items = itemsRes.data || [];
 
-        hideLoader();
+            hideLoader();
 
-        // بناء خيارات السائقين والمركبات
-        var driverOptions = '<option value="">اختر السائق...</option>';
+            // بناء خيارات السائقين والمركبات
+            var driverOptions = '<option value="">اختر السائق...</option>';
+            for (var i = 0; i < driversCache.length; i++) {
+                var d = driversCache[i];
+                var sel = (rs.driver_id === d.email) ? ' selected' : '';
+                driverOptions += '<option value="' + d.email + '"' + sel + '>' + d.name + ' (' + d.email + ')</option>';
+            }
+            var vehicleOptions = '<option value="">اختر المركبة...</option>';
+            for (var j = 0; j < vehiclesCache.length; j++) {
+                var v = vehiclesCache[j];
+                var sel = (rs.vehicle_id === v.id) ? ' selected' : '';
+                vehicleOptions += '<option value="' + v.id + '"' + sel + '>' + v.license_plate + ' - ' + (v.model || '') + '</option>';
+            }
+
+            // بناء Badges الأوردرات
+            var ordersHtml = '';
+            if (orders.length > 0) {
+                ordersHtml = '<div class="mb-4"><h4 class="font-bold text-lg mb-2">الأوردرات المرتبطة</h4><div class="bg-gray-50 rounded-lg p-3 flex flex-wrap gap-2">';
+                for (var o = 0; o < orders.length; o++) {
+                    ordersHtml += '<span class="inline-block bg-white rounded px-3 py-1 text-sm shadow-sm">' + orders[o].order_code + ' - ' + orders[o].customer_name + ' (' + _fmtNum(orders[o].total_amount) + ' EGP)</span>';
+                }
+                ordersHtml += '</div></div>';
+            } else {
+                ordersHtml = '<div class="mb-4 text-gray-500 text-sm">لا توجد أوردرات مرتبطة</div>';
+            }
+
+            // بناء جدول الأصناف
+            var itemsHtml = '';
+            var grandTotal = 0;
+            if (items.length > 0) {
+                itemsHtml = '<div class="overflow-x-auto mt-4"><table class="w-full border text-sm"><thead class="bg-gray-100"><tr>' +
+                    '<th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الوحدة</th>' +
+                    '<th class="p-2 border text-center">الكمية</th><th class="p-2 border text-center">السعر</th><th class="p-2 border text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var it = 0; it < items.length; it++) {
+                    var item = items[it];
+                    var lineTotal = (Number(item.qty_ordered) || 0) * (Number(item.unit_price) || 0);
+                    grandTotal += lineTotal;
+                    itemsHtml += '<tr><td class="p-2 border">' + _esc(item.item_code) + '</td>' +
+                        '<td class="p-2 border font-semibold">' + _esc(item.item_name) + '</td>' +
+                        '<td class="p-2 border text-center">' + _esc(item.unit) + '</td>' +
+                        '<td class="p-2 border text-center font-bold">' + (item.qty_ordered || 0) + '</td>' +
+                        '<td class="p-2 border text-center">' + _fmtNum(item.unit_price) + '</td>' +
+                        '<td class="p-2 border text-center font-bold">' + _fmtNum(lineTotal) + '</td></tr>';
+                }
+                itemsHtml += '</tbody></table></div>';
+                itemsHtml += '<div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + _fmtNum(grandTotal) + ' EGP</div>';
+            } else {
+                itemsHtml = '<div class="text-center py-4 text-gray-500 mt-4">لا توجد أصناف مجمعة في هذا الرانشيت بعد.</div>';
+            }
+
+            // تجميع المحتوى
+            var content = '<div class="text-right space-y-4">' +
+                '<div class="flex justify-between items-center">' +
+                    '<div><h3 class="font-black text-2xl">' + rs.runsheet_code + '</h3><p class="text-gray-500">التاريخ: ' + (rs.run_date || '') + '</p></div>' +
+                    '<div><span class="px-3 py-1 rounded-full text-xs font-bold ' + _statusClass(rs.status) + '">' + rs.status + '</span></div>' +
+                '</div>' +
+                '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-gray-50 p-4 rounded-2xl">' +
+                    '<div><p class="text-xs text-gray-400">السائق</p><select id="rs-driver-select" class="w-full p-2 border rounded-lg bg-white text-sm">' + driverOptions + '</select></div>' +
+                    '<div><p class="text-xs text-gray-400">السيارة</p><select id="rs-vehicle-select" class="w-full p-2 border rounded-lg bg-white text-sm">' + vehicleOptions + '</select></div>' +
+                    '<div><p class="text-xs text-gray-400">عدد الأوردرات</p><p class="font-bold text-xl">' + orders.length + '</p></div>' +
+                    '<div><p class="text-xs text-gray-400">القيمة الإجمالية</p><p class="font-bold text-xl text-emerald-600">' + _fmtNum(rs.total_amount) + ' EGP</p></div>' +
+                '</div>' +
+                ordersHtml +
+                itemsHtml +
+                '</div>';
+
+            Swal.fire({
+                title: 'تفاصيل الرانشيت: ' + code,
+                html: content,
+                width: '1000px',
+                showCloseButton: true,
+                showConfirmButton: true,
+                confirmButtonText: 'حفظ التغييرات',
+                showCancelButton: true,
+                cancelButtonText: 'إلغاء',
+                preConfirm: function() {
+                    var newDriver = document.getElementById('rs-driver-select').value;
+                    var newVehicle = document.getElementById('rs-vehicle-select').value;
+                    showLoader('جاري تحديث الرانشيت...');
+                    return supabase.from('runsheets').update({
+                        driver_id: newDriver || null,
+                        vehicle_id: newVehicle || null,
+                        status: 'Open'
+                    }).eq('id', rs.id).then(function() {
+                        hideLoader();
+                        rs.driver_id = newDriver;
+                        rs.vehicle_id = newVehicle;
+                        _apply();
+                        showToast('تم تحديث الرانشيت', 'success');
+                    }).catch(function(e) {
+                        hideLoader();
+                        showToast('فشل التحديث: ' + e.message, 'error');
+                    });
+                }
+            });
+        } catch(e) {
+            hideLoader();
+            showToast('فشل تحميل التفاصيل', 'error');
+            console.error(e);
+        }
+    }
+
+    async function _assignDriverVehicle(runsheetCode) {
+        var driverOpts = '';
         for (var i = 0; i < driversCache.length; i++) {
             var d = driversCache[i];
-            var sel = (rs.driver_id === d.email) ? ' selected' : '';
-            driverOptions += '<option value="' + d.email + '"' + sel + '>' + d.name + ' (' + d.email + ')</option>';
+            driverOpts += '<option value="' + _esc(d.email) + '">' + _esc(d.name) + ' (' + _esc(d.email) + ')</option>';
         }
-        var vehicleOptions = '<option value="">اختر المركبة...</option>';
+        var vehicleOpts = '';
         for (var j = 0; j < vehiclesCache.length; j++) {
             var v = vehiclesCache[j];
-            var sel = (rs.vehicle_id === v.id) ? ' selected' : '';
-            vehicleOptions += '<option value="' + v.id + '"' + sel + '>' + v.license_plate + ' - ' + (v.model || '') + '</option>';
+            vehicleOpts += '<option value="' + _esc(v.id) + '">' + _esc(v.license_plate) + ' - ' + _esc(v.model || '') + '</option>';
         }
-
-        // بناء Badges الأوردرات
-        var ordersHtml = '';
-        if (orders.length > 0) {
-            ordersHtml = '<div class="mb-4"><h4 class="font-bold text-lg mb-2">الأوردرات المرتبطة</h4><div class="bg-gray-50 rounded-lg p-3 flex flex-wrap gap-2">';
-            for (var o = 0; o < orders.length; o++) {
-                ordersHtml += '<span class="inline-block bg-white rounded px-3 py-1 text-sm shadow-sm">' + orders[o].order_code + ' - ' + orders[o].customer_name + ' (' + _fmtNum(orders[o].total_amount) + ' EGP)</span>';
-            }
-            ordersHtml += '</div></div>';
-        } else {
-            ordersHtml = '<div class="mb-4 text-gray-500 text-sm">لا توجد أوردرات مرتبطة</div>';
-        }
-
-        // بناء جدول الأصناف
-        var itemsHtml = '';
-        var grandTotal = 0;
-        if (items.length > 0) {
-            itemsHtml = '<div class="overflow-x-auto mt-4"><table class="w-full border text-sm"><thead class="bg-gray-100"><tr>' +
-                '<th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الوحدة</th>' +
-                '<th class="p-2 border text-center">الكمية</th><th class="p-2 border text-center">السعر</th><th class="p-2 border text-center">الإجمالي</th></tr></thead><tbody>';
-            for (var it = 0; it < items.length; it++) {
-                var item = items[it];
-                var lineTotal = (Number(item.qty_ordered) || 0) * (Number(item.unit_price) || 0);
-                grandTotal += lineTotal;
-                itemsHtml += '<tr><td class="p-2 border">' + _esc(item.item_code) + '</td>' +
-                    '<td class="p-2 border font-semibold">' + _esc(item.item_name) + '</td>' +
-                    '<td class="p-2 border text-center">' + _esc(item.unit) + '</td>' +
-                    '<td class="p-2 border text-center font-bold">' + (item.qty_ordered || 0) + '</td>' +
-                    '<td class="p-2 border text-center">' + _fmtNum(item.unit_price) + '</td>' +
-                    '<td class="p-2 border text-center font-bold">' + _fmtNum(lineTotal) + '</td></tr>';
-            }
-            itemsHtml += '</tbody></table></div>';
-            itemsHtml += '<div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + _fmtNum(grandTotal) + ' EGP</div>';
-        } else {
-            itemsHtml = '<div class="text-center py-4 text-gray-500 mt-4">لا توجد أصناف مجمعة في هذا الرانشيت بعد.</div>';
-        }
-
-        // تجميع المحتوى
-        var content = '<div class="text-right space-y-4">' +
-            '<div class="flex justify-between items-center">' +
-                '<div><h3 class="font-black text-2xl">' + rs.runsheet_code + '</h3><p class="text-gray-500">التاريخ: ' + (rs.run_date || '') + '</p></div>' +
-                '<div><span class="px-3 py-1 rounded-full text-xs font-bold ' + _statusClass(rs.status) + '">' + rs.status + '</span></div>' +
-            '</div>' +
-            '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-gray-50 p-4 rounded-2xl">' +
-                '<div><p class="text-xs text-gray-400">السائق</p><select id="rs-driver-select" class="w-full p-2 border rounded-lg bg-white text-sm">' + driverOptions + '</select></div>' +
-                '<div><p class="text-xs text-gray-400">السيارة</p><select id="rs-vehicle-select" class="w-full p-2 border rounded-lg bg-white text-sm">' + vehicleOptions + '</select></div>' +
-                '<div><p class="text-xs text-gray-400">عدد الأوردرات</p><p class="font-bold text-xl">' + orders.length + '</p></div>' +
-                '<div><p class="text-xs text-gray-400">القيمة الإجمالية</p><p class="font-bold text-xl text-emerald-600">' + _fmtNum(rs.total_amount) + ' EGP</p></div>' +
-            '</div>' +
-            ordersHtml +
-            itemsHtml +
+        var html = '<div class="text-right space-y-4">' +
+            '<div><label class="text-sm font-bold">اختيار السائق</label><select id="rs-driver-select" class="swal2-input w-full">' + driverOpts + '</select></div>' +
+            '<div><label class="text-sm font-bold">اختيار المركبة</label><select id="rs-vehicle-select" class="swal2-input w-full">' + vehicleOpts + '</select></div>' +
             '</div>';
-
-        Swal.fire({
-            title: 'تفاصيل الرانشيت: ' + code,
-            html: content,
-            width: '1000px',
-            showCloseButton: true,
-            showConfirmButton: true,
-            confirmButtonText: 'حفظ التغييرات',
+        var result = await Swal.fire({
+            title: 'تعيين السائق والمركبة',
+            html: html,
             showCancelButton: true,
+            confirmButtonText: 'حفظ',
             cancelButtonText: 'إلغاء',
             preConfirm: function() {
-                var newDriver = document.getElementById('rs-driver-select').value;
-                var newVehicle = document.getElementById('rs-vehicle-select').value;
-                showLoader('جاري تحديث الرانشيت...');
-                return supabase.from('runsheets').update({
-                    driver_id: newDriver || null,
-                    vehicle_id: newVehicle || null,
-                    status: 'Open'
-                }).eq('id', rs.id).then(function() {
-                    hideLoader();
-                    rs.driver_id = newDriver;
-                    rs.vehicle_id = newVehicle;
-                    _apply();
-                    showToast('تم تحديث الرانشيت', 'success');
-                }).catch(function(e) {
-                    hideLoader();
-                    showToast('فشل التحديث: ' + e.message, 'error');
-                });
+                var driver = document.getElementById('rs-driver-select').value;
+                var vehicle = document.getElementById('rs-vehicle-select').value;
+                if (!driver || !vehicle) {
+                    Swal.showValidationMessage('يجب اختيار السائق والمركبة');
+                    return false;
+                }
+                return { driver: driver, vehicle: vehicle };
             }
         });
-    } catch(e) {
-        hideLoader();
-        showToast('فشل تحميل التفاصيل', 'error');
-        console.error(e);
-    }
-}
-async function _assignDriverVehicle(runsheetCode) {
-    var driverOpts = '';
-    for (var i = 0; i < driversCache.length; i++) {
-        var d = driversCache[i];
-        driverOpts += '<option value="' + _esc(d.email) + '">' + _esc(d.name) + ' (' + _esc(d.email) + ')</option>';
-    }
-    var vehicleOpts = '';
-    for (var j = 0; j < vehiclesCache.length; j++) {
-        var v = vehiclesCache[j];
-        vehicleOpts += '<option value="' + _esc(v.id) + '">' + _esc(v.license_plate) + ' - ' + _esc(v.model || '') + '</option>';
-    }
-    var html = '<div class="text-right space-y-4">' +
-        '<div><label class="text-sm font-bold">اختيار السائق</label><select id="rs-driver-select" class="swal2-input w-full">' + driverOpts + '</select></div>' +
-        '<div><label class="text-sm font-bold">اختيار المركبة</label><select id="rs-vehicle-select" class="swal2-input w-full">' + vehicleOpts + '</select></div>' +
-        '</div>';
-    var result = await Swal.fire({
-        title: 'تعيين السائق والمركبة',
-        html: html,
-        showCancelButton: true,
-        confirmButtonText: 'حفظ',
-        cancelButtonText: 'إلغاء',
-        preConfirm: function() {
-            var driver = document.getElementById('rs-driver-select').value;
-            var vehicle = document.getElementById('rs-vehicle-select').value;
-            if (!driver || !vehicle) {
-                Swal.showValidationMessage('يجب اختيار السائق والمركبة');
-                return false;
+        if (result.isConfirmed && result.value) {
+            showLoader('جاري تحديث الرانشيت...');
+            var { error } = await supabase.from('runsheets').update({
+                driver_id: result.value.driver,
+                vehicle_id: result.value.vehicle,
+                status: 'Open'
+            }).eq('runsheet_code', runsheetCode);
+            hideLoader();
+            if (error) {
+                showToast('فشل التحديث: ' + error.message, 'error');
+            } else {
+                showToast('تم تعيين السائق والمركبة بنجاح', 'success');
+                var found = data.find(function(r) { return r.runsheet_code === runsheetCode; });
+                if (found) {
+                    found.driver_id = result.value.driver;
+                    found.vehicle_id = result.value.vehicle;
+                    found.status = 'Open';
+                }
+                _apply();
             }
-            return { driver: driver, vehicle: vehicle };
-        }
-    });
-    if (result.isConfirmed && result.value) {
-        showLoader('جاري تحديث الرانشيت...');
-        var { error } = await supabase.from('runsheets').update({
-            driver_id: result.value.driver,
-            vehicle_id: result.value.vehicle,
-            status: 'Open'
-        }).eq('runsheet_code', runsheetCode);
-        hideLoader();
-        if (error) {
-            showToast('فشل التحديث: ' + error.message, 'error');
-        } else {
-            showToast('تم تعيين السائق والمركبة بنجاح', 'success');
-            var found = data.find(function(r) { return r.runsheet_code === runsheetCode; });
-            if (found) {
-                found.driver_id = result.value.driver;
-                found.vehicle_id = result.value.vehicle;
-                found.status = 'Open';
-            }
-            _apply();
         }
     }
-}
-async function _cancelRunsheet(code) {
-    var found = null;
-    for (var i = 0; i < data.length; i++) {
-        if (data[i].runsheet_code === code) { found = data[i]; break; }
-    }
-    if (!found) { showToast('الرانشيت غير موجود', 'error'); return; }
-    if (found.status !== 'Open' && found.status !== 'Confirmed') {
-        showToast('لا يمكن إلغاء رانشيت في حالة: ' + found.status, 'error');
-        return;
-    }
-    var cf = await Swal.fire({
-        title: 'إلغاء الرانشيت',
-        text: 'سيتم إلغاء الرانشيت ' + code + ' وتحرير جميع الأوردرات المرتبطة.',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'نعم، إلغاء',
-        cancelButtonText: 'تراجع',
-        confirmButtonColor: '#dc2626'
-    });
-    if (!cf.isConfirmed) return;
-    showLoader('جاري إلغاء الرانشيت...');
-    var hasError = false, errMsg = '';
-    try {
-        var rsId = found.id;
-        var r1 = await supabase.from('runsheets').update({ status: 'Cancelled' }).eq('id', rsId);
-        if (r1.error) { hasError = true; errMsg = r1.error.message; }
-        if (!hasError) {
-            var r2 = await supabase.from('orders').update({ order_status: 'Confirmed', runsheet_id: null }).eq('runsheet_id', rsId);
-            if (r2.error) { hasError = true; errMsg = r2.error.message; }
+
+    async function _cancelRunsheet(code) {
+        var found = null;
+        for (var i = 0; i < data.length; i++) {
+            if (data[i].runsheet_code === code) { found = data[i]; break; }
         }
-        if (!hasError) {
-            var r3 = await supabase.from('run_sheet_details').delete().eq('runsheet_id', rsId);
-            if (r3.error) { hasError = true; errMsg = r3.error.message; }
+        if (!found) { showToast('الرانشيت غير موجود', 'error'); return; }
+        if (found.status !== 'Open' && found.status !== 'Confirmed') {
+            showToast('لا يمكن إلغاء رانشيت في حالة: ' + found.status, 'error');
+            return;
         }
-    } catch(e) {
-        hasError = true;
-        errMsg = e.message || 'خطأ غير معروف';
-    }
-    hideLoader();
-    if (hasError) {
-        showToast('فشل الإلغاء: ' + errMsg, 'error');
-        return;
-    }
-    found.status = 'Cancelled';
-    _apply();
-    showToast('تم إلغاء الرانشيت وتحرير الأوردرات بنجاح', 'success');
-}
-function _changeStatus(code, funcName) {
-    showLoader('جاري تحديث الحالة...');
-    supabase.auth.getSession().then(function(ses) {
-        var t = ses.data.session ? ses.data.session.access_token : null;
-        return fetch(RW_SUPABASE_URL + '/functions/v1/' + funcName, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
-            body: JSON.stringify({ runsheet_code: code })
+        var cf = await Swal.fire({
+            title: 'إلغاء الرانشيت',
+            text: 'سيتم إلغاء الرانشيت ' + code + ' وتحرير جميع الأوردرات المرتبطة.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، إلغاء',
+            cancelButtonText: 'تراجع',
+            confirmButtonColor: '#dc2626'
         });
-    }).then(function(res) { return res.json(); }).then(function(json) {
-        hideLoader();
-        if (json.success) {
-            showToast('تم بنجاح', 'success');
-            _apply();
-        } else {
-            showToast(json.msg || 'فشل', 'error');
+        if (!cf.isConfirmed) return;
+        showLoader('جاري إلغاء الرانشيت...');
+        var hasError = false, errMsg = '';
+        try {
+            var rsId = found.id;
+            var r1 = await supabase.from('runsheets').update({ status: 'Cancelled' }).eq('id', rsId);
+            if (r1.error) { hasError = true; errMsg = r1.error.message; }
+            if (!hasError) {
+                var r2 = await supabase.from('orders').update({ order_status: 'Confirmed', runsheet_id: null }).eq('runsheet_id', rsId);
+                if (r2.error) { hasError = true; errMsg = r2.error.message; }
+            }
+            if (!hasError) {
+                var r3 = await supabase.from('run_sheet_details').delete().eq('runsheet_id', rsId);
+                if (r3.error) { hasError = true; errMsg = r3.error.message; }
+            }
+        } catch(e) {
+            hasError = true;
+            errMsg = e.message || 'خطأ غير معروف';
         }
-    }).catch(function(e) {
         hideLoader();
-        showToast('فشل الاتصال', 'error');
-    });
-}
+        if (hasError) {
+            showToast('فشل الإلغاء: ' + errMsg, 'error');
+            return;
+        }
+        found.status = 'Cancelled';
+        _apply();
+        showToast('تم إلغاء الرانشيت وتحرير الأوردرات بنجاح', 'success');
+    }
+
+    function _changeStatus(code, funcName) {
+        showLoader('جاري تحديث الحالة...');
+        supabase.auth.getSession().then(function(ses) {
+            var t = ses.data.session ? ses.data.session.access_token : null;
+            return fetch(RW_SUPABASE_URL + '/functions/v1/' + funcName, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ runsheet_code: code })
+            });
+        }).then(function(res) { return res.json(); }).then(function(json) {
+            hideLoader();
+            if (json.success) {
+                showToast('تم بنجاح', 'success');
+                _apply();
+            } else {
+                showToast(json.msg || 'فشل', 'error');
+            }
+        }).catch(function(e) {
+            hideLoader();
+            showToast('فشل الاتصال', 'error');
+        });
+    }
+
     return {
         render: render, _apply: _apply, _sort: _sort,
         _assignDriverVehicle: _assignDriverVehicle,
