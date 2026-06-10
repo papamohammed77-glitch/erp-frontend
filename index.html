@@ -4678,40 +4678,30 @@ async function _details(code) {
     var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle();
     var rs = rsRes.data;
     if (!rs) { hideLoader(); showToast('الرانشيت غير موجود', 'error'); return; }
-    
-    // 2. جلب تفاصيل الأصناف المجمعة (محاولة بـ UUID أولاً)
-    var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
-    var items = itemsRes.data || [];
-    
-    // إذا لم توجد تفاصيل بـ UUID، جرب بـ runsheet_code
-    if (items.length === 0) {
-        var itemsRes2 = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', code);
-        items = itemsRes2.data || [];
-    }
-    
-    // 3. جلب الأوردرات المرتبطة
-    // ⚠️ ملاحظة: الأوردرات تُربط بـ runsheet_id وهو UUID من create-runsheet
-    // ولكن قد تُربط بـ runsheet_code من النسخ القديمة، لذا نحاول بالطريقتين
-    var ordersRes = await supabase.from('orders').select('order_code, customer_name, total_amount').eq('runsheet_id', rs.id);
+
+    // 2. جلب الأوردرات المرتبطة (باستخدام UUID و code)
+    var ordersRes = await supabase.from('orders')
+        .select('order_code, customer_name, total_amount')
+        .or('runsheet_id.eq.' + rs.id + ',runsheet_id.eq.' + code);
     var orders = ordersRes.data || [];
-    
-    // إذا لم توجد أوردرات بـ UUID، جرب بـ runsheet_code
-    if (orders.length === 0) {
-        var ordersRes2 = await supabase.from('orders').select('order_code, customer_name, total_amount').eq('runsheet_id', code);
-        orders = ordersRes2.data || [];
-    }
-    
+
+    // 3. جلب الأصناف المجمعة (باستخدام UUID و code)
+    var itemsRes = await supabase.from('run_sheet_details')
+        .select('*')
+        .or('runsheet_id.eq.' + rs.id + ',runsheet_id.eq.' + code);
+    var items = itemsRes.data || [];
+
     hideLoader();
 
     // 4. تجهيز اسم السائق ورقم اللوحة
-    var driverName = rs.driver_id || 'غير محدد';
+    var driverName = rs.driver_id || '---';
     for (var i = 0; i < driversCache.length; i++) {
         if (driversCache[i].email === rs.driver_id) {
             driverName = driversCache[i].name || rs.driver_id;
             break;
         }
     }
-    var vehiclePlate = rs.vehicle_id || 'غير محددة';
+    var vehiclePlate = rs.vehicle_id || '---';
     for (var j = 0; j < vehiclesCache.length; j++) {
         if (vehiclesCache[j].id === rs.vehicle_id) {
             vehiclePlate = vehiclesCache[j].license_plate || rs.vehicle_id;
@@ -4722,9 +4712,9 @@ async function _details(code) {
     // 5. عرض الأوردرات المرتبطة
     var ordersHtml = '';
     if (orders.length > 0) {
-        ordersHtml = '<div class="mb-4"><h4 class="font-bold text-lg mb-2">الأوردرات المرتبطة (' + orders.length + ')</h4><div class="bg-gray-50 rounded-lg p-3 flex flex-wrap gap-2">';
+        ordersHtml = '<div class="mb-4"><h4 class="font-bold text-lg mb-2">الأوردرات المرتبطة</h4><div class="bg-gray-50 rounded-lg p-3">';
         for (var o = 0; o < orders.length; o++) {
-            ordersHtml += '<span class="inline-block bg-white rounded px-3 py-1 text-sm shadow-sm">' + orders[o].order_code + ' - ' + orders[o].customer_name + ' (' + Number(orders[o].total_amount).toLocaleString() + ' EGP)</span>';
+            ordersHtml += '<span class="inline-block bg-white rounded px-3 py-1 mx-1 my-1 text-sm shadow-sm">' + orders[o].order_code + ' - ' + orders[o].customer_name + ' (' + Number(orders[o].total_amount).toLocaleString() + ' EGP)</span>';
         }
         ordersHtml += '</div></div>';
     } else {
@@ -4735,12 +4725,12 @@ async function _details(code) {
     var itemsHtml = '';
     var grandTotal = 0;
     if (items.length > 0) {
-        itemsHtml = '<div class="overflow-x-auto mt-4"><table class="w-full border"><thead class="bg-gray-100"><tr><th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الكمية المطلوبة</th><th class="p-2 border text-center">السعر</th><th class="p-2 border text-center">الإجمالي</th></tr></thead><tbody>';
+        itemsHtml = '<div class="overflow-x-auto mt-4"><table class="w-full border"><thead class="bg-gray-100"><tr><th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الكمية</th><th class="p-2 border text-center">السعر</th><th class="p-2 border text-center">الإجمالي</th></tr></thead><tbody>';
         for (var k = 0; k < items.length; k++) {
             var it = items[k];
             var lineTotal = (Number(it.qty_ordered) || 0) * (Number(it.unit_price) || 0);
             grandTotal += lineTotal;
-            itemsHtml += '<tr class="runsheet-item-row"><td class="p-2 border">' + (it.item_code || '') + '</td><td class="p-2 border font-semibold">' + (it.item_name || '') + '</td><td class="p-2 border text-center font-bold">' + (it.qty_ordered || 0) + '</td><td class="p-2 border text-center">' + Number(it.unit_price || 0).toLocaleString() + '</td><td class="p-2 border text-center font-bold">' + Number(lineTotal).toLocaleString() + '</td></tr>';
+            itemsHtml += '<tr class="runsheet-item-row"><td class="p-2 border">' + (it.item_code || '') + '</td><td class="p-2 border font-semibold">' + (it.item_name || '') + '</td><td class="p-2 border text-center font-bold">' + (it.qty_ordered || 0) + ' ' + (it.unit || 'حبة') + '</td><td class="p-2 border text-center">' + Number(it.unit_price || 0).toLocaleString() + ' EGP</td><td class="p-2 border text-center font-bold">' + Number(lineTotal).toLocaleString() + ' EGP</td></tr>';
         }
         itemsHtml += '</tbody></table></div>';
         itemsHtml += '<div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + Number(grandTotal).toLocaleString() + ' EGP</div>';
@@ -4768,7 +4758,7 @@ async function _details(code) {
     else if (rs.status === 'Returning' || rs.status === 'Returned') statusClass = 'bg-red-100 text-red-700';
     else statusClass = 'bg-gray-100 text-gray-700';
 
-    // 9. بناء المحتوى
+    // 9. بناء المحتوى النهائي
     var html = '<div class="text-right">' +
         '<div class="flex justify-between items-center mb-4">' +
         '<h3 class="font-black text-2xl">' + code + '</h3>' +
