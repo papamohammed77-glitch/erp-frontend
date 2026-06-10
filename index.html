@@ -4755,7 +4755,59 @@ var RW_Runsheets = (function() {
             console.error(e);
         }
     }
-
+async function _assignDriverVehicle(runsheetCode) {
+    var driverOpts = '';
+    for (var i = 0; i < driversCache.length; i++) {
+        var d = driversCache[i];
+        driverOpts += '<option value="' + _esc(d.email) + '">' + _esc(d.name) + ' (' + _esc(d.email) + ')</option>';
+    }
+    var vehicleOpts = '';
+    for (var j = 0; j < vehiclesCache.length; j++) {
+        var v = vehiclesCache[j];
+        vehicleOpts += '<option value="' + _esc(v.id) + '">' + _esc(v.license_plate) + ' - ' + _esc(v.model || '') + '</option>';
+    }
+    var html = '<div class="text-right space-y-4">' +
+        '<div><label class="text-sm font-bold">اختيار السائق</label><select id="rs-driver-select" class="swal2-input w-full">' + driverOpts + '</select></div>' +
+        '<div><label class="text-sm font-bold">اختيار المركبة</label><select id="rs-vehicle-select" class="swal2-input w-full">' + vehicleOpts + '</select></div>' +
+        '</div>';
+    var result = await Swal.fire({
+        title: 'تعيين السائق والمركبة',
+        html: html,
+        showCancelButton: true,
+        confirmButtonText: 'حفظ',
+        cancelButtonText: 'إلغاء',
+        preConfirm: function() {
+            var driver = document.getElementById('rs-driver-select').value;
+            var vehicle = document.getElementById('rs-vehicle-select').value;
+            if (!driver || !vehicle) {
+                Swal.showValidationMessage('يجب اختيار السائق والمركبة');
+                return false;
+            }
+            return { driver: driver, vehicle: vehicle };
+        }
+    });
+    if (result.isConfirmed && result.value) {
+        showLoader('جاري تحديث الرانشيت...');
+        var { error } = await supabase.from('runsheets').update({
+            driver_id: result.value.driver,
+            vehicle_id: result.value.vehicle,
+            status: 'Open'
+        }).eq('runsheet_code', runsheetCode);
+        hideLoader();
+        if (error) {
+            showToast('فشل التحديث: ' + error.message, 'error');
+        } else {
+            showToast('تم تعيين السائق والمركبة بنجاح', 'success');
+            var found = data.find(function(r) { return r.runsheet_code === runsheetCode; });
+            if (found) {
+                found.driver_id = result.value.driver;
+                found.vehicle_id = result.value.vehicle;
+                found.status = 'Open';
+            }
+            _apply();
+        }
+    }
+}
     return {
         render: render, _apply: _apply, _sort: _sort,
         _assignDriverVehicle: _assignDriverVehicle,
