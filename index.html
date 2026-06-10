@@ -4673,19 +4673,37 @@ function _renderTable(d) {
 
 async function _details(code) {
     showLoader('جاري التحميل...');
+    
+    // 1. جلب الرانشيت
     var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle();
     var rs = rsRes.data;
     if (!rs) { hideLoader(); showToast('الرانشيت غير موجود', 'error'); return; }
     
+    // 2. جلب تفاصيل الأصناف المجمعة (محاولة بـ UUID أولاً)
     var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
     var items = itemsRes.data || [];
     
+    // إذا لم توجد تفاصيل بـ UUID، جرب بـ runsheet_code
+    if (items.length === 0) {
+        var itemsRes2 = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', code);
+        items = itemsRes2.data || [];
+    }
+    
+    // 3. جلب الأوردرات المرتبطة
+    // ⚠️ ملاحظة: الأوردرات تُربط بـ runsheet_id وهو UUID من create-runsheet
+    // ولكن قد تُربط بـ runsheet_code من النسخ القديمة، لذا نحاول بالطريقتين
     var ordersRes = await supabase.from('orders').select('order_code, customer_name, total_amount').eq('runsheet_id', rs.id);
     var orders = ordersRes.data || [];
     
+    // إذا لم توجد أوردرات بـ UUID، جرب بـ runsheet_code
+    if (orders.length === 0) {
+        var ordersRes2 = await supabase.from('orders').select('order_code, customer_name, total_amount').eq('runsheet_id', code);
+        orders = ordersRes2.data || [];
+    }
+    
     hideLoader();
 
-    // تجهيز اسم السائق ورقم اللوحة
+    // 4. تجهيز اسم السائق ورقم اللوحة
     var driverName = rs.driver_id || 'غير محدد';
     for (var i = 0; i < driversCache.length; i++) {
         if (driversCache[i].email === rs.driver_id) {
@@ -4701,7 +4719,7 @@ async function _details(code) {
         }
     }
 
-    // 1. بناء قائمة الأوردرات المرتبطة
+    // 5. عرض الأوردرات المرتبطة
     var ordersHtml = '';
     if (orders.length > 0) {
         ordersHtml = '<div class="mb-4"><h4 class="font-bold text-lg mb-2">الأوردرات المرتبطة (' + orders.length + ')</h4><div class="bg-gray-50 rounded-lg p-3 flex flex-wrap gap-2">';
@@ -4713,24 +4731,24 @@ async function _details(code) {
         ordersHtml = '<div class="mb-4 text-gray-500">لا توجد أوردرات مرتبطة</div>';
     }
 
-    // 2. بناء جدول الأصناف المجمعة
+    // 6. عرض الأصناف المجمعة
     var itemsHtml = '';
     var grandTotal = 0;
     if (items.length > 0) {
-        itemsHtml = '<div class="overflow-x-auto mt-4"><table class="w-full border"><thead class="bg-gray-100"><tr><th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الوحدة</th><th class="p-2 border text-center">الكمية المطلوبة</th><th class="p-2 border text-center">السعر</th><th class="p-2 border text-center">الإجمالي</th></tr></thead><tbody>';
+        itemsHtml = '<div class="overflow-x-auto mt-4"><table class="w-full border"><thead class="bg-gray-100"><tr><th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الكمية المطلوبة</th><th class="p-2 border text-center">السعر</th><th class="p-2 border text-center">الإجمالي</th></tr></thead><tbody>';
         for (var k = 0; k < items.length; k++) {
             var it = items[k];
             var lineTotal = (Number(it.qty_ordered) || 0) * (Number(it.unit_price) || 0);
             grandTotal += lineTotal;
-            itemsHtml += '<tr class="runsheet-item-row"><td class="p-2 border">' + (it.item_code || '') + '</td><td class="p-2 border font-semibold">' + (it.item_name || '') + '</td><td class="p-2 border text-center">' + (it.unit || 'حبة') + '</td><td class="p-2 border text-center font-bold">' + (it.qty_ordered || 0) + '</td><td class="p-2 border text-center">' + Number(it.unit_price || 0).toLocaleString() + '</td><td class="p-2 border text-center font-bold">' + Number(lineTotal).toLocaleString() + '</td></tr>';
+            itemsHtml += '<tr class="runsheet-item-row"><td class="p-2 border">' + (it.item_code || '') + '</td><td class="p-2 border font-semibold">' + (it.item_name || '') + '</td><td class="p-2 border text-center font-bold">' + (it.qty_ordered || 0) + '</td><td class="p-2 border text-center">' + Number(it.unit_price || 0).toLocaleString() + '</td><td class="p-2 border text-center font-bold">' + Number(lineTotal).toLocaleString() + '</td></tr>';
         }
         itemsHtml += '</tbody></table></div>';
         itemsHtml += '<div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + Number(grandTotal).toLocaleString() + ' EGP</div>';
     } else {
-        itemsHtml = '<div class="text-center py-4 text-gray-500">لا توجد أصناف</div>';
+        itemsHtml = '<div class="text-center py-4 text-gray-500">لا توجد أصناف مجمعة في هذا الرانشيت</div>';
     }
 
-    // 3. بناء أزرار الإجراءات
+    // 7. أزرار الإجراءات
     var actionsHtml = '<div class="flex justify-center gap-3 mt-6 pt-4 border-t">';
     if (rs.status === 'Open') {
         actionsHtml += '<button id="btn-assign-rs" class="bg-yellow-500 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-user-check ml-2"></i> تعيين السائق والمركبة</button>';
@@ -4741,7 +4759,7 @@ async function _details(code) {
     }
     actionsHtml += '</div>';
 
-    // 4. تحديد لون شارة الحالة
+    // 8. شارة الحالة
     var statusClass = '';
     if (rs.status === 'Open') statusClass = 'bg-blue-100 text-blue-700';
     else if (rs.status === 'Picking' || rs.status === 'Picked') statusClass = 'bg-purple-100 text-purple-700';
@@ -4750,6 +4768,7 @@ async function _details(code) {
     else if (rs.status === 'Returning' || rs.status === 'Returned') statusClass = 'bg-red-100 text-red-700';
     else statusClass = 'bg-gray-100 text-gray-700';
 
+    // 9. بناء المحتوى
     var html = '<div class="text-right">' +
         '<div class="flex justify-between items-center mb-4">' +
         '<h3 class="font-black text-2xl">' + code + '</h3>' +
