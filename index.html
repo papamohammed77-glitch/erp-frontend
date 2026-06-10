@@ -4694,7 +4694,7 @@ async function _details(code) {
             itemsHtml = '<div class="text-center py-8 text-gray-500 mt-4">لا توجد أصناف مجمعة في هذا الرانشيت بعد.</div>';
         }
 
-        // تجميع المحتوى (بدون أزرار إجراءات تنفيذية)
+        // تجميع المحتوى
         var content = '<div class="text-right space-y-4" style="max-height:70vh;overflow-y:auto;padding:8px;">' +
             '<div class="flex justify-between items-center">' +
                 '<div><h3 class="font-black text-2xl">' + rs.runsheet_code + '</h3><p class="text-gray-500">التاريخ: ' + (rs.run_date || '') + '</p></div>' +
@@ -4720,8 +4720,8 @@ async function _details(code) {
             showCancelButton: true,
             cancelButtonText: 'إلغاء',
             showDenyButton: true,
-            denyButtonText: 'حذف الرانشيت',
-            denyButtonColor: '#dc2626',
+            denyButtonText: '<i class="fa-solid fa-print ml-1"></i> طباعة',
+            denyButtonColor: '#2563eb',
             preConfirm: function() {
                 var newDriver = document.getElementById('rs-driver-select').value;
                 var newVehicle = document.getElementById('rs-vehicle-select').value;
@@ -4742,11 +4742,11 @@ async function _details(code) {
                 });
             },
             didOpen: function() {
+                // ✅ زر الطباعة
                 var denyBtn = Swal.getDenyButton();
                 if (denyBtn) {
                     denyBtn.onclick = function() {
-                        Swal.close();
-                        _cancelRunsheet(code);
+                        _printManifest(code, rs, orders, items);
                     };
                 }
             }
@@ -4832,6 +4832,78 @@ if (idx > -1) {
             showToast('فشل الاتصال', 'error');
         });
     }
+    function _printManifest(code, rs, orders, items) {
+    var printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
+        return;
+    }
+
+    var ordersHtml = '';
+    if (orders.length > 0) {
+        for (var o = 0; o < orders.length; o++) {
+            ordersHtml += '<span style="display:inline-block;background:#fff;border-radius:8px;padding:4px 12px;margin:4px;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,0.1);">' + orders[o].order_code + ' - ' + orders[o].customer_name + ' (' + _fmtNum(orders[o].total_amount) + ' EGP)</span>';
+        }
+    } else {
+        ordersHtml = '<p>لا توجد أوردرات مرتبطة</p>';
+    }
+
+    var itemsHtml = '';
+    var grandTotal = 0;
+    if (items.length > 0) {
+        itemsHtml = '<table style="width:100%;border-collapse:collapse;margin-top:16px;">' +
+            '<thead><tr style="background:#f3f4f6;">' +
+            '<th style="padding:10px;border:1px solid #ddd;text-align:right;">الكود</th>' +
+            '<th style="padding:10px;border:1px solid #ddd;text-align:right;">الصنف</th>' +
+            '<th style="padding:10px;border:1px solid #ddd;text-align:center;">الوحدة</th>' +
+            '<th style="padding:10px;border:1px solid #ddd;text-align:center;">الكمية</th>' +
+            '<th style="padding:10px;border:1px solid #ddd;text-align:center;">السعر</th>' +
+            '<th style="padding:10px;border:1px solid #ddd;text-align:center;">الإجمالي</th>' +
+            '</tr></thead><tbody>';
+        for (var it = 0; it < items.length; it++) {
+            var item = items[it];
+            var lineTotal = (Number(item.qty_ordered) || 0) * (Number(item.unit_price) || 0);
+            grandTotal += lineTotal;
+            itemsHtml += '<tr>' +
+                '<td style="padding:8px;border:1px solid #ddd;">' + (item.item_code || '') + '</td>' +
+                '<td style="padding:8px;border:1px solid #ddd;font-weight:bold;">' + (item.item_name || '') + '</td>' +
+                '<td style="padding:8px;border:1px solid #ddd;text-align:center;">' + (item.unit || '') + '</td>' +
+                '<td style="padding:8px;border:1px solid #ddd;text-align:center;font-weight:bold;">' + (item.qty_ordered || 0) + '</td>' +
+                '<td style="padding:8px;border:1px solid #ddd;text-align:center;">' + _fmtNum(item.unit_price) + '</td>' +
+                '<td style="padding:8px;border:1px solid #ddd;text-align:center;font-weight:bold;">' + _fmtNum(lineTotal) + '</td>' +
+                '</tr>';
+        }
+        itemsHtml += '</tbody></table>';
+    } else {
+        itemsHtml = '<p style="text-align:center;color:#6b7280;margin-top:16px;">لا توجد أصناف مجمعة</p>';
+    }
+
+    var html = '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>بيان رحلة - ' + code + '</title>' +
+        '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">' +
+        '<style>body{font-family:"Cairo",sans-serif;padding:20px;color:#111827;}h1{font-size:24px;margin-bottom:4px;}' +
+        'h2{font-size:18px;color:#6b7280;margin-bottom:20px;}' +
+        '.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;background:#f9fafb;padding:16px;border-radius:12px;margin-bottom:20px;}' +
+        '.info-item label{font-size:12px;color:#6b7280;display:block;}.info-item span{font-weight:bold;font-size:16px;}' +
+        '@media print{body{padding:0;}}</style></head><body>' +
+        '<h1>بيان رحلة: ' + code + '</h1>' +
+        '<h2>التاريخ: ' + (rs.run_date || '') + ' | الحالة: ' + (rs.status || '') + '</h2>' +
+        '<div class="info-grid">' +
+        '<div class="info-item"><label>السائق</label><span>' + (rs.driver_id || '---') + '</span></div>' +
+        '<div class="info-item"><label>السيارة</label><span>' + (rs.vehicle_id || '---') + '</span></div>' +
+        '<div class="info-item"><label>عدد الأوردرات</label><span>' + orders.length + '</span></div>' +
+        '<div class="info-item"><label>القيمة الإجمالية</label><span>' + _fmtNum(rs.total_amount) + ' EGP</span></div>' +
+        '</div>' +
+        '<h3 style="margin-top:20px;margin-bottom:8px;">الأوردرات المرتبطة</h3>' +
+        '<div style="margin-bottom:20px;">' + ordersHtml + '</div>' +
+        '<h3 style="margin-bottom:8px;">الأصناف المجمعة</h3>' +
+        itemsHtml +
+        '<div style="text-align:left;font-size:20px;font-weight:bold;margin-top:20px;">الإجمالي: ' + _fmtNum(grandTotal) + ' EGP</div>' +
+        '<p style="text-align:center;margin-top:40px;color:#9ca3af;font-size:12px;">تم إنشاء هذا البيان بواسطة نظام الروائع ERP</p>' +
+        '<script>window.print();<\/script></body></html>';
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+}
     return {
         render: render, _apply: _apply, _sort: _sort,
         _cancelRunsheet: _cancelRunsheet,
