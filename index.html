@@ -4719,32 +4719,134 @@ var RW_Runsheets = (function() {
         showToast('تم إلغاء الرانشيت وتحرير الأوردرات بنجاح', 'success');
     }
 
-    async function _details(code) {
-        showLoader('جاري التحميل...');
-        var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle();
-        var rs = rsRes.data;
-        var itemsData = [];
-        if (rs) {
-            var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
-            itemsData = itemsRes.data || [];
-        }
-        hideLoader();
-        if (!rs) { showToast('الرانشيت غير موجود', 'error'); return; }
-        var itemsH = '';
-        if (itemsData.length) {
-            itemsH = '<table class="w-full border text-sm mt-3"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-            for (var i = 0; i < itemsData.length; i++) {
-                var it = itemsData[i];
-                var lt = (Number(it.qty_ordered)||0) * (Number(it.unit_price)||0);
-                itemsH += '<tr><td class="p-2 font-semibold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.unit||'') + '</td><td class="p-2 text-center">' + (it.qty_ordered||0) + '</td><td class="p-2 text-center">' + Number(it.unit_price||0).toLocaleString() + '</td><td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
-            }
-            itemsH += '</tbody></table>';
-        } else {
-            itemsH = '<p class="text-gray-400 mt-3 text-sm">لا توجد أصناف مجمعة.</p>';
-        }
-        var h = '<div class="text-right"><div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-3"><div><p class="mb-1"><b>التاريخ:</b> ' + (rs.run_date||'') + '</p><p><b>السائق:</b> ' + (rs.driver_id||'---') + '</p></div><div><p class="mb-1"><b>السيارة:</b> ' + (rs.vehicle_id||'---') + '</p><p><b>الحالة:</b> <span class="px-2 py-0.5 rounded-full text-xs ' + _statusClass(rs.status) + '">' + (rs.status||'') + '</span></p></div></div><h4 class="font-bold text-gray-700 border-b pb-1 mb-0">الأصناف المجمعة</h4>' + itemsH + '<div class="mt-4 pt-3 border-t font-bold text-lg">الإجمالي: ' + Number(rs.total_amount||0).toLocaleString() + ' EGP</div></div>';
-        Swal.fire({ title: 'تفاصيل الرانشيت: ' + code, html: h, width: '800px', showCloseButton: true, showConfirmButton: false });
+async function _details(code) {
+    showLoader('جاري تحميل تفاصيل الرانشيت...');
+    
+    // جلب بيانات الرانشيت
+    var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle();
+    var rs = rsRes.data;
+    if (!rs) { hideLoader(); showToast('الرانشيت غير موجود', 'error'); return; }
+
+    // جلب الأوردرات المرتبطة
+    var ordersRes = await supabase.from('orders').select('order_code, customer_name, total_amount').eq('runsheet_id', rs.id);
+    var orders = ordersRes.data || [];
+
+    // جلب تفاصيل الأصناف المجمعة
+    var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
+    var items = itemsRes.data || [];
+
+    // جلب السائقين والمركبات للقوائم المنسدلة
+    var driversRes = await supabase.from('users').select('email, name').in('role', ['driver','سائق','مندوب']);
+    var drivers = driversRes.data || [];
+    var vehiclesRes = await supabase.from('vehicles').select('id, license_plate, model');
+    var vehicles = vehiclesRes.data || [];
+
+    hideLoader();
+
+    // بناء HTML القوائم المنسدلة
+    var driverOptions = '<option value="">اختر السائق...</option>';
+    for (var i = 0; i < drivers.length; i++) {
+        var d = drivers[i];
+        var sel = (rs.driver_id === d.email) ? ' selected' : '';
+        driverOptions += '<option value="' + d.email + '"' + sel + '>' + d.name + ' (' + d.email + ')</option>';
     }
+
+    var vehicleOptions = '<option value="">اختر المركبة...</option>';
+    for (var j = 0; j < vehicles.length; j++) {
+        var v = vehicles[j];
+        var sel = (rs.vehicle_id === v.id) ? ' selected' : '';
+        vehicleOptions += '<option value="' + v.id + '"' + sel + '>' + v.license_plate + ' - ' + (v.model || '') + '</option>';
+    }
+
+    // بناء قائمة الأوردرات (Badges)
+    var ordersHtml = '';
+    if (orders.length > 0) {
+        ordersHtml = '<div class="mb-4"><h4 class="font-bold text-lg mb-2">الأوردرات المرتبطة</h4><div class="bg-gray-50 rounded-lg p-3 flex flex-wrap gap-2">';
+        for (var o = 0; o < orders.length; o++) {
+            ordersHtml += '<span class="inline-block bg-white rounded px-3 py-1 text-sm shadow-sm">' + orders[o].order_code + ' - ' + orders[o].customer_name + ' (' + Number(orders[o].total_amount).toLocaleString() + ' EGP)</span>';
+        }
+        ordersHtml += '</div></div>';
+    } else {
+        ordersHtml = '<div class="mb-4 text-gray-500 text-sm">لا توجد أوردرات مرتبطة</div>';
+    }
+
+    // بناء جدول الأصناف المجمعة
+    var itemsHtml = '';
+    var grandTotal = 0;
+    if (items.length > 0) {
+        itemsHtml = '<div class="overflow-x-auto mt-4"><table class="w-full border text-sm"><thead class="bg-gray-100"><tr>' +
+            '<th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الوحدة</th>' +
+            '<th class="p-2 border text-center">الكمية</th><th class="p-2 border text-center">السعر</th><th class="p-2 border text-center">الإجمالي</th></tr></thead><tbody>';
+        for (var it = 0; it < items.length; it++) {
+            var item = items[it];
+            var lineTotal = (Number(item.qty_ordered) || 0) * (Number(item.unit_price) || 0);
+            grandTotal += lineTotal;
+            itemsHtml += '<tr><td class="p-2 border">' + (item.item_code || '') + '</td>' +
+                '<td class="p-2 border font-semibold">' + (item.item_name || '') + '</td>' +
+                '<td class="p-2 border text-center">' + (item.unit || '') + '</td>' +
+                '<td class="p-2 border text-center font-bold">' + (item.qty_ordered || 0) + '</td>' +
+                '<td class="p-2 border text-center">' + Number(item.unit_price || 0).toLocaleString() + '</td>' +
+                '<td class="p-2 border text-center font-bold">' + lineTotal.toLocaleString() + '</td></tr>';
+        }
+        itemsHtml += '</tbody></table></div>';
+        itemsHtml += '<div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + grandTotal.toLocaleString() + ' EGP</div>';
+    } else {
+        itemsHtml = '<div class="text-center py-4 text-gray-500 mt-4">لا توجد أصناف مجمعة في هذا الرانشيت بعد.</div>';
+    }
+
+    // بناء المحتوى الكامل
+    var content = '<div class="text-right space-y-4">' +
+        '<div class="flex justify-between items-center">' +
+            '<div><h3 class="font-black text-2xl">' + rs.runsheet_code + '</h3><p class="text-gray-500">التاريخ: ' + (rs.run_date || '') + '</p></div>' +
+            '<div><span class="status-badge px-3 py-1 rounded-full text-xs font-bold ' + _statusClass(rs.status) + '">' + rs.status + '</span></div>' +
+        '</div>' +
+        '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-gray-50 p-4 rounded-2xl">' +
+            '<div><p class="text-xs text-gray-400">السائق</p><select id="rs-driver-select" class="w-full p-2 border rounded-lg bg-white text-sm">' + driverOptions + '</select></div>' +
+            '<div><p class="text-xs text-gray-400">السيارة</p><select id="rs-vehicle-select" class="w-full p-2 border rounded-lg bg-white text-sm">' + vehicleOptions + '</select></div>' +
+            '<div><p class="text-xs text-gray-400">عدد الأوردرات</p><p class="font-bold text-xl">' + orders.length + '</p></div>' +
+            '<div><p class="text-xs text-gray-400">القيمة الإجمالية</p><p class="font-bold text-xl text-emerald-600">' + Number(rs.total_amount || 0).toLocaleString() + ' EGP</p></div>' +
+        '</div>' +
+        ordersHtml +
+        itemsHtml +
+        '</div>';
+
+    Swal.fire({
+        title: 'تفاصيل الرانشيت: ' + code,
+        html: content,
+        width: '1000px',
+        showCloseButton: true,
+        showConfirmButton: true,
+        confirmButtonText: 'حفظ التغييرات',
+        showCancelButton: true,
+        cancelButtonText: 'إلغاء',
+        didOpen: function() {
+            // لا يوجد أحداث إضافية، الحفظ سيتم عند الضغط على "حفظ التغييرات"
+        },
+        preConfirm: function() {
+            // حفظ السائق والمركبة
+            var newDriver = document.getElementById('rs-driver-select').value;
+            var newVehicle = document.getElementById('rs-vehicle-select').value;
+            showLoader('جاري تحديث الرانشيت...');
+            return supabase.from('runsheets').update({
+                driver_id: newDriver || null,
+                vehicle_id: newVehicle || null,
+                status: 'Open' // تعيين الحالة إلى Open إذا كانت Open أو Confirmed
+            }).eq('id', rs.id).then(function() {
+                hideLoader();
+                // تحديث البيانات محلياً
+                rs.driver_id = newDriver;
+                rs.vehicle_id = newVehicle;
+                if (rs.status === 'Open' || rs.status === 'Confirmed') rs.status = 'Open';
+                // تحديث الجدول الرئيسي
+                _apply();
+                showToast('تم تحديث الرانشيت', 'success');
+            }).catch(function(e) {
+                hideLoader();
+                showToast('فشل التحديث: ' + e.message, 'error');
+            });
+        }
+    });
+}
 
     return {
         render: render, _apply: _apply, _sort: _sort,
