@@ -3964,7 +3964,7 @@ var RW_Orders = (function() {
         // تحميل البيانات (الأوردرات + تفاصيلها لحساب عدد الأصناف)
         showLoader('جاري تحميل الأوردرات...');
         try {
-            var ordRes = await supabase.from('orders').select('*');
+            var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
             ordersData = ordRes.data || [];
             // جلب تفاصيل الأوردرات لحساب عدد الأصناف لكل أوردر
             var detRes = await supabase.from('order_details').select('order_id, item_code');
@@ -4103,7 +4103,7 @@ var RW_Orders = (function() {
                 '<td class="p-3 text-center font-bold">' + (o.itemsCount || 0) + '</td>' +
                 '<td class="p-3 text-center font-bold">' + Number(o.total_amount || 0).toLocaleString() + ' EGP</td>' +
                 '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-semibold ' + sc + '">' + (o.order_status || '') + '</span></td>' +
-                '<td class="p-3 text-center">' + (o._runsheetCode || o.runsheet_id || '---') + '</td>' +
+                '<td class="p-3 text-center">' + (o._runsheetCode || '---') + '</td>' +
                 '<td class="p-3 text-center">' + actions + '</td>' +
             '</tr>';
         });
@@ -4488,7 +4488,10 @@ var RW_Runsheets = (function() {
     var driversCache = [];
     var vehiclesCache = [];
 
-    // تحميل السائقين والمركبات مرة واحدة
+    function escAttr(s) {
+        return String(s || '').replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     async function loadHelpers() {
         try {
             var dRes = await supabase.from('users').select('email, name').in('role', ['driver','سائق','مندوب']);
@@ -4509,7 +4512,9 @@ var RW_Runsheets = (function() {
                     '<select id="rs-f-status" class="p-2 bg-gray-50 rounded text-sm" onchange="RW_Runsheets._apply()">' +
                         '<option value="">كل الحالات</option>' +
                         '<option>Open</option><option>Picking</option><option>Picked</option>' +
-                        '<option>Loading</option><option>Loaded</option><option>Delivering</option><option>Delivered</option>' +
+                        '<option>Loading</option><option>Loaded</option><option>Delivering</option>' +
+                        '<option>Delivered</option><option>Returning</option><option>Returned</option>' +
+                        '<option>Cancelled</option>' +
                     '</select>' +
                     '<input type="text" id="rs-f-driver" placeholder="السائق..." class="p-2 bg-gray-50 rounded text-sm" oninput="RW_Runsheets._apply()">' +
                     '<input type="date" id="rs-f-from" class="p-2 bg-gray-50 rounded text-sm" onchange="RW_Runsheets._apply()">' +
@@ -4518,7 +4523,7 @@ var RW_Runsheets = (function() {
                 '</div>' +
             '</div>' +
             '<div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh">' +
-                '<table class="w-full min-w-[1000px]">' +
+                '<table class="w-full min-w-[1200px]">' +
                     '<thead class="bg-gray-50 sticky top-0 z-10">' +
                         '<tr>' +
                             '<th class="p-3 text-center cursor-pointer" onclick="RW_Runsheets._sort(\'runsheet_code\')">رقم الرانشيت</th>' +
@@ -4569,324 +4574,183 @@ var RW_Runsheets = (function() {
         _apply();
     }
 
-function _renderTable(d) {
-    var tb = byId('rs-table-body');
-    if (!tb) return;
-    if (!d.length) {
-        safeHTML(tb, '<tr><td colspan="7" class="text-center py-8">لا توجد رانشيتات</td></tr>');
-        return;
+    function _statusClass(st) {
+        if (st === 'Open') return 'bg-blue-100 text-blue-700';
+        if (st === 'Picking' || st === 'Picked') return 'bg-purple-100 text-purple-700';
+        if (st === 'Loading' || st === 'Loaded') return 'bg-orange-100 text-orange-700';
+        if (st === 'Delivering') return 'bg-cyan-100 text-cyan-700';
+        if (st === 'Delivered') return 'bg-green-100 text-green-700';
+        if (st === 'Returning' || st === 'Returned') return 'bg-yellow-100 text-yellow-700';
+        if (st === 'Cancelled') return 'bg-red-100 text-red-700';
+        return 'bg-gray-100 text-gray-600';
     }
-    RW_Table.paginate('rs-table-body', d, 1, 50, function(r) {
-        var sc = '';
-        if (r.status === 'Open') sc = 'bg-blue-100 text-blue-700';
-        else if (r.status === 'Picking' || r.status === 'Picked') sc = 'bg-purple-100 text-purple-700';
-        else if (r.status === 'Loading' || r.status === 'Loaded') sc = 'bg-orange-100 text-orange-700';
-        else if (r.status === 'Delivering' || r.status === 'Delivered') sc = 'bg-green-100 text-green-700';
-        else if (r.status === 'Returning' || r.status === 'Returned') sc = 'bg-red-100 text-red-700';
-        else sc = 'bg-gray-100 text-gray-600';
 
-        // تجهيز اسم السائق ورقم اللوحة
-        var driverName = r.driver_id || '---';
-        for (var i = 0; i < driversCache.length; i++) {
-            if (driversCache[i].email === r.driver_id) {
-                driverName = driversCache[i].name || r.driver_id;
-                break;
-            }
-        }
-        var vehiclePlate = r.vehicle_id || '---';
-        for (var j = 0; j < vehiclesCache.length; j++) {
-            if (vehiclesCache[j].id === r.vehicle_id) {
-                vehiclePlate = vehiclesCache[j].license_plate || r.vehicle_id;
-                break;
-            }
-        }
-
-        var btns = '';
+    function _actionButtons(r) {
+        var code = escAttr(r.runsheet_code || '');
+        var h = '<div class="flex flex-wrap gap-1 justify-center">';
         if (r.status === 'Open') {
-            btns += '<button onclick="event.stopPropagation(); RW_Runsheets._assignDriverVehicle(\'' + r.runsheet_code + '\')" class="bg-yellow-500 text-white px-2 py-1 rounded text-xs ml-1" title="تعيين السائق والمركبة"><i class="fa-solid fa-user-check"></i> تعيين</button>';
-            btns += '<button onclick="event.stopPropagation(); RW_Runsheets._deleteRunsheet(\'' + r.runsheet_code + '\')" class="bg-red-500 text-white px-2 py-1 rounded text-xs ml-1" title="حذف الرانشيت"><i class="fa-solid fa-trash"></i></button>';
+            h += '<button onclick="event.stopPropagation(); RW_Runsheets._assignDriverVehicle(\'' + code + '\')" class="px-2 py-1 bg-blue-50 text-blue-600 rounded text-xs hover:bg-blue-100" title="تعيين سائق ومركبة"><i class="fa-solid fa-user-plus"></i></button>';
+            h += '<button onclick="event.stopPropagation(); RW_Runsheets._cancelRunsheet(\'' + code + '\')" class="px-2 py-1 bg-red-50 text-red-600 rounded text-xs hover:bg-red-100" title="إلغاء الرانشيت"><i class="fa-solid fa-ban"></i></button>';
+        } else if (r.status === 'Picked') {
+            h += '<button onclick="event.stopPropagation(); RW_Runsheets._changeStatus(\'' + code + '\', \'Loading\', \'بدء التحميل\')" class="px-2 py-1 bg-orange-50 text-orange-600 rounded text-xs hover:bg-orange-100" title="بدء التحميل"><i class="fa-solid fa-boxes-stacked"></i></button>';
+        } else if (r.status === 'Loaded') {
+            h += '<button onclick="event.stopPropagation(); RW_Runsheets._changeStatus(\'' + code + '\', \'Delivering\', \'بدء التوصيل\')" class="px-2 py-1 bg-green-50 text-green-600 rounded text-xs hover:bg-green-100" title="بدء التوصيل"><i class="fa-solid fa-truck-fast"></i></button>';
+            h += '<button onclick="event.stopPropagation(); RW_Runsheets._changeStatus(\'' + code + '\', \'Picked\', \'تفريغ\')" class="px-2 py-1 bg-gray-50 text-gray-600 rounded text-xs hover:bg-gray-100" title="تفريغ للمخزن"><i class="fa-solid fa-warehouse"></i></button>';
+        } else if (r.status === 'Delivered') {
+            h += '<button onclick="event.stopPropagation(); RW_Runsheets._changeStatus(\'' + code + '\', \'Returning\', \'بدء المرتجعات\')" class="px-2 py-1 bg-purple-50 text-purple-600 rounded text-xs hover:bg-purple-100" title="بدء المرتجعات"><i class="fa-solid fa-rotate-left"></i></button>';
         }
-        if (r.status === 'Picked') {
-            btns += '<button onclick="event.stopPropagation(); RW_Warehouse._startLoading(\'' + r.runsheet_code + '\')" class="bg-orange-600 text-white px-2 py-1 rounded text-xs ml-1"><i class="fa-solid fa-truck-ramp-box"></i> بدء التحميل</button>';
-        }
-        if (r.status === 'Loaded') {
-            btns += '<button onclick="event.stopPropagation(); RW_Warehouse._startDelivery(\'' + r.runsheet_code + '\')" class="bg-green-600 text-white px-2 py-1 rounded text-xs ml-1"><i class="fa-solid fa-truck"></i> بدء التوصيل</button>';
-            btns += '<button onclick="event.stopPropagation(); RW_Warehouse._confirmUnload(\'' + r.runsheet_code + '\')" class="bg-gray-600 text-white px-2 py-1 rounded text-xs ml-1" title="تفريغ"><i class="fa-solid fa-box-archive"></i></button>';
-        }
-        if (r.status === 'Delivered') {
-            btns += '<button onclick="event.stopPropagation(); RW_Warehouse._startReturn(\'' + r.runsheet_code + '\')" class="bg-red-600 text-white px-2 py-1 rounded text-xs ml-1"><i class="fa-solid fa-rotate-left"></i> بدء المرتجعات</button>';
-        }
+        h += '</div>';
+        return h;
+    }
 
-        return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Runsheets._details(\'' + r.runsheet_code + '\')">' +
-            '<td class="p-3 text-center font-bold text-emerald-600">' + (r.runsheet_code||'') + '</td>' +
-            '<td class="p-3 text-center">' + (r.run_date ? new Date(r.run_date).toLocaleDateString('ar-EG') : '') + '</td>' +
-            '<td class="p-3 text-center"><span class="text-xs font-bold">' + driverName + '</span></td>' +
-            '<td class="p-3 text-center"><span class="text-xs font-bold">' + vehiclePlate + '</span></td>' +
-            '<td class="p-3 text-center font-bold">' + (r.orderCount || 0) + '</td>' +
-            '<td class="p-3 text-center font-bold">' + Number(r.total_amount||0).toLocaleString() + ' EGP</td>' +
-            '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs ' + sc + '">' + (r.status||'') + '</span></td>' +
-            '<td class="p-3 text-center">' + btns + '</td>' +
-        '</tr>';
-    });
-}
+    function _renderTable(d) {
+        var tb = byId('rs-table-body');
+        if (!tb) return;
+        if (!d.length) {
+            safeHTML(tb, '<tr><td colspan="7" class="text-center py-8">لا توجد رانشيتات</td></tr>');
+            return;
+        }
+        RW_Table.paginate('rs-table-body', d, 1, 50, function(r) {
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Runsheets._details(\'' + escAttr(r.runsheet_code || '') + '\')">' +
+                '<td class="p-3 text-center font-bold text-emerald-600">' + (r.runsheet_code||'') + '</td>' +
+                '<td class="p-3 text-center">' + (r.run_date ? new Date(r.run_date).toLocaleDateString('ar-EG') : '') + '</td>' +
+                '<td class="p-3 text-center">' + (r.driver_id||'---') + '</td>' +
+                '<td class="p-3 text-center">' + (r.vehicle_id||'---') + '</td>' +
+                '<td class="p-3 text-center font-bold">' + Number(r.total_amount||0).toLocaleString() + ' EGP</td>' +
+                '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs ' + _statusClass(r.status) + '">' + (r.status||'') + '</span></td>' +
+                '<td class="p-3 text-center whitespace-nowrap">' + _actionButtons(r) + '</td>' +
+            '</tr>';
+        });
+    }
+
+    async function _changeStatus(code, newStatus, label) {
+        var cf = await Swal.fire({
+            title: label,
+            text: 'تغيير حالة الرانشيت ' + code + ' إلى ' + newStatus + '؟',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'نعم',
+            cancelButtonText: 'إلغاء'
+        });
+        if (!cf.isConfirmed) return;
+        showLoader('جاري التحديث...');
+        var res = await supabase.from('runsheets').update({ status: newStatus }).eq('runsheet_code', code);
+        hideLoader();
+        if (res.error) { showToast('فشل: ' + res.error.message, 'error'); return; }
+        for (var i = 0; i < data.length; i++) {
+            if (data[i].runsheet_code === code) { data[i].status = newStatus; break; }
+        }
+        _apply();
+        showToast('تم تحديث الحالة إلى: ' + newStatus, 'success');
+    }
 
     async function _assignDriverVehicle(runsheetCode) {
-        // تجهيز خيارات السائقين
         var driverOpts = '';
         for (var i = 0; i < driversCache.length; i++) {
             var d = driversCache[i];
-            driverOpts += '<option value="' + d.email + '">' + d.name + ' (' + d.email + ')</option>';
+            driverOpts += '<option value="' + escAttr(d.email) + '">' + escAttr(d.name) + ' (' + escAttr(d.email) + ')</option>';
         }
         var vehicleOpts = '';
         for (var j = 0; j < vehiclesCache.length; j++) {
             var v = vehiclesCache[j];
-            vehicleOpts += '<option value="' + v.id + '">' + v.license_plate + ' - ' + (v.model||'') + '</option>';
+            vehicleOpts += '<option value="' + escAttr(v.id) + '">' + escAttr(v.license_plate) + ' - ' + escAttr(v.model || '') + '</option>';
         }
-
         var html = '<div class="text-right space-y-4">' +
             '<div><label class="text-sm font-bold">اختيار السائق</label><select id="rs-driver-select" class="swal2-input w-full">' + driverOpts + '</select></div>' +
             '<div><label class="text-sm font-bold">اختيار المركبة</label><select id="rs-vehicle-select" class="swal2-input w-full">' + vehicleOpts + '</select></div>' +
             '</div>';
-
         var result = await Swal.fire({
-            title: 'تعيين السائق والمركبة',
-            html: html,
-            showCancelButton: true,
-            confirmButtonText: 'حفظ',
-            cancelButtonText: 'إلغاء',
+            title: 'تعيين السائق والمركبة', html: html,
+            showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
             preConfirm: function() {
                 var driver = document.getElementById('rs-driver-select').value;
                 var vehicle = document.getElementById('rs-vehicle-select').value;
-                if (!driver || !vehicle) {
-                    Swal.showValidationMessage('يجب اختيار السائق والمركبة');
-                    return false;
-                }
+                if (!driver || !vehicle) { Swal.showValidationMessage('يجب اختيار السائق والمركبة'); return false; }
                 return { driver: driver, vehicle: vehicle };
             }
         });
-
         if (result.isConfirmed && result.value) {
             showLoader('جاري تحديث الرانشيت...');
             var { error } = await supabase.from('runsheets').update({
-                driver_id: result.value.driver,
-                vehicle_id: result.value.vehicle,
-                status: 'Open'   // تأكيد الحالة "مفتوح" بعد التعيين
+                driver_id: result.value.driver, vehicle_id: result.value.vehicle, status: 'Open'
             }).eq('runsheet_code', runsheetCode);
-
             hideLoader();
-            if (error) {
-                showToast('فشل التحديث: ' + error.message, 'error');
-            } else {
+            if (error) { showToast('فشل التحديث: ' + error.message, 'error'); }
+            else {
                 showToast('تم تعيين السائق والمركبة بنجاح', 'success');
-                // تحديث البيانات محلياً
                 var found = data.find(function(r){ return r.runsheet_code === runsheetCode; });
-                if (found) {
-                    found.driver_id = result.value.driver;
-                    found.vehicle_id = result.value.vehicle;
-                    found.status = 'Open';
-                }
-                _apply(); // إعادة عرض الجدول
+                if (found) { found.driver_id = result.value.driver; found.vehicle_id = result.value.vehicle; found.status = 'Open'; }
+                _apply();
             }
         }
+    }
+
+    async function _cancelRunsheet(code) {
+        var found = null;
+        for (var i = 0; i < data.length; i++) { if (data[i].runsheet_code === code) { found = data[i]; break; } }
+        if (!found) { showToast('الرانشيت غير موجود', 'error'); return; }
+        if (found.status !== 'Open') { showToast('لا يمكن إلغاء رانشيت في حالة: ' + found.status, 'error'); return; }
+        var cf = await Swal.fire({
+            title: 'إلغاء الرانشيت',
+            text: 'سيتم إلغاء الرانشيت ' + code + ' وتحرير جميع الأوردرات المرتبطة.',
+            icon: 'warning', showCancelButton: true,
+            confirmButtonText: 'نعم، إلغاء', cancelButtonText: 'تراجع', confirmButtonColor: '#dc2626'
+        });
+        if (!cf.isConfirmed) return;
+        showLoader('جاري إلغاء الرانشيت...');
+        var rsId = found.id, hasError = false, errMsg = '';
+        try {
+            var r1 = await supabase.from('runsheets').update({ status: 'Cancelled' }).eq('id', rsId);
+            if (r1.error) { hasError = true; errMsg = r1.error.message; }
+            if (!hasError) {
+                var r2 = await supabase.from('orders').update({ order_status: 'Confirmed', runsheet_id: null }).eq('runsheet_id', rsId);
+                if (r2.error) { hasError = true; errMsg = r2.error.message; }
+            }
+            if (!hasError) {
+                var r3 = await supabase.from('run_sheet_details').delete().eq('runsheet_id', rsId);
+                if (r3.error) { hasError = true; errMsg = r3.error.message; }
+            }
+        } catch(e) { hasError = true; errMsg = e.message || 'خطأ غير معروف'; }
+        hideLoader();
+        if (hasError) { showToast('فشل الإلغاء: ' + errMsg, 'error'); return; }
+        found.status = 'Cancelled';
+        _apply();
+        showToast('تم إلغاء الرانشيت وتحرير الأوردرات بنجاح', 'success');
     }
 
     async function _details(code) {
         showLoader('جاري التحميل...');
-
-        // 1. جلب الرانشيت
         var rsRes = await supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle();
         var rs = rsRes.data;
-        if (!rs) { hideLoader(); showToast('الرانشيت غير موجود', 'error'); return; }
-
-        // 2. جلب تفاصيل الأصناف المُجمَّعة – نبحث بـ UUID أو code
-        var itemsRes = await supabase.from('run_sheet_details').select('*')
-            .or('runsheet_id.eq.' + rs.id + ',runsheet_id.eq.' + code);
-        var items = itemsRes.data || [];
-
-        // 3. جلب الأوردرات المرتبطة – UUID أو code
-        var ordersRes = await supabase.from('orders')
-            .select('order_code, customer_name, total_amount')
-            .or('runsheet_id.eq.' + rs.id + ',runsheet_id.eq.' + code);
-        var orders = ordersRes.data || [];
-
+        var itemsData = [];
+        if (rs) {
+            var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id);
+            itemsData = itemsRes.data || [];
+        }
         hideLoader();
-
-        // 4. تجهيز اسم السائق ورقم اللوحة
-        var driverName = rs.driver_id || 'غير محدد';
-        for (var i = 0; i < driversCache.length; i++) {
-            if (driversCache[i].email === rs.driver_id) {
-                driverName = driversCache[i].name || rs.driver_id;
-                break;
+        if (!rs) { showToast('الرانشيت غير موجود', 'error'); return; }
+        var itemsH = '';
+        if (itemsData.length) {
+            itemsH = '<table class="w-full border text-sm mt-3"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+            for (var i = 0; i < itemsData.length; i++) {
+                var it = itemsData[i];
+                var lt = (Number(it.qty_ordered)||0) * (Number(it.unit_price)||0);
+                itemsH += '<tr><td class="p-2 font-semibold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.unit||'') + '</td><td class="p-2 text-center">' + (it.qty_ordered||0) + '</td><td class="p-2 text-center">' + Number(it.unit_price||0).toLocaleString() + '</td><td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
             }
-        }
-        var vehiclePlate = rs.vehicle_id || 'غير محددة';
-        for (var j = 0; j < vehiclesCache.length; j++) {
-            if (vehiclesCache[j].id === rs.vehicle_id) {
-                vehiclePlate = vehiclesCache[j].license_plate || rs.vehicle_id;
-                break;
-            }
-        }
-
-        // 5. عرض الأوردرات المرتبطة
-        var ordersHtml = '';
-        if (orders.length > 0) {
-            ordersHtml = '<div class="mb-4"><h4 class="font-bold text-lg mb-2">الأوردرات المرتبطة (' + orders.length + ')</h4><div class="bg-gray-50 rounded-lg p-3 flex flex-wrap gap-2">';
-            for (var o = 0; o < orders.length; o++) {
-                ordersHtml += '<span class="inline-block bg-white rounded px-3 py-1 text-sm shadow-sm">' + orders[o].order_code + ' - ' + orders[o].customer_name + ' (' + Number(orders[o].total_amount).toLocaleString() + ' EGP)</span>';
-            }
-            ordersHtml += '</div></div>';
+            itemsH += '</tbody></table>';
         } else {
-            ordersHtml = '<div class="mb-4 text-gray-500">لا توجد أوردرات مرتبطة</div>';
+            itemsH = '<p class="text-gray-400 mt-3 text-sm">لا توجد أصناف مجمعة.</p>';
         }
-
-        // 6. عرض الأصناف المجمعة
-        var itemsHtml = '';
-        var grandTotal = 0;
-        if (items.length > 0) {
-            itemsHtml = '<div class="overflow-x-auto mt-4"><table class="w-full border"><thead class="bg-gray-100"><tr><th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الكمية المطلوبة</th><th class="p-2 border text-center">السعر</th><th class="p-2 border text-center">الإجمالي</th></tr></thead><tbody>';
-            for (var k = 0; k < items.length; k++) {
-                var it = items[k];
-                var lineTotal = (Number(it.qty_ordered) || 0) * (Number(it.unit_price) || 0);
-                grandTotal += lineTotal;
-                itemsHtml += '<tr><td class="p-2 border">' + (it.item_code || '') + '</td><td class="p-2 border font-semibold">' + (it.item_name || '') + '</td><td class="p-2 border text-center font-bold">' + (it.qty_ordered || 0) + ' ' + (it.unit || 'حبة') + '</td><td class="p-2 border text-center">' + Number(it.unit_price || 0).toLocaleString() + ' EGP</td><td class="p-2 border text-center font-bold">' + Number(lineTotal).toLocaleString() + ' EGP</td></tr>';
-            }
-            itemsHtml += '</tbody></table></div>';
-            itemsHtml += '<div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + Number(grandTotal).toLocaleString() + ' EGP</div>';
-        } else {
-            itemsHtml = '<div class="text-center py-4 text-gray-500">لا توجد أصناف مجمعة في هذا الرانشيت</div>';
-        }
-
-        // 7. أزرار الإجراءات
-        var actionsHtml = '<div class="flex justify-center gap-3 mt-6 pt-4 border-t">';
-        if (rs.status === 'Open') {
-            actionsHtml += '<button id="btn-assign-rs" class="bg-yellow-500 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-user-check ml-2"></i> تعيين السائق والمركبة</button>';
-        }
-        actionsHtml += '<button id="btn-print-rs" class="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-print ml-2"></i> طباعة</button>';
-        if (rs.status === 'Open' || rs.status === 'Confirmed') {
-            actionsHtml += '<button id="btn-delete-rs" class="bg-red-500 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-trash ml-2"></i> حذف</button>';
-        }
-        actionsHtml += '</div>';
-
-        // 8. شارة الحالة
-        var statusClass = '';
-        if (rs.status === 'Open') statusClass = 'bg-blue-100 text-blue-700';
-        else if (rs.status === 'Picking' || rs.status === 'Picked') statusClass = 'bg-purple-100 text-purple-700';
-        else if (rs.status === 'Loading' || rs.status === 'Loaded') statusClass = 'bg-orange-100 text-orange-700';
-        else if (rs.status === 'Delivering' || rs.status === 'Delivered') statusClass = 'bg-green-100 text-green-700';
-        else if (rs.status === 'Returning' || rs.status === 'Returned') statusClass = 'bg-red-100 text-red-700';
-        else statusClass = 'bg-gray-100 text-gray-700';
-
-        // 9. بناء المحتوى النهائي
-        var html = '<div class="text-right">' +
-            '<div class="flex justify-between items-center mb-4">' +
-            '<h3 class="font-black text-2xl">' + code + '</h3>' +
-            '<span class="px-3 py-1 rounded-full text-sm font-bold ' + statusClass + '">' + (rs.status || '') + '</span>' +
-            '</div>' +
-            '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4">' +
-            '<div><p><b>التاريخ:</b> ' + (rs.run_date || '') + '</p><p><b>السائق:</b> ' + driverName + '</p></div>' +
-            '<div><p><b>السيارة:</b> ' + vehiclePlate + '</p><p><b>القيمة:</b> ' + Number(rs.total_amount || 0).toLocaleString() + ' EGP</p></div>' +
-            '</div>' +
-            ordersHtml + itemsHtml + actionsHtml +
-            '</div>';
-
-        Swal.fire({
-            title: 'تفاصيل الرانشيت: ' + code,
-            html: html,
-            width: '900px',
-            showCloseButton: true,
-            showConfirmButton: false,
-            showCancelButton: true,
-            cancelButtonText: 'إغلاق',
-            didOpen: function() {
-                var assignBtn = document.getElementById('btn-assign-rs');
-                var printBtn = document.getElementById('btn-print-rs');
-                var deleteBtn = document.getElementById('btn-delete-rs');
-                if (assignBtn) assignBtn.onclick = function() { Swal.close(); _assignDriverVehicle(code); };
-                if (printBtn) printBtn.onclick = function() { _printManifest(code); };
-                if (deleteBtn) deleteBtn.onclick = function() { Swal.close(); _deleteRunsheet(code); };
-            }
-        });
+        var h = '<div class="text-right"><div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-3"><div><p class="mb-1"><b>التاريخ:</b> ' + (rs.run_date||'') + '</p><p><b>السائق:</b> ' + (rs.driver_id||'---') + '</p></div><div><p class="mb-1"><b>السيارة:</b> ' + (rs.vehicle_id||'---') + '</p><p><b>الحالة:</b> <span class="px-2 py-0.5 rounded-full text-xs ' + _statusClass(rs.status) + '">' + (rs.status||'') + '</span></p></div></div><h4 class="font-bold text-gray-700 border-b pb-1 mb-0">الأصناف المجمعة</h4>' + itemsH + '<div class="mt-4 pt-3 border-t font-bold text-lg">الإجمالي: ' + Number(rs.total_amount||0).toLocaleString() + ' EGP</div></div>';
+        Swal.fire({ title: 'تفاصيل الرانشيت: ' + code, html: h, width: '800px', showCloseButton: true, showConfirmButton: false });
     }
-function _deleteRunsheet(runsheetCode) {
-    // 1. البحث عن الرانشيت والتأكد من حالته
-    supabase.from('runsheets').select('id, status').eq('runsheet_code', runsheetCode).single()
-        .then(function(rsRes) {
-            if (rsRes.error || !rsRes.data) {
-                throw new Error('الرانشيت غير موجود');
-            }
-            var rs = rsRes.data;
-            
-            // 2. شرط الحذف: يجب أن يكون Open أو Confirmed (لم يبدأ التحضير)
-            if (rs.status !== 'Open' && rs.status !== 'Confirmed') {
-                throw new Error('لا يمكن حذف الرانشيت. تم بدء التحضير بالفعل.');
-            }
-            
-            // 3. تأكيد الحذف من المستخدم
-            return Swal.fire({
-                title: 'تأكيد الحذف',
-                text: 'سيتم حذف الرانشيت ' + runsheetCode + ' نهائياً وإعادة الأوردرات إلى حالة Confirmed. متابعة؟',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                confirmButtonText: 'نعم، احذف',
-                cancelButtonText: 'تراجع'
-            }).then(function(result) {
-                if (!result.isConfirmed) throw new Error('CANCELLED_BY_USER');
-                return rs.id; // الرانشيت موجود، نمرر الـ UUID
-            });
-        })
-        .then(function(runsheetUuid) {
-            if (!runsheetUuid) return; // المستخدم ألغى
-            showLoader('جاري حذف الرانشيت...');
-            
-            // 4. تحرير الأوردرات المرتبطة
-            return supabase.from('orders').update({
-                runsheet_id: null,
-                order_status: 'Confirmed'
-            }).eq('runsheet_id', runsheetUuid).then(function() {
-                return runsheetUuid;
-            });
-        })
-        .then(function(runsheetUuid) {
-            if (!runsheetUuid) return;
-            // 5. حذف تفاصيل الرانشيت
-            return supabase.from('run_sheet_details').delete().eq('runsheet_id', runsheetUuid).then(function() {
-                return runsheetUuid;
-            });
-        })
-        .then(function(runsheetUuid) {
-            if (!runsheetUuid) return;
-            // 6. حذف الرانشيت نفسه
-            return supabase.from('runsheets').delete().eq('id', runsheetUuid);
-        })
-        .then(function() {
-            hideLoader();
-            // 7. تحديث البيانات محلياً
-            var newData = [];
-            for (var i = 0; i < data.length; i++) {
-                if (data[i].runsheet_code !== runsheetCode) {
-                    newData.push(data[i]);
-                }
-            }
-            data = newData;
-            _apply();
-            showToast('تم حذف الرانشيت بنجاح', 'success');
-        })
-        .catch(function(e) {
-            hideLoader();
-            if (e.message !== 'CANCELLED_BY_USER') {
-                showToast('فشل الحذف: ' + (e.message || 'خطأ'), 'error');
-            }
-            console.error(e);
-        });
-}
+
     return {
-                render: render,
-        _apply: _apply,
-        _sort: _sort,
+        render: render, _apply: _apply, _sort: _sort,
         _assignDriverVehicle: _assignDriverVehicle,
-        _details: _details,
-        _deleteRunsheet: _deleteRunsheet
+        _cancelRunsheet: _cancelRunsheet,
+        _changeStatus: _changeStatus,
+        _details: _details
     };
 })();
 window.RW_Runsheets = RW_Runsheets;
