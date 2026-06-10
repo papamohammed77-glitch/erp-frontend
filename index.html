@@ -3983,7 +3983,7 @@ var RW_Orders = (function() {
             hideLoader();
             console.error(e);
         }
-        _applyFilters();
+        _loadRunsheetCodes();
     }
 
     // ========== الفلترة والفرز ==========
@@ -4103,7 +4103,7 @@ var RW_Orders = (function() {
                 '<td class="p-3 text-center font-bold">' + (o.itemsCount || 0) + '</td>' +
                 '<td class="p-3 text-center font-bold">' + Number(o.total_amount || 0).toLocaleString() + ' EGP</td>' +
                 '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-semibold ' + sc + '">' + (o.order_status || '') + '</span></td>' +
-                '<td class="p-3 text-center">' + (o.runsheet_id || '---') + '</td>' +
+                '<td class="p-3 text-center">' + (o._runsheetCode || o.runsheet_id || '---') + '</td>' +
                 '<td class="p-3 text-center">' + actions + '</td>' +
             '</tr>';
         });
@@ -4444,7 +4444,26 @@ hideLoader();
             } else showToast(json.msg || 'فشل', 'error');
         } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
-
+    function _loadRunsheetCodes() {
+        supabase.from('runsheets').select('id, runsheet_code').then(function(res) {
+            var map = {};
+            var data = res.data || [];
+            for (var i = 0; i < data.length; i++) {
+                map[data[i].id] = data[i].runsheet_code;
+            }
+            for (var j = 0; j < ordersData.length; j++) {
+                var rsId = ordersData[j].runsheet_id;
+                if (rsId && map[rsId]) {
+                    ordersData[j]._runsheetCode = map[rsId];
+                } else {
+                    ordersData[j]._runsheetCode = null;
+                }
+            }
+            _applyFilters();
+        }).catch(function(e) {
+            console.error('فشل تحميل أكواد الرانشيتات:', e);
+        });
+    }
     return {
         render: render,
         _applyFilters: _applyFilters,
