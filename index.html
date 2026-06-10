@@ -4808,6 +4808,53 @@ async function _assignDriverVehicle(runsheetCode) {
         }
     }
 }
+async function _cancelRunsheet(code) {
+    var found = null;
+    for (var i = 0; i < data.length; i++) {
+        if (data[i].runsheet_code === code) { found = data[i]; break; }
+    }
+    if (!found) { showToast('الرانشيت غير موجود', 'error'); return; }
+    if (found.status !== 'Open' && found.status !== 'Confirmed') {
+        showToast('لا يمكن إلغاء رانشيت في حالة: ' + found.status, 'error');
+        return;
+    }
+    var cf = await Swal.fire({
+        title: 'إلغاء الرانشيت',
+        text: 'سيتم إلغاء الرانشيت ' + code + ' وتحرير جميع الأوردرات المرتبطة.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، إلغاء',
+        cancelButtonText: 'تراجع',
+        confirmButtonColor: '#dc2626'
+    });
+    if (!cf.isConfirmed) return;
+    showLoader('جاري إلغاء الرانشيت...');
+    var hasError = false, errMsg = '';
+    try {
+        var rsId = found.id;
+        var r1 = await supabase.from('runsheets').update({ status: 'Cancelled' }).eq('id', rsId);
+        if (r1.error) { hasError = true; errMsg = r1.error.message; }
+        if (!hasError) {
+            var r2 = await supabase.from('orders').update({ order_status: 'Confirmed', runsheet_id: null }).eq('runsheet_id', rsId);
+            if (r2.error) { hasError = true; errMsg = r2.error.message; }
+        }
+        if (!hasError) {
+            var r3 = await supabase.from('run_sheet_details').delete().eq('runsheet_id', rsId);
+            if (r3.error) { hasError = true; errMsg = r3.error.message; }
+        }
+    } catch(e) {
+        hasError = true;
+        errMsg = e.message || 'خطأ غير معروف';
+    }
+    hideLoader();
+    if (hasError) {
+        showToast('فشل الإلغاء: ' + errMsg, 'error');
+        return;
+    }
+    found.status = 'Cancelled';
+    _apply();
+    showToast('تم إلغاء الرانشيت وتحرير الأوردرات بنجاح', 'success');
+}
     return {
         render: render, _apply: _apply, _sort: _sort,
         _assignDriverVehicle: _assignDriverVehicle,
