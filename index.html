@@ -3888,10 +3888,9 @@ window.RW_TeleSales = RW_TeleSales;
 // RW_Orders – أوردرات المبيعات (فلترة، تأكيد، حذف، رانشيت)
 // ============================================================
 var RW_Orders = (function() {
-    var _db = (typeof supabase !== 'undefined' && typeof supabase.from === 'function') ? supabase : (typeof window.supabase !== 'undefined' && typeof window.supabase.from === 'function') ? window.supabase : null;
-    if (!_db) { console.error('RW_Orders: فشل العثور على عميل Supabase'); }
     var sortField = 'order_code', sortAsc = true, ordersData = [];
-    var _sortIcons = {}; // لتحديث أيقونات الفرز
+    var _sortIcons = {};
+
     function esc(s) {
         return String(s || '').replace(/[&<>]/g, function(m) {
             return m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;';
@@ -3965,17 +3964,15 @@ var RW_Orders = (function() {
         // تحميل البيانات (الأوردرات + تفاصيلها لحساب عدد الأصناف)
         showLoader('جاري تحميل الأوردرات...');
         try {
-            var ordRes = await _db.from('orders').select('*, runsheets(runsheet_code)');
+            var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
             ordersData = ordRes.data || [];
-            // جلب تفاصيل الأوردرات لحساب عدد الأصناف لكل أوردر
-            var detRes = await _db.from('order_details').select('order_id, item_code');
+            var detRes = await supabase.from('order_details').select('order_id, item_code');
             var details = detRes.data || [];
             var itemsCountMap = {};
             for (var i = 0; i < details.length; i++) {
                 var oid = details[i].order_id;
                 if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
             }
-            // إضافة itemsCount لكل أوردر
             for (var j = 0; j < ordersData.length; j++) {
                 ordersData[j].itemsCount = itemsCountMap[ordersData[j].order_code] || 0;
             }
@@ -4007,7 +4004,6 @@ var RW_Orders = (function() {
         if (area) filtered = filtered.filter(function(o) { return (o.area || '').toLowerCase().indexOf(area) !== -1; });
         if (rs) filtered = filtered.filter(function(o) { return (o.runsheet_id || '').toLowerCase().indexOf(rs) !== -1; });
 
-        // الفرز
         var sorted = filtered.sort(function(a, b) {
             var va = a[sortField] || '', vb = b[sortField] || '';
             if (sortField === 'total_amount' || sortField === 'itemsCount') {
@@ -4044,7 +4040,6 @@ var RW_Orders = (function() {
             sortField = field;
             sortAsc = true;
         }
-        // تحديث أيقونات الفرز في thead الثابت (دون إعادة بناء DOM)
         var thead = byId('orders-thead');
         if (thead) {
             var ths = thead.querySelectorAll('th');
@@ -4063,6 +4058,7 @@ var RW_Orders = (function() {
         }
         _applyFilters();
     }
+
     // ========== عرض الجدول ==========
     function _renderTable(data) {
         var tbody = byId('orders-table-body');
@@ -4075,11 +4071,9 @@ var RW_Orders = (function() {
             return;
         }
 
-        // تحديث أيقونة check-all
         var checkAll = byId('check-all');
         if (checkAll) checkAll.checked = false;
 
-        // استخدام RW_Table.paginate مباشرة على tbody (دون إعادة بناء thead)
         RW_Table.paginate('orders-table-body', data, 1, 50, function(o) {
             var sc = '';
             if (o.order_status === 'Draft') sc = 'bg-yellow-100 text-yellow-700';
@@ -4130,7 +4124,7 @@ var RW_Orders = (function() {
         }).then(function(cf) {
             if (!cf.isConfirmed) return;
             showLoader('جاري التأكيد...');
-            _db.auth.getSession().then(function(ses) {
+            supabase.auth.getSession().then(function(ses) {
                 var t = ses.data.session && ses.data.session.access_token;
                 return fetch(RW_SUPABASE_URL + '/functions/v1/confirm-order', {
                     method: 'POST',
@@ -4145,7 +4139,6 @@ var RW_Orders = (function() {
                         var oldStatus = found.order_status;
                         found.order_status = 'Confirmed';
                         RW_Audit_log('update', 'orders', code, { order_status: oldStatus }, { order_status: 'Confirmed' });
-                        // ✅ Workflow + إشعار
                         RW_Workflow.evaluate('orders', 'update', code, { order_status: 'Confirmed', order_code: code });
                         RW_Notification.send('order_confirmed', { order_code: code, customer_name: found.customer_name || '', table: 'orders', id: code }, RW_STATE.app.currentUser.email);
                     }
@@ -4203,14 +4196,12 @@ var RW_Orders = (function() {
             var items = itemsRes.data || [];
             hideLoader();
 
-            // تحذير الارتباط بالرانشيت
             var warningHtml = '';
             if (order.runsheet_id) {
                 warningHtml = '<div class="bg-amber-50 border-r-4 border-amber-500 p-3 mb-4 rounded">' +
                     '<p class="text-amber-700 text-sm"><i class="fa-solid fa-link ml-2"></i> مرتبط بالرانشيت: <strong>' + esc(order.runsheet_id) + '</strong></p></div>';
             }
 
-            // جدول الأصناف
             var itemsHtml = '';
             var itemsTotal = 0;
             if (items.length > 0) {
@@ -4235,7 +4226,6 @@ var RW_Orders = (function() {
             var deliveryFee = Number(order.delivery_fee) || 0;
             var grandTotal = itemsTotal + deliveryFee;
 
-            // بناء المحتوى الكامل
             var html = '<div class="text-right">' + warningHtml +
                 '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4">' +
                     '<div><p><b>العميل:</b> ' + esc(order.customer_name || '') + '</p><p><b>المنطقة:</b> ' + esc(order.area || '') + '</p></div>' +
@@ -4278,27 +4268,22 @@ var RW_Orders = (function() {
         var items = [];
         var settings = {};
         
-        // الخطوة 1: جلب الأوردر
         supabase.from('orders').select('*').eq('order_code', code).maybeSingle()
             .then(function(oRes) {
                 order = oRes.data;
                 if (!order) throw new Error('ORDER_NOT_FOUND');
-                // الخطوة 2: جلب تفاصيل الأوردر
                 return supabase.from('order_details').select('*').eq('order_id', order.id);
             })
             .then(function(itRes) {
                 items = itRes.data || [];
-                // الخطوة 3: جلب إعدادات التطبيق
                 return supabase.from('app_settings').select('*').limit(1).single();
             })
             .then(function(sRes) {
                 if (sRes.data) settings = sRes.data;
-                // الخطوة 4: بناء النافذة (تضمن التنفيذ دائماً)
                 _buildPrintWindow(order, items, settings);
             })
             .catch(function(err) {
                 console.error('Print error:', err);
-                // حتى في حالة الفشل، نضمن بناء النافذة إذا كان الأوردر موجوداً
                 if (order) {
                     _buildPrintWindow(order, items, {});
                 } else {
@@ -4353,79 +4338,21 @@ var RW_Orders = (function() {
         printWindow.document.write(html);
         printWindow.document.close();
     }
-        // ========== إنشاء وضم الرانشيتات ==========
-async function _createRS() {
-    var selected = _getSelectedOrders();
-    if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
-    var cf = await Swal.fire({
-        title: 'إنشاء رانشيت جديد',
-        text: 'سيتم تجميع ' + selected.length + ' أوردر في رانشيت جديد. متابعة؟',
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'نعم، إنشاء',
-        cancelButtonText: 'إلغاء'
-    });
-    if (!cf.isConfirmed) return;
-    showLoader('جاري إنشاء الرانشيت...');
 
-    var ses = await supabase.auth.getSession();
-    var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-    if (!t) {
-        hideLoader();
-        showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
-        return;
-    }
-
-    try {
-        await supabase
-            .from('orders')
-            .update({ runsheet_id: null, order_status: 'Confirmed' })
-            .in('order_code', selected);
-
-        var res = await fetch(RW_SUPABASE_URL + '/functions/v1/create-runsheet', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
-            body: JSON.stringify({ selectedOrders: selected })
-        });
-        var json = await res.json();
-        hideLoader();
-        if (json.success) {
-            showToast('تم إنشاء الرانشيت: ' + json.rsId, 'success');
-            // جلب UUID الرانشيت الجديد لضمان التوافق مع الخريطة النصية
-            var newRsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', json.rsId).maybeSingle();
-            var rsUuid = (newRsRes && newRsRes.data) ? newRsRes.data.id : json.rsId;
-            for (var i = 0; i < ordersData.length; i++) {
-                if (selected.indexOf(ordersData[i].order_code) !== -1) {
-                    ordersData[i].runsheet_id = rsUuid;   // UUID صحيح
-                    ordersData[i].order_status = 'Pending';
-                }
-            }
-            await _loadRunsheetCodes(); _applyFilters();
-        } else {
-            showToast(json.msg || 'فشل', 'error');
-        }
-    } catch(e) {
-        hideLoader();
-        showToast('فشل الاتصال', 'error');
-    }
-}
- async function _appendRS() {
-    var selected = _getSelectedOrders();
-    if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
-    try {
-        var rsRes = await supabase.from('runsheets').select('runsheet_code, status').in('status', ['Open', 'Confirmed']);
-        if (!rsRes.data || !rsRes.data.length) { showToast('لا توجد رانشيتات مفتوحة', 'info'); return; }
-        var opts = {};
-        rsRes.data.forEach(function(rs) { opts[rs.runsheet_code] = rs.runsheet_code + ' - ' + rs.status; });
-        var v = await Swal.fire({
-            title: 'اختر الرانشيت',
-            input: 'select',
-            inputOptions: opts,
+    // ========== إنشاء وضم الرانشيتات ==========
+    async function _createRS() {
+        var selected = _getSelectedOrders();
+        if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
+        var cf = await Swal.fire({
+            title: 'إنشاء رانشيت جديد',
+            text: 'سيتم تجميع ' + selected.length + ' أوردر في رانشيت جديد. متابعة؟',
+            icon: 'question',
             showCancelButton: true,
-            confirmButtonText: 'ضم',
+            confirmButtonText: 'نعم، إنشاء',
             cancelButtonText: 'إلغاء'
         });
-        if (!v.value) return;
+        if (!cf.isConfirmed) return;
+        showLoader('جاري إنشاء الرانشيت...');
 
         var ses = await supabase.auth.getSession();
         var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
@@ -4435,28 +4362,87 @@ async function _createRS() {
             return;
         }
 
-        showLoader('جاري الضم...');
-        var res = await fetch(RW_SUPABASE_URL + '/functions/v1/append-to-runsheet', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
-            body: JSON.stringify({ targetRSID: v.value, selectedOrders: selected })
-        });
-        var json = await res.json(); hideLoader();
-        if (json.success) {
-            showToast('تم الضم', 'success');
-            // جلب UUID الرانشيت المفتوح لضمان التوافق مع الخريطة النصية
-            var targetRsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', v.value).maybeSingle();
-            var rsUuid = (targetRsRes && targetRsRes.data) ? targetRsRes.data.id : v.value;
-            for (var i = 0; i < ordersData.length; i++) {
-                if (selected.indexOf(ordersData[i].order_code) !== -1) {
-                    ordersData[i].runsheet_id = rsUuid;   // UUID صحيح
-                    ordersData[i].order_status = 'Pending';
+        try {
+            await supabase
+                .from('orders')
+                .update({ runsheet_id: null, order_status: 'Confirmed' })
+                .in('order_code', selected);
+
+            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/create-runsheet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ selectedOrders: selected })
+            });
+            var json = await res.json();
+            hideLoader();
+            if (json.success) {
+                showToast('تم إنشاء الرانشيت: ' + json.rsId, 'success');
+                var newRsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', json.rsId).maybeSingle();
+                var rsUuid = (newRsRes && newRsRes.data) ? newRsRes.data.id : json.rsId;
+                for (var i = 0; i < ordersData.length; i++) {
+                    if (selected.indexOf(ordersData[i].order_code) !== -1) {
+                        ordersData[i].runsheet_id = rsUuid;
+                        ordersData[i].order_status = 'Pending';
+                    }
                 }
+                await _loadRunsheetCodes(); _applyFilters();
+            } else {
+                showToast(json.msg || 'فشل', 'error');
             }
-            await _loadRunsheetCodes(); _applyFilters();
-        } else showToast(json.msg || 'فشل', 'error');
-    } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
-}
+        } catch(e) {
+            hideLoader();
+            showToast('فشل الاتصال', 'error');
+        }
+    }
+
+    async function _appendRS() {
+        var selected = _getSelectedOrders();
+        if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
+        try {
+            var rsRes = await supabase.from('runsheets').select('runsheet_code, status').in('status', ['Open', 'Confirmed']);
+            if (!rsRes.data || !rsRes.data.length) { showToast('لا توجد رانشيتات مفتوحة', 'info'); return; }
+            var opts = {};
+            rsRes.data.forEach(function(rs) { opts[rs.runsheet_code] = rs.runsheet_code + ' - ' + rs.status; });
+            var v = await Swal.fire({
+                title: 'اختر الرانشيت',
+                input: 'select',
+                inputOptions: opts,
+                showCancelButton: true,
+                confirmButtonText: 'ضم',
+                cancelButtonText: 'إلغاء'
+            });
+            if (!v.value) return;
+
+            var ses = await supabase.auth.getSession();
+            var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+            if (!t) {
+                hideLoader();
+                showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
+                return;
+            }
+
+            showLoader('جاري الضم...');
+            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/append-to-runsheet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+                body: JSON.stringify({ targetRSID: v.value, selectedOrders: selected })
+            });
+            var json = await res.json(); hideLoader();
+            if (json.success) {
+                showToast('تم الضم', 'success');
+                var targetRsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', v.value).maybeSingle();
+                var rsUuid = (targetRsRes && targetRsRes.data) ? targetRsRes.data.id : v.value;
+                for (var i = 0; i < ordersData.length; i++) {
+                    if (selected.indexOf(ordersData[i].order_code) !== -1) {
+                        ordersData[i].runsheet_id = rsUuid;
+                        ordersData[i].order_status = 'Pending';
+                    }
+                }
+                await _loadRunsheetCodes(); _applyFilters();
+            } else showToast(json.msg || 'فشل', 'error');
+        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
+    }
+
     function _loadRunsheetCodes() {
         return supabase.from('runsheets').select('id, runsheet_code').then(function(res) {
             var map = {};
@@ -4476,6 +4462,7 @@ async function _createRS() {
             console.error('فشل تحميل أكواد الرانشيتات:', e);
         });
     }
+
     async function _refreshData() {
         var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
         ordersData = (ordRes.data || []).map(function(o) {
@@ -4498,6 +4485,7 @@ async function _createRS() {
         }
         _applyFilters();
     }
+
     return {
         render: render,
         _applyFilters: _applyFilters,
