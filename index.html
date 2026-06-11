@@ -4707,6 +4707,9 @@ async function _details(code) {
             '</div>' +
             ordersHtml +
             itemsHtml +
+            '<div class="flex justify-center gap-3 mt-6 pt-4 border-t">' +
+                '<button id="btn-delete-rs-modal" class="bg-red-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-trash ml-2"></i> حذف الرانشيت</button>' +
+            '</div>' +
             '</div>';
 
         Swal.fire({
@@ -4748,6 +4751,14 @@ async function _details(code) {
                         _printManifest(code, rs, orders, items);
                     };
                 }
+                // ✅ زر الحذف الجديد
+                var deleteBtn = document.getElementById('btn-delete-rs-modal');
+                if (deleteBtn) {
+                    deleteBtn.onclick = function() {
+                        Swal.close();
+                        _deleteRunsheet(code);
+                    };
+                }
             }
         });
     } catch(e) {
@@ -4756,7 +4767,45 @@ async function _details(code) {
         console.error(e);
     }
 }
+    async function _deleteRunsheet(code) {
+        var found = null;
+        for (var i = 0; i < data.length; i++) {
+            if (data[i].runsheet_code === code) { found = data[i]; break; }
+        }
+        if (!found) { showToast('الرانشيت غير موجود', 'error'); return; }
 
+        var cf = await Swal.fire({
+            title: 'تأكيد الحذف',
+            text: 'سيتم حذف الرانشيت ' + code + ' وتحرير جميع الأوردرات المرتبطة. متابعة؟',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، احذف',
+            cancelButtonText: 'تراجع',
+            confirmButtonColor: '#dc2626'
+        });
+        if (!cf.isConfirmed) return;
+        showLoader('جاري حذف الرانشيت...');
+        try {
+            var rsId = found.id;
+            // 1. تحرير الأوردرات
+            await supabase.from('orders').update({ order_status: 'Confirmed', runsheet_id: null }).eq('runsheet_id', rsId);
+            // 2. حذف التفاصيل
+            await supabase.from('run_sheet_details').delete().eq('runsheet_id', rsId);
+            // 3. حذف الرانشيت
+            await supabase.from('runsheets').delete().eq('id', rsId);
+
+            // إزالة العنصر من المصفوفة المحلية
+            var idx = data.indexOf(found);
+            if (idx > -1) data.splice(idx, 1);
+
+            hideLoader();
+            _apply();
+            showToast('تم حذف الرانشيت وتحرير الأوردرات بنجاح', 'success');
+        } catch(e) {
+            hideLoader();
+            showToast('فشل الحذف: ' + (e.message || 'خطأ غير معروف'), 'error');
+        }
+    }
     async function _cancelRunsheet(code) {
         var found = null;
         for (var i = 0; i < data.length; i++) {
