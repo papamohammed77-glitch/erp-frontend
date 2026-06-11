@@ -4475,6 +4475,28 @@ async function _createRS() {
             console.error('فشل تحميل أكواد الرانشيتات:', e);
         });
     }
+    async function _refreshData() {
+        var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
+        ordersData = (ordRes.data || []).map(function(o) {
+            if (o.runsheets && o.runsheets.runsheet_code) {
+                o._runsheetCode = o.runsheets.runsheet_code;
+            } else {
+                o._runsheetCode = null;
+            }
+            return o;
+        });
+        var detRes = await supabase.from('order_details').select('order_id, item_code');
+        var details = detRes.data || [];
+        var itemsCountMap = {};
+        for (var i = 0; i < details.length; i++) {
+            var oid = details[i].order_id;
+            if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
+        }
+        for (var j = 0; j < ordersData.length; j++) {
+            ordersData[j].itemsCount = itemsCountMap[ordersData[j].order_code] || 0;
+        }
+        _applyFilters();
+    }
     return {
         render: render,
         _applyFilters: _applyFilters,
@@ -4485,7 +4507,8 @@ async function _createRS() {
         _delete: _delete,
         _showDetails: _showDetails,
         _createRS: _createRS,
-        _appendRS: _appendRS
+        _appendRS: _appendRS,
+        _refreshData: _refreshData
     };
 })();
 window.RW_Orders = RW_Orders;
