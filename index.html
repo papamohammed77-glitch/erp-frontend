@@ -3888,9 +3888,10 @@ window.RW_TeleSales = RW_TeleSales;
 // RW_Orders – أوردرات المبيعات (فلترة، تأكيد، حذف، رانشيت)
 // ============================================================
 var RW_Orders = (function() {
+    var _db = (typeof supabase !== 'undefined' && typeof supabase.from === 'function') ? supabase : (typeof window.supabase !== 'undefined' && typeof window.supabase.from === 'function') ? window.supabase : null;
+    if (!_db) { console.error('RW_Orders: فشل العثور على عميل Supabase'); }
     var sortField = 'order_code', sortAsc = true, ordersData = [];
     var _sortIcons = {}; // لتحديث أيقونات الفرز
-    var supabase = window.supabase;
     function esc(s) {
         return String(s || '').replace(/[&<>]/g, function(m) {
             return m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;';
@@ -3898,7 +3899,6 @@ var RW_Orders = (function() {
     }
 
     async function render() {
-        var supabase = window.supabase;
         var c = byId('rw-page-container');
         if (!c) return;
         safeText(byId('rw-header-title'), 'أوردرات المبيعات');
@@ -3965,10 +3965,10 @@ var RW_Orders = (function() {
         // تحميل البيانات (الأوردرات + تفاصيلها لحساب عدد الأصناف)
         showLoader('جاري تحميل الأوردرات...');
         try {
-            var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
+            var ordRes = await _db.from('orders').select('*, runsheets(runsheet_code)');
             ordersData = ordRes.data || [];
             // جلب تفاصيل الأوردرات لحساب عدد الأصناف لكل أوردر
-            var detRes = await supabase.from('order_details').select('order_id, item_code');
+            var detRes = await _db.from('order_details').select('order_id, item_code');
             var details = detRes.data || [];
             var itemsCountMap = {};
             for (var i = 0; i < details.length; i++) {
@@ -4130,7 +4130,7 @@ var RW_Orders = (function() {
         }).then(function(cf) {
             if (!cf.isConfirmed) return;
             showLoader('جاري التأكيد...');
-            supabase.auth.getSession().then(function(ses) {
+            _db.auth.getSession().then(function(ses) {
                 var t = ses.data.session && ses.data.session.access_token;
                 return fetch(RW_SUPABASE_URL + '/functions/v1/confirm-order', {
                     method: 'POST',
@@ -4168,7 +4168,7 @@ var RW_Orders = (function() {
         }).then(function(cf) {
             if (!cf.isConfirmed) return;
             showLoader('جاري الإلغاء...');
-            supabase.auth.getSession().then(function(ses) {
+            _db.auth.getSession().then(function(ses) {
                 var t = ses.data.session && ses.data.session.access_token;
                 return fetch(RW_SUPABASE_URL + '/functions/v1/delete-order', {
                     method: 'POST',
@@ -4195,11 +4195,11 @@ var RW_Orders = (function() {
     async function _showDetails(code) {
         showLoader('جاري تحميل التفاصيل...');
         try {
-            var oRes = await supabase.from('orders').select('*').eq('order_code', code).maybeSingle();
+            var oRes = await _db.from('orders').select('*').eq('order_code', code).maybeSingle();
             var order = oRes.data;
             if (!order) { hideLoader(); showToast('الأوردر غير موجود', 'error'); return; }
 
-            var itemsRes = await supabase.from('order_details').select('*').eq('order_id', order.id);
+            var itemsRes = await _db.from('order_details').select('*').eq('order_id', order.id);
             var items = itemsRes.data || [];
             hideLoader();
 
@@ -4279,17 +4279,17 @@ var RW_Orders = (function() {
         var settings = {};
         
         // الخطوة 1: جلب الأوردر
-        supabase.from('orders').select('*').eq('order_code', code).maybeSingle()
+        _db.from('orders').select('*').eq('order_code', code).maybeSingle()
             .then(function(oRes) {
                 order = oRes.data;
                 if (!order) throw new Error('ORDER_NOT_FOUND');
                 // الخطوة 2: جلب تفاصيل الأوردر
-                return supabase.from('order_details').select('*').eq('order_id', order.id);
+                return _db.from('order_details').select('*').eq('order_id', order.id);
             })
             .then(function(itRes) {
                 items = itRes.data || [];
                 // الخطوة 3: جلب إعدادات التطبيق
-                return supabase.from('app_settings').select('*').limit(1).single();
+                return _db.from('app_settings').select('*').limit(1).single();
             })
             .then(function(sRes) {
                 if (sRes.data) settings = sRes.data;
@@ -4368,7 +4368,7 @@ async function _createRS() {
     if (!cf.isConfirmed) return;
     showLoader('جاري إنشاء الرانشيت...');
 
-    var ses = await supabase.auth.getSession();
+    var ses = await _db.auth.getSession();
     var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
     if (!t) {
         hideLoader();
@@ -4377,7 +4377,7 @@ async function _createRS() {
     }
 
     try {
-        await supabase
+        await _db
             .from('orders')
             .update({ runsheet_id: null, order_status: 'Confirmed' })
             .in('order_code', selected);
@@ -4392,7 +4392,7 @@ async function _createRS() {
         if (json.success) {
             showToast('تم إنشاء الرانشيت: ' + json.rsId, 'success');
             // جلب UUID الرانشيت الجديد لضمان التوافق مع الخريطة النصية
-            var newRsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', json.rsId).maybeSingle();
+            var newRsRes = await _db.from('runsheets').select('id').eq('runsheet_code', json.rsId).maybeSingle();
             var rsUuid = (newRsRes && newRsRes.data) ? newRsRes.data.id : json.rsId;
             for (var i = 0; i < ordersData.length; i++) {
                 if (selected.indexOf(ordersData[i].order_code) !== -1) {
@@ -4413,7 +4413,7 @@ async function _createRS() {
     var selected = _getSelectedOrders();
     if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
     try {
-        var rsRes = await supabase.from('runsheets').select('runsheet_code, status').in('status', ['Open', 'Confirmed']);
+        var rsRes = await _db.from('runsheets').select('runsheet_code, status').in('status', ['Open', 'Confirmed']);
         if (!rsRes.data || !rsRes.data.length) { showToast('لا توجد رانشيتات مفتوحة', 'info'); return; }
         var opts = {};
         rsRes.data.forEach(function(rs) { opts[rs.runsheet_code] = rs.runsheet_code + ' - ' + rs.status; });
@@ -4427,7 +4427,7 @@ async function _createRS() {
         });
         if (!v.value) return;
 
-        var ses = await supabase.auth.getSession();
+        var ses = await _db.auth.getSession();
         var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
         if (!t) {
             hideLoader();
@@ -4445,7 +4445,7 @@ async function _createRS() {
         if (json.success) {
             showToast('تم الضم', 'success');
             // جلب UUID الرانشيت المفتوح لضمان التوافق مع الخريطة النصية
-            var targetRsRes = await supabase.from('runsheets').select('id').eq('runsheet_code', v.value).maybeSingle();
+            var targetRsRes = await _db.from('runsheets').select('id').eq('runsheet_code', v.value).maybeSingle();
             var rsUuid = (targetRsRes && targetRsRes.data) ? targetRsRes.data.id : v.value;
             for (var i = 0; i < ordersData.length; i++) {
                 if (selected.indexOf(ordersData[i].order_code) !== -1) {
@@ -4458,7 +4458,7 @@ async function _createRS() {
     } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
 }
     function _loadRunsheetCodes() {
-        return supabase.from('runsheets').select('id, runsheet_code').then(function(res) {
+        return _db.from('runsheets').select('id, runsheet_code').then(function(res) {
             var map = {};
             var data = res.data || [];
             for (var i = 0; i < data.length; i++) {
@@ -4477,7 +4477,7 @@ async function _createRS() {
         });
     }
     async function _refreshData() {
-        var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
+        var ordRes = await _db.from('orders').select('*, runsheets(runsheet_code)');
         ordersData = (ordRes.data || []).map(function(o) {
             if (o.runsheets && o.runsheets.runsheet_code) {
                 o._runsheetCode = o.runsheets.runsheet_code;
@@ -4486,7 +4486,7 @@ async function _createRS() {
             }
             return o;
         });
-        var detRes = await supabase.from('order_details').select('order_id, item_code');
+        var detRes = await _db.from('order_details').select('order_id, item_code');
         var details = detRes.data || [];
         var itemsCountMap = {};
         for (var i = 0; i < details.length; i++) {
