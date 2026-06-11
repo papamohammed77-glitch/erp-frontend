@@ -4376,7 +4376,6 @@ async function _createRS() {
     }
 
     try {
-        // ✅ تنظيف الأوردرات المحددة قبل إنشاء الرانشيت
         await supabase
             .from('orders')
             .update({ runsheet_id: null, order_status: 'Confirmed' })
@@ -4397,14 +4396,8 @@ async function _createRS() {
                     ordersData[i].order_status = 'Pending';
                 }
             }
-          // تحديث الكود النصي للرانشيت في الذاكرة المحلية فوراً
-          for (var i = 0; i < ordersData.length; i++) {
-              if (selected.indexOf(ordersData[i].order_code) !== -1) {
-                  ordersData[i]._runsheetCode = json.rsId;
-                  ordersData[i].order_status = 'Pending';
-              }
-          }
-          _applyFilters();
+            await _loadRunsheetCodes(); // ✅ نجدد الخريطة النصية
+            _applyFilters();
         } else {
             showToast(json.msg || 'فشل', 'error');
         }
@@ -4413,60 +4406,52 @@ async function _createRS() {
         showToast('فشل الاتصال', 'error');
     }
 }
+ async function _appendRS() {
+    var selected = _getSelectedOrders();
+    if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
+    try {
+        var rsRes = await supabase.from('runsheets').select('runsheet_code, status').in('status', ['Open', 'Confirmed']);
+        if (!rsRes.data || !rsRes.data.length) { showToast('لا توجد رانشيتات مفتوحة', 'info'); return; }
+        var opts = {};
+        rsRes.data.forEach(function(rs) { opts[rs.runsheet_code] = rs.runsheet_code + ' - ' + rs.status; });
+        var v = await Swal.fire({
+            title: 'اختر الرانشيت',
+            input: 'select',
+            inputOptions: opts,
+            showCancelButton: true,
+            confirmButtonText: 'ضم',
+            cancelButtonText: 'إلغاء'
+        });
+        if (!v.value) return;
 
-    async function _appendRS() {
-        var selected = _getSelectedOrders();
-        if (!selected.length) { showToast('اختر أوردراً واحداً على الأقل', 'warning'); return; }
-        try {
-            var rsRes = await supabase.from('runsheets').select('runsheet_code, status').in('status', ['Open', 'Confirmed']);
-            if (!rsRes.data || !rsRes.data.length) { showToast('لا توجد رانشيتات مفتوحة', 'info'); return; }
-            var opts = {};
-            rsRes.data.forEach(function(rs) { opts[rs.runsheet_code] = rs.runsheet_code + ' - ' + rs.status; });
-            var v = await Swal.fire({
-                title: 'اختر الرانشيت',
-                input: 'select',
-                inputOptions: opts,
-                showCancelButton: true,
-                confirmButtonText: 'ضم',
-                cancelButtonText: 'إلغاء'
-            });
-            if (!v.value) return;
+        var ses = await supabase.auth.getSession();
+        var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+        if (!t) {
+            hideLoader();
+            showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
+            return;
+        }
 
-            // ✅ التحقق من الجلسة والتوكن
-            var ses = await supabase.auth.getSession();
-            var t = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-            if (!t) {
-                hideLoader();
-                showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
-                return;
-            }
-
-            showLoader('جاري الضم...');
-            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/append-to-runsheet', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
-                body: JSON.stringify({ targetRSID: v.value, selectedOrders: selected })
-            });
-            var json = await res.json(); hideLoader();
-            if (json.success) {
-                showToast('تم الضم', 'success');
-                for (var i = 0; i < ordersData.length; i++) {
-                    if (selected.indexOf(ordersData[i].order_code) !== -1) {
-                        ordersData[i].runsheet_id = v.value;
-                        ordersData[i].order_status = 'Pending';
-                    }
-                }
-            // تحديث الكود النصي للرانشيت في الذاكرة المحلية فوراً
+        showLoader('جاري الضم...');
+        var res = await fetch(RW_SUPABASE_URL + '/functions/v1/append-to-runsheet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+            body: JSON.stringify({ targetRSID: v.value, selectedOrders: selected })
+        });
+        var json = await res.json(); hideLoader();
+        if (json.success) {
+            showToast('تم الضم', 'success');
             for (var i = 0; i < ordersData.length; i++) {
                 if (selected.indexOf(ordersData[i].order_code) !== -1) {
-                    ordersData[i]._runsheetCode = v.value;
+                    ordersData[i].runsheet_id = v.value;
                     ordersData[i].order_status = 'Pending';
                 }
             }
+            await _loadRunsheetCodes(); // ✅ نجدد الخريطة النصية
             _applyFilters();
-            } else showToast(json.msg || 'فشل', 'error');
-        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
-    }
+        } else showToast(json.msg || 'فشل', 'error');
+    } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
+}
     function _loadRunsheetCodes() {
         supabase.from('runsheets').select('id, runsheet_code').then(function(res) {
             var map = {};
