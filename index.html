@@ -4447,25 +4447,29 @@ var RW_Orders = (function() {
         } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
-    function _loadRunsheetCodes() {
-        return supabase.from('runsheets').select('id, runsheet_code').then(function(res) {
-            var map = {};
-            var data = res.data || [];
-            for (var i = 0; i < data.length; i++) {
-                map[data[i].id] = data[i].runsheet_code;
+function _loadRunsheetCodes() {
+    return supabase.from('runsheets').select('id, runsheet_code').then(function(res) {
+        var map = {};
+        var data = res.data || [];
+        for (var i = 0; i < data.length; i++) {
+            map[data[i].id] = data[i].runsheet_code;
+        }
+        for (var j = 0; j < ordersData.length; j++) {
+            var rsId = ordersData[j].runsheet_id;
+            if (rsId && map[rsId]) {
+                ordersData[j]._runsheetCode = map[rsId];
+            } else {
+                ordersData[j]._runsheetCode = null;
             }
-            for (var j = 0; j < ordersData.length; j++) {
-                var rsId = ordersData[j].runsheet_id;
-                if (rsId && map[rsId]) {
-                    ordersData[j]._runsheetCode = map[rsId];
-                } else {
-                    ordersData[j]._runsheetCode = null;
-                }
-            }
-        }).catch(function(e) {
-            console.error('فشل تحميل أكواد الرانشيتات:', e);
-        });
-    }
+        }
+        // ✅ هذا السطر هو الحل – كان موجوداً في النسخة الانتقالية
+        _applyFilters();
+    }).catch(function(e) {
+        console.error('فشل تحميل أكواد الرانشيتات:', e);
+        // حتى لو فشلت، نعرض البيانات بدون أكواد الرانشيت
+        _applyFilters();
+    });
+}
 
     async function _refreshData() {
         var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
