@@ -7258,146 +7258,149 @@ var RW_Reports = (function() {
     }
 
 async function _loadDetailedReports(fromDate, toDate, types) {
-        var container = byId('det-result-container');
-        if (!container) return;
-        safeHTML(container, '<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl"></i> جاري تحميل التقارير المحددة...</div>');
+    var container = byId('det-result-container');
+    if (!container) return;
+    safeHTML(container, '<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl"></i> جاري تحميل التقارير المحددة...</div>');
 
-        try {
-            var items = RW_STATE.data.items || [];
-            var customers = RW_STATE.data.customers || [];
-            if (!items.length) { var iRes = await supabase.from('items').select('*'); items = iRes.data || []; }
-            if (!customers.length) { var cRes = await supabase.from('customers').select('*'); customers = cRes.data || []; }
-            var stockRes = await supabase.from('stock_branches').select('item_id, qty');
-            var stockData = stockRes.data || [];
-            var stockMap = {};
-            for (var s = 0; s < stockData.length; s++) { stockMap[stockData[s].item_id] = (stockMap[stockData[s].item_id] || 0) + (Number(stockData[s].qty) || 0); }
-
-            var ordersRes = await supabase.from('orders').select('order_code, customer_id, customer_name, total_amount, order_date, area').gte('order_date', fromDate).lte('order_date', toDate);
-            var orders = ordersRes.data || [];
-            var detailsRes = await supabase.from('order_details').select('item_code, item_name, qty, unit_price, order_id');
-            var details = detailsRes.data || [];
-
-            var html = '<div class="text-right space-y-6">';
-            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><p class="text-sm text-gray-500"><strong>الفترة:</strong> من ' + fromDate + ' إلى ' + toDate + '</p></div>';
-
-            // ملخص المبيعات
-            if (types.indexOf('sales-summary') !== -1) {
-                var totalSales = 0;
-                for (var o = 0; o < orders.length; o++) { totalSales += Number(orders[o].total_amount) || 0; }
-                var avgOrder = orders.length > 0 ? Math.round(totalSales / orders.length) : 0;
-                html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-chart-line ml-2 text-indigo-600"></i> ملخص المبيعات</h3>';
-                html += '<div class="grid grid-cols-3 gap-4"><div class="bg-indigo-50 rounded-xl p-4 text-center"><p class="text-xs text-indigo-400 font-bold">عدد الأوردرات</p><p class="text-2xl font-black text-indigo-700">' + orders.length + '</p></div>';
-                html += '<div class="bg-emerald-50 rounded-xl p-4 text-center"><p class="text-xs text-emerald-400 font-bold">إجمالي المبيعات</p><p class="text-2xl font-black text-emerald-700">' + _fmtNum(totalSales) + ' EGP</p></div>';
-                html += '<div class="bg-amber-50 rounded-xl p-4 text-center"><p class="text-xs text-amber-400 font-bold">متوسط الأوردر</p><p class="text-2xl font-black text-amber-700">' + _fmtNum(avgOrder) + ' EGP</p></div></div></div>';
+    try {
+        var items = RW_STATE.data.items || [];
+        var customers = RW_STATE.data.customers || [];
+        if (!items.length) { var iRes = await supabase.from('items').select('*'); items = iRes.data || []; }
+        if (!customers.length) { var cRes = await supabase.from('customers').select('*'); customers = cRes.data || []; }
+        var stockRes = await supabase.from('stock_branches').select('item_id, qty');
+        var stockData = stockRes.data || [];
+        var stockMap = {};
+        for (var s = 0; s < stockData.length; s++) {
+            if (stockData[s] && stockData[s].item_id) {
+                stockMap[stockData[s].item_id] = (stockMap[stockData[s].item_id] || 0) + (Number(stockData[s].qty) || 0);
             }
+        }
 
-            // المبيعات حسب العميل
-            if (types.indexOf('sales-by-customer') !== -1) {
-                var custSales = {};
-                for (var o2 = 0; o2 < orders.length; o2++) {
-                    var cid = orders[o2].customer_id || orders[o2].customer_name;
-                    if (!cid) continue;
-                    custSales[cid] = { name: orders[o2].customer_name || cid, total: (custSales[cid] ? custSales[cid].total : 0) + Number(orders[o2].total_amount || 0), count: (custSales[cid] ? custSales[cid].count : 0) + 1 };
-                }
-                var custArr = Object.values(custSales).sort(function(a,b){ return b.total - a.total; }).slice(0, 10);
-                html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-user-group ml-2 text-blue-600"></i> أعلى العملاء مبيعاً</h3>';
-                if (custArr.length > 0) {
-                    html += '<table class="w-full text-sm"><thead><tr><th class="p-2">العميل</th><th class="p-2 text-center">الأوردرات</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                    for (var cu = 0; cu < custArr.length; cu++) { html += '<tr><td class="p-2 font-semibold">' + _esc(custArr[cu].name) + '</td><td class="p-2 text-center">' + custArr[cu].count + '</td><td class="p-2 text-center font-bold">' + _fmtNum(custArr[cu].total) + ' EGP</td></tr>'; }
-                    html += '</tbody></table>';
-                } else { html += '<div class="text-center py-4 text-gray-500">لا توجد بيانات</div>'; }
-                html += '</div>';
+        var ordersRes = await supabase.from('orders').select('order_code, customer_id, customer_name, total_amount, order_date, area').gte('order_date', fromDate).lte('order_date', toDate);
+        var orders = ordersRes.data || [];
+        var detailsRes = await supabase.from('order_details').select('item_code, item_name, qty, unit_price, order_id');
+        var details = detailsRes.data || [];
+
+        var html = '<div class="text-right space-y-6">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><p class="text-sm text-gray-500"><strong>الفترة:</strong> من ' + fromDate + ' إلى ' + toDate + '</p></div>';
+
+        // ملخص المبيعات
+        if (types.indexOf('sales-summary') !== -1) {
+            var totalSales = 0;
+            for (var o = 0; o < orders.length; o++) { totalSales += Number(orders[o].total_amount) || 0; }
+            var avgOrder = orders.length > 0 ? Math.round(totalSales / orders.length) : 0;
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-chart-line ml-2 text-indigo-600"></i> ملخص المبيعات</h3>';
+            html += '<div class="grid grid-cols-3 gap-4"><div class="bg-indigo-50 rounded-xl p-4 text-center"><p class="text-xs text-indigo-400 font-bold">عدد الأوردرات</p><p class="text-2xl font-black text-indigo-700">' + orders.length + '</p></div>';
+            html += '<div class="bg-emerald-50 rounded-xl p-4 text-center"><p class="text-xs text-emerald-400 font-bold">إجمالي المبيعات</p><p class="text-2xl font-black text-emerald-700">' + _fmtNum(totalSales) + ' EGP</p></div>';
+            html += '<div class="bg-amber-50 rounded-xl p-4 text-center"><p class="text-xs text-amber-400 font-bold">متوسط الأوردر</p><p class="text-2xl font-black text-amber-700">' + _fmtNum(avgOrder) + ' EGP</p></div></div></div>';
+        }
+
+        // المبيعات حسب العميل
+        if (types.indexOf('sales-by-customer') !== -1) {
+            var custSales = {};
+            for (var o2 = 0; o2 < orders.length; o2++) {
+                var cid = orders[o2].customer_id || orders[o2].customer_name;
+                if (!cid) continue;
+                custSales[cid] = { name: orders[o2].customer_name || cid, total: (custSales[cid] ? custSales[cid].total : 0) + Number(orders[o2].total_amount || 0), count: (custSales[cid] ? custSales[cid].count : 0) + 1 };
             }
-
-            // المبيعات حسب الصنف
-            if (types.indexOf('sales-by-item') !== -1) {
-                var itemSales = {};
-                for (var d = 0; d < details.length; d++) {
-                    var det = details[d];
-                    if (!det || !det.item_code) continue;
-                    if (!itemSales[det.item_code]) itemSales[det.item_code] = { name: det.item_name || det.item_code, qty: 0, total: 0 };
-                    itemSales[det.item_code].qty += Number(det.qty) || 0;
-                    itemSales[det.item_code].total += (Number(det.qty) || 0) * (Number(det.unit_price) || 0);
-                }
-                var itemArr = Object.values(itemSales).sort(function(a,b){ return b.total - a.total; }).slice(0, 10);
-                html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-boxes-stacked ml-2 text-purple-600"></i> أعلى الأصناف مبيعاً</h3>';
-                if (itemArr.length > 0) {
-                    html += '<table class="w-full text-sm"><thead><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                    for (var it = 0; it < itemArr.length; it++) { html += '<tr><td class="p-2 font-semibold">' + _esc(itemArr[it].name) + '</td><td class="p-2 text-center">' + itemArr[it].qty + '</td><td class="p-2 text-center font-bold">' + _fmtNum(itemArr[it].total) + ' EGP</td></tr>'; }
-                    html += '</tbody></table>';
-                } else { html += '<div class="text-center py-4 text-gray-500">لا توجد بيانات</div>'; }
-                html += '</div>';
-            }
-
-            // العملاء والديون
-            if (types.indexOf('customers-debt') !== -1) {
-                var debtors = customers.filter(function(c){ return (Number(c.debt)||0) > 0; }).sort(function(a,b){ return Number(b.debt) - Number(a.debt); });
-                html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-file-invoice-dollar ml-2 text-red-600"></i> العملاء والديون</h3>';
-                if (debtors.length > 0) {
-                    html += '<table class="w-full text-sm"><thead><tr><th class="p-2">العميل</th><th class="p-2 text-center">الدين</th></tr></thead><tbody>';
-                    for (var db = 0; db < Math.min(debtors.length, 10); db++) { html += '<tr><td class="p-2 font-semibold">' + _esc(debtors[db].name) + '</td><td class="p-2 text-center font-bold text-red-600">' + _fmtNum(debtors[db].debt) + ' EGP</td></tr>'; }
-                    html += '</tbody></table>';
-                } else { html += '<div class="text-center py-4 text-green-600">لا توجد ديون</div>'; }
-                html += '</div>';
-            }
-
-            // الأصناف الراكدة
-            if (types.indexOf('inventory-dormant') !== -1) {
-                var soldCodes = {};
-                for (var d2 = 0; d2 < details.length; d2++) { 
-                    if (details[d2] && details[d2].item_code) soldCodes[details[d2].item_code] = true; 
-                }
-                var dormant = items.filter(function(itm){ 
-                    if (!itm || !itm.id || !itm.item_code) return false;
-                    return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
-                });
-                html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-box-archive ml-2 text-red-600"></i> الأصناف الراكدة</h3>';
-                if (dormant.length > 0) {
-                    html += '<table class="w-full text-sm"><thead><tr><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th></tr></thead><tbody>';
-                    for (var dr = 0; dr < Math.min(dormant.length, 15); dr++) { html += '<tr><td class="p-2 font-semibold">' + _esc(dormant[dr].name) + '</td><td class="p-2 text-center font-bold text-red-600">' + (stockMap[dormant[dr].id]||0) + '</td></tr>'; }
-                    html += '</tbody></table>';
-                } else { html += '<div class="text-center py-4 text-green-600">لا توجد أصناف راكدة</div>'; }
-                html += '</div>';
-            }
-
-            // توصيات ذكية
-            if (types.indexOf('rec-purchase') !== -1 || types.indexOf('rec-offers') !== -1) {
-                var recs = [];
-                // توصيات شراء
-                for (var j = 0; j < items.length; j++) {
-                    if (!items[j] || !items[j].id) continue;
-                    if ((stockMap[items[j].id]||0) <= (Number(items[j].reorder_point)||5)) {
-                        recs.push({ type: 'شراء', item: items[j].name, reason: 'المخزون منخفض (' + (stockMap[items[j].id]||0) + ')' });
-                        if (recs.length >= 3) break;
-                    }
-                }
-                // توصيات عروض
-                var dormant2 = items.filter(function(itm){ 
-                    if (!itm || !itm.id || !itm.item_code) return false;
-                    return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
-                });
-                if (dormant2.length > 0) {
-                    recs.push({ type: 'عرض ترويجي', item: dormant2[0].name, reason: 'راكد بقيمة ' + _fmtNum((stockMap[dormant2[0].id]||0) * (Number(dormant2[0].cost_price) || Number(dormant2[0].sales_price) || 0)) + ' EGP' });
-                }
-                html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-lightbulb ml-2 text-amber-500"></i> توصيات ذكية</h3>';
-                if (recs.length > 0) {
-                    html += '<div class="space-y-3">';
-                    for (var rc = 0; rc < recs.length; rc++) {
-                        var color = recs[rc].type === 'شراء' ? 'border-indigo-200 bg-indigo-50' : 'border-amber-200 bg-amber-50';
-                        var icon = recs[rc].type === 'شراء' ? 'fa-cart-shopping' : 'fa-tag';
-                        html += '<div class="border-r-4 ' + color + ' p-4 rounded-lg"><div class="flex items-center gap-2 mb-1"><i class="fa-solid ' + icon + '"></i><span class="font-bold">' + recs[rc].type + ': ' + _esc(recs[rc].item) + '</span></div><p class="text-sm text-gray-600">' + recs[rc].reason + '</p></div>';
-                    }
-                    html += '</div>';
-                } else { html += '<div class="text-center py-4 text-gray-500">لا توجد توصيات حالياً</div>'; }
-                html += '</div>';
-            }
-
+            var custArr = Object.values(custSales).sort(function(a,b){ return b.total - a.total; }).slice(0, 10);
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-user-group ml-2 text-blue-600"></i> أعلى العملاء مبيعاً</h3>';
+            if (custArr.length > 0) {
+                html += '<table class="w-full text-sm"><thead><tr><th class="p-2">العميل</th><th class="p-2 text-center">الأوردرات</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var cu = 0; cu < custArr.length; cu++) { html += '<tr><td class="p-2 font-semibold">' + _esc(custArr[cu].name) + '</td><td class="p-2 text-center">' + custArr[cu].count + '</td><td class="p-2 text-center font-bold">' + _fmtNum(custArr[cu].total) + ' EGP</td></tr>'; }
+                html += '</tbody></table>';
+            } else { html += '<div class="text-center py-4 text-gray-500">لا توجد بيانات</div>'; }
             html += '</div>';
-            safeHTML(container, html);
+        }
 
-        } catch(e) { console.error(e); safeHTML(container, '<div class="text-center py-10 text-red-500">فشل تحميل التقارير</div>'); }
-    }
+        // المبيعات حسب الصنف
+        if (types.indexOf('sales-by-item') !== -1) {
+            var itemSales = {};
+            for (var d = 0; d < details.length; d++) {
+                var det = details[d];
+                if (!det || !det.item_code) continue;
+                if (!itemSales[det.item_code]) itemSales[det.item_code] = { name: det.item_name || det.item_code, qty: 0, total: 0 };
+                itemSales[det.item_code].qty += Number(det.qty) || 0;
+                itemSales[det.item_code].total += (Number(det.qty) || 0) * (Number(det.unit_price) || 0);
+            }
+            var itemArr = Object.values(itemSales).sort(function(a,b){ return b.total - a.total; }).slice(0, 10);
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-boxes-stacked ml-2 text-purple-600"></i> أعلى الأصناف مبيعاً</h3>';
+            if (itemArr.length > 0) {
+                html += '<table class="w-full text-sm"><thead><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var it = 0; it < itemArr.length; it++) { html += '<tr><td class="p-2 font-semibold">' + _esc(itemArr[it].name) + '</td><td class="p-2 text-center">' + itemArr[it].qty + '</td><td class="p-2 text-center font-bold">' + _fmtNum(itemArr[it].total) + ' EGP</td></tr>'; }
+                html += '</tbody></table>';
+            } else { html += '<div class="text-center py-4 text-gray-500">لا توجد بيانات</div>'; }
+            html += '</div>';
+        }
 
+        // العملاء والديون
+        if (types.indexOf('customers-debt') !== -1) {
+            var debtors = customers.filter(function(c){ return c && (Number(c.debt)||0) > 0; }).sort(function(a,b){ return Number(b.debt) - Number(a.debt); });
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-file-invoice-dollar ml-2 text-red-600"></i> العملاء والديون</h3>';
+            if (debtors.length > 0) {
+                html += '<table class="w-full text-sm"><thead><tr><th class="p-2">العميل</th><th class="p-2 text-center">الدين</th></tr></thead><tbody>';
+                for (var db = 0; db < Math.min(debtors.length, 10); db++) { html += '<tr><td class="p-2 font-semibold">' + _esc(debtors[db].name) + '</td><td class="p-2 text-center font-bold text-red-600">' + _fmtNum(debtors[db].debt) + ' EGP</td></tr>'; }
+                html += '</tbody></table>';
+            } else { html += '<div class="text-center py-4 text-green-600">لا توجد ديون</div>'; }
+            html += '</div>';
+        }
+
+        // الأصناف الراكدة
+        if (types.indexOf('inventory-dormant') !== -1) {
+            var soldCodes = {};
+            for (var d2 = 0; d2 < details.length; d2++) { 
+                if (details[d2] && details[d2].item_code) soldCodes[details[d2].item_code] = true; 
+            }
+            var dormant = items.filter(function(itm){ 
+                if (!itm || !itm.id || !itm.item_code) return false;
+                return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
+            });
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-box-archive ml-2 text-red-600"></i> الأصناف الراكدة</h3>';
+            if (dormant.length > 0) {
+                html += '<table class="w-full text-sm"><thead><tr><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th></tr></thead><tbody>';
+                for (var dr = 0; dr < Math.min(dormant.length, 15); dr++) { html += '<tr><td class="p-2 font-semibold">' + _esc(dormant[dr].name) + '</td><td class="p-2 text-center font-bold text-red-600">' + (stockMap[dormant[dr].id]||0) + '</td></tr>'; }
+                html += '</tbody></table>';
+            } else { html += '<div class="text-center py-4 text-green-600">لا توجد أصناف راكدة</div>'; }
+            html += '</div>';
+        }
+
+        // توصيات ذكية
+        if (types.indexOf('rec-purchase') !== -1 || types.indexOf('rec-offers') !== -1) {
+            var recs = [];
+            // توصيات شراء
+            for (var j = 0; j < items.length; j++) {
+                if (!items[j] || !items[j].id) continue;
+                if ((stockMap[items[j].id]||0) <= (Number(items[j].reorder_point)||5)) {
+                    recs.push({ type: 'شراء', item: items[j].name, reason: 'المخزون منخفض (' + (stockMap[items[j].id]||0) + ')' });
+                    if (recs.length >= 3) break;
+                }
+            }
+            // توصيات عروض
+            var dormant2 = items.filter(function(itm){ 
+                if (!itm || !itm.id || !itm.item_code) return false;
+                return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
+            });
+            if (dormant2.length > 0) {
+                recs.push({ type: 'عرض ترويجي', item: dormant2[0].name, reason: 'راكد بقيمة ' + _fmtNum((stockMap[dormant2[0].id]||0) * (Number(dormant2[0].cost_price) || Number(dormant2[0].sales_price) || 0)) + ' EGP' });
+            }
+            html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-lightbulb ml-2 text-amber-500"></i> توصيات ذكية</h3>';
+            if (recs.length > 0) {
+                html += '<div class="space-y-3">';
+                for (var rc = 0; rc < recs.length; rc++) {
+                    var color = recs[rc].type === 'شراء' ? 'border-indigo-200 bg-indigo-50' : 'border-amber-200 bg-amber-50';
+                    var icon = recs[rc].type === 'شراء' ? 'fa-cart-shopping' : 'fa-tag';
+                    html += '<div class="border-r-4 ' + color + ' p-4 rounded-lg"><div class="flex items-center gap-2 mb-1"><i class="fa-solid ' + icon + '"></i><span class="font-bold">' + recs[rc].type + ': ' + _esc(recs[rc].item) + '</span></div><p class="text-sm text-gray-600">' + recs[rc].reason + '</p></div>';
+                }
+                html += '</div>';
+            } else { html += '<div class="text-center py-4 text-gray-500">لا توجد توصيات حالياً</div>'; }
+            html += '</div>';
+        }
+
+        html += '</div>';
+        safeHTML(container, html);
+
+    } catch(e) { console.error(e); safeHTML(container, '<div class="text-center py-10 text-red-500">فشل تحميل التقارير</div>'); }
+}
     return {
         renderDashboard: renderDashboard,
         renderDetailedReports: renderDetailedReports
