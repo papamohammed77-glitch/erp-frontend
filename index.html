@@ -7257,7 +7257,7 @@ var RW_Reports = (function() {
         _loadDetailedReports(fromDef, toDef, ['sales-summary', 'customers-debt', 'rec-purchase']);
     }
 
-    async function _loadDetailedReports(fromDate, toDate, types) {
+async function _loadDetailedReports(fromDate, toDate, types) {
         var container = byId('det-result-container');
         if (!container) return;
         safeHTML(container, '<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl"></i> جاري تحميل التقارير المحددة...</div>');
@@ -7314,6 +7314,7 @@ var RW_Reports = (function() {
                 var itemSales = {};
                 for (var d = 0; d < details.length; d++) {
                     var det = details[d];
+                    if (!det || !det.item_code) continue;
                     if (!itemSales[det.item_code]) itemSales[det.item_code] = { name: det.item_name || det.item_code, qty: 0, total: 0 };
                     itemSales[det.item_code].qty += Number(det.qty) || 0;
                     itemSales[det.item_code].total += (Number(det.qty) || 0) * (Number(det.unit_price) || 0);
@@ -7343,8 +7344,13 @@ var RW_Reports = (function() {
             // الأصناف الراكدة
             if (types.indexOf('inventory-dormant') !== -1) {
                 var soldCodes = {};
-                for (var d2 = 0; d2 < details.length; d2++) { soldCodes[details[d2].item_code] = true; }
-                var dormant = items.filter(function(itm){ return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; });
+                for (var d2 = 0; d2 < details.length; d2++) { 
+                    if (details[d2] && details[d2].item_code) soldCodes[details[d2].item_code] = true; 
+                }
+                var dormant = items.filter(function(itm){ 
+                    if (!itm || !itm.id || !itm.item_code) return false;
+                    return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
+                });
                 html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-box-archive ml-2 text-red-600"></i> الأصناف الراكدة</h3>';
                 if (dormant.length > 0) {
                     html += '<table class="w-full text-sm"><thead><tr><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th></tr></thead><tbody>';
@@ -7359,13 +7365,17 @@ var RW_Reports = (function() {
                 var recs = [];
                 // توصيات شراء
                 for (var j = 0; j < items.length; j++) {
+                    if (!items[j] || !items[j].id) continue;
                     if ((stockMap[items[j].id]||0) <= (Number(items[j].reorder_point)||5)) {
                         recs.push({ type: 'شراء', item: items[j].name, reason: 'المخزون منخفض (' + (stockMap[items[j].id]||0) + ')' });
                         if (recs.length >= 3) break;
                     }
                 }
                 // توصيات عروض
-                var dormant2 = items.filter(function(itm){ return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; });
+                var dormant2 = items.filter(function(itm){ 
+                    if (!itm || !itm.id || !itm.item_code) return false;
+                    return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
+                });
                 if (dormant2.length > 0) {
                     recs.push({ type: 'عرض ترويجي', item: dormant2[0].name, reason: 'راكد بقيمة ' + _fmtNum((stockMap[dormant2[0].id]||0) * (Number(dormant2[0].cost_price) || Number(dormant2[0].sales_price) || 0)) + ' EGP' });
                 }
