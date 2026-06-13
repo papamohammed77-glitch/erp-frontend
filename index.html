@@ -7347,16 +7347,19 @@ async function _loadDetailedReports(fromDate, toDate, types) {
             html += '</div>';
         }
 
-        // الأصناف الراكدة
+        // الأصناف الراكدة – مع فحص دفاعي
         if (types.indexOf('inventory-dormant') !== -1) {
             var soldCodes = {};
             for (var d2 = 0; d2 < details.length; d2++) { 
                 if (details[d2] && details[d2].item_code) soldCodes[details[d2].item_code] = true; 
             }
-            var dormant = items.filter(function(itm){ 
-                if (!itm || !itm.id || !itm.item_code) return false;
-                return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
-            });
+            var dormant = [];
+            if (items && Array.isArray(items)) {
+                dormant = items.filter(function(itm){ 
+                    if (!itm || !itm.id || !itm.item_code) return false;
+                    return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
+                });
+            }
             html += '<div class="bg-white rounded-2xl shadow-sm border p-5"><h3 class="font-black text-lg mb-3"><i class="fa-solid fa-box-archive ml-2 text-red-600"></i> الأصناف الراكدة</h3>';
             if (dormant.length > 0) {
                 html += '<table class="w-full text-sm"><thead><tr><th class="p-2">الصنف</th><th class="p-2 text-center">المخزون</th></tr></thead><tbody>';
@@ -7366,7 +7369,7 @@ async function _loadDetailedReports(fromDate, toDate, types) {
             html += '</div>';
         }
 
-        // توصيات ذكية
+        // توصيات ذكية – مع فحص دفاعي
         if (types.indexOf('rec-purchase') !== -1 || types.indexOf('rec-offers') !== -1) {
             var recs = [];
             // توصيات شراء
@@ -7378,10 +7381,13 @@ async function _loadDetailedReports(fromDate, toDate, types) {
                 }
             }
             // توصيات عروض
-            var dormant2 = items.filter(function(itm){ 
-                if (!itm || !itm.id || !itm.item_code) return false;
-                return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
-            });
+            var dormant2 = [];
+            if (items && Array.isArray(items)) {
+                dormant2 = items.filter(function(itm){ 
+                    if (!itm || !itm.id || !itm.item_code) return false;
+                    return (stockMap[itm.id]||0) > 0 && !soldCodes[itm.item_code]; 
+                });
+            }
             if (dormant2.length > 0) {
                 recs.push({ type: 'عرض ترويجي', item: dormant2[0].name, reason: 'راكد بقيمة ' + _fmtNum((stockMap[dormant2[0].id]||0) * (Number(dormant2[0].cost_price) || Number(dormant2[0].sales_price) || 0)) + ' EGP' });
             }
