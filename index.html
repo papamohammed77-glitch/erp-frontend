@@ -2507,7 +2507,6 @@ var RW_Settings = (function() {
     return { render };
 })();
 window.RW_Settings = RW_Settings;
-
 // ============================================================
 // RW_Users – المستخدمين والصلاحيات (مودال كامل + Edge Function)
 // ============================================================
@@ -2606,6 +2605,48 @@ async function render() {
         renderTable(filtered);
     }
 
+    // دوال مساعدة داخلية
+    function _renderAssignedCustomersList(assignments) {
+        var container = byId('assigned-customers-list');
+        if (!container) return;
+        if (!assignments || assignments.length === 0) {
+            safeHTML(container, '<div class="text-center text-gray-400 text-sm py-4">لا يوجد عملاء معينون</div>');
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < assignments.length; i++) {
+            var a = assignments[i];
+            var cust = a.customers || {};
+            html += '<div class="flex justify-between items-center p-2 border-b">' +
+                '<div><span class="font-bold text-sm">' + (cust.name || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (cust.customer_code || '') + ' - ' + (cust.area || '') + '</span></div>' +
+                '<button onclick="RW_Users._removeAssignedCustomer(\'' + a.customer_id + '\')" class="text-red-500 text-xs font-bold">✕ إزالة</button>' +
+                '</div>';
+        }
+        safeHTML(container, html);
+    }
+
+    function _renderAssignedCustomersListFromIds() {
+        var ids = window._assignedCustomerIds || [];
+        var container = byId('assigned-customers-list');
+        if (!container) return;
+        if (ids.length === 0) {
+            safeHTML(container, '<div class="text-center text-gray-400 text-sm py-4">لا يوجد عملاء معينون</div>');
+            return;
+        }
+        var customers = RW_STATE.data.customers || [];
+        var map = {};
+        for (var i = 0; i < customers.length; i++) { map[customers[i].id] = customers[i]; }
+        var html = '';
+        for (var j = 0; j < ids.length; j++) {
+            var cust = map[ids[j]] || {};
+            html += '<div class="flex justify-between items-center p-2 border-b">' +
+                '<div><span class="font-bold text-sm">' + (cust.name || ids[j]) + '</span><span class="text-xs text-gray-400 mr-2">' + (cust.customer_code || '') + '</span></div>' +
+                '<button onclick="RW_Users._removeAssignedCustomer(\'' + ids[j] + '\')" class="text-red-500 text-xs font-bold">✕ إزالة</button>' +
+                '</div>';
+        }
+        safeHTML(container, html);
+    }
+
     function openModal(email) {
     var emp = null;
     if (email) {
@@ -2616,7 +2657,6 @@ async function render() {
     var isEdit = !!emp;
     var title = isEdit ? 'تعديل موظف' : 'إضافة موظف جديد';
     
-    // خيارات الأدوار
     var roleOptions = '<option value="">اختر دوراً</option>';
     for (var r = 0; r < rolesList.length; r++) {
         var selectedAttr = '';
@@ -2627,7 +2667,6 @@ async function render() {
         roleOptions += '<option value="مدير">مدير</option><option value="محاسب">محاسب</option><option value="مندوب">مندوب</option><option value="سائق">سائق</option><option value="مخزني">مخزني</option>';
     }
     
-    // خيارات الفروع
     var branchOptions = '';
     for (var b = 0; b < branchesList.length; b++) {
         var br = branchesList[b];
@@ -2643,7 +2682,6 @@ async function render() {
         branchOptions += '<option value="' + code + '"' + sel + '>' + name + ' (' + code + ')</option>';
     }
     
-    // القيم الحالية
     var empName = emp ? (emp.name || '') : '';
     var empEmail = emp ? (emp.email || '') : '';
     var empPhone = emp ? (emp.phone || '') : '';
@@ -2654,12 +2692,10 @@ async function render() {
     var empExpiry = emp ? (emp.expiry_date || '') : '';
     var empOriginalEmail = emp ? (emp.email || '') : '';
     
-    // قيم الصلاحيات الميدانية الجديدة
     var allowAllCusts = emp ? (emp.allow_all_customers ? ' checked' : '') : '';
     var restrictVisit = emp ? (emp.restrict_to_visit_day !== false ? ' checked' : '') : ' checked';
     var deviceIdVal = emp ? (emp.device_id || '') : '';
     
-    // قسم الصلاحيات
     var permLabels = [
         { key: 'dash', label: 'لوحة التحكم' }, { key: 'items', label: 'الأصناف' }, { key: 'customers', label: 'العملاء' },
         { key: 'suppliers', label: 'الموردين' }, { key: 'branches', label: 'الفروع' },
@@ -2696,7 +2732,6 @@ async function render() {
     '<form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto">' +
     '<input type="hidden" id="emp-original-email" value="' + empOriginalEmail + '">' +
 
-    // ==================== تبويبات داخل المودال ====================
     '<div class="flex border-b mb-4" id="emp-modal-tabs">' +
         '<button type="button" onclick="RW_Users._switchEmpTab(\'basic\')" class="px-4 py-2 font-bold text-sm border-b-2 border-blue-600 text-blue-600" id="tab-basic">البيانات الأساسية</button>' +
         '<button type="button" onclick="RW_Users._switchEmpTab(\'perms\')" class="px-4 py-2 font-bold text-sm text-gray-500" id="tab-perms">الصلاحيات</button>' +
@@ -2704,7 +2739,6 @@ async function render() {
         (isEdit ? '<button type="button" onclick="RW_Users._switchEmpTab(\'assignments\')" class="px-4 py-2 font-bold text-sm text-gray-500" id="tab-assignments">العملاء المسموحين</button>' : '') +
     '</div>' +
 
-    // ==================== التبويب 1: البيانات الأساسية ====================
     '<div id="emp-panel-basic">' +
     '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
     '<div class="flex flex-col"><label>الاسم الكامل *</label><input id="emp-name" value="' + empName + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
@@ -2717,7 +2751,6 @@ async function render() {
     '<div class="flex flex-col"><label>الفروع المسموحة</label><select id="emp-branches" multiple class="p-2.5 bg-gray-50 border rounded-lg" style="min-height:100px">' + branchOptions + '</select><p class="text-xs text-gray-500 mt-1">اضغط Ctrl/Cmd للاختيار المتعدد. اتركه فارغاً للسماح بجميع الفروع.</p></div>' +
     '</div></div>' +
 
-    // ==================== التبويب 2: الصلاحيات ====================
     '<div id="emp-panel-perms" class="hidden">' +
     '<div class="md:col-span-2">' +
     '<label class="flex items-center gap-2 cursor-pointer mt-2">' +
@@ -2729,7 +2762,6 @@ async function render() {
     '<div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="emp-permissions-checkboxes">' + permsHTML + '</div>' +
     '</div></div></div>' +
 
-    // ==================== التبويب 3: إعدادات الميدان ====================
     '<div id="emp-panel-field" class="hidden">' +
     '<div class="space-y-4 p-4 bg-amber-50 rounded-xl border border-amber-200">' +
     '<h4 class="font-black text-amber-700"><i class="fa-solid fa-truck-fast ml-2"></i>إعدادات الصلاحيات الميدانية</h4>' +
@@ -2748,7 +2780,6 @@ async function render() {
     '<p class="text-xs text-gray-500 mt-1">يُستخدم لتتبع الجهاز المرتبط بالمندوب</p>' +
     '</div></div></div></div>' +
 
-    // ==================== التبويب 4: العملاء المسموحين ====================
     (isEdit ? '<div id="emp-panel-assignments" class="hidden">' +
     '<div class="space-y-4 p-4 bg-blue-50 rounded-xl border border-blue-200">' +
     '<h4 class="font-black text-blue-700"><i class="fa-solid fa-users ml-2"></i>تعيين العملاء للمندوب</h4>' +
@@ -2768,7 +2799,6 @@ async function render() {
 
     Swal.fire({ html: html, width: '950px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
         didOpen: function() {
-            // حفظ مراجع للتبويبات
             window._currentEmpEmail = emp ? emp.email : null;
             window._assignmentCustomers = [];
             window._assignedCustomerIds = [];
@@ -2810,7 +2840,6 @@ async function render() {
                         expiry_date: byId('emp-expiry') ? byId('emp-expiry').value : '',
                         allowed_branch_ids: selectedBranches.join(','),
                         permissions: customPerms,
-                        // الحقول الجديدة
                         allow_all_customers: byId('emp-allow-all-customers') ? byId('emp-allow-all-customers').checked : false,
                         restrict_to_visit_day: byId('emp-restrict-visit-day') ? byId('emp-restrict-visit-day').checked : true,
                         device_id: byId('emp-device-id') ? byId('emp-device-id').value.trim() : ''
@@ -2859,7 +2888,6 @@ async function render() {
                 }
             }
 
-            // تحميل العملاء المعينين مسبقاً (للتعديل)
             if (isEdit && emp) {
                 supabase.from('customer_assignments').select('customer_id, customers!inner(customer_code, name, area)').eq('user_id', emp.id).eq('is_active', true).then(function(res) {
                     window._assignedCustomerIds = (res.data || []).map(function(a) { return a.customer_id; });
@@ -2871,161 +2899,113 @@ async function render() {
         }
     });
 }
-_switchEmpTab: function(tabId) {
-    var panels = ['basic', 'perms', 'field', 'assignments'];
-    for (var i = 0; i < panels.length; i++) {
-        var panel = byId('emp-panel-' + panels[i]);
-        var tab = byId('tab-' + panels[i]);
-        if (panel) panel.classList.add('hidden');
-        if (tab) { tab.classList.remove('border-blue-600', 'text-blue-600'); tab.classList.add('text-gray-500'); }
-    }
-    var activePanel = byId('emp-panel-' + tabId);
-    var activeTab = byId('tab-' + tabId);
-    if (activePanel) activePanel.classList.remove('hidden');
-    if (activeTab) { activeTab.classList.add('border-blue-600', 'text-blue-600'); activeTab.classList.remove('text-gray-500'); }
-    
-    // تحميل العملاء المسموحين عند فتح التبويب
-    if (tabId === 'assignments' && window._currentEmpEmail) {
-        var emp = null;
-        for (var i = 0; i < employeesData.length; i++) {
-            if (employeesData[i].email === window._currentEmpEmail) { emp = employeesData[i]; break; }
+
+    return {
+        render: render,
+        _openModal: openModal,
+        _switchEmpTab: function(tabId) {
+            var panels = ['basic', 'perms', 'field', 'assignments'];
+            for (var i = 0; i < panels.length; i++) {
+                var panel = byId('emp-panel-' + panels[i]);
+                var tab = byId('tab-' + panels[i]);
+                if (panel) panel.classList.add('hidden');
+                if (tab) { tab.classList.remove('border-blue-600', 'text-blue-600'); tab.classList.add('text-gray-500'); }
+            }
+            var activePanel = byId('emp-panel-' + tabId);
+            var activeTab = byId('tab-' + tabId);
+            if (activePanel) activePanel.classList.remove('hidden');
+            if (activeTab) { activeTab.classList.add('border-blue-600', 'text-blue-600'); activeTab.classList.remove('text-gray-500'); }
+            
+            if (tabId === 'assignments' && window._currentEmpEmail) {
+                var emp = null;
+                for (var j = 0; j < employeesData.length; j++) {
+                    if (employeesData[j].email === window._currentEmpEmail) { emp = employeesData[j]; break; }
+                }
+                if (emp && emp.id) {
+                    supabase.from('customer_assignments').select('customer_id, customers!inner(customer_code, name, area, phone)').eq('user_id', emp.id).eq('is_active', true).then(function(res) {
+                        window._assignedCustomerIds = (res.data || []).map(function(a) { return a.customer_id; });
+                        _renderAssignedCustomersList(res.data || []);
+                    });
+                }
+            }
+        },
+        _searchAssignmentCustomers: function(query) {
+            var container = byId('assignment-results');
+            if (!container) return;
+            if (!query || query.trim().length < 2) {
+                safeHTML(container, '<div class="text-center text-gray-400 text-sm py-2">اكتب حرفين على الأقل للبحث</div>');
+                return;
+            }
+            var q = query.toLowerCase();
+            var customers = RW_STATE.data.customers || [];
+            var filtered = [];
+            for (var i = 0; i < customers.length; i++) {
+                var c = customers[i];
+                if ((c.name || '').toLowerCase().indexOf(q) !== -1 || (c.customer_code || '').toLowerCase().indexOf(q) !== -1) {
+                    filtered.push(c);
+                }
+                if (filtered.length >= 20) break;
+            }
+            if (filtered.length === 0) {
+                safeHTML(container, '<div class="text-center text-gray-400 text-sm py-2">لا توجد نتائج</div>');
+                return;
+            }
+            var html = '';
+            for (var j = 0; j < filtered.length; j++) {
+                var cust = filtered[j];
+                var isAssigned = window._assignedCustomerIds.indexOf(cust.id) !== -1;
+                var btnLabel = isAssigned ? '✓ مضاف' : '➕ إضافة';
+                var btnClass = isAssigned ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700 hover:bg-blue-200';
+                html += '<div class="flex justify-between items-center p-2 border-b hover:bg-gray-50">' +
+                    '<div><span class="font-bold text-sm">' + (cust.name || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (cust.customer_code || '') + ' - ' + (cust.area || '') + '</span></div>' +
+                    '<button onclick="RW_Users._toggleAssignmentCustomer(\'' + cust.id + '\', this)" data-cust-id="' + cust.id + '" class="px-3 py-1 rounded-lg text-xs font-bold ' + btnClass + '">' + btnLabel + '</button>' +
+                    '</div>';
+            }
+            safeHTML(container, html);
+        },
+        _toggleAssignmentCustomer: function(customerId, btn) {
+            var idx = window._assignedCustomerIds.indexOf(customerId);
+            if (idx === -1) {
+                window._assignedCustomerIds.push(customerId);
+                btn.innerText = '✓ مضاف';
+                btn.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700';
+            } else {
+                window._assignedCustomerIds.splice(idx, 1);
+                btn.innerText = '➕ إضافة';
+                btn.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-700 hover:bg-blue-200';
+            }
+            var emp = null;
+            for (var i = 0; i < employeesData.length; i++) {
+                if (employeesData[i].email === window._currentEmpEmail) { emp = employeesData[i]; break; }
+            }
+            if (!emp || !emp.id) return;
+            
+            if (idx === -1) {
+                supabase.from('customer_assignments').upsert({
+                    user_id: emp.id,
+                    customer_id: customerId,
+                    assigned_by: (RW_STATE.app.currentUser && RW_STATE.app.currentUser.email) || null,
+                    is_active: true
+                }, { onConflict: 'user_id,customer_id' }).then(function() {});
+            } else {
+                supabase.from('customer_assignments').update({ is_active: false }).eq('user_id', emp.id).eq('customer_id', customerId).then(function() {});
+            }
+            
+            _renderAssignedCustomersListFromIds();
+        },
+        _removeAssignedCustomer: function(customerId) {
+            var idx = window._assignedCustomerIds.indexOf(customerId);
+            if (idx !== -1) window._assignedCustomerIds.splice(idx, 1);
+            var emp = null;
+            for (var i = 0; i < employeesData.length; i++) {
+                if (employeesData[i].email === window._currentEmpEmail) { emp = employeesData[i]; break; }
+            }
+            if (emp && emp.id) {
+                supabase.from('customer_assignments').update({ is_active: false }).eq('user_id', emp.id).eq('customer_id', customerId).then(function() {});
+            }
+            _renderAssignedCustomersListFromIds();
         }
-        if (emp && emp.id) {
-            supabase.from('customer_assignments').select('customer_id, customers!inner(customer_code, name, area, phone)').eq('user_id', emp.id).eq('is_active', true).then(function(res) {
-                window._assignedCustomerIds = (res.data || []).map(function(a) { return a.customer_id; });
-                _renderAssignedCustomersList(res.data || []);
-            });
-        }
-    }
-},
-
-_searchAssignmentCustomers: function(query) {
-    var container = byId('assignment-results');
-    if (!container) return;
-    if (!query || query.trim().length < 2) {
-        safeHTML(container, '<div class="text-center text-gray-400 text-sm py-2">اكتب حرفين على الأقل للبحث</div>');
-        return;
-    }
-    var q = query.toLowerCase();
-    var customers = RW_STATE.data.customers || [];
-    var filtered = [];
-    for (var i = 0; i < customers.length; i++) {
-        var c = customers[i];
-        if ((c.name || '').toLowerCase().indexOf(q) !== -1 || (c.customer_code || '').toLowerCase().indexOf(q) !== -1) {
-            filtered.push(c);
-        }
-        if (filtered.length >= 20) break;
-    }
-    if (filtered.length === 0) {
-        safeHTML(container, '<div class="text-center text-gray-400 text-sm py-2">لا توجد نتائج</div>');
-        return;
-    }
-    var html = '';
-    for (var j = 0; j < filtered.length; j++) {
-        var cust = filtered[j];
-        var isAssigned = window._assignedCustomerIds.indexOf(cust.id) !== -1;
-        var btnLabel = isAssigned ? '✓ مضاف' : '➕ إضافة';
-        var btnClass = isAssigned ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700 hover:bg-blue-200';
-        html += '<div class="flex justify-between items-center p-2 border-b hover:bg-gray-50">' +
-            '<div><span class="font-bold text-sm">' + (cust.name || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (cust.customer_code || '') + ' - ' + (cust.area || '') + '</span></div>' +
-            '<button onclick="RW_Users._toggleAssignmentCustomer(\'' + cust.id + '\', this)" data-cust-id="' + cust.id + '" class="px-3 py-1 rounded-lg text-xs font-bold ' + btnClass + '">' + btnLabel + '</button>' +
-            '</div>';
-    }
-    safeHTML(container, html);
-},
-
-_toggleAssignmentCustomer: function(customerId, btn) {
-    var idx = window._assignedCustomerIds.indexOf(customerId);
-    if (idx === -1) {
-        window._assignedCustomerIds.push(customerId);
-        btn.innerText = '✓ مضاف';
-        btn.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-green-100 text-green-700';
-    } else {
-        window._assignedCustomerIds.splice(idx, 1);
-        btn.innerText = '➕ إضافة';
-        btn.className = 'px-3 py-1 rounded-lg text-xs font-bold bg-blue-100 text-blue-700 hover:bg-blue-200';
-    }
-    // حفظ التغيير فوراً في Supabase
-    var emp = null;
-    for (var i = 0; i < employeesData.length; i++) {
-        if (employeesData[i].email === window._currentEmpEmail) { emp = employeesData[i]; break; }
-    }
-    if (!emp || !emp.id) return;
-    
-    if (idx === -1) {
-        // إضافة
-        supabase.from('customer_assignments').upsert({
-            user_id: emp.id,
-            customer_id: customerId,
-            assigned_by: (RW_STATE.app.currentUser && RW_STATE.app.currentUser.email) || null,
-            is_active: true
-        }, { onConflict: 'user_id,customer_id' }).then(function() {});
-    } else {
-        // حذف (تعطيل)
-        supabase.from('customer_assignments').update({ is_active: false }).eq('user_id', emp.id).eq('customer_id', customerId).then(function() {});
-    }
-    
-    // تحديث القائمة المعروضة
-    _renderAssignedCustomersListFromIds();
-}
-};
-
-// دالة مساعدة خارجية (تُعرض قائمة العملاء المعينين)
-function _renderAssignedCustomersList(assignments) {
-    var container = byId('assigned-customers-list');
-    if (!container) return;
-    if (!assignments || assignments.length === 0) {
-        safeHTML(container, '<div class="text-center text-gray-400 text-sm py-4">لا يوجد عملاء معينون</div>');
-        return;
-    }
-    var html = '';
-    for (var i = 0; i < assignments.length; i++) {
-        var a = assignments[i];
-        var cust = a.customers || {};
-        html += '<div class="flex justify-between items-center p-2 border-b">' +
-            '<div><span class="font-bold text-sm">' + (cust.name || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (cust.customer_code || '') + ' - ' + (cust.area || '') + '</span></div>' +
-            '<button onclick="RW_Users._removeAssignedCustomer(\'' + a.customer_id + '\')" class="text-red-500 text-xs font-bold">✕ إزالة</button>' +
-            '</div>';
-    }
-    safeHTML(container, html);
-}
-
-function _renderAssignedCustomersListFromIds() {
-    var ids = window._assignedCustomerIds || [];
-    var container = byId('assigned-customers-list');
-    if (!container) return;
-    if (ids.length === 0) {
-        safeHTML(container, '<div class="text-center text-gray-400 text-sm py-4">لا يوجد عملاء معينون</div>');
-        return;
-    }
-    var customers = RW_STATE.data.customers || [];
-    var map = {};
-    for (var i = 0; i < customers.length; i++) { map[customers[i].id] = customers[i]; }
-    var html = '';
-    for (var j = 0; j < ids.length; j++) {
-        var cust = map[ids[j]] || {};
-        html += '<div class="flex justify-between items-center p-2 border-b">' +
-            '<div><span class="font-bold text-sm">' + (cust.name || ids[j]) + '</span><span class="text-xs text-gray-400 mr-2">' + (cust.customer_code || '') + '</span></div>' +
-            '<button onclick="RW_Users._removeAssignedCustomer(\'' + ids[j] + '\')" class="text-red-500 text-xs font-bold">✕ إزالة</button>' +
-            '</div>';
-    }
-    safeHTML(container, html);
-}
-
-// دالة إزالة عميل من التعيين
-RW_Users._removeAssignedCustomer = function(customerId) {
-    var idx = window._assignedCustomerIds.indexOf(customerId);
-    if (idx !== -1) window._assignedCustomerIds.splice(idx, 1);
-    var emp = null;
-    for (var i = 0; i < employeesData.length; i++) {
-        if (employeesData[i].email === window._currentEmpEmail) { emp = employeesData[i]; break; }
-    }
-    if (emp && emp.id) {
-        supabase.from('customer_assignments').update({ is_active: false }).eq('user_id', emp.id).eq('customer_id', customerId).then(function() {});
-    }
-    _renderAssignedCustomersListFromIds();
-};
-    return { render: render, _openModal: openModal };
+    };
 })();
 window.RW_Users = RW_Users;
 // ============================================================
