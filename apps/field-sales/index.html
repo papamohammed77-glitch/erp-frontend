@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Tahoma,sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
@@ -53,7 +54,6 @@
 <!-- التطبيق الرئيسي -->
 <div id="mainApp" class="hidden flex flex-col h-full">
 
-    <!-- الهيدر -->
     <header class="bg-blue-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
         <div class="flex items-center gap-2">
             <button onclick="App.toggleDrawer()" class="text-white text-xl"><i class="fa-solid fa-bars"></i></button>
@@ -67,16 +67,11 @@
         </div>
     </header>
 
-    <!-- شريط التحذير الائتماني -->
     <div id="creditBanner" class="hidden text-center py-2 text-sm font-bold flex-shrink-0"></div>
-
-    <!-- المحتوى الرئيسي -->
     <main id="mainContent" class="flex-1 overflow-y-auto pb-20"></main>
 
-    <!-- شريط التنقل السفلي -->
     <nav id="bottomNav" class="bg-white border-t fixed bottom-0 left-0 right-0 z-30 h-16 flex justify-around items-center text-gray-400 text-xs flex-shrink-0"></nav>
 
-    <!-- القائمة الجانبية -->
     <div id="drawerOverlay" class="drawer-overlay" onclick="App.toggleDrawer()"></div>
     <div id="mainDrawer" class="drawer">
         <div class="p-4 bg-blue-700 text-white">
@@ -87,7 +82,6 @@
         <nav class="p-2" id="drawerNav"></nav>
     </div>
 
-    <!-- سلة الأوردر -->
     <div class="cart-overlay" id="cartOverlay" onclick="App.closeCart()"></div>
     <div class="cart-sheet" id="cartSheet">
         <div class="p-4 border-b flex justify-between items-center"><span class="font-black">السلة</span><button onclick="App.closeCart()" class="w-8 h-8 bg-gray-100 rounded-full"><i class="fa-solid fa-xmark"></i></button></div>
@@ -95,7 +89,6 @@
         <div class="p-4 border-t"><button onclick="App.closeCart();App.goToReview()" class="w-full bg-blue-700 text-white py-3 rounded-xl font-black">مراجعة وإتمام</button></div>
     </div>
 
-    <!-- ماسح الباركود -->
     <div id="barcodeScanner" class="barcode-scanner">
         <div class="p-4 bg-gray-900 text-white flex justify-between items-center"><span class="font-black"><i class="fa-solid fa-barcode text-blue-400 ml-2"></i> جاري مسح الباركود</span><button onclick="App.stopBarcodeScanner()" class="bg-red-600 text-white px-4 py-1.5 rounded-xl text-xs font-bold">إغلاق</button></div>
         <div class="flex-1 relative"><video id="scannerVideo" class="w-full h-full object-cover" playsinline></video><div class="absolute inset-0 border-4 border-blue-500 border-dashed rounded-2xl opacity-70 m-8 pointer-events-none"></div></div>
@@ -122,9 +115,6 @@ db.version(2).stores({
     pending_updates: '++id, type, status'
 });
 
-// ============================================================
-// دوال مساعدة
-// ============================================================
 function byId(id) { return document.getElementById(id); }
 function safeText(el, text) { if (el) el.textContent = text; }
 function safeHTML(el, html) { if (el) el.innerHTML = html; }
@@ -151,7 +141,6 @@ var App = {
     lastScanTime: 0,
     currentCategory: 'الكل',
 
-    // ==================== تهيئة ====================
     init: function() {
         var self = this;
         supabase.auth.getSession().then(function(res) {
@@ -199,7 +188,6 @@ var App = {
         });
     },
 
-    // ==================== الاتصال والمزامنة ====================
     updateConnectionStatus: function() {
         var dot = byId('connDot'), label = byId('connLabel');
         if (navigator.onLine) { dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400'; label.innerText = 'متصل'; }
@@ -232,7 +220,6 @@ var App = {
         });
     },
 
-    // ==================== Drawer ====================
     toggleDrawer: function() { byId('mainDrawer').classList.toggle('open'); byId('drawerOverlay').classList.toggle('show'); },
 
     renderDrawer: function() {
@@ -252,7 +239,6 @@ var App = {
 
     switchRole: function(role) { this.currentRole = role; this.toggleDrawer(); this.renderBottomNav(); safeText(byId('headerTitle'), this.companyName + ' - ' + role); },
 
-    // ==================== شريط التنقل السفلي ====================
     renderBottomNav: function() {
         var role = this.currentRole || 'تلي سيلز';
         var html = '';
@@ -297,7 +283,7 @@ var App = {
         else if (view === 'vanInventory') this.renderVanInventoryView();
     },
 
-    // ==================== شاشة العملاء ====================
+    // ==================== العملاء ====================
     renderCustomerView: function() {
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">العملاء</h2>';
         html += '<input type="text" id="custSearch" oninput="App.searchCustomers(this.value)" placeholder="ابحث باسم، كود، هاتف..." class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm mb-4">';
@@ -345,7 +331,7 @@ var App = {
         });
     },
 
-    // ==================== المنتجات والتصنيفات ====================
+    // ==================== المنتجات ====================
     extractAndRenderCategories: function() {
         var self = this;
         db.items.toArray().then(function(allItems) {
@@ -558,8 +544,144 @@ var App = {
         var t = this.calcTotals(); safeText(byId('posTotal'), fmtNum(t.total));
     },
 
-    renderPOSInvoicesView: function() { safeHTML(byId('mainContent'), '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">فواتير اليوم</h2><div class="text-center text-gray-400 p-4">قيد التطوير</div></div>'); },
-    renderOrdersView: function() { safeHTML(byId('mainContent'), '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">أوردراتي</h2><div class="text-center text-gray-400 p-4">قيد التطوير</div></div>'); },
+    // ==================== أوردراتي ====================
+    renderOrdersView: function() {
+        var self = this;
+        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">أوردراتي</h2>';
+        html += '<div class="bg-white p-3 rounded-2xl shadow-sm border mb-4"><div class="flex gap-2 flex-wrap">';
+        html += '<select id="orderStatusFilter" onchange="App.renderOrdersList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><option value="">كل الحالات</option><option value="Draft">مسودة</option><option value="Confirmed">مؤكد</option><option value="Pending">قيد الانتظار</option><option value="Invoiced">مفوتر</option><option value="Delivered">تم التوصيل</option><option value="Cancelled">ملغي</option></select>';
+        html += '<input type="date" id="orderDateFilter" onchange="App.renderOrdersList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold">';
+        html += '<button onclick="byId(\'orderStatusFilter\').value=\'\';byId(\'orderDateFilter\').value=\'\';App.renderOrdersList();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">إعادة تعيين</button>';
+        html += '</div></div>';
+        html += '<div id="ordersListContainer" class="space-y-3"><div class="text-center text-gray-400 py-8">جاري التحميل...</div></div>';
+        html += '<div id="ordersPagination" class="flex justify-center gap-2 mt-4"></div></div>';
+        safeHTML(byId('mainContent'), html);
+        this.renderOrdersList();
+    },
+
+    renderOrdersList: function() {
+        var self = this;
+        var container = byId('ordersListContainer');
+        if (!container) return;
+        safeHTML(container, '<div class="text-center text-gray-400 py-8">جاري التحميل...</div>');
+        var query = supabase.from('orders').select('*').eq('created_by', this.currentUser.email).order('order_date', { ascending: false }).limit(50);
+        var statusFilter = byId('orderStatusFilter') ? byId('orderStatusFilter').value : '';
+        var dateFilter = byId('orderDateFilter') ? byId('orderDateFilter').value : '';
+        if (statusFilter) { query = query.eq('order_status', statusFilter); }
+        if (dateFilter) { query = query.eq('order_date', dateFilter); }
+        query.then(function(res) {
+            var orders = res.data || [];
+            if (!orders.length) { safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد أوردرات</div>'); return; }
+            var html = '';
+            for (var i = 0; i < orders.length; i++) {
+                var o = orders[i];
+                var statusColor = '', statusLabel = o.order_status || '';
+                if (o.order_status === 'Draft') { statusColor = 'bg-yellow-100 text-yellow-700'; statusLabel = 'مسودة'; }
+                else if (o.order_status === 'Confirmed') { statusColor = 'bg-blue-100 text-blue-700'; statusLabel = 'مؤكد'; }
+                else if (o.order_status === 'Pending') { statusColor = 'bg-purple-100 text-purple-700'; statusLabel = 'قيد الانتظار'; }
+                else if (o.order_status === 'Invoiced') { statusColor = 'bg-green-100 text-green-700'; statusLabel = 'مفوتر'; }
+                else if (o.order_status === 'Delivered') { statusColor = 'bg-emerald-100 text-emerald-700'; statusLabel = 'تم التوصيل'; }
+                else if (o.order_status === 'Cancelled') { statusColor = 'bg-red-100 text-red-700'; statusLabel = 'ملغي'; }
+                else { statusColor = 'bg-gray-100 text-gray-700'; }
+                html += '<div onclick="App.showOrderDetail(\'' + o.id + '\')" class="bg-white p-4 rounded-2xl shadow-sm border cursor-pointer hover:bg-blue-50 transition">';
+                html += '<div class="flex justify-between items-start mb-2"><div><span class="font-black text-blue-600 text-sm">' + (o.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (o.order_date ? new Date(o.order_date).toLocaleDateString('ar-EG') : '') + '</span></div><span class="px-2 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span></div>';
+                html += '<div class="flex justify-between items-center"><div><span class="font-bold text-sm">' + (o.customer_name || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (o.area || '') + '</span></div><span class="font-black text-emerald-600 text-sm">' + fmtNum(o.total_amount) + ' EGP</span></div>';
+                if (o.order_status === 'Draft') { html += '<div class="flex gap-2 mt-2 pt-2 border-t"><button onclick="event.stopPropagation();App.confirmOrder(\'' + o.order_code + '\')" class="flex-1 bg-blue-600 text-white text-xs py-1.5 rounded-lg font-bold">تأكيد</button><button onclick="event.stopPropagation();App.cancelOrder(\'' + o.order_code + '\')" class="flex-1 bg-red-100 text-red-600 text-xs py-1.5 rounded-lg font-bold">إلغاء</button></div>'; }
+                else if (o.order_status === 'Confirmed') { html += '<div class="flex gap-2 mt-2 pt-2 border-t"><button onclick="event.stopPropagation();App.cancelOrder(\'' + o.order_code + '\')" class="flex-1 bg-red-100 text-red-600 text-xs py-1.5 rounded-lg font-bold">إلغاء</button></div>'; }
+                html += '</div>';
+            }
+            safeHTML(container, html);
+        }).catch(function(e) { console.error('Failed to load orders:', e); safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الأوردرات</div>'); });
+    },
+
+    showOrderDetail: function(orderId) {
+        var self = this;
+        Swal.showLoading();
+        supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
+            var order = oRes.data;
+            if (!order) { Swal.close(); toast('الأوردر غير موجود', 'error'); return; }
+            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
+                Swal.close();
+                var details = dRes.data || [];
+                var statusLabel = order.order_status || '';
+                if (order.order_status === 'Draft') statusLabel = 'مسودة';
+                else if (order.order_status === 'Confirmed') statusLabel = 'مؤكد';
+                else if (order.order_status === 'Pending') statusLabel = 'قيد الانتظار';
+                else if (order.order_status === 'Invoiced') statusLabel = 'مفوتر';
+                else if (order.order_status === 'Delivered') statusLabel = 'تم التوصيل';
+                else if (order.order_status === 'Cancelled') statusLabel = 'ملغي';
+                var html = '<div class="text-right">';
+                html += '<div class="bg-gray-50 p-4 rounded-xl mb-4"><div class="flex justify-between mb-2"><span class="font-black text-lg">' + (order.order_code || '') + '</span><span class="text-sm font-bold">' + statusLabel + '</span></div>';
+                html += '<p><strong>العميل:</strong> ' + (order.customer_name || '') + '</p><p><strong>المنطقة:</strong> ' + (order.area || '') + '</p><p><strong>التاريخ:</strong> ' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p><p><strong>طريقة الدفع:</strong> ' + (order.payment_type || '') + '</p></div>';
+                if (details.length > 0) {
+                    html += '<div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-gray-100"><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                    var total = 0;
+                    for (var i = 0; i < details.length; i++) { var d = details[i]; var lt = Number(d.line_amount) || (Number(d.qty) * Number(d.unit_price)); total += lt; html += '<tr><td class="p-2 font-semibold">' + (d.item_name || '') + '</td><td class="p-2 text-center">' + d.qty + '</td><td class="p-2 text-center">' + fmtNum(d.unit_price) + '</td><td class="p-2 text-center font-bold">' + fmtNum(lt) + '</td></tr>'; }
+                    html += '</tbody></table></div><div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + fmtNum(order.total_amount || total) + ' EGP</div>';
+                }
+                if (order.order_status === 'Invoiced' || order.order_status === 'Delivered') { html += '<div class="text-center mt-4 pt-4 border-t"><p class="font-bold text-sm mb-2">رمز الفاتورة</p><div id="orderQrCode" class="inline-block"></div></div>'; }
+                html += '</div>';
+                Swal.fire({ title: 'تفاصيل الأوردر', html: html, width: '700px', showCloseButton: true, showConfirmButton: false,
+                    didOpen: function() {
+                        if (order.order_status === 'Invoiced' || order.order_status === 'Delivered') {
+                            setTimeout(function() { var qrContainer = document.getElementById('orderQrCode'); if (qrContainer && typeof QRCode !== 'undefined') { var qrText = (order.order_code || '') + '\n' + (order.customer_name || '') + '\n' + (order.total_amount || '') + '\n' + (order.order_date || ''); qrContainer.innerHTML = ''; new QRCode(qrContainer, { text: qrText, width: 120, height: 120 }); } }, 300);
+                        }
+                    }
+                });
+            });
+        }).catch(function(e) { Swal.close(); console.error('Failed to load order detail:', e); });
+    },
+
+    confirmOrder: function(orderCode) {
+        var self = this;
+        Swal.fire({ title: 'تأكيد الأوردر', text: 'تحويل ' + orderCode + ' إلى مؤكد؟', icon: 'question', showCancelButton: true, confirmButtonText: 'تأكيد', cancelButtonText: 'إلغاء' }).then(function(cf) {
+            if (!cf.isConfirmed) return;
+            Swal.showLoading();
+            supabase.auth.getSession().then(function(ses) { var t = ses.data.session && ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/confirm-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: orderCode }) }).then(function(res) { return res.json(); }); }).then(function(json) { Swal.close(); if (json.success) { toast('تم التأكيد', 'success'); self.renderOrdersList(); } else { toast(json.msg || 'فشل التأكيد', 'error'); } }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
+        });
+    },
+
+    cancelOrder: function(orderCode) {
+        var self = this;
+        Swal.fire({ title: 'إلغاء الأوردر', text: 'هل أنت متأكد من إلغاء ' + orderCode + '؟', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'نعم، ألغِ', cancelButtonText: 'تراجع' }).then(function(cf) {
+            if (!cf.isConfirmed) return;
+            Swal.showLoading();
+            supabase.auth.getSession().then(function(ses) { var t = ses.data.session && ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/delete-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: orderCode }) }).then(function(res) { return res.json(); }); }).then(function(json) { Swal.close(); if (json.success) { toast('تم الإلغاء', 'success'); self.renderOrdersList(); } else { toast(json.msg || 'فشل الإلغاء', 'error'); } }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
+        });
+    },
+
+    // ==================== فواتير اليوم ====================
+    renderPOSInvoicesView: function() {
+        var self = this;
+        var today = new Date().toISOString().split('T')[0];
+        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">فواتير اليوم</h2>';
+        html += '<div class="grid grid-cols-2 gap-3 mb-4" id="posSummary"></div>';
+        html += '<div class="bg-white p-3 rounded-2xl shadow-sm border mb-4"><div class="flex gap-2"><input type="date" id="posInvDateFilter" value="' + today + '" onchange="App.renderPOSInvoicesList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><button onclick="byId(\'posInvDateFilter\').value=\'' + today + '\';App.renderPOSInvoicesList();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">اليوم</button></div></div>';
+        html += '<div id="posInvoicesList" class="space-y-3"><div class="text-center text-gray-400 py-8">جاري التحميل...</div></div></div>';
+        safeHTML(byId('mainContent'), html);
+        this.renderPOSInvoicesList();
+    },
+
+    renderPOSInvoicesList: function() {
+        var self = this;
+        var container = byId('posInvoicesList');
+        var summaryContainer = byId('posSummary');
+        if (!container) return;
+        safeHTML(container, '<div class="text-center text-gray-400 py-8">جاري التحميل...</div>');
+        var dateFilter = byId('posInvDateFilter') ? byId('posInvDateFilter').value : new Date().toISOString().split('T')[0];
+        supabase.from('orders').select('*').eq('created_by', this.currentUser.email).eq('order_date', dateFilter).order('order_date', { ascending: false }).then(function(res) {
+            var invoices = res.data || [];
+            if (!invoices.length) { safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد فواتير لهذا اليوم</div>'); if (summaryContainer) safeHTML(summaryContainer, ''); return; }
+            var totalAmount = 0, countCash = 0, countCredit = 0;
+            for (var i = 0; i < invoices.length; i++) { totalAmount += Number(invoices[i].total_amount) || 0; if (invoices[i].payment_type === 'نقدي') countCash++; else countCredit++; }
+            if (summaryContainer) { safeHTML(summaryContainer, '<div class="bg-white p-3 rounded-2xl shadow-sm border text-center"><span class="text-xs text-gray-400">عدد الفواتير</span><div class="text-2xl font-black text-blue-600">' + invoices.length + '</div></div><div class="bg-white p-3 rounded-2xl shadow-sm border text-center"><span class="text-xs text-gray-400">إجمالي اليوم</span><div class="text-2xl font-black text-emerald-600">' + fmtNum(totalAmount) + '</div></div><div class="bg-white p-3 rounded-2xl shadow-sm border text-center"><span class="text-xs text-gray-400">نقدي</span><div class="text-xl font-black text-green-600">' + countCash + '</div></div><div class="bg-white p-3 rounded-2xl shadow-sm border text-center"><span class="text-xs text-gray-400">آجل</span><div class="text-xl font-black text-orange-600">' + countCredit + '</div></div>'); }
+            var html = '';
+            for (var j = 0; j < invoices.length; j++) { var inv = invoices[j]; html += '<div onclick="App.showOrderDetail(\'' + inv.id + '\')" class="bg-white p-4 rounded-2xl shadow-sm border cursor-pointer hover:bg-blue-50 transition"><div class="flex justify-between items-start"><div><span class="font-black text-blue-600 text-sm">' + (inv.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (inv.order_date || '') + '</span></div><span class="font-black text-emerald-600">' + fmtNum(inv.total_amount) + ' EGP</span></div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold">' + (inv.customer_name || '') + '</span><span class="text-xs px-2 py-0.5 rounded-full ' + (inv.payment_type === 'نقدي' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700') + '">' + (inv.payment_type || '') + '</span></div></div>'; }
+            safeHTML(container, html);
+        }).catch(function(e) { console.error('Failed to load POS invoices:', e); safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الفواتير</div>'); });
+    },
+
+    // ==================== فان سيلز (قيد التطوير) ====================
     renderVanStockView: function() { safeHTML(byId('mainContent'), '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">العهدة</h2><div class="text-center text-gray-400 p-4">قيد التطوير</div></div>'); },
     renderVanInventoryView: function() { safeHTML(byId('mainContent'), '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">الجرد اليومي</h2><div class="text-center text-gray-400 p-4">قيد التطوير</div></div>'); },
 
@@ -582,36 +704,20 @@ var App = {
             navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function(stream) {
                 var video = byId('scannerVideo'); video.srcObject = stream; video.play();
                 self.scannerStream = stream; self.scannerActive = true;
-                function scanLoop() {
-                    if (!self.scannerActive) return;
-                    detector.detect(video).then(function(barcodes) {
-                        if (barcodes.length > 0) { var code = barcodes[0].rawValue, now = Date.now(); if (code !== self.lastScanned || (now - self.lastScanTime) > 2000) { self.lastScanned = code; self.lastScanTime = now; self.handleBarcode(code); } }
-                        requestAnimationFrame(scanLoop);
-                    }).catch(function() { requestAnimationFrame(scanLoop); });
-                }
+                function scanLoop() { if (!self.scannerActive) return; detector.detect(video).then(function(barcodes) { if (barcodes.length > 0) { var code = barcodes[0].rawValue, now = Date.now(); if (code !== self.lastScanned || (now - self.lastScanTime) > 2000) { self.lastScanned = code; self.lastScanTime = now; self.handleBarcode(code); } } requestAnimationFrame(scanLoop); }).catch(function() { requestAnimationFrame(scanLoop); }); }
                 requestAnimationFrame(scanLoop);
             }).catch(function() { toast('تعذر الوصول للكاميرا', 'error'); self.stopBarcodeScanner(); });
         } else { toast('المتصفح لا يدعم الماسح', 'warning'); self.stopBarcodeScanner(); }
     },
 
-    stopBarcodeScanner: function() {
-        this.scannerActive = false;
-        if (this.scannerStream) { var tracks = this.scannerStream.getTracks(); for (var i = 0; i < tracks.length; i++) tracks[i].stop(); this.scannerStream = null; }
-        byId('barcodeScanner').classList.remove('active');
-    },
+    stopBarcodeScanner: function() { this.scannerActive = false; if (this.scannerStream) { var tracks = this.scannerStream.getTracks(); for (var i = 0; i < tracks.length; i++) tracks[i].stop(); this.scannerStream = null; } byId('barcodeScanner').classList.remove('active'); },
 
     handleBarcode: function(code) {
         var self = this;
-        db.items.filter(function(i) { return i.barcode === code || i.item_code === code; }).first().then(function(item) {
-            if (item) { self.addToCart(item.item_code); toast('تم: ' + (item.name || code), 'success'); }
-            else { toast('صنف غير معروف: ' + code, 'warning'); }
-        });
+        db.items.filter(function(i) { return i.barcode === code || i.item_code === code; }).first().then(function(item) { if (item) { self.addToCart(item.item_code); toast('تم: ' + (item.name || code), 'success'); } else { toast('صنف غير معروف: ' + code, 'warning'); } });
     }
 };
 
-// ============================================================
-// بدء التطبيق
-// ============================================================
 if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function() {}); }
 document.addEventListener('DOMContentLoaded', function() { App.init(); });
 </script>
