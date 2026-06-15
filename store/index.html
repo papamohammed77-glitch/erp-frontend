@@ -16,16 +16,13 @@
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Tahoma,sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
-        
         .cart-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:45;display:none}
         .cart-overlay.show{display:block}
         .cart-panel{position:fixed;top:0;right:0;bottom:0;width:100%;max-width:420px;background:#fff;z-index:50;box-shadow:-10px 0 30px rgba(0,0,0,.1);transform:translateX(100%);transition:transform .3s ease;display:flex;flex-direction:column}
         .cart-panel.open{transform:translateX(0)}
-        
         .line-clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
         .scrollbar-none::-webkit-scrollbar{display:none}
         .scrollbar-none{-ms-overflow-style:none;scrollbar-width:none}
-        
         @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         .animate-fadeIn{animation:fadeIn .35s ease forwards}
         .pulse-dot{animation:pulse 1.5s ease-in-out infinite}
@@ -120,9 +117,8 @@
         <div class="space-y-2 pt-2 border-t">
             <input type="text" id="custName" placeholder="الاسم الكامل *" class="w-full text-sm font-bold bg-white border rounded-xl px-3 py-2.5 outline-none focus:border-blue-500">
             <input type="text" id="custPhone" placeholder="رقم الهاتف *" class="w-full text-sm font-bold bg-white border rounded-xl px-3 py-2.5 outline-none focus:border-blue-500">
-            <input type="email" id="custEmail" placeholder="البريد الإلكتروني" class="w-full text-sm font-bold bg-white border rounded-xl px-3 py-2.5 outline-none focus:border-blue-500">
             <input type="text" id="custArea" placeholder="المنطقة / العنوان *" class="w-full text-sm font-bold bg-white border rounded-xl px-3 py-2.5 outline-none focus:border-blue-500">
-            <textarea id="custNotes" placeholder="ملاحظات إضافية" rows="2" class="w-full text-sm font-bold bg-white border rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"></textarea>
+            <textarea id="custNotes" placeholder="ملاحظات إضافية (اختياري)" rows="2" class="w-full text-sm font-bold bg-white border rounded-xl px-3 py-2.5 outline-none focus:border-blue-500"></textarea>
         </div>
         <button onclick="Store.checkout()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 rounded-xl transition"><i class="fa-solid fa-check ml-1"></i> إتمام الطلب</button>
     </div>
@@ -137,7 +133,6 @@ var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 var db = new Dexie('RW_Store');
 db.version(1).stores({ products: 'item_code', settings: 'key' });
 
-// ==================== تنسيق العملة ====================
 function formatCurrency(amount, currency) {
     var symbol = 'ر.س';
     if (currency === 'SAR') symbol = 'ر.س';
@@ -246,7 +241,6 @@ var Store = {
         var d = loadCustomerData();
         if (document.getElementById('custName') && d.name) document.getElementById('custName').value = d.name;
         if (document.getElementById('custPhone') && d.phone) document.getElementById('custPhone').value = d.phone;
-        if (document.getElementById('custEmail') && d.email) document.getElementById('custEmail').value = d.email;
         if (document.getElementById('custArea') && d.area) document.getElementById('custArea').value = d.area;
     },
 
@@ -290,7 +284,6 @@ var Store = {
 
     buildProductCard: function(item) {
         var curr = this.settings.currency || 'SAR';
-        var sym = getCurrencySymbol(curr);
         var price = Number(item.sales_price) || 0;
         var oldPrice = Number(item.old_price) || 0;
         var hasDisc = item.discount_percent > 0;
@@ -315,7 +308,7 @@ var Store = {
         if (saved > 0) {
             html += '<div class="flex items-baseline gap-1.5"><span class="text-lg font-black text-red-600">' + formatCurrency(finalPrice, curr) + '</span></div>';
             html += '<div class="flex items-center gap-2 mt-0.5"><span class="text-xs text-gray-400 line-through">' + formatCurrency((oldPrice||price), curr) + '</span></div>';
-            html += '<div class="text-[10px] text-emerald-600 font-bold">' + formatCurrency(saved, curr) + ' saved</div>';
+            html += '<div class="text-[10px] text-emerald-600 font-bold">وفرت ' + formatCurrency(saved, curr) + '</div>';
         } else {
             html += '<div class="flex items-baseline gap-1.5"><span class="text-lg font-black text-gray-800">' + formatCurrency(price, curr) + '</span></div>';
         }
@@ -334,7 +327,7 @@ var Store = {
         var product = null;
         for (var i = 0; i < this.products.length; i++) { if (this.products[i].item_code === code) { product = this.products[i]; break; } }
         if (!product) return;
-        var curr = this.settings.currency || 'SAR', sym = getCurrencySymbol(curr);
+        var curr = this.settings.currency || 'SAR';
         var price = Number(product.sales_price)||0, oldPrice = Number(product.old_price)||0;
         var hasDisc = product.discount_percent > 0, finalPrice = hasDisc ? price - (price * product.discount_percent / 100) : price;
         var saved = hasDisc ? price - finalPrice : (oldPrice > price ? oldPrice - price : 0);
@@ -342,11 +335,16 @@ var Store = {
         for (var j = 0; j < this.cart.length; j++) { if (this.cart[j].code === code) { inCart = this.cart[j].qty; break; } }
         var img = product.image_url || 'https://via.placeholder.com/400';
         var html = '<div class="text-right"><img src="' + img + '" class="w-full max-h-64 object-contain rounded-xl mb-4 bg-gray-50"><h2 class="text-xl font-black text-gray-800 mb-2">' + (product.name||'') + '</h2>';
-        if (product.description) html += '<p class="text-sm text-gray-500 mb-4">' + product.description + '</p>';
+        if (product.description) {
+            html += '<div class="bg-gray-50 p-4 rounded-xl mb-4">';
+            html += '<h4 class="font-bold text-sm text-gray-700 mb-2"><i class="fa-solid fa-align-left ml-1"></i> وصف المنتج</h4>';
+            html += '<p class="text-sm text-gray-600 leading-relaxed">' + product.description + '</p>';
+            html += '</div>';
+        }
         html += '<div class="bg-gray-50 p-4 rounded-xl mb-4">';
         if (saved > 0) {
             html += '<div class="flex items-baseline gap-3 mb-2"><span class="text-3xl font-black text-red-600">' + formatCurrency(finalPrice, curr) + '</span><span class="text-lg text-gray-400 line-through">' + formatCurrency((oldPrice||price), curr) + '</span><span class="bg-red-100 text-red-600 text-sm font-black px-2 py-1 rounded-full">-' + (product.discount_percent || Math.round(((oldPrice-price)/oldPrice)*100)) + '%</span></div>';
-            html += '<p class="text-emerald-600 font-bold">' + formatCurrency(saved, curr) + ' saved</p>';
+            html += '<p class="text-emerald-600 font-bold">وفرت ' + formatCurrency(saved, curr) + '</p>';
         } else { html += '<span class="text-3xl font-black text-gray-800">' + formatCurrency(price, curr) + '</span>'; }
         html += '</div><div class="flex items-center gap-2 text-sm text-gray-500 mb-4"><i class="fa-solid fa-star text-yellow-400"></i><span>متوفر</span><span class="mx-2">|</span><span>' + (product.unit||'حبة') + '</span></div>';
         if (inCart > 0) {
@@ -462,7 +460,7 @@ var Store = {
         var name=(document.getElementById('custName').value||'').trim(), phone=(document.getElementById('custPhone').value||'').trim(), area=(document.getElementById('custArea').value||'').trim();
         if (!name||!phone||!area) { Swal.fire({icon:'warning',title:'أكمل بيانات العميل في السلة'}); return; }
         if (!this.cart.length) { Swal.fire({icon:'warning',title:'السلة فارغة'}); return; }
-        saveCustomerData({name:name,phone:phone,email:(document.getElementById('custEmail').value||'').trim(),area:area});
+        saveCustomerData({name:name,phone:phone,area:area});
         var subtotal=0;
         for (var i=0;i<this.cart.length;i++) { var ip=this.cart[i].price; if(this.cart[i].discountPercent>0) ip=ip-(ip*this.cart[i].discountPercent/100); subtotal+=ip*this.cart[i].qty; }
         var delivery=this.settings.deliveryFee||0;
@@ -472,7 +470,7 @@ var Store = {
         var total=afterCoupon+delivery+taxAmount;
         if ((this.settings.minInvoiceAmount||0)>0 && total<(this.settings.minInvoiceAmount||0)) { Swal.fire({icon:'warning',title:'الحد الأدنى: '+(this.settings.minInvoiceAmount||0)}); return; }
         var self=this;
-        Swal.fire({title:'تأكيد الطلب',html:'<div class="text-right"><p>الإجمالي: <strong>'+formatCurrency(total,self.settings.currency||'SAR')+'</strong></p><p class="text-sm text-gray-500 mt-2">'+name+' | '+phone+' | '+area+'</p></div>',showCancelButton:true,confirmButtonText:'تأكيد',cancelButtonText:'رجوع'}).then(function(r){if(r.isConfirmed) self.submitOrder({name:name,phone:phone,email:(document.getElementById('custEmail').value||'').trim(),area:area,notes:(document.getElementById('custNotes').value||'').trim()},total);});
+        Swal.fire({title:'تأكيد الطلب',html:'<div class="text-right"><p>الإجمالي: <strong>'+formatCurrency(total,self.settings.currency||'SAR')+'</strong></p><p class="text-sm text-gray-500 mt-2">'+name+' | '+phone+' | '+area+'</p></div>',showCancelButton:true,confirmButtonText:'تأكيد',cancelButtonText:'رجوع'}).then(function(r){if(r.isConfirmed) self.submitOrder({name:name,phone:phone,area:area,notes:(document.getElementById('custNotes').value||'').trim()},total);});
     },
 
     submitOrder: function(customer, total) {
