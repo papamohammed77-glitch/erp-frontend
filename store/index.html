@@ -201,7 +201,22 @@ function saveCustomerData(data) {
 function loadCustomerData() {
     try { var d = localStorage.getItem('rw_store_customer'); return d ? JSON.parse(d) : {}; } catch(e) { return {}; }
 }
-
+// تنسيق العملة
+function formatCurrency(amount, currency) {
+    var symbol = 'ر.س';
+    var locale = 'ar-SA';
+    
+    if (currency === 'SAR') { symbol = 'ر.س'; locale = 'ar-SA'; }
+    else if (currency === 'EGP') { symbol = 'ج.م'; locale = 'ar-EG'; }
+    else if (currency === 'AED') { symbol = 'د.إ'; locale = 'ar-AE'; }
+    else if (currency === 'KWD') { symbol = 'د.ك'; locale = 'ar-KW'; }
+    else if (currency === 'QAR') { symbol = 'ر.ق'; locale = 'ar-QA'; }
+    else if (currency === 'BHD') { symbol = 'د.ب'; locale = 'ar-BH'; }
+    else if (currency === 'OMR') { symbol = 'ر.ع'; locale = 'ar-OM'; }
+    else if (currency === 'USD') { symbol = '$'; locale = 'en-US'; }
+    
+    return Number(amount).toFixed(2) + ' ' + symbol;
+}
 var Store = {
     cart: [],
     products: [],
@@ -236,7 +251,8 @@ var Store = {
                     taxRate: Number(res.data.tax_rate) || 0,
                     minInvoiceAmount: Number(res.data.min_invoice_amount) || 0,
                     freeShippingThreshold: Number(res.data.free_shipping_threshold) || 0,
-                    paymentMethod: res.data.payment_method || 'both'
+                    paymentMethod: res.data.payment_method || 'both',
+currency: res.data.currency || 'SAR'                   
                 };
                 document.getElementById('storeName').textContent = self.settings.storeName;
                 document.getElementById('headerStoreName').textContent = self.settings.storeName;
@@ -441,12 +457,12 @@ var Store = {
         if (savedAmount > 0) {
             html += '<div class="flex items-baseline gap-1.5">';
             html += '<span class="text-lg font-black text-red-600">' + finalPrice.toFixed(2) + '</span>';
-            html += '<span class="text-xs font-bold text-red-600">ر.س</span>';
+            html += '<span class="text-xs font-bold text-red-600">' + (Store.settings.currency||'SAR') + '</span>';
             html += '</div>';
             html += '<div class="flex items-center gap-2 mt-0.5">';
             html += '<span class="text-xs text-gray-400 line-through">' + (oldPrice || price).toFixed(2) + ' ر.س</span>';
             html += '</div>';
-            html += '<div class="text-[10px] text-emerald-600 font-bold">وفرت ' + savedAmount.toFixed(2) + ' ر.س</div>';
+            html += '<div class="text-[10px] text-emerald-600 font-bold">وفرت ' + savedAmount.toFixed(2) + ' ' + (Store.settings.currency||'SAR') + '</div>';
         } else {
             html += '<div class="flex items-baseline gap-1.5">';
             html += '<span class="text-lg font-black text-gray-800">' + price.toFixed(2) + '</span>';
@@ -498,13 +514,13 @@ var Store = {
         html += '<div class="bg-gray-50 p-4 rounded-xl mb-4">';
         if (savedAmount > 0) {
             html += '<div class="flex items-baseline gap-3 mb-2">';
-            html += '<span class="text-3xl font-black text-red-600">' + finalPrice.toFixed(2) + ' ر.س</span>';
-            html += '<span class="text-lg text-gray-400 line-through">' + (oldPrice || price).toFixed(2) + ' ر.س</span>';
+            html += '<span class="text-3xl font-black text-red-600">' + finalPrice.toFixed(2) + ' ' + (Store.settings.currency||'SAR') + '</span>';
+            html += '<span class="text-lg text-gray-400 line-through">' + (oldPrice || price).toFixed(2) + ' ' + (Store.settings.currency||'SAR') + '</span>';
             html += '<span class="bg-red-100 text-red-600 text-sm font-black px-2 py-1 rounded-full">-' + (product.discount_percent || Math.round(((oldPrice-price)/oldPrice)*100)) + '%</span>';
             html += '</div>';
-            html += '<p class="text-emerald-600 font-bold">وفرت ' + savedAmount.toFixed(2) + ' ر.س</p>';
+            html += '<p class="text-emerald-600 font-bold">وفرت ' + formatCurrency(savedAmount, Store.settings.currency||'SAR') + '</p>';
         } else {
-            html += '<span class="text-3xl font-black text-gray-800">' + price.toFixed(2) + ' ر.س</span>';
+            html += '<span class="text-3xl font-black text-gray-800">' + price.toFixed(2) + ' ' + (Store.settings.currency||'SAR') + '</span>';
         }
         html += '</div>';
         
@@ -603,8 +619,8 @@ var Store = {
             html += '<img src="' + (item.image || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22%3E%3Crect fill=%22%23e2e8f0%22 width=%2264%22 height=%2264%22/%3E%3C/svg%3E') + '" class="w-16 h-16 object-contain rounded-xl bg-white border shrink-0" onclick="Store.showProductDetail(\'' + item.code + '\')" style="cursor:pointer">';
             html += '<div class="flex-1 min-w-0">';
             html += '<div class="text-sm font-bold text-gray-700 line-clamp-2 leading-snug cursor-pointer" onclick="Store.showProductDetail(\'' + item.code + '\')">' + item.name + '</div>';
-            if (hasItemDiscount) { html += '<div class="text-[10px] text-gray-400 line-through">' + itemPrice.toFixed(2) + ' ر.س</div>'; }
-            html += '<div class="text-sm font-black text-blue-700 mt-1">' + finalItemPrice.toFixed(2) + ' ر.س</div>';
+            if (hasItemDiscount) { html += '<div class="text-[10px] text-gray-400 line-through">' + itemPrice.toFixed(2) + ' ' + (Store.settings.currency||'SAR') + '</div>'; }
+            html += '<div class="text-sm font-black text-blue-700 mt-1">' + finalItemPrice.toFixed(2) + ' ' + (Store.settings.currency||'SAR') + '</div>';
             html += '<div class="flex items-center gap-2 mt-2">';
             html += '<button onclick="Store.updateCart(\'' + item.code + '\', -1)" class="w-7 h-7 rounded-lg bg-white border font-black text-gray-600 flex items-center justify-center">−</button>';
             html += '<span class="w-6 text-center font-black text-sm">' + item.qty + '</span>';
@@ -639,23 +655,23 @@ var Store = {
         var taxAmount = taxRate > 0 ? Math.round(afterCoupon * taxRate) / 100 : 0;
         var grandTotal = afterCoupon + delivery + taxAmount;
         
-        document.getElementById('cartSubtotal').textContent = subtotal.toFixed(2) + ' ر.س';
+        document.getElementById('cartSubtotal').textContent = subtotal.toFixed(2) + ' ' + (Store.settings.currency||'SAR');
         
         var savingsRow = document.getElementById('cartSavingsRow');
-        if (totalSaved > 0) { savingsRow.classList.remove('hidden'); document.getElementById('cartSavings').textContent = totalSaved.toFixed(2) + ' ر.س'; }
+        if (totalSaved > 0) { savingsRow.classList.remove('hidden'); document.getElementById('cartSavings').textContent = totalSaved.toFixed(2) + ' ' + (Store.settings.currency||'SAR'); }
         else { savingsRow.classList.add('hidden'); }
         
         var couponRow = document.getElementById('cartCouponRow');
-        if (this.couponDiscount > 0) { couponRow.classList.remove('hidden'); document.getElementById('cartCouponDiscount').textContent = this.couponDiscount.toFixed(2) + ' ر.س'; }
+        if (this.couponDiscount > 0) { couponRow.classList.remove('hidden'); document.getElementById('cartCouponDiscount').textContent = this.couponDiscount.toFixed(2) + ' ' + (Store.settings.currency||'SAR'); }
         else { couponRow.classList.add('hidden'); }
         
-        document.getElementById('cartDelivery').textContent = delivery > 0 ? delivery.toFixed(2) + ' ر.س' : '🚚 مجاني';
+        document.getElementById('cartDelivery').textContent = delivery > 0 ? delivery.toFixed(2) + ' ' + (Store.settings.currency||'SAR') : '🚚 مجاني';
         
         var taxRow = document.getElementById('cartTaxRow');
-        if (taxRate > 0) { taxRow.classList.remove('hidden'); document.getElementById('cartTax').textContent = taxAmount.toFixed(2) + ' ر.س'; }
+        if (taxRate > 0) { taxRow.classList.remove('hidden'); document.getElementById('cartTax').textContent = taxAmount.toFixed(2) + ' ' + (Store.settings.currency||'SAR'); }
         else { taxRow.classList.add('hidden'); }
         
-        document.getElementById('cartTotal').textContent = grandTotal.toFixed(2) + ' ر.س';
+        document.getElementById('cartTotal').textContent = grandTotal.toFixed(2) + ' ' + (Store.settings.currency||'SAR');
     },
 
     applyCoupon: function() {
