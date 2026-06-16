@@ -480,12 +480,32 @@ var App = {
 
     // ==================== المراجعة والحفظ ====================
     renderReviewView: function() {
+        var self = this;
         var t = this.calcTotals();
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">مراجعة الأوردر</h2>';
         if (this.selCust) { html += '<div class="bg-blue-50 p-4 rounded-2xl mb-4"><div class="font-black text-blue-800">' + (this.selCust.name || '') + '</div><div class="text-sm text-blue-600">' + (this.selCust.customer_code || '') + ' - ' + (this.selCust.area || '') + '</div></div>'; }
+        
         html += '<div class="bg-white p-4 rounded-2xl shadow-sm border mb-4">';
-        for (var i = 0; i < this.cart.length; i++) { var item = this.cart[i]; html += '<div class="flex justify-between py-2 border-b"><span>' + item.name + ' × ' + item.qty + '</span><span class="font-bold">' + fmtNum(item.price * item.qty) + '</span></div>'; }
+        html += '<h3 class="font-bold text-sm text-gray-500 mb-3">الأصناف</h3>';
+        
+        if (!this.cart.length) {
+            html += '<div class="text-center text-gray-400 py-4">السلة فارغة</div>';
+        } else {
+            for (var i = 0; i < this.cart.length; i++) {
+                var item = this.cart[i];
+                var lineTotal = item.price * item.qty;
+                html += '<div class="flex items-center justify-between py-3 border-b last:border-b-0">';
+                html += '<div class="flex-1 min-w-0"><div class="font-black text-sm text-gray-800">' + item.name + '</div><div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × ' + item.qty + ' = <span class="font-bold text-blue-600">' + fmtNum(lineTotal) + '</span></div></div>';
+                html += '<div class="flex items-center gap-2 mr-3">';
+                html += '<button onclick="App.decCart(\'' + item.code.replace(/'/g, "\\'") + '\');App.renderReviewView();" class="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full font-black text-gray-600 flex items-center justify-center text-sm">−</button>';
+                html += '<span class="w-6 text-center font-black text-sm">' + item.qty + '</span>';
+                html += '<button onclick="App.addToCart(\'' + item.code.replace(/'/g, "\\'") + '\');App.renderReviewView();" class="w-8 h-8 bg-blue-600 hover:bg-blue-700 rounded-full font-black text-white flex items-center justify-center text-sm">+</button>';
+                html += '</div>';
+                html += '</div>';
+            }
+        }
         html += '</div>';
+        
         html += '<div class="bg-white p-4 rounded-2xl shadow-sm border space-y-2"><div class="flex justify-between"><span>المجموع:</span><span>' + fmtNum(t.sub) + '</span></div><div class="flex justify-between"><span>التوصيل:</span><span class="text-blue-600">' + fmtNum(t.del) + '</span></div><div class="flex justify-between"><span>الضريبة:</span><span class="text-red-600">' + fmtNum(t.tax) + '</span></div><div class="flex justify-between font-black text-lg pt-2 border-t"><span>الإجمالي:</span><span class="text-emerald-600">' + fmtNum(t.total) + '</span></div></div>';
         html += '<button onclick="App.submitOrder()" class="w-full bg-emerald-600 text-white py-4 rounded-xl font-black mt-4">حفظ الأوردر</button></div>';
         safeHTML(byId('mainContent'), html);
