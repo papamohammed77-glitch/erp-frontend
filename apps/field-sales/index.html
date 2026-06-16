@@ -365,13 +365,15 @@ var App = {
         var self = this;
         db.branches.toArray().then(function(br) {
             self.branchMap = {};
+            var savedBranch = ''; try { savedBranch = localStorage.getItem('rw_field_branch') || ''; } catch(e) {}
             var html = '<option value="">-- اختر الفرع --</option>';
-            for (var i = 0; i < br.length; i++) { self.branchMap[br[i].branch_code] = br[i].id; html += '<option value="' + br[i].branch_code + '">' + (br[i].name || br[i].branch_code) + '</option>'; }
-            var sel = byId('branchSel'); if (sel) safeHTML(sel, html);
+            for (var i = 0; i < br.length; i++) { self.branchMap[br[i].branch_code] = br[i].id; var sel = (br[i].branch_code === savedBranch) ? ' selected' : ''; html += '<option value="' + br[i].branch_code + '"' + sel + '>' + (br[i].name || br[i].branch_code) + '</option>'; }
+            if (savedBranch) self.selBranch = savedBranch;
+            var selEl = byId('branchSel'); if (selEl) safeHTML(selEl, html);
         });
     },
 
-    onBranchChange: function(v) { this.selBranch = v || null; this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : '')); },
+    onBranchChange: function(v) { this.selBranch = v || null; try { localStorage.setItem('rw_field_branch', v || ''); } catch(e) {} this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : '')); },
 
     getAvail: function(itemId) {
         var self = this;
@@ -443,8 +445,8 @@ var App = {
                 if (existing) { existing.qty = nq; }
                 else { self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 }); }
                 self.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
-if (typeof self.renderPOSCart === 'function') self.renderPOSCart();
                 if (typeof self.renderPOSCart === 'function') self.renderPOSCart();
+                if (document.getElementById('cartSheet').classList.contains('open')) { self.renderCartContent(); }
             });
         });
     },
