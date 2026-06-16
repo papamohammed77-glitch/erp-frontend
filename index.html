@@ -4037,7 +4037,14 @@ var RW_Orders = (function() {
             hideLoader();
             console.error(e);
         }
-        _loadRunsheetCodes();
+_loadRunsheetCodes();
+// ✅ تحديث تلقائي كل 30 ثانية
+clearInterval(window._ordersRefreshInterval);
+window._ordersRefreshInterval = setInterval(function() {
+    if (RW_STATE.app.currentView === 'orders') {
+        RW_Orders._refreshData();
+    }
+}, 30000);
     }
 
     // ========== الفلترة والفرز ==========
@@ -4545,7 +4552,23 @@ function _loadRunsheetCodes() {
         }
         _applyFilters();
     }
-
+_refreshData: async function() {
+    try {
+        var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
+        ordersData = ordRes.data || [];
+        var detRes = await supabase.from('order_details').select('order_id, item_code');
+        var details = detRes.data || [];
+        var itemsCountMap = {};
+        for (var i = 0; i < details.length; i++) {
+            var oid = details[i].order_id;
+            if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
+        }
+        for (var j = 0; j < ordersData.length; j++) {
+            ordersData[j].itemsCount = itemsCountMap[ordersData[j].order_code] || 0;
+        }
+        await _loadRunsheetCodes();
+    } catch(e) {}
+},
     return {
         render: render,
         _applyFilters: _applyFilters,
@@ -8696,6 +8719,33 @@ function boot() {
     try {
         console.log('RAWAEA ERP BOOTING...');
         bindEvents();
+        
+        // ✅ التحقق من وجود جلسة سابقة
+        supabase.auth.getSession().then(function(res) {
+            if (res.data && res.data.session) {
+                console.log('✅ Session restored');
+                var user = res.data.session.user;
+                var meta = user.user_metadata || {};
+                
+                RW_STATE.app.authenticated = true;
+                RW_STATE.app.currentUser = {
+                    name: meta.name || user.email,
+                    email: user.email,
+                    role: meta.role || 'مدير النظام',
+                    isOwner: meta.isOwner === true || meta.isOwner === 'true'
+                };
+                RW_STATE.permissions = meta.permissions || ['*'];
+                RW_STATE.app.company = {
+                    name: meta.companyName || 'الروائع ERP',
+                    logo: meta.companyLogo || 'ر'
+                };
+                
+                RW_Auth.enterSystem();
+            }
+        }).catch(function() {
+            console.log('No session found');
+        });
+        
         RW_STATE.app.initialized = true;
         try { if (localStorage.getItem('rw_sidebar_collapsed') === '1') { setTimeout(function() { RW_Navigation.toggleSidebar(); }, 300); } } catch(e) {}
         console.log('SYSTEM READY');
