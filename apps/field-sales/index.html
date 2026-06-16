@@ -32,11 +32,12 @@
         .credit-red{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         .animate-fadeIn{animation:fadeIn .3s}
+        .item-added-flash{animation:flashGreen .4s ease}
+        @keyframes flashGreen{0%{background:#dcfce7}100%{background:transparent}}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-<!-- شاشة الدخول -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center bg-gradient-to-br from-blue-900 to-blue-700">
     <div class="bg-white rounded-[28px] shadow-2xl p-8 w-[90%] max-w-sm">
         <div class="text-center mb-6">
@@ -51,7 +52,6 @@
     </div>
 </div>
 
-<!-- التطبيق الرئيسي -->
 <div id="mainApp" class="hidden flex flex-col h-full">
 
     <header class="bg-blue-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
@@ -97,9 +97,6 @@
 </div>
 
 <script>
-// ============================================================
-// تهيئة Supabase و Dexie
-// ============================================================
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -121,9 +118,6 @@ function safeHTML(el, html) { if (el) el.innerHTML = html; }
 function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
 function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
-// ============================================================
-// التطبيق الرئيسي
-// ============================================================
 var App = {
     currentUser: null,
     currentRole: null,
@@ -283,7 +277,6 @@ var App = {
         else if (view === 'vanInventory') this.renderVanInventoryView();
     },
 
-    // ==================== العملاء ====================
     renderCustomerView: function() {
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">العملاء</h2>';
         html += '<input type="text" id="custSearch" oninput="App.searchCustomers(this.value)" placeholder="ابحث باسم، كود، هاتف..." class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm mb-4">';
@@ -331,7 +324,6 @@ var App = {
         });
     },
 
-    // ==================== المنتجات ====================
     extractAndRenderCategories: function() {
         var self = this;
         db.items.toArray().then(function(allItems) {
@@ -370,6 +362,7 @@ var App = {
             for (var i = 0; i < br.length; i++) { self.branchMap[br[i].branch_code] = br[i].id; var sel = (br[i].branch_code === savedBranch) ? ' selected' : ''; html += '<option value="' + br[i].branch_code + '"' + sel + '>' + (br[i].name || br[i].branch_code) + '</option>'; }
             if (savedBranch) self.selBranch = savedBranch;
             var selEl = byId('branchSel'); if (selEl) safeHTML(selEl, html);
+            if (self.selBranch) { self.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : '')); }
         });
     },
 
@@ -430,21 +423,26 @@ var App = {
         Swal.fire({ imageUrl: src, imageAlt: name || 'صورة المنتج', imageWidth: 400, showCloseButton: true, showConfirmButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' } });
     },
 
-    // ==================== السلة ====================
     addToCart: function(code) {
         var self = this;
         db.items.get(code).then(function(it) {
             if (!it) return;
             self.getAvail(it.id).then(function(avail) {
                 var existing = null;
-                for (var i = 0; i < self.cart.length; i++) { if (self.cart[i].code === code) { existing = self.cart[i]; break; } }
+                var wasInCart = false;
+                for (var i = 0; i < self.cart.length; i++) { if (self.cart[i].code === code) { existing = self.cart[i]; wasInCart = true; break; } }
                 var cur = existing ? existing.qty : 0, nq = cur + 1;
                 var mx = it.max_qty ? Number(it.max_qty) : 0;
                 if (mx > 0 && nq > mx) { toast('الحد الأقصى: ' + mx, 'warning'); return; }
                 if (nq > avail) { toast('المتاح: ' + avail, 'warning'); return; }
                 if (existing) { existing.qty = nq; }
                 else { self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 }); }
-                self._updateAllQtyDisplays(code, nq);
+
+                if (!wasInCart) {
+                    self.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
+                } else {
+                    self._updateAllQtyDisplays(code, nq);
+                }
                 self._updateAllTotals();
                 if (typeof self.renderPOSCart === 'function') self.renderPOSCart();
                 if (document.getElementById('cartSheet').classList.contains('open')) { self.renderCartContent(); }
@@ -484,17 +482,10 @@ var App = {
         for (var i = 0; i < spans.length; i++) {
             spans[i].textContent = newQty;
         }
-        if (newQty <= 0) {
-            this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
-        }
     },
 
     _updateAllTotals: function() {
         var t = this.calcTotals();
-        var totalEls = document.querySelectorAll('.review-total-amount');
-        for (var i = 0; i < totalEls.length; i++) {
-            totalEls[i].textContent = fmtNum(t.total);
-        }
         var posTotal = byId('posTotal');
         if (posTotal) posTotal.textContent = fmtNum(t.total);
         var posCount = byId('posCartCount');
@@ -513,19 +504,25 @@ var App = {
     closeCart: function() { byId('cartSheet').classList.remove('open'); byId('cartOverlay').classList.remove('show'); },
 
     renderCartContent: function() {
+        var container = byId('cartBody');
+        if (!container) return;
+        if (!this.cart.length) {
+            safeHTML(container, '<div class="text-center text-gray-400 p-4">السلة فارغة</div>');
+            return;
+        }
         var html = '';
         for (var i = 0; i < this.cart.length; i++) {
             var item = this.cart[i];
+            var safeCode = item.code.replace(/'/g, "\\'");
             html += '<div class="flex justify-between items-center bg-white p-3 rounded-xl border mb-2">';
             html += '<div><div class="font-black text-sm">' + item.name + '</div><div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × ' + item.qty + '</div></div>';
-            html += '<div class="flex items-center gap-1"><button onclick="App.decCart(\'' + item.code + '\');App.renderCartContent()" class="w-7 h-7 bg-gray-100 rounded-full font-black">-</button><span class="w-5 text-center font-black">' + item.qty + '</span><button onclick="App.addToCart(\'' + item.code + '\');App.renderCartContent()" class="w-7 h-7 bg-blue-600 text-white rounded-full font-black">+</button></div></div>';
+            html += '<div class="flex items-center gap-1"><button onclick="App.decCart(\'' + safeCode + '\');App.renderCartContent()" class="w-7 h-7 bg-gray-100 rounded-full font-black">-</button><span class="w-5 text-center font-black">' + item.qty + '</span><button onclick="App.addToCart(\'' + safeCode + '\');App.renderCartContent()" class="w-7 h-7 bg-blue-600 text-white rounded-full font-black">+</button></div></div>';
         }
-        safeHTML(byId('cartBody'), html || '<div class="text-center text-gray-400 p-4">السلة فارغة</div>');
+        safeHTML(container, html);
     },
 
     goToReview: function() { this.showView('review'); },
 
-    // ==================== المراجعة والحفظ ====================
     renderReviewView: function() {
         var self = this;
         var t = this.calcTotals();
@@ -612,7 +609,6 @@ var App = {
         }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
     },
 
-    // ==================== الكاشير ====================
     renderPOSView: function() {
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">نقطة البيع</h2>';
         html += '<div class="flex gap-2 mb-4"><div class="relative flex-1"><input type="text" id="posSearch" oninput="App.searchItems(this.value)" placeholder="ابحث أو امسح باركود..." class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm"></div><button onclick="App.startBarcodeScanner()" class="bg-blue-600 text-white px-4 py-3 rounded-xl"><i class="fa-solid fa-camera"></i></button></div>';
@@ -643,7 +639,6 @@ var App = {
         var t = this.calcTotals(); safeText(byId('posTotal'), fmtNum(t.total));
     },
 
-    // ==================== أوردراتي ====================
     renderOrdersView: function() {
         var self = this;
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">أوردراتي</h2>';
@@ -749,7 +744,6 @@ var App = {
         });
     },
 
-    // ==================== فواتير اليوم ====================
     renderPOSInvoicesView: function() {
         var self = this;
         var today = new Date().toISOString().split('T')[0];
@@ -780,11 +774,9 @@ var App = {
         }).catch(function(e) { console.error('Failed to load POS invoices:', e); safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الفواتير</div>'); });
     },
 
-    // ==================== فان سيلز (قيد التطوير) ====================
     renderVanStockView: function() { safeHTML(byId('mainContent'), '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">العهدة</h2><div class="text-center text-gray-400 p-4">قيد التطوير</div></div>'); },
     renderVanInventoryView: function() { safeHTML(byId('mainContent'), '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">الجرد اليومي</h2><div class="text-center text-gray-400 p-4">قيد التطوير</div></div>'); },
 
-    // ==================== الخريطة ====================
     showMap: function() {
         var self = this;
         db.customers.toArray().then(function(list) {
@@ -794,7 +786,6 @@ var App = {
         });
     },
 
-    // ==================== باركود ====================
     startBarcodeScanner: function() {
         var self = this;
         byId('barcodeScanner').classList.add('active');
