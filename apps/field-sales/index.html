@@ -414,7 +414,7 @@ var App = {
                         html += '<div class="flex justify-between items-center mt-auto">';
                         html += '<div><span class="text-blue-600 font-black">' + fmtNum(it.sales_price) + '</span><span class="text-[10px] text-gray-400 block">متاح: ' + avail + '</span></div>';
                         if (inCart > 0) {
-                            html += '<div class="flex items-center gap-1"><button onclick="event.stopPropagation();App.decCart(\'' + it.item_code + '\')" class="w-7 h-7 bg-gray-100 rounded-full font-black">-</button><span class="w-5 text-center font-black">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-7 h-7 bg-blue-600 text-white rounded-full font-black">+</button></div>';
+                            html += '<div class="flex items-center gap-1"><button onclick="event.stopPropagation();App.decCart(\'' + it.item_code + '\')" class="w-7 h-7 bg-gray-100 rounded-full font-black">-</button><span class="w-5 text-center font-black cart-qty-' + it.item_code.replace(/[^a-zA-Z0-9]/g, '_') + '">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-7 h-7 bg-blue-600 text-white rounded-full font-black">+</button></div>';
                         } else {
                             html += '<button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-8 h-8 bg-blue-600 text-white rounded-full"><i class="fa-solid fa-plus"></i></button>';
                         }
@@ -444,9 +444,9 @@ var App = {
                 if (nq > avail) { toast('المتاح: ' + avail, 'warning'); return; }
                 if (existing) { existing.qty = nq; }
                 else { self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 }); }
-                self.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
-                if (typeof self.renderPOSCart === 'function') self.renderPOSCart();
-                if (document.getElementById('cartSheet').classList.contains('open')) { self.renderCartContent(); }
+                // تحديث موضعي – فقط الكمية في كل مكان تظهر فيه
+                self._updateAllQtyDisplays(code, nq);
+                self._updateAllTotals();
             });
         });
     },
@@ -454,14 +454,51 @@ var App = {
         for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart.splice(i, 1); break; } }
         this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
         if (typeof this.renderPOSCart === 'function') this.renderPOSCart();
-        if (document.getElementById('cartSheet').classList.contains('open')) { this.renderCartContent(); }
-    },
-    decCart: function(code) {
-        for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart[i].qty--; if (this.cart[i].qty <= 0) this.cart.splice(i, 1); break; } }
-        this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
-        if (typeof this.renderPOSCart === 'function') this.renderPOSCart();
     },
 
+    decCart: function(code) {
+        var newQty = 0;
+        for (var i = 0; i < this.cart.length; i++) { 
+            if (this.cart[i].code === code) { 
+                this.cart[i].qty--; 
+                newQty = this.cart[i].qty;
+                if (this.cart[i].qty <= 0) this.cart.splice(i, 1); 
+                break; 
+            } 
+        }
+        if (newQty <= 0) {
+            // حُذف الصنف – نعيد بناء الشبكة مرة واحدة فقط
+            this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
+        } else {
+            // تحديث موضعي
+            this._updateAllQtyDisplays(code, newQty);
+        }
+        this._updateAllTotals();
+        if (typeof this.renderPOSCart === 'function') this.renderPOSCart();
+    },
+        _updateAllQtyDisplays: function(code, newQty) {
+        // تحديث كل <span> التي تعرض كمية هذا الصنف
+        var spans = document.querySelectorAll('.cart-qty-' + code.replace(/[^a-zA-Z0-9]/g, '_'));
+        for (var i = 0; i < spans.length; i++) {
+            spans[i].textContent = newQty;
+        }
+        // إذا حُذف الصنف، نعيد بناء الشبكة
+        if (newQty <= 0) {
+            this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
+        }
+    },
+
+    _updateAllTotals: function() {
+        var t = this.calcTotals();
+        var totalEls = document.querySelectorAll('.review-total-amount');
+        for (var i = 0; i < totalEls.length; i++) {
+            totalEls[i].textContent = fmtNum(t.total);
+        }
+        var posTotal = byId('posTotal');
+        if (posTotal) posTotal.textContent = fmtNum(t.total);
+        var posCount = byId('posCartCount');
+        if (posCount) posCount.textContent = '(' + this.cart.length + ')';
+    },
     calcTotals: function() {
         var sub = 0;
         for (var i = 0; i < this.cart.length; i++) sub += this.cart[i].price * this.cart[i].qty;
