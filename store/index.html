@@ -293,7 +293,7 @@ var Store = {
         var finalPrice = price, discPct = 0, saved = 0;
         if (discActive && hasDisc) { discPct = Number(item.discount_percent); finalPrice = price - (price * discPct / 100); saved = price - finalPrice; }
         else if (oldPrice > price) { discPct = Math.round(((oldPrice - price) / oldPrice) * 100); saved = oldPrice - price; finalPrice = price; }
-        var stockAvail = Number(item.available_qty) || Number(item.qty) || 0;
+        var stockAvail = Number(item.qty) || 0;
         var img = item.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22300%22 height=%22300%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22300%22 height=%22300%22/%3E%3Ctext fill=%22%2394a3b8%22 font-size=%2220%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E';
         var freeShip = price >= (this.settings.freeShippingThreshold || 200);
         var html = '<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col animate-fadeIn hover:shadow-md transition-shadow cursor-pointer" onclick="Store.showProductDetail(\'' + item.item_code + '\')">';
@@ -362,26 +362,58 @@ var Store = {
         for (var j = 0; j < this.cart.length; j++) { if (this.cart[j].code === code) { existing = this.cart[j]; break; } }
         if (existing) existing.qty++;
         else this.cart.push({ code: product.item_code, name: product.name, price: Number(product.sales_price)||0, oldPrice: Number(product.old_price)||0, discountPercent: Number(product.discount_percent)||0, image: product.image_url||'', unit: product.unit||'حبة', qty: 1 });
-        this.refreshProductCards(); this.updateCartBadge(); this.renderCartItems();
+        this.refreshProductCards();
     },
 
     updateCart: function(code, delta) {
         for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart[i].qty += delta; if (this.cart[i].qty <= 0) this.cart.splice(i,1); break; } }
-        this.refreshProductCards(); this.updateCartBadge(); this.renderCartItems();
+        this.refreshProductCards();
     },
 
     removeFromCart: function(code) {
         for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart.splice(i,1); break; } }
-        this.refreshProductCards(); this.updateCartBadge(); this.renderCartItems();
+        this.refreshProductCards();
     },
 
     clearCart: function() {
         if (!this.cart.length) return;
         var self = this;
-        Swal.fire({ title:'مسح السلة', text:'هل تريد مسح جميع المنتجات؟', icon:'warning', showCancelButton:true, confirmButtonText:'نعم', cancelButtonText:'لا' }).then(function(r) { if (r.isConfirmed) { self.cart=[]; self.couponCode=''; self.couponDiscount=0; document.getElementById('couponInput').value=''; document.getElementById('couponMsg').classList.add('hidden'); self.updateCartBadge(); self.refreshProductCards(); self.renderCartItems(); } });
+        Swal.fire({ title:'مسح السلة', text:'هل تريد مسح جميع المنتجات؟', icon:'warning', showCancelButton:true, confirmButtonText:'نعم', cancelButtonText:'لا' }).then(function(r) { 
+            if (r.isConfirmed) { 
+                self.cart=[]; self.couponCode=''; self.couponDiscount=0; 
+                document.getElementById('couponInput').value=''; 
+                document.getElementById('couponMsg').classList.add('hidden'); 
+                self.updateCartBadge(); 
+                self.currentPage = 0; 
+                self.loadPage(); 
+                self.renderCartItems(); 
+            } 
+        });
     },
 
-    refreshProductCards: function() { this.currentPage = 0; this.loadPage(); },
+    refreshProductCards: function() {
+        var grid = document.getElementById('productsGrid');
+        if (!grid) return;
+        var scrollY = window.scrollY;
+        var filtered = this.getFilteredProducts();
+        var start = 0;
+        var end = this.currentPage * this.pageSize + this.pageSize;
+        if (end > filtered.length) end = filtered.length;
+        var currentCards = grid.children.length;
+        var neededCards = end - start;
+        if (currentCards !== neededCards) {
+            var pageData = filtered.slice(start, end);
+            grid.innerHTML = '';
+            for (var i = 0; i < pageData.length; i++) grid.insertAdjacentHTML('beforeend', this.buildProductCard(pageData[i]));
+        } else {
+            var pageData = filtered.slice(start, end);
+            for (var i = 0; i < pageData.length; i++) { if (grid.children[i]) grid.children[i].outerHTML = this.buildProductCard(pageData[i]); }
+        }
+        var lm = document.getElementById('loadMoreIndicator');
+        if (end < filtered.length) lm.classList.remove('hidden'); else lm.classList.add('hidden');
+        window.scrollTo(0, scrollY);
+        this.updateCartBadge();
+    },
 
     updateCartBadge: function() {
         var total = 0;
@@ -401,8 +433,7 @@ var Store = {
         var curr = this.settings.currency || 'SAR';
         var html = '';
         for (var i = 0; i < this.cart.length; i++) {
-            var item = this.cart[i], ip = item.price, hasD = item.discountPercent > 0;
-            var fip = hasD ? ip - (ip * item.discountPercent / 100) : ip;
+            var item = this.cart[i], ip = item.price, hasD = item.discountPercent > 0, fip = hasD ? ip - (ip * item.discountPercent / 100) : ip;
             html += '<div class="flex gap-3 bg-gray-50 p-3 rounded-2xl"><img src="'+(item.image||'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22%3E%3Crect fill=%22%23e2e8f0%22 width=%2264%22 height=%2264%22/%3E%3C/svg%3E')+'" class="w-16 h-16 object-contain rounded-xl bg-white border shrink-0" onclick="Store.showProductDetail(\''+item.code+'\')" style="cursor:pointer"><div class="flex-1 min-w-0"><div class="text-sm font-bold text-gray-700 line-clamp-2 leading-snug cursor-pointer" onclick="Store.showProductDetail(\''+item.code+'\')">'+item.name+'</div>';
             if (hasD) html += '<div class="text-[10px] text-gray-400 line-through">'+formatCurrency(ip,curr)+'</div>';
             html += '<div class="text-sm font-black text-blue-700 mt-1">'+formatCurrency(fip,curr)+'</div><div class="flex items-center gap-2 mt-2"><button onclick="Store.updateCart(\''+item.code+'\',-1)" class="w-7 h-7 rounded-lg bg-white border font-black text-gray-600 flex items-center justify-center">−</button><span class="w-6 text-center font-black text-sm">'+item.qty+'</span><button onclick="Store.updateCart(\''+item.code+'\',1)" class="w-7 h-7 rounded-lg bg-white border font-black text-gray-600 flex items-center justify-center">+</button><button onclick="Store.removeFromCart(\''+item.code+'\')" class="mr-auto text-gray-300 hover:text-red-500"><i class="fa-solid fa-trash text-sm"></i></button></div></div></div>';
@@ -413,8 +444,7 @@ var Store = {
     updateCartTotals: function() {
         var curr = this.settings.currency || 'SAR', subtotal = 0, totalSaved = 0;
         for (var i = 0; i < this.cart.length; i++) {
-            var item = this.cart[i], ip = item.price, hasD = item.discountPercent > 0;
-            var fip = hasD ? ip - (ip * item.discountPercent / 100) : ip;
+            var item = this.cart[i], ip = item.price, hasD = item.discountPercent > 0, fip = hasD ? ip - (ip * item.discountPercent / 100) : ip;
             subtotal += fip * item.qty;
             if (hasD) totalSaved += (ip - fip) * item.qty;
             else if (item.oldPrice > ip) totalSaved += (item.oldPrice - ip) * item.qty;
@@ -427,15 +457,12 @@ var Store = {
         var grandTotal = afterCoupon + delivery + taxAmount;
         document.getElementById('cartSubtotal').textContent = formatCurrency(subtotal, curr);
         var sr = document.getElementById('cartSavingsRow');
-        if (totalSaved > 0) { sr.classList.remove('hidden'); document.getElementById('cartSavings').textContent = formatCurrency(totalSaved, curr); }
-        else sr.classList.add('hidden');
+        if (totalSaved > 0) { sr.classList.remove('hidden'); document.getElementById('cartSavings').textContent = formatCurrency(totalSaved, curr); } else sr.classList.add('hidden');
         var cr = document.getElementById('cartCouponRow');
-        if (this.couponDiscount > 0) { cr.classList.remove('hidden'); document.getElementById('cartCouponDiscount').textContent = formatCurrency(this.couponDiscount, curr); }
-        else cr.classList.add('hidden');
+        if (this.couponDiscount > 0) { cr.classList.remove('hidden'); document.getElementById('cartCouponDiscount').textContent = formatCurrency(this.couponDiscount, curr); } else cr.classList.add('hidden');
         document.getElementById('cartDelivery').textContent = delivery > 0 ? formatCurrency(delivery, curr) : '🚚 مجاني';
         var tr = document.getElementById('cartTaxRow');
-        if (taxRate > 0) { tr.classList.remove('hidden'); document.getElementById('cartTax').textContent = formatCurrency(taxAmount, curr); }
-        else tr.classList.add('hidden');
+        if (taxRate > 0) { tr.classList.remove('hidden'); document.getElementById('cartTax').textContent = formatCurrency(taxAmount, curr); } else tr.classList.add('hidden');
         document.getElementById('cartTotal').textContent = formatCurrency(grandTotal, curr);
     },
 
@@ -480,7 +507,7 @@ var Store = {
         for (var i=0;i<this.cart.length;i++) itemsList.push({code:this.cart[i].code,name:this.cart[i].name,price:this.cart[i].price,qty:this.cart[i].qty,unit:this.cart[i].unit});
         supabase.functions.invoke('submit-online-order',{body:{user:customer,cartItems:itemsList,total:total,delivery:this.settings.deliveryFee||0}, headers:{Authorization:'Bearer '+SUPABASE_KEY}}).then(function(res){
             Swal.close();
-            if(!res.error){Swal.fire({icon:'success',title:'تم إرسال الطلب بنجاح!',confirmButtonText:'حسناً'});self.cart=[];self.couponCode='';self.couponDiscount=0;document.getElementById('couponInput').value='';document.getElementById('couponMsg').classList.add('hidden');self.updateCartBadge();self.refreshProductCards();self.closeCart();}
+            if(!res.error){Swal.fire({icon:'success',title:'تم إرسال الطلب بنجاح!',confirmButtonText:'حسناً'});self.cart=[];self.couponCode='';self.couponDiscount=0;document.getElementById('couponInput').value='';document.getElementById('couponMsg').classList.add('hidden');self.currentPage=0;self.loadPage();self.updateCartBadge();self.closeCart();}
             else Swal.fire({icon:'error',title:'فشل إرسال الطلب'});
         }).catch(function(){Swal.close();Swal.fire({icon:'error',title:'فشل الاتصال'});});
     }
