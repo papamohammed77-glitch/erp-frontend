@@ -397,24 +397,17 @@ if (document.getElementById('cartPanel').classList.contains('open')) { this.rend
     refreshProductCards: function() {
         var grid = document.getElementById('productsGrid');
         if (!grid) return;
-        var scrollY = window.scrollY;
         var filtered = this.getFilteredProducts();
-        var start = 0;
-        var end = this.currentPage * this.pageSize + this.pageSize;
-        if (end > filtered.length) end = filtered.length;
-        var currentCards = grid.children.length;
-        var neededCards = end - start;
-        if (currentCards !== neededCards) {
-            var pageData = filtered.slice(start, end);
-            grid.innerHTML = '';
-            for (var i = 0; i < pageData.length; i++) grid.insertAdjacentHTML('beforeend', this.buildProductCard(pageData[i]));
-        } else {
-            var pageData = filtered.slice(start, end);
-            for (var i = 0; i < pageData.length; i++) { if (grid.children[i]) grid.children[i].outerHTML = this.buildProductCard(pageData[i]); }
+        var totalToShow = (this.currentPage + 1) * this.pageSize;
+        if (totalToShow > filtered.length) totalToShow = filtered.length;
+        var pageData = filtered.slice(0, totalToShow);
+        var html = '';
+        for (var i = 0; i < pageData.length; i++) {
+            html += this.buildProductCard(pageData[i]);
         }
+        grid.innerHTML = html;
         var lm = document.getElementById('loadMoreIndicator');
-        if (end < filtered.length) lm.classList.remove('hidden'); else lm.classList.add('hidden');
-        setTimeout(function() { window.scrollTo(0, scrollY); }, 50);
+        if (totalToShow < filtered.length) lm.classList.remove('hidden'); else lm.classList.add('hidden');
         this.updateCartBadge();
     },
 
