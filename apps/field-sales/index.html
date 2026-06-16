@@ -450,7 +450,12 @@ var App = {
             });
         });
     },
-
+    removeFromCart: function(code) {
+        for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart.splice(i, 1); break; } }
+        this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
+        if (typeof this.renderPOSCart === 'function') this.renderPOSCart();
+        if (document.getElementById('cartSheet').classList.contains('open')) { this.renderCartContent(); }
+    },
     decCart: function(code) {
         for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart[i].qty--; if (this.cart[i].qty <= 0) this.cart.splice(i, 1); break; } }
         this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
@@ -483,14 +488,60 @@ var App = {
 
     // ==================== المراجعة والحفظ ====================
     renderReviewView: function() {
+        var self = this;
         var t = this.calcTotals();
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">مراجعة الأوردر</h2>';
-        if (this.selCust) { html += '<div class="bg-blue-50 p-4 rounded-2xl mb-4"><div class="font-black text-blue-800">' + (this.selCust.name || '') + '</div><div class="text-sm text-blue-600">' + (this.selCust.customer_code || '') + ' - ' + (this.selCust.area || '') + '</div></div>'; }
+        
+        // معلومات العميل
+        if (this.selCust) { 
+            html += '<div class="bg-blue-50 p-4 rounded-2xl mb-4"><div class="font-black text-blue-800">' + (this.selCust.name || '') + '</div><div class="text-sm text-blue-600">' + (this.selCust.customer_code || '') + ' - ' + (this.selCust.area || '') + '</div></div>'; 
+        } else {
+            html += '<div class="bg-red-50 p-4 rounded-2xl mb-4 text-red-600 font-bold text-sm">⚠️ لم تختر عميلاً بعد – ارجع لتبويب العملاء</div>';
+        }
+        
+        // قائمة الأصناف مع أزرار (+ -) وحذف – مثل سلة المتجر
         html += '<div class="bg-white p-4 rounded-2xl shadow-sm border mb-4">';
-        for (var i = 0; i < this.cart.length; i++) { var item = this.cart[i]; html += '<div class="flex justify-between py-2 border-b"><span>' + item.name + ' × ' + item.qty + '</span><span class="font-bold">' + fmtNum(item.price * item.qty) + '</span></div>'; }
+        html += '<h3 class="font-bold text-sm text-gray-500 mb-3">الأصناف</h3>';
+        
+        if (!this.cart.length) {
+            html += '<div class="text-center text-gray-400 py-4">السلة فارغة – أضف منتجات من التبويب السابق</div>';
+        } else {
+            for (var i = 0; i < this.cart.length; i++) {
+                var item = this.cart[i];
+                var lineTotal = item.price * item.qty;
+                html += '<div class="flex items-center justify-between py-3 border-b last:border-b-0">';
+                
+                // اسم الصنف والسعر
+                html += '<div class="flex-1 min-w-0">';
+                html += '<div class="font-black text-sm text-gray-800">' + item.name + '</div>';
+                html += '<div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × ' + item.qty + ' = <span class="font-bold text-blue-600">' + fmtNum(lineTotal) + '</span></div>';
+                html += '</div>';
+                
+                // أزرار (+ -) وحذف
+                html += '<div class="flex items-center gap-2 mr-3">';
+                html += '<button onclick="App.decCart(\'' + item.code + '\');App.renderReviewView();" class="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full font-black text-gray-600 flex items-center justify-center text-sm transition">−</button>';
+                html += '<span class="w-6 text-center font-black text-sm">' + item.qty + '</span>';
+                html += '<button onclick="App.addToCart(\'' + item.code + '\');App.renderReviewView();" class="w-8 h-8 bg-blue-600 hover:bg-blue-700 rounded-full font-black text-white flex items-center justify-center text-sm transition">+</button>';
+                html += '<button onclick="App.removeFromCart(\'' + item.code + '\');App.renderReviewView();" class="w-7 h-7 bg-red-50 hover:bg-red-100 rounded-full flex items-center justify-center text-red-500 transition"><i class="fa-solid fa-trash text-xs"></i></button>';
+                html += '</div>';
+                
+                html += '</div>';
+            }
+        }
         html += '</div>';
-        html += '<div class="bg-white p-4 rounded-2xl shadow-sm border space-y-2"><div class="flex justify-between"><span>المجموع:</span><span>' + fmtNum(t.sub) + '</span></div><div class="flex justify-between"><span>التوصيل:</span><span class="text-blue-600">' + fmtNum(t.del) + '</span></div><div class="flex justify-between"><span>الضريبة:</span><span class="text-red-600">' + fmtNum(t.tax) + '</span></div><div class="flex justify-between font-black text-lg pt-2 border-t"><span>الإجمالي:</span><span class="text-emerald-600">' + fmtNum(t.total) + '</span></div></div>';
-        html += '<button onclick="App.submitOrder()" class="w-full bg-emerald-600 text-white py-4 rounded-xl font-black mt-4">حفظ الأوردر</button></div>';
+        
+        // ملخص الأسعار
+        html += '<div class="bg-white p-4 rounded-2xl shadow-sm border space-y-2">';
+        html += '<div class="flex justify-between"><span class="text-gray-500">المجموع الفرعي</span><span class="font-bold">' + fmtNum(t.sub) + '</span></div>';
+        html += '<div class="flex justify-between"><span class="text-gray-500">رسوم التوصيل</span><span class="font-bold text-blue-600">' + fmtNum(t.del) + '</span></div>';
+        html += '<div class="flex justify-between"><span class="text-gray-500">الضريبة</span><span class="font-bold text-red-600">' + fmtNum(t.tax) + '</span></div>';
+        html += '<div class="flex justify-between font-black text-lg pt-2 border-t"><span>الإجمالي النهائي</span><span class="text-emerald-600">' + fmtNum(t.total) + '</span></div>';
+        html += '</div>';
+        
+        // زر الحفظ
+        html += '<button onclick="App.submitOrder()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-black mt-4 transition shadow-lg shadow-emerald-200"><i class="fa-solid fa-check ml-2"></i> حفظ الأوردر</button>';
+        
+        html += '</div>';
         safeHTML(byId('mainContent'), html);
     },
 
