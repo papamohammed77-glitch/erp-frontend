@@ -444,16 +444,12 @@ var App = {
                 if (nq > avail) { toast('المتاح: ' + avail, 'warning'); return; }
                 if (existing) { existing.qty = nq; }
                 else { self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 }); }
-                // تحديث موضعي – فقط الكمية في كل مكان تظهر فيه
                 self._updateAllQtyDisplays(code, nq);
                 self._updateAllTotals();
+                if (typeof self.renderPOSCart === 'function') self.renderPOSCart();
+                if (document.getElementById('cartSheet').classList.contains('open')) { self.renderCartContent(); }
             });
         });
-    },
-    removeFromCart: function(code) {
-        for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart.splice(i, 1); break; } }
-        this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
-        if (typeof this.renderPOSCart === 'function') this.renderPOSCart();
     },
 
     decCart: function(code) {
@@ -467,22 +463,27 @@ var App = {
             } 
         }
         if (newQty <= 0) {
-            // حُذف الصنف – نعيد بناء الشبكة مرة واحدة فقط
             this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
         } else {
-            // تحديث موضعي
             this._updateAllQtyDisplays(code, newQty);
         }
         this._updateAllTotals();
         if (typeof this.renderPOSCart === 'function') this.renderPOSCart();
+        if (document.getElementById('cartSheet').classList.contains('open')) { this.renderCartContent(); }
     },
-        _updateAllQtyDisplays: function(code, newQty) {
-        // تحديث كل <span> التي تعرض كمية هذا الصنف
+
+    removeFromCart: function(code) {
+        for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart.splice(i, 1); break; } }
+        this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
+        if (typeof this.renderPOSCart === 'function') this.renderPOSCart();
+        if (document.getElementById('cartSheet').classList.contains('open')) { this.renderCartContent(); }
+    },
+
+    _updateAllQtyDisplays: function(code, newQty) {
         var spans = document.querySelectorAll('.cart-qty-' + code.replace(/[^a-zA-Z0-9]/g, '_'));
         for (var i = 0; i < spans.length; i++) {
             spans[i].textContent = newQty;
         }
-        // إذا حُذف الصنف، نعيد بناء الشبكة
         if (newQty <= 0) {
             this.searchItems(byId('itemSearch') ? byId('itemSearch').value : (byId('posSearch') ? byId('posSearch').value : ''));
         }
@@ -499,6 +500,7 @@ var App = {
         var posCount = byId('posCartCount');
         if (posCount) posCount.textContent = '(' + this.cart.length + ')';
     },
+
     calcTotals: function() {
         var sub = 0;
         for (var i = 0; i < this.cart.length; i++) sub += this.cart[i].price * this.cart[i].qty;
@@ -529,14 +531,12 @@ var App = {
         var t = this.calcTotals();
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">مراجعة الأوردر</h2>';
         
-        // معلومات العميل
         if (this.selCust) { 
             html += '<div class="bg-blue-50 p-4 rounded-2xl mb-4"><div class="font-black text-blue-800">' + (this.selCust.name || '') + '</div><div class="text-sm text-blue-600">' + (this.selCust.customer_code || '') + ' - ' + (this.selCust.area || '') + '</div></div>'; 
         } else {
             html += '<div class="bg-red-50 p-4 rounded-2xl mb-4 text-red-600 font-bold text-sm">⚠️ لم تختر عميلاً بعد – ارجع لتبويب العملاء</div>';
         }
         
-        // قائمة الأصناف مع أزرار (+ -) وحذف – مثل سلة المتجر
         html += '<div class="bg-white p-4 rounded-2xl shadow-sm border mb-4">';
         html += '<h3 class="font-bold text-sm text-gray-500 mb-3">الأصناف</h3>';
         
@@ -546,40 +546,48 @@ var App = {
             for (var i = 0; i < this.cart.length; i++) {
                 var item = this.cart[i];
                 var lineTotal = item.price * item.qty;
-                html += '<div class="flex items-center justify-between py-3 border-b last:border-b-0">';
-                
-                // اسم الصنف والسعر
+                var safeCode = item.code.replace(/'/g, "\\'");
+                html += '<div class="flex items-center justify-between py-3 border-b last:border-b-0" id="review-item-' + i + '">';
                 html += '<div class="flex-1 min-w-0">';
                 html += '<div class="font-black text-sm text-gray-800">' + item.name + '</div>';
-                html += '<div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × ' + item.qty + ' = <span class="font-bold text-blue-600">' + fmtNum(lineTotal) + '</span></div>';
+                html += '<div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × <span class="font-bold text-blue-600 review-qty-' + i + '">' + item.qty + '</span> = <span class="font-bold text-blue-600 review-line-' + i + '">' + fmtNum(lineTotal) + '</span></div>';
                 html += '</div>';
-                
-                // أزرار (+ -) وحذف
                 html += '<div class="flex items-center gap-2 mr-3">';
-                html += '<button onclick="App.decCart(\'' + item.code + '\');App.renderReviewView();" class="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full font-black text-gray-600 flex items-center justify-center text-sm transition">−</button>';
-                html += '<span class="w-6 text-center font-black text-sm">' + item.qty + '</span>';
-                html += '<button onclick="App.addToCart(\'' + item.code + '\');App.renderReviewView();" class="w-8 h-8 bg-blue-600 hover:bg-blue-700 rounded-full font-black text-white flex items-center justify-center text-sm transition">+</button>';
-                html += '<button onclick="App.removeFromCart(\'' + item.code + '\');App.renderReviewView();" class="w-7 h-7 bg-red-50 hover:bg-red-100 rounded-full flex items-center justify-center text-red-500 transition"><i class="fa-solid fa-trash text-xs"></i></button>';
+                html += '<button onclick="App.decCart(\'' + safeCode + '\');App._updateReviewItem(' + i + ');" class="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full font-black text-gray-600 flex items-center justify-center text-sm transition">−</button>';
+                html += '<span class="w-6 text-center font-black text-sm review-qty-' + i + '">' + item.qty + '</span>';
+                html += '<button onclick="App.addToCart(\'' + safeCode + '\');App._updateReviewItem(' + i + ');" class="w-8 h-8 bg-blue-600 hover:bg-blue-700 rounded-full font-black text-white flex items-center justify-center text-sm transition">+</button>';
+                html += '<button onclick="App.removeFromCart(\'' + safeCode + '\');App.renderReviewView();" class="w-7 h-7 bg-red-50 hover:bg-red-100 rounded-full flex items-center justify-center text-red-500 transition"><i class="fa-solid fa-trash text-xs"></i></button>';
                 html += '</div>';
-                
                 html += '</div>';
             }
         }
         html += '</div>';
         
-        // ملخص الأسعار
         html += '<div class="bg-white p-4 rounded-2xl shadow-sm border space-y-2">';
-        html += '<div class="flex justify-between"><span class="text-gray-500">المجموع الفرعي</span><span class="font-bold">' + fmtNum(t.sub) + '</span></div>';
-        html += '<div class="flex justify-between"><span class="text-gray-500">رسوم التوصيل</span><span class="font-bold text-blue-600">' + fmtNum(t.del) + '</span></div>';
-        html += '<div class="flex justify-between"><span class="text-gray-500">الضريبة</span><span class="font-bold text-red-600">' + fmtNum(t.tax) + '</span></div>';
-        html += '<div class="flex justify-between font-black text-lg pt-2 border-t"><span>الإجمالي النهائي</span><span class="text-emerald-600">' + fmtNum(t.total) + '</span></div>';
+        html += '<div class="flex justify-between"><span class="text-gray-500">المجموع الفرعي</span><span class="font-bold" id="review-subtotal">' + fmtNum(t.sub) + '</span></div>';
+        html += '<div class="flex justify-between"><span class="text-gray-500">رسوم التوصيل</span><span class="font-bold text-blue-600" id="review-delivery">' + fmtNum(t.del) + '</span></div>';
+        html += '<div class="flex justify-between"><span class="text-gray-500">الضريبة</span><span class="font-bold text-red-600" id="review-tax">' + fmtNum(t.tax) + '</span></div>';
+        html += '<div class="flex justify-between font-black text-lg pt-2 border-t"><span>الإجمالي النهائي</span><span class="text-emerald-600" id="review-total">' + fmtNum(t.total) + '</span></div>';
         html += '</div>';
         
-        // زر الحفظ
         html += '<button onclick="App.submitOrder()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-xl font-black mt-4 transition shadow-lg shadow-emerald-200"><i class="fa-solid fa-check ml-2"></i> حفظ الأوردر</button>';
-        
         html += '</div>';
         safeHTML(byId('mainContent'), html);
+    },
+
+    _updateReviewItem: function(idx) {
+        var item = this.cart[idx];
+        if (!item) { this.renderReviewView(); return; }
+        var lineTotal = item.price * item.qty;
+        var qtyEls = document.querySelectorAll('.review-qty-' + idx);
+        for (var i = 0; i < qtyEls.length; i++) { qtyEls[i].textContent = item.qty; }
+        var lineEl = document.querySelector('.review-line-' + idx);
+        if (lineEl) lineEl.textContent = fmtNum(lineTotal);
+        var t = this.calcTotals();
+        var subtotalEl = byId('review-subtotal'); if (subtotalEl) subtotalEl.textContent = fmtNum(t.sub);
+        var deliveryEl = byId('review-delivery'); if (deliveryEl) deliveryEl.textContent = fmtNum(t.del);
+        var taxEl = byId('review-tax'); if (taxEl) taxEl.textContent = fmtNum(t.tax);
+        var totalEl = byId('review-total'); if (totalEl) totalEl.textContent = fmtNum(t.total);
     },
 
     submitOrder: function() {
