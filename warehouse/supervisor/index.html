@@ -246,11 +246,19 @@ renderRoster: function() {
     var self = this;
     safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
     
-    supabase.rpc('get_warehouse_staff').then(function(res) {
+    // ✅ طريقة مباشرة: جلب كل users ثم تصفيتهم
+    supabase.from('users').select('id, name, email, active_warehouse_role').then(function(res) {
+        if (res.error) {
+            // إذا فشل بسبب RLS، نجرب طريقة مختلفة
+            console.error('Users fetch error:', res.error);
+            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق - خطأ في الصلاحيات</div>');
+            return;
+        }
+        
         self.staffList = res.data || [];
         var html = '<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-gray-500 mb-4">اختر دوراً جديداً لكل موظف. التغيير فوري.</p>';
         if (!self.staffList.length) {
-            html += '<div class="card text-center text-gray-500">لا يوجد موظفون مخزنيون</div>';
+            html += '<div class="card text-center text-gray-500">لا يوجد موظفون</div>';
         } else {
             var roles = ['استلام', 'تحضير', 'تحميل', 'مرتجعات', 'تفريغ', 'جرد', 'أذونات', 'احتياطي'];
             var icons = { 'استلام':'📦','تحضير':'📋','تحميل':'🚛','مرتجعات':'↩️','تفريغ':'🔄','جرد':'🔍','أذونات':'📄','احتياطي':'🪑' };
@@ -265,7 +273,8 @@ renderRoster: function() {
             }
         }
         safeHTML(byId('mainContent'), html);
-    }).catch(function() {
+    }).catch(function(e) {
+        console.error('Fetch error:', e);
         safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');
     });
 },
