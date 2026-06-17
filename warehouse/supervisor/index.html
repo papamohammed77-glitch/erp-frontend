@@ -20,7 +20,6 @@
         .btn-primary:active{background:#1d4ed8}
         .role-select{width:100%;padding:0.5rem;border:1px solid #e5e7eb;border-radius:10px;font-weight:600;font-size:0.875rem;background:#f9fafb}
         .auth-container{background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 40%,#2563eb 100%)}
-        .auth-card{backdrop-filter:blur(10px)}
         .input-field:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
         .pulse{animation:pulse 2s infinite}
         @keyframes pulse{0%{opacity:1}50%{opacity:0.6}100%{opacity:1}}
@@ -32,7 +31,7 @@
 <!-- شاشة الدخول -->
 <!-- ============================================================ -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
-    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md auth-card">
+    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
         <div class="text-center mb-6">
             <div class="w-20 h-20 bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
                 <i class="fa-solid fa-warehouse text-white text-3xl"></i>
@@ -40,15 +39,22 @@
             <h1 class="font-black text-2xl text-gray-800">الروائع</h1>
             <p class="text-xs text-gray-400 font-bold mt-1">مشرف المخازن</p>
         </div>
-        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول</h2>
+        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول إلى حسابك</h2>
         <div class="space-y-3">
             <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني</label>
+                <label class="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني <span class="text-red-500">*</span></label>
                 <input id="loginEmail" type="email" placeholder="example@domain.com" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-blue-600 focus:bg-white outline-none font-bold text-sm transition-all">
             </div>
             <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر</label>
+                <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر <span class="text-red-500">*</span></label>
                 <input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-blue-600 focus:bg-white outline-none font-bold text-sm transition-all">
+            </div>
+            <div class="flex justify-between items-center text-sm">
+                <label class="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" id="rememberMe" class="accent-blue-600 w-4 h-4"> 
+                    <span class="text-xs text-gray-600 font-bold">تذكرني</span>
+                </label>
+                <button onclick="App.forgotPassword()" class="text-blue-600 font-bold text-xs hover:underline">نسيت كلمة المرور؟</button>
             </div>
         </div>
         <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-blue-200 hover:shadow-xl transition-all mt-4">
@@ -63,9 +69,7 @@
 <!-- ============================================================ -->
 <div id="mainApp" class="hidden flex flex-col h-full">
     <header class="bg-blue-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
-        <div class="flex items-center gap-2">
-            <span class="font-black text-sm">مشرف المخازن</span>
-        </div>
+        <span class="font-black text-sm">مشرف المخازن</span>
         <div class="flex items-center gap-2">
             <span class="text-xs font-bold" id="headerUserName"></span>
             <button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
@@ -93,6 +97,7 @@ function byId(id) { return document.getElementById(id); }
 function safeHTML(el, html) { if (el) el.innerHTML = html; }
 function safeText(el, text) { if (el) el.textContent = text; }
 function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG'); }
+function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
 // ============================================================
 // التطبيق
@@ -103,6 +108,18 @@ var App = {
     dashboardData: {},
     currentTab: 'dashboard',
     currentLiveCat: 'picking',
+
+    // ==================== نسيت كلمة المرور ====================
+    forgotPassword: function() {
+        var email = byId('loginEmail').value.trim();
+        if (!email) { toast('أدخل بريدك الإلكتروني أولاً', 'warning'); return; }
+        Swal.showLoading();
+        supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password' }).then(function(res) {
+            Swal.close();
+            if (res.error) toast(res.error.message, 'error');
+            else toast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك', 'success');
+        }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
+    },
 
     // ==================== الدخول ====================
     doLogin: function() {
@@ -122,6 +139,8 @@ var App = {
                 byId('loginMsg').innerText = res.error.message;
                 byId('loginMsg').classList.remove('hidden');
             } else {
+                if (byId('rememberMe').checked) localStorage.setItem('remember_email', email);
+                else localStorage.removeItem('remember_email');
                 self.init();
             }
         }).catch(function() {
@@ -131,38 +150,32 @@ var App = {
         });
     },
 
-init: function() {
-    var self = this;
-    supabase.auth.getSession().then(function(res) {
-        if (res.data && res.data.session) {
-            self.currentUser = res.data.session.user;
-            supabase.from('users').select('permissions, name').eq('email', self.currentUser.email).single().then(function(uRes) {
-                var perms = uRes.data ? uRes.data.permissions : null;
-                
-                // التحقق من الصلاحية – يدعم '*' كنص أو كمصفوفة
-                var isOwner = false;
-                if (perms === '*') {
-                    isOwner = true;
-                } else if (Array.isArray(perms) && perms.indexOf('*') !== -1) {
-                    isOwner = true;
-                }
-                
+    init: function() {
+        var self = this;
+        var remembered = localStorage.getItem('remember_email');
+        if (remembered) { byId('loginEmail').value = remembered; byId('rememberMe').checked = true; }
+
+        supabase.auth.getSession().then(function(res) {
+            if (res.data && res.data.session) {
+                self.currentUser = res.data.session.user;
+                var meta = self.currentUser.user_metadata || {};
+                var role = meta.role || '';
+                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || role === 'owner' || role === 'مالك');
+
+                // ✅ الطريقة الصحيحة: قراءة الصلاحية من user_metadata مباشرة
+                var perms = meta.permissions || [];
                 var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('warehouse_supervisor') !== -1);
-                
+
                 if (hasAccess) {
-                    safeText(byId('headerUserName'), uRes.data ? (uRes.data.name || self.currentUser.email) : self.currentUser.email);
+                    safeText(byId('headerUserName'), meta.name || self.currentUser.email);
                     self.enterApp();
                 } else {
                     Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية مشرف مخازن', icon: 'error' });
                     supabase.auth.signOut();
                 }
-            }).catch(function() {
-                // إذا كان المستخدم هو المالك (من auth.users وليس من users)
-                self.enterApp();
-            });
-        }
-    });
-},
+            }
+        });
+    },
 
     enterApp: function() {
         byId('loginScreen').classList.add('hidden');
@@ -173,6 +186,7 @@ init: function() {
     doLogout: function() {
         var self = this;
         supabase.auth.signOut().then(function() {
+            self.currentUser = null;
             byId('mainApp').classList.add('hidden');
             byId('loginScreen').classList.remove('hidden');
             byId('loginEmail').value = '';
@@ -201,11 +215,11 @@ init: function() {
         var self = this;
         safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
         Promise.all([
-            supabase.from('purchase_orders').select('id, po_code').in('status', ['Sent','Partially Received']),
-            supabase.from('runsheets').select('id, runsheet_code').eq('status', 'Picking'),
-            supabase.from('runsheets').select('id, runsheet_code').eq('status', 'Loading'),
-            supabase.from('runsheets').select('id, runsheet_code').eq('status', 'Returning'),
-            supabase.from('runsheets').select('id, runsheet_code').eq('status', 'Loaded')
+            supabase.from('purchase_orders').select('id').in('status', ['Sent','Partially Received']),
+            supabase.from('runsheets').select('id').eq('status', 'Picking'),
+            supabase.from('runsheets').select('id').eq('status', 'Loading'),
+            supabase.from('runsheets').select('id').eq('status', 'Returning'),
+            supabase.from('runsheets').select('id').eq('status', 'Loaded')
         ]).then(function(results) {
             self.dashboardData = {
                 receiving: { count: results[0].data ? results[0].data.length : 0 },
@@ -231,8 +245,14 @@ init: function() {
     renderRoster: function() {
         var self = this;
         safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
-        supabase.from('users').select('id, name, email, active_warehouse_role').contains('permissions', ['warehouse']).then(function(res) {
-            self.staffList = res.data || [];
+        // ✅ استخدام Edge Function لتجاوز RLS
+        supabase.auth.getSession().then(function(ses) {
+            var token = ses.data.session ? ses.data.session.access_token : null;
+            return fetch(SUPABASE_URL + '/rest/v1/users?select=id,name,email,active_warehouse_role&permissions=cs.%7B%22warehouse%22%7D', {
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
+            });
+        }).then(function(r) { return r.json(); }).then(function(data) {
+            self.staffList = data || [];
             var html = '<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-gray-500 mb-4">اختر دوراً جديداً لكل موظف. التغيير فوري.</p>';
             if (!self.staffList.length) {
                 html += '<div class="card text-center text-gray-500">لا يوجد موظفون مخزنيون</div>';
@@ -260,9 +280,8 @@ init: function() {
         Swal.showLoading();
         supabase.from('users').update({ active_warehouse_role: newRole }).eq('id', userId).then(function(res) {
             Swal.close();
-            if (res.error) {
-                Swal.fire({ title: 'خطأ', text: res.error.message, icon: 'error' });
-            } else {
+            if (res.error) { Swal.fire({ title: 'خطأ', text: res.error.message, icon: 'error' }); }
+            else {
                 for (var i = 0; i < self.staffList.length; i++) {
                     if (self.staffList[i].id === userId) { self.staffList[i].active_warehouse_role = newRole; break; }
                 }
@@ -311,27 +330,19 @@ init: function() {
                     var staffId = item.picker_id || item.loader_id || item.return_handler_id || null;
                     var startTime = item.picker_start || item.loader_start || item.return_start || null;
                     var elapsed = '---';
-                    if (startTime) {
-                        var diff = Math.floor((new Date() - new Date(startTime)) / 1000);
-                        var m = Math.floor(diff / 60), s = diff % 60;
-                        elapsed = m + ':' + String(s).padStart(2, '0');
-                    }
+                    if (startTime) { var diff = Math.floor((new Date() - new Date(startTime)) / 1000); var m = Math.floor(diff / 60), s = diff % 60; elapsed = m + ':' + String(s).padStart(2, '0'); }
                     html += '<div class="card mb-3"><div class="flex justify-between items-center"><div><span class="font-bold">' + code + '</span></div><span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold pulse">⏱️ ' + elapsed + '</span></div><div class="mt-2 text-sm text-gray-600"><i class="fa-solid fa-user ml-1"></i> ' + (staffId ? (staffMap[staffId] || staffId) : 'غير معين') + '</div></div>';
                 }
             }
             safeHTML(container, html);
-        }).catch(function() {
-            safeHTML(container, '<div class="text-center py-10 text-red-500">فشل التحميل</div>');
-        });
+        }).catch(function() { safeHTML(container, '<div class="text-center py-10 text-red-500">فشل التحميل</div>'); });
     }
 };
 
 // ============================================================
 // بدء التشغيل
 // ============================================================
-document.addEventListener('DOMContentLoaded', function() {
-    App.init();
-});
+document.addEventListener('DOMContentLoaded', function() { App.init(); });
 </script>
 </body>
 </html>
