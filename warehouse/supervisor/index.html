@@ -47,7 +47,12 @@
             </div>
             <div>
                 <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر <span class="text-red-500">*</span></label>
-                <input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-blue-600 focus:bg-white outline-none font-bold text-sm transition-all">
+                <div class="relative">
+                    <input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-blue-600 focus:bg-white outline-none font-bold text-sm transition-all pr-12">
+                    <button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600">
+                        <i id="passIcon" class="fa-solid fa-eye"></i>
+                    </button>
+                </div>
             </div>
             <div class="flex justify-between items-center text-sm">
                 <label class="flex items-center gap-1 cursor-pointer">
@@ -109,6 +114,19 @@ var App = {
     currentTab: 'dashboard',
     currentLiveCat: 'picking',
 
+    // ==================== عدسة كلمة المرور ====================
+    togglePass: function() {
+        var passInput = byId('loginPass');
+        var icon = byId('passIcon');
+        if (passInput.type === 'password') {
+            passInput.type = 'text';
+            icon.className = 'fa-solid fa-eye-slash';
+        } else {
+            passInput.type = 'password';
+            icon.className = 'fa-solid fa-eye';
+        }
+    },
+
     // ==================== نسيت كلمة المرور ====================
     forgotPassword: function() {
         var email = byId('loginEmail').value.trim();
@@ -159,10 +177,7 @@ var App = {
             if (res.data && res.data.session) {
                 self.currentUser = res.data.session.user;
                 var meta = self.currentUser.user_metadata || {};
-                var role = meta.role || '';
-                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || role === 'owner' || role === 'مالك');
-
-                // ✅ الطريقة الصحيحة: قراءة الصلاحية من user_metadata مباشرة
+                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
                 var perms = meta.permissions || [];
                 var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('warehouse_supervisor') !== -1);
 
@@ -242,42 +257,52 @@ var App = {
     },
 
     // ==================== الفريق ====================
-renderRoster: function() {
-    var self = this;
-    safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
-    
-    // ✅ طريقة مباشرة: جلب كل users ثم تصفيتهم
-    supabase.from('users').select('id, name, email, active_warehouse_role').then(function(res) {
-        if (res.error) {
-            // إذا فشل بسبب RLS، نجرب طريقة مختلفة
-            console.error('Users fetch error:', res.error);
-            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق - خطأ في الصلاحيات</div>');
-            return;
-        }
+    renderRoster: function() {
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
         
-        self.staffList = res.data || [];
-        var html = '<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-gray-500 mb-4">اختر دوراً جديداً لكل موظف. التغيير فوري.</p>';
-        if (!self.staffList.length) {
-            html += '<div class="card text-center text-gray-500">لا يوجد موظفون</div>';
-        } else {
-            var roles = ['استلام', 'تحضير', 'تحميل', 'مرتجعات', 'تفريغ', 'جرد', 'أذونات', 'احتياطي'];
-            var icons = { 'استلام':'📦','تحضير':'📋','تحميل':'🚛','مرتجعات':'↩️','تفريغ':'🔄','جرد':'🔍','أذونات':'📄','احتياطي':'🪑' };
-            for (var i = 0; i < self.staffList.length; i++) {
-                var emp = self.staffList[i];
-                var role = emp.active_warehouse_role || 'احتياطي';
-                html += '<div class="card mb-3"><div class="flex justify-between items-center mb-3"><div><span class="font-bold">' + emp.name + '</span><br><span class="text-xs text-gray-400">' + emp.email + '</span></div><span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">' + (icons[role]||'') + ' ' + role + '</span></div><select class="role-select" onchange="App.updateRole(\'' + emp.id + '\', this.value)">';
-                for (var j = 0; j < roles.length; j++) {
-                    html += '<option value="' + roles[j] + '"' + (roles[j] === role ? ' selected' : '') + '>' + (icons[roles[j]]||'') + ' ' + roles[j] + '</option>';
-                }
-                html += '</select></div>';
+        supabase.from('users').select('id, name, email, role, active_warehouse_role').then(function(res) {
+            if (res.error) {
+                safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');
+                return;
             }
-        }
-        safeHTML(byId('mainContent'), html);
-    }).catch(function(e) {
-        console.error('Fetch error:', e);
-        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');
-    });
-},
+            
+            var allUsers = res.data || [];
+            var warehouseStaff = [];
+            var warehouseRoles = ['مخزني', 'أمين مخزن', 'امين مخزن', 'warehouse'];
+            for (var i = 0; i < allUsers.length; i++) {
+                var u = allUsers[i];
+                var userRole = (u.role || '').toLowerCase();
+                for (var j = 0; j < warehouseRoles.length; j++) {
+                    if (userRole === warehouseRoles[j].toLowerCase()) {
+                        warehouseStaff.push(u);
+                        break;
+                    }
+                }
+            }
+            
+            self.staffList = warehouseStaff;
+            var html = '<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-gray-500 mb-4">اختر دوراً جديداً لكل موظف. التغيير فوري.</p>';
+            if (!self.staffList.length) {
+                html += '<div class="card text-center text-gray-500">لا يوجد موظفون مخزنيون</div>';
+            } else {
+                var roles = ['استلام', 'تحضير', 'تحميل', 'مرتجعات', 'تفريغ', 'جرد', 'أذونات', 'احتياطي'];
+                var icons = { 'استلام':'📦','تحضير':'📋','تحميل':'🚛','مرتجعات':'↩️','تفريغ':'🔄','جرد':'🔍','أذونات':'📄','احتياطي':'🪑' };
+                for (var i = 0; i < self.staffList.length; i++) {
+                    var emp = self.staffList[i];
+                    var role = emp.active_warehouse_role || 'احتياطي';
+                    html += '<div class="card mb-3"><div class="flex justify-between items-center mb-3"><div><span class="font-bold">' + emp.name + '</span><br><span class="text-xs text-gray-400">' + emp.email + '</span></div><span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">' + (icons[role]||'') + ' ' + role + '</span></div><select class="role-select" onchange="App.updateRole(\'' + emp.id + '\', this.value)">';
+                    for (var j = 0; j < roles.length; j++) {
+                        html += '<option value="' + roles[j] + '"' + (roles[j] === role ? ' selected' : '') + '>' + (icons[roles[j]]||'') + ' ' + roles[j] + '</option>';
+                    }
+                    html += '</select></div>';
+                }
+            }
+            safeHTML(byId('mainContent'), html);
+        }).catch(function() {
+            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');
+        });
+    },
 
     updateRole: function(userId, newRole) {
         var self = this;
