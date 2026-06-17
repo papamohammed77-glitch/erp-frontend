@@ -131,26 +131,38 @@ var App = {
         });
     },
 
-    init: function() {
-        var self = this;
-        supabase.auth.getSession().then(function(res) {
-            if (res.data && res.data.session) {
-                self.currentUser = res.data.session.user;
-                supabase.from('users').select('permissions, name').eq('email', self.currentUser.email).single().then(function(uRes) {
-                    var perms = (uRes.data && uRes.data.permissions) ? uRes.data.permissions : [];
-                    if (perms.indexOf('warehouse_supervisor') !== -1 || perms.indexOf('*') !== -1) {
-                        safeText(byId('headerUserName'), uRes.data ? uRes.data.name || self.currentUser.email : self.currentUser.email);
-                        self.enterApp();
-                    } else {
-                        Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية مشرف مخازن', icon: 'error' });
-                        supabase.auth.signOut();
-                    }
-                }).catch(function() {
+init: function() {
+    var self = this;
+    supabase.auth.getSession().then(function(res) {
+        if (res.data && res.data.session) {
+            self.currentUser = res.data.session.user;
+            supabase.from('users').select('permissions, name').eq('email', self.currentUser.email).single().then(function(uRes) {
+                var perms = uRes.data ? uRes.data.permissions : null;
+                
+                // التحقق من الصلاحية – يدعم '*' كنص أو كمصفوفة
+                var isOwner = false;
+                if (perms === '*') {
+                    isOwner = true;
+                } else if (Array.isArray(perms) && perms.indexOf('*') !== -1) {
+                    isOwner = true;
+                }
+                
+                var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('warehouse_supervisor') !== -1);
+                
+                if (hasAccess) {
+                    safeText(byId('headerUserName'), uRes.data ? (uRes.data.name || self.currentUser.email) : self.currentUser.email);
                     self.enterApp();
-                });
-            }
-        });
-    },
+                } else {
+                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية مشرف مخازن', icon: 'error' });
+                    supabase.auth.signOut();
+                }
+            }).catch(function() {
+                // إذا كان المستخدم هو المالك (من auth.users وليس من users)
+                self.enterApp();
+            });
+        }
+    });
+},
 
     enterApp: function() {
         byId('loginScreen').classList.add('hidden');
