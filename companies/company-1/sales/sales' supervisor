@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>مشرف المبيعات | الروائع ERP</title>
+    <link rel="manifest" href="../manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:Tahoma,sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
+        .auth-container{background:linear-gradient(135deg,#1e1b4b 0%,#312e81 40%,#4f46e5 100%)}
+        .input-field:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,0.1)}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+        .animate-fadeIn{animation:fadeIn .3s}
+        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
+        .stat-card{background:#fff;border-radius:16px;padding:1rem;box-shadow:0 4px 6px rgba(0,0,0,0.02);transition:transform 0.2s;cursor:pointer}
+        .stat-card:active{transform:scale(0.98)}
+        .pulse{animation:pulse 2s infinite}
+        @keyframes pulse{0%{opacity:1}50%{opacity:0.6}100%{opacity:1}}
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+<!-- ============================================================ -->
+<!-- شاشة الدخول -->
+<!-- ============================================================ -->
+<div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
+    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
+        <div class="text-center mb-6">
+            <div class="w-20 h-20 bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
+                <i class="fa-solid fa-chart-line text-white text-3xl"></i>
+            </div>
+            <h1 class="font-black text-2xl text-gray-800">الروائع</h1>
+            <p class="text-xs text-gray-400 font-bold mt-1">مشرف المبيعات</p>
+        </div>
+        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول إلى حسابك</h2>
+        <div class="space-y-3">
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني <span class="text-red-500">*</span></label>
+                <input id="loginEmail" type="email" placeholder="example@domain.com" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-indigo-600 focus:bg-white outline-none font-bold text-sm transition-all">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر <span class="text-red-500">*</span></label>
+                <div class="relative">
+                    <input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-indigo-600 focus:bg-white outline-none font-bold text-sm transition-all pr-12">
+                    <button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600">
+                        <i id="passIcon" class="fa-solid fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-indigo-200 hover:shadow-xl transition-all mt-4">
+            تسجيل الدخول
+        </button>
+        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- التطبيق الرئيسي -->
+<!-- ============================================================ -->
+<div id="mainApp" class="hidden flex flex-col h-full">
+
+    <header class="bg-indigo-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+        <span class="font-black text-sm">مشرف المبيعات</span>
+        <div class="flex items-center gap-2">
+            <span class="text-xs font-bold" id="headerUserName"></span>
+            <button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
+        </div>
+    </header>
+
+    <div class="flex gap-1 p-2 bg-white border-b overflow-x-auto flex-shrink-0">
+        <button onclick="App.switchTab('dashboard')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm bg-indigo-600 text-white" id="tab-dashboard">📊 لوحة التحكم</button>
+        <button onclick="App.switchTab('team')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-team">👥 الفريق</button>
+        <button onclick="App.switchTab('live')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-live">🔴 الحي</button>
+    </div>
+
+    <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+var db = new Dexie('RW_SalesSupervisor');
+db.version(1).stores({ meta: 'key', cache: 'key' });
+
+function byId(id) { return document.getElementById(id); }
+function safeText(el, text) { if (el) el.textContent = text; }
+function safeHTML(el, html) { if (el) el.innerHTML = html; }
+function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
+function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
+
+var App = {
+    currentUser: null,
+    currentTab: 'dashboard',
+    dashboardData: {},
+    teamData: [],
+
+    togglePass: function() {
+        var passInput = byId('loginPass');
+        var icon = byId('passIcon');
+        if (passInput.type === 'password') { passInput.type = 'text'; icon.className = 'fa-solid fa-eye-slash'; }
+        else { passInput.type = 'password'; icon.className = 'fa-solid fa-eye'; }
+    },
+
+    doLogin: function() {
+        var email = byId('loginEmail').value.trim();
+        var pass = byId('loginPass').value.trim();
+        if (!email || !pass) { byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور'; byId('loginMsg').classList.remove('hidden'); return; }
+        byId('loginMsg').classList.add('hidden');
+        var self = this;
+        Swal.showLoading();
+        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res) {
+            Swal.close();
+            if (res.error) { byId('loginMsg').innerText = res.error.message; byId('loginMsg').classList.remove('hidden'); }
+            else { self.init(); }
+        }).catch(function() { Swal.close(); byId('loginMsg').innerText = 'فشل الاتصال'; byId('loginMsg').classList.remove('hidden'); });
+    },
+
+    init: function() {
+        var self = this;
+        supabase.auth.getSession().then(function(res) {
+            if (res.data && res.data.session) {
+                self.currentUser = res.data.session.user;
+                var meta = self.currentUser.user_metadata || {};
+                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
+                var perms = meta.permissions || [];
+                var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('sales_supervisor') !== -1);
+
+                if (!hasAccess) { Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية مشرف مبيعات', icon: 'error' }); supabase.auth.signOut(); return; }
+
+                safeText(byId('headerUserName'), meta.name || self.currentUser.email);
+                self.enterApp();
+            }
+        });
+    },
+
+    enterApp: function() {
+        byId('loginScreen').classList.add('hidden');
+        byId('mainApp').classList.remove('hidden');
+        this.switchTab('dashboard');
+    },
+
+    doLogout: function() {
+        var self = this;
+        supabase.auth.signOut().then(function() {
+            self.currentUser = null;
+            byId('mainApp').classList.add('hidden');
+            byId('loginScreen').classList.remove('hidden');
+            byId('loginEmail').value = '';
+            byId('loginPass').value = '';
+            byId('loginMsg').classList.add('hidden');
+        });
+    },
+
+    switchTab: function(tab) {
+        this.currentTab = tab;
+        var tabs = ['dashboard', 'team', 'live'];
+        for (var i = 0; i < tabs.length; i++) {
+            var btn = byId('tab-' + tabs[i]);
+            if (btn) { btn.classList.remove('bg-indigo-600', 'text-white'); btn.classList.add('text-gray-500'); }
+        }
+        var activeBtn = byId('tab-' + tab);
+        if (activeBtn) { activeBtn.classList.add('bg-indigo-600', 'text-white'); activeBtn.classList.remove('text-gray-500'); }
+        if (tab === 'dashboard') this.renderDashboard();
+        else if (tab === 'team') this.renderTeam();
+        else if (tab === 'live') this.renderLive();
+    },
+
+    // ==================== لوحة التحكم ====================
+    renderDashboard: function() {
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+
+        var today = new Date().toISOString().split('T')[0];
+
+        Promise.all([
+            supabase.from('orders').select('total_amount, payment_type, order_status').eq('order_date', today),
+            supabase.from('orders').select('total_amount').eq('order_date', today).neq('order_status', 'Cancelled')
+        ]).then(function(results) {
+            var orders = results[0].data || [];
+            var totalSales = 0, countCash = 0, countCredit = 0, countPending = 0;
+            for (var i = 0; i < orders.length; i++) {
+                totalSales += Number(orders[i].total_amount) || 0;
+                if (orders[i].payment_type === 'نقدي') countCash++;
+                else if (orders[i].payment_type === 'أجل') countCredit++;
+                if (orders[i].order_status === 'Pending') countPending++;
+            }
+            var avgOrder = orders.length > 0 ? Math.round(totalSales / orders.length) : 0;
+
+            self.dashboardData = {
+                totalOrders: orders.length,
+                totalSales: totalSales,
+                avgOrder: avgOrder,
+                countCash: countCash,
+                countCredit: countCredit,
+                countPending: countPending
+            };
+
+            var html = '<h2 class="text-lg font-black mb-4">📊 نظرة عامة – اليوم</h2>';
+            html += '<div class="grid grid-cols-2 gap-3 mb-6">';
+            html += '<div class="stat-card"><p class="text-xs text-gray-400">إجمالي المبيعات</p><p class="text-2xl font-black text-indigo-600">' + fmtNum(totalSales) + ' ج.م</p></div>';
+            html += '<div class="stat-card"><p class="text-xs text-gray-400">عدد الأوردرات</p><p class="text-2xl font-black text-emerald-600">' + orders.length + '</p></div>';
+            html += '<div class="stat-card"><p class="text-xs text-gray-400">متوسط الأوردر</p><p class="text-2xl font-black text-amber-600">' + fmtNum(avgOrder) + ' ج.م</p></div>';
+            html += '<div class="stat-card"><p class="text-xs text-gray-400">معلقة</p><p class="text-2xl font-black text-red-600">' + countPending + '</p></div>';
+            html += '</div>';
+            html += '<div class="grid grid-cols-2 gap-3 mb-6">';
+            html += '<div class="stat-card text-center"><p class="text-xs text-gray-400">💵 نقدي</p><p class="text-xl font-black text-green-600">' + countCash + '</p></div>';
+            html += '<div class="stat-card text-center"><p class="text-xs text-gray-400">📋 آجل</p><p class="text-xl font-black text-orange-600">' + countCredit + '</p></div>';
+            html += '</div>';
+            html += '<button onclick="App.switchTab(\'team\')" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-lg"><i class="fa-solid fa-users ml-2"></i> أداء الفريق</button>';
+            safeHTML(byId('mainContent'), html);
+        }).catch(function() {
+            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');
+        });
+    },
+
+    // ==================== الفريق ====================
+    renderTeam: function() {
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+
+        var today = new Date().toISOString().split('T')[0];
+
+        supabase.from('users').select('email, name, role').in('role', ['مندوب مبيعات','مندوب بيع مباشر','كاشير','تلي سيلز']).then(function(usersRes) {
+            var users = usersRes.data || [];
+            self.teamData = users;
+
+            supabase.from('orders').select('created_by, total_amount, payment_type, order_status').eq('order_date', today).then(function(ordersRes) {
+                var orders = ordersRes.data || [];
+                var teamStats = {};
+
+                for (var i = 0; i < orders.length; i++) {
+                    var o = orders[i];
+                    var by = o.created_by || 'غير معروف';
+                    if (!teamStats[by]) teamStats[by] = { orders: 0, total: 0, cash: 0, credit: 0 };
+                    teamStats[by].orders++;
+                    teamStats[by].total += Number(o.total_amount) || 0;
+                    if (o.payment_type === 'نقدي') teamStats[by].cash++;
+                    else teamStats[by].credit++;
+                }
+
+                var html = '<h2 class="text-lg font-black mb-4">👥 أداء الفريق – اليوم</h2>';
+
+                if (users.length === 0) {
+                    html += '<div class="card text-center text-gray-500">لا يوجد مندوبون</div>';
+                } else {
+                    for (var j = 0; j < users.length; j++) {
+                        var u = users[j];
+                        var stats = teamStats[u.email] || { orders: 0, total: 0, cash: 0, credit: 0 };
+                        var hasActivity = stats.orders > 0;
+                        var borderColor = hasActivity ? 'border-indigo-200' : 'border-gray-100';
+                        var bgColor = hasActivity ? 'bg-white' : 'bg-gray-50';
+
+                        html += '<div class="card mb-3 ' + borderColor + ' ' + bgColor + '">';
+                        html += '<div class="flex justify-between items-center mb-3">';
+                        html += '<div><span class="font-bold text-lg">' + (u.name || u.email) + '</span><p class="text-xs text-gray-400">' + (u.role || '') + '</p></div>';
+                        if (hasActivity) {
+                            html += '<span class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold pulse">🟢 نشط</span>';
+                        } else {
+                            html += '<span class="px-3 py-1 bg-gray-100 text-gray-400 rounded-full text-xs font-bold">⚪ غير نشط</span>';
+                        }
+                        html += '</div>';
+                        html += '<div class="grid grid-cols-4 gap-2 text-center">';
+                        html += '<div><p class="text-xs text-gray-400">أوردرات</p><p class="font-black text-lg">' + stats.orders + '</p></div>';
+                        html += '<div><p class="text-xs text-gray-400">الإجمالي</p><p class="font-black text-indigo-600">' + fmtNum(stats.total) + '</p></div>';
+                        html += '<div><p class="text-xs text-gray-400">نقدي</p><p class="font-bold text-green-600">' + stats.cash + '</p></div>';
+                        html += '<div><p class="text-xs text-gray-400">آجل</p><p class="font-bold text-orange-600">' + stats.credit + '</p></div>';
+                        html += '</div></div>';
+                    }
+                }
+
+                safeHTML(byId('mainContent'), html);
+            });
+        }).catch(function() {
+            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');
+        });
+    },
+
+    // ==================== الحي ====================
+    renderLive: function() {
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+
+        supabase.from('orders').select('order_code, customer_name, total_amount, created_by, order_status, order_date').order('order_date', { ascending: false }).limit(30).then(function(res) {
+            var orders = res.data || [];
+            var html = '<h2 class="text-lg font-black mb-4">🔴 أحدث الأوردرات</h2>';
+
+            if (orders.length === 0) {
+                html += '<div class="card text-center text-gray-500">لا توجد أوردرات</div>';
+            } else {
+                for (var i = 0; i < orders.length; i++) {
+                    var o = orders[i];
+                    var statusColor = o.order_status === 'Invoiced' ? 'bg-green-100 text-green-700' :
+                                     o.order_status === 'Confirmed' ? 'bg-blue-100 text-blue-700' :
+                                     o.order_status === 'Pending' ? 'bg-amber-100 text-amber-700' :
+                                     o.order_status === 'Cancelled' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700';
+                    var statusLabel = o.order_status === 'Invoiced' ? 'مفوتر' :
+                                     o.order_status === 'Confirmed' ? 'مؤكد' :
+                                     o.order_status === 'Pending' ? 'معلق' :
+                                     o.order_status === 'Cancelled' ? 'ملغي' : (o.order_status || '---');
+
+                    html += '<div class="card mb-2">';
+                    html += '<div class="flex justify-between items-center">';
+                    html += '<div><span class="font-bold">' + (o.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (o.customer_name || '') + '</span></div>';
+                    html += '<span class="px-2 py-0.5 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span>';
+                    html += '</div>';
+                    html += '<div class="flex justify-between items-center mt-2"><span class="text-xs text-gray-500"><i class="fa-solid fa-user ml-1"></i> ' + (o.created_by || '---') + '</span><span class="font-bold text-indigo-600">' + fmtNum(o.total_amount) + ' ج.م</span></div>';
+                    html += '</div>';
+                }
+            }
+
+            safeHTML(byId('mainContent'), html);
+        }).catch(function() {
+            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');
+        });
+    }
+};
+
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
+document.addEventListener('DOMContentLoaded', function() { App.init(); });
+</script>
+</body>
+</html>
