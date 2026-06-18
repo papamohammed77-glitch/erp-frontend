@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>نقطة البيع | الروائع ERP</title>
+    <link rel="manifest" href="../manifest.json">
+    <meta name="theme-color" content="#059669">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:Tahoma,sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
+        .auth-container{background:linear-gradient(135deg,#064e3b 0%,#065f46 40%,#059669 100%)}
+        .input-field:focus{border-color:#059669;box-shadow:0 0 0 3px rgba(5,150,105,0.1)}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+        .animate-fadeIn{animation:fadeIn .3s}
+        .barcode-scanner{position:fixed;inset:0;background:#000;z-index:120;display:none;flex-direction:column}
+        .barcode-scanner.active{display:flex}
+        .barcode-scanner video{width:100%;height:100%;object-fit:cover}
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+<!-- ============================================================ -->
+<!-- شاشة الدخول -->
+<!-- ============================================================ -->
+<div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
+    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
+        <div class="text-center mb-6">
+            <div class="w-20 h-20 bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
+                <i class="fa-solid fa-cash-register text-white text-3xl"></i>
+            </div>
+            <h1 class="font-black text-2xl text-gray-800">الروائع</h1>
+            <p class="text-xs text-gray-400 font-bold mt-1">نقطة البيع</p>
+        </div>
+        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول إلى حسابك</h2>
+        <div class="space-y-3">
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني <span class="text-red-500">*</span></label>
+                <input id="loginEmail" type="email" placeholder="example@domain.com" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-emerald-600 focus:bg-white outline-none font-bold text-sm transition-all">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر <span class="text-red-500">*</span></label>
+                <div class="relative">
+                    <input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-emerald-600 focus:bg-white outline-none font-bold text-sm transition-all pr-12">
+                    <button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600">
+                        <i id="passIcon" class="fa-solid fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="flex justify-between items-center text-sm">
+                <label class="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" id="rememberMe" class="accent-emerald-600 w-4 h-4"> 
+                    <span class="text-xs text-gray-600 font-bold">تذكرني</span>
+                </label>
+                <button onclick="App.forgotPassword()" class="text-emerald-600 font-bold text-xs hover:underline">نسيت كلمة المرور؟</button>
+            </div>
+        </div>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-emerald-200 hover:shadow-xl transition-all mt-4">
+            تسجيل الدخول
+        </button>
+        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- التطبيق الرئيسي -->
+<!-- ============================================================ -->
+<div id="mainApp" class="hidden flex flex-col h-full">
+
+    <header class="bg-emerald-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+        <div class="flex items-center gap-2">
+            <span class="font-black text-sm">🛒 نقطة البيع</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+            <span id="connLabel" class="text-[11px] font-bold">متصل</span>
+            <button onclick="App.syncData()" class="relative bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-rotate text-xs"></i></button>
+            <button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
+        </div>
+    </header>
+
+    <main id="mainContent" class="flex-1 overflow-y-auto pb-20"></main>
+
+    <nav id="bottomNav" class="bg-white border-t fixed bottom-0 left-0 right-0 z-30 h-16 flex justify-around items-center text-gray-400 text-xs flex-shrink-0"></nav>
+
+    <div id="barcodeScanner" class="barcode-scanner">
+        <div class="p-4 bg-gray-900 text-white flex justify-between items-center">
+            <span class="font-black"><i class="fa-solid fa-barcode text-emerald-400 ml-2"></i> جاري مسح الباركود</span>
+            <button onclick="App.stopBarcodeScanner()" class="bg-red-600 text-white px-4 py-1.5 rounded-xl text-xs font-bold">إغلاق</button>
+        </div>
+        <div class="flex-1 relative">
+            <video id="scannerVideo" class="w-full h-full object-cover" playsinline></video>
+            <div class="absolute inset-0 border-4 border-emerald-500 border-dashed rounded-2xl opacity-70 m-8 pointer-events-none"></div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ============================================================
+// تهيئة Supabase و Dexie
+// ============================================================
+var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+var db = new Dexie('RW_POS');
+db.version(2).stores({
+    customers: 'customer_code, name, area, phone, visit_day',
+    items: 'item_code, name, sales_price, unit, max_qty, barcode, category, image_url',
+    stock: '[item_id+branch_id], qty, allocated_qty',
+    branches: 'branch_code, name',
+    meta: 'key',
+    orders: '++id, status, created_at',
+    pending_updates: '++id, type, status'
+});
+
+function byId(id) { return document.getElementById(id); }
+function safeText(el, text) { if (el) el.textContent = text; }
+function safeHTML(el, html) { if (el) el.innerHTML = html; }
+function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
+function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
+
+// ============================================================
+// التطبيق
+// ============================================================
+var App = {
+    currentUser: null,
+    cart: [],
+    selCust: null,
+    selBranch: null,
+    branchMap: {},
+    delFee: 0,
+    taxRate: 0,
+    minAmt: 0,
+    companyName: 'الروائع',
+    scannerStream: null,
+    scannerActive: false,
+    lastScanned: '',
+    lastScanTime: 0,
+
+    // ==================== دوال شاشة الدخول ====================
+    togglePass: function() {
+        var passInput = byId('loginPass');
+        var icon = byId('passIcon');
+        if (passInput.type === 'password') {
+            passInput.type = 'text';
+            icon.className = 'fa-solid fa-eye-slash';
+        } else {
+            passInput.type = 'password';
+            icon.className = 'fa-solid fa-eye';
+        }
+    },
+
+    forgotPassword: function() {
+        var email = byId('loginEmail').value.trim();
+        if (!email) {
+            toast('أدخل بريدك الإلكتروني أولاً', 'warning');
+            return;
+        }
+        Swal.showLoading();
+        supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: window.location.origin + '/reset-password'
+        }).then(function(res) {
+            Swal.close();
+            if (res.error) {
+                toast(res.error.message, 'error');
+            } else {
+                toast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك', 'success');
+            }
+        }).catch(function() {
+            Swal.close();
+            toast('فشل الاتصال بالخادم', 'error');
+        });
+    },
+
+    doLogin: function() {
+        var email = byId('loginEmail').value.trim();
+        var pass = byId('loginPass').value.trim();
+        
+        if (!email || !pass) {
+            byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
+            byId('loginMsg').classList.remove('hidden');
+            return;
+        }
+
+        byId('loginMsg').classList.add('hidden');
+        var self = this;
+        Swal.showLoading();
+        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res) {
+            Swal.close();
+            if (res.error) {
+                byId('loginMsg').innerText = res.error.message;
+                byId('loginMsg').classList.remove('hidden');
+            } else {
+                if (byId('rememberMe').checked) {
+                    localStorage.setItem('remember_email_pos', email);
+                } else {
+                    localStorage.removeItem('remember_email_pos');
+                }
+                self.init();
+            }
+        }).catch(function(err) {
+            Swal.close();
+            byId('loginMsg').innerText = 'فشل الاتصال بالخادم: ' + (err.message || '');
+            byId('loginMsg').classList.remove('hidden');
+        });
+    },
+
+    // ==================== دوال التطبيق الأساسية ====================
+    init: function() {
+        var self = this;
+        var remembered = localStorage.getItem('remember_email_pos');
+        if (remembered) {
+            byId('loginEmail').value = remembered;
+            byId('rememberMe').checked = true;
+        }
+
+        supabase.auth.getSession().then(function(res) {
+            if (res.data && res.data.session) {
+                self.currentUser = res.data.session.user;
+                var meta = self.currentUser.user_metadata || {};
+                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
+                var perms = meta.permissions || [];
+                var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('pos') !== -1);
+
+                if (!hasAccess) {
+                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية نقطة البيع', icon: 'error' });
+                    supabase.auth.signOut();
+                    return;
+                }
+
+                safeText(byId('headerTitle'), (meta.name || self.currentUser.email));
+                self.enterApp();
+            }
+        });
+    },
+
+    enterApp: function() {
+        byId('loginScreen').classList.add('hidden');
+        byId('mainApp').classList.remove('hidden');
+        this.loadSettings();
+        this.updateConnectionStatus();
+        window.addEventListener('online', function() { App.updateConnectionStatus(); });
+        window.addEventListener('offline', function() { App.updateConnectionStatus(); });
+        this.renderBottomNav();
+        this.syncDown().then(function() { App.loadBranches(); });
+    },
+
+    doLogout: function() {
+        var self = this;
+        supabase.auth.signOut().then(function() {
+            self.cart = [];
+            self.selCust = null;
+            byId('mainApp').classList.add('hidden');
+            byId('loginScreen').classList.remove('hidden');
+            byId('loginEmail').value = '';
+            byId('loginPass').value = '';
+            byId('loginMsg').classList.add('hidden');
+        });
+    },
+
+    updateConnectionStatus: function() {
+        var dot = byId('connDot');
+        var label = byId('connLabel');
+        if (navigator.onLine) {
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+            label.innerText = 'متصل';
+        } else {
+            dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
+            label.innerText = 'غير متصل';
+        }
+    },
+
+    syncDown: function() {
+        return Promise.all([
+            supabase.from('customers').select('*').then(function(r) { return db.customers.clear().then(function() { return db.customers.bulkPut(r.data || []); }); }),
+            supabase.from('items').select('*').then(function(r) { return db.items.clear().then(function() { return db.items.bulkPut(r.data || []); }); }),
+            supabase.from('stock_branches').select('*').then(function(r) { return db.stock.clear().then(function() { return db.stock.bulkPut(r.data || []); }); }),
+            supabase.from('branches').select('*').then(function(r) { return db.branches.clear().then(function() { return db.branches.bulkPut(r.data || []); }); }),
+            supabase.from('app_settings').select('*').limit(1).single().then(function(r) {
+                if (r.data) {
+                    db.meta.put({
+                        key: 'settings',
+                        del: Number(r.data.delivery_fee) || 0,
+                        tax: Number(r.data.tax_rate) || 0,
+                        min: Number(r.data.min_invoice_amount) || 0,
+                        name: r.data.company_name || 'الروائع',
+                        logo: r.data.company_logo || ''
+                    });
+                }
+            })
+        ]);
+    },
+
+    syncData: function() {
+        if (!navigator.onLine) { toast('لا يوجد اتصال', 'warning'); return; }
+        var self = this;
+        Swal.showLoading();
+        this.syncDown().then(function() {
+            Swal.close();
+            self.loadBranches();
+            self.loadSettings();
+            toast('تمت المزامنة', 'success');
+        }).catch(function() {
+            Swal.close();
+            toast('فشلت المزامنة', 'error');
+        });
+    },
+
+    loadSettings: function() {
+        var self = this;
+        db.meta.get('settings').then(function(s) {
+            if (s) {
+                self.delFee = s.del || 0;
+                self.taxRate = s.tax || 0;
+                self.minAmt = s.min || 0;
+                self.companyName = s.name || 'الروائع';
+            }
+        });
+    },
+
+    // ==================== شريط التنقل السفلي ====================
+    renderBottomNav: function() {
+        var html = '';
+        html += '<button onclick="App.showView(\'pos\')" class="flex flex-col items-center p-2 text-emerald-600" id="nav-pos"><i class="fa-solid fa-cash-register text-lg mb-1"></i><span>البيع</span></button>';
+        html += '<button onclick="App.startBarcodeScanner()" class="flex flex-col items-center p-2 text-gray-400" id="nav-scan"><i class="fa-solid fa-camera text-lg mb-1"></i><span>مسح</span></button>';
+        html += '<button onclick="App.showView(\'posInvoices\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-invoices"><i class="fa-solid fa-file-invoice text-lg mb-1"></i><span>فواتير اليوم</span></button>';
+        safeHTML(byId('bottomNav'), html);
+        this.showView('pos');
+    },
+
+    showView: function(view) {
+        var btns = document.querySelectorAll('#bottomNav button');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.remove('text-emerald-600');
+            btns[i].classList.add('text-gray-400');
+        }
+        var activeBtn = byId('nav-' + view);
+        if (activeBtn) {
+            activeBtn.classList.remove('text-gray-400');
+            activeBtn.classList.add('text-emerald-600');
+        }
+        if (view === 'pos') this.renderPOSView();
+        else if (view === 'posInvoices') this.renderPOSInvoicesView();
+    },
+
+    // ==================== الفروع ====================
+    loadBranches: function() {
+        var self = this;
+        db.branches.toArray().then(function(br) {
+            self.branchMap = {};
+            var html = '<option value="">-- اختر الفرع --</option>';
+            for (var i = 0; i < br.length; i++) {
+                self.branchMap[br[i].branch_code] = br[i].id;
+                html += '<option value="' + br[i].branch_code + '">' + (br[i].name || br[i].branch_code) + '</option>';
+            }
+            var sel = byId('branchSel');
+            if (sel) safeHTML(sel, html);
+        });
+    },
+
+    onBranchChange: function(v) {
+        this.selBranch = v || null;
+        this.searchItems(byId('posSearch') ? byId('posSearch').value : '');
+    },
+
+    // ==================== العملاء ====================
+    loadCustomersForPOS: function() {
+        var self = this;
+        db.customers.toArray().then(function(list) {
+            var html = '<option value="">-- اختر عميلاً --</option>';
+            for (var i = 0; i < list.length; i++) {
+                html += '<option value="' + list[i].customer_code + '">' + list[i].name + ' - ' + (list[i].area || '') + '</option>';
+            }
+            var sel = byId('posCustSelect');
+            if (sel) safeHTML(sel, html);
+        });
+    },
+
+    selectCustomer: function() {
+        var self = this;
+        var code = byId('posCustSelect') ? byId('posCustSelect').value : '';
+        if (!code) {
+            this.selCust = null;
+            return;
+        }
+        db.customers.get(code).then(function(c) {
+            if (!c) return;
+            self.selCust = c;
+        });
+    },
+
+    // ==================== الأصناف ====================
+    getAvail: function(itemId) {
+        var self = this;
+        var bid = this.selBranch ? this.branchMap[this.selBranch] : null;
+        return db.stock.where('item_id').equals(itemId).toArray().then(function(r) {
+            if (bid) {
+                for (var i = 0; i < r.length; i++) {
+                    if (r[i].branch_id === bid) {
+                        return Math.max(0, (Number(r[i].qty) || 0) - (Number(r[i].allocated_qty) || 0));
+                    }
+                }
+                return 0;
+            }
+            var t = 0;
+            for (var j = 0; j < r.length; j++) {
+                t += Math.max(0, (Number(r[j].qty) || 0) - (Number(r[j].allocated_qty) || 0));
+            }
+            return t;
+        });
+    },
+
+    searchItems: function(q) {
+        if (!this.selBranch) {
+            safeHTML(byId('itemResults'), '<div class="col-span-2 text-center text-amber-500 p-4 bg-white rounded-xl">اختر فرعاً أولاً</div>');
+            return;
+        }
+        var self = this;
+        db.items.toArray().then(function(all) {
+            var filtered = all;
+            if (q && q.trim()) {
+                var s = q.toLowerCase();
+                filtered = [];
+                for (var i = 0; i < all.length; i++) {
+                    var it = all[i];
+                    if ((it.name || '').toLowerCase().indexOf(s) !== -1 ||
+                        (it.item_code || '').toLowerCase().indexOf(s) !== -1 ||
+                        (it.barcode || '').indexOf(s) !== -1) {
+                        filtered.push(it);
+                    }
+                }
+            }
+            filtered = filtered.slice(0, 24);
+            var promises = [];
+            for (var j = 0; j < filtered.length; j++) {
+                promises.push(self.getAvail(filtered[j].id));
+            }
+            Promise.all(promises).then(function(avails) {
+                var html = '';
+                if (!filtered.length) {
+                    html = '<div class="col-span-2 text-center text-gray-400 p-4">لا توجد منتجات</div>';
+                } else {
+                    for (var k = 0; k < filtered.length; k++) {
+                        var it = filtered[k];
+                        var avail = avails[k];
+                        var inCart = 0;
+                        for (var x = 0; x < self.cart.length; x++) {
+                            if (self.cart[x].code === it.item_code) { inCart = self.cart[x].qty; break; }
+                        }
+                        var imgSrc = it.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E';
+                        html += '<div class="bg-white p-3 rounded-2xl shadow-sm border flex flex-col">';
+                        html += '<div class="w-full h-24 bg-gray-100 rounded-xl mb-2 overflow-hidden"><img src="' + imgSrc + '" alt="' + (it.name || '') + '" class="w-full h-full object-cover cursor-pointer" onerror="this.src=\'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E\'" onclick="event.stopPropagation();App.viewImage(\'' + imgSrc + '\',\'' + (it.name || '').replace(/'/g, "\\'") + '\')"></div>';
+                        html += '<div class="font-black text-sm text-slate-700 leading-snug mb-1">' + (it.name || '') + '</div>';
+                        html += '<div class="text-[11px] text-slate-400 font-bold mb-2">' + (it.item_code || '') + '</div>';
+                        html += '<div class="flex justify-between items-center mt-auto">';
+                        html += '<div><span class="text-emerald-600 font-black">' + fmtNum(it.sales_price) + '</span><span class="text-[10px] text-gray-400 block">متاح: ' + avail + '</span></div>';
+                        if (inCart > 0) {
+                            html += '<div class="flex items-center gap-1"><button onclick="event.stopPropagation();App.decCart(\'' + it.item_code + '\')" class="w-7 h-7 bg-gray-100 rounded-full font-black">-</button><span class="w-5 text-center font-black">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-7 h-7 bg-emerald-600 text-white rounded-full font-black">+</button></div>';
+                        } else {
+                            html += '<button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-8 h-8 bg-emerald-600 text-white rounded-full"><i class="fa-solid fa-plus"></i></button>';
+                        }
+                        html += '</div></div>';
+                    }
+                }
+                safeHTML(byId('itemResults'), html);
+            });
+        });
+    },
+
+    viewImage: function(src, name) {
+        Swal.fire({
+            imageUrl: src,
+            imageAlt: name || 'صورة المنتج',
+            imageWidth: 400,
+            showCloseButton: true,
+            showConfirmButton: false,
+            customClass: { popup: '!bg-transparent !shadow-none !p-0' }
+        });
+    },
+
+    // ==================== السلة ====================
+    addToCart: function(code) {
+        var self = this;
+        db.items.get(code).then(function(it) {
+            if (!it) return;
+            self.getAvail(it.id).then(function(avail) {
+                var existing = null;
+                for (var i = 0; i < self.cart.length; i++) {
+                    if (self.cart[i].code === code) { existing = self.cart[i]; break; }
+                }
+                var cur = existing ? existing.qty : 0;
+                var nq = cur + 1;
+                var mx = it.max_qty ? Number(it.max_qty) : 0;
+                if (mx > 0 && nq > mx) { toast('الحد الأقصى: ' + mx, 'warning'); return; }
+                if (nq > avail) { toast('المتاح: ' + avail, 'warning'); return; }
+                if (existing) {
+                    existing.qty = nq;
+                } else {
+                    self.cart.push({
+                        code: it.item_code,
+                        name: it.name,
+                        price: Number(it.sales_price) || 0,
+                        unit: it.unit || 'حبة',
+                        qty: 1
+                    });
+                }
+                self.searchItems(byId('posSearch') ? byId('posSearch').value : '');
+                self.renderPOSCart();
+            });
+        });
+    },
+
+    decCart: function(code) {
+        for (var i = 0; i < this.cart.length; i++) {
+            if (this.cart[i].code === code) {
+                this.cart[i].qty--;
+                if (this.cart[i].qty <= 0) this.cart.splice(i, 1);
+                break;
+            }
+        }
+        this.searchItems(byId('posSearch') ? byId('posSearch').value : '');
+        this.renderPOSCart();
+    },
+
+    calcTotals: function() {
+        var sub = 0;
+        for (var i = 0; i < this.cart.length; i++) {
+            sub += this.cart[i].price * this.cart[i].qty;
+        }
+        if (sub === 0) return { sub: 0, del: 0, tax: 0, total: 0 };
+        var d = this.delFee;
+        var beforeTax = sub + d;
+        var tx = Math.round(beforeTax * this.taxRate) / 100;
+        return { sub: sub, del: d, tax: tx, total: beforeTax + tx };
+    },
+
+    // ==================== شاشة الكاشير ====================
+    renderPOSView: function() {
+        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">نقطة البيع</h2>';
+        html += '<div class="mb-4"><select id="posCustSelect" onchange="App.selectCustomer()" class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-emerald-600 outline-none font-bold text-sm"><option value="">-- اختر عميلاً --</option></select></div>';
+        html += '<div class="flex gap-2 mb-4"><div class="relative flex-1"><input type="text" id="posSearch" oninput="App.searchItems(this.value)" placeholder="ابحث أو امسح باركود..." class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-emerald-600 outline-none font-bold text-sm"></div><button onclick="App.startBarcodeScanner()" class="bg-emerald-600 text-white px-4 py-3 rounded-xl"><i class="fa-solid fa-camera"></i></button></div>';
+        html += '<div class="mb-3"><select id="branchSel" onchange="App.onBranchChange(this.value)" class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-emerald-600 outline-none font-bold text-sm"><option value="">-- اختر الفرع --</option></select></div>';
+        html += '<div id="itemResults" class="grid grid-cols-2 gap-2 mb-4"></div>';
+        html += '<div class="bg-white p-4 rounded-2xl shadow-sm border mb-4"><h3 class="font-bold mb-2">السلة <span class="text-xs text-gray-400" id="posCartCount">(0)</span></h3><div id="posCartItems"></div>';
+        var t = this.calcTotals();
+        html += '<div class="flex justify-between font-black text-lg pt-2 border-t mt-2"><span>الإجمالي:</span><span id="posTotal" class="text-emerald-600">' + fmtNum(t.total) + '</span></div></div>';
+        html += '<button onclick="App.submitOrder()" class="w-full bg-emerald-600 text-white py-4 rounded-xl font-black mt-4">حفظ الفاتورة</button></div>';
+        safeHTML(byId('mainContent'), html);
+        this.loadBranches();
+        this.loadCustomersForPOS();
+        this.renderPOSCart();
+    },
+
+    renderPOSCart: function() {
+        var container = byId('posCartItems');
+        if (!container) return;
+        if (!this.cart.length) {
+            safeHTML(container, '<div class="text-center text-gray-400 py-4">السلة فارغة</div>');
+        } else {
+            var html = '';
+            for (var i = 0; i < this.cart.length; i++) {
+                var item = this.cart[i];
+                html += '<div class="flex justify-between items-center py-2 border-b"><div><span class="font-bold text-sm">' + item.name + '</span><span class="text-xs text-gray-400 mr-2">' + fmtNum(item.price) + ' × ' + item.qty + '</span></div><div class="flex items-center gap-1"><button onclick="App.decCart(\'' + item.code + '\');App.renderPOSCart();" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black">-</button><span class="w-5 text-center font-black text-sm">' + item.qty + '</span><button onclick="App.addToCart(\'' + item.code + '\');App.renderPOSCart();" class="w-6 h-6 bg-emerald-600 text-white rounded-full text-xs font-black">+</button></div></div>';
+            }
+            safeHTML(container, html);
+        }
+        safeText(byId('posCartCount'), '(' + this.cart.length + ')');
+        var t = this.calcTotals();
+        safeText(byId('posTotal'), fmtNum(t.total));
+    },
+
+    // ==================== حفظ الفاتورة ====================
+    submitOrder: function() {
+        if (!this.selCust) {
+            var custSelect = byId('posCustSelect');
+            if (custSelect && custSelect.value) {
+                var self = this;
+                db.customers.get(custSelect.value).then(function(c) {
+                    if (c) { self.selCust = c; self.submitOrder(); }
+                    else { toast('اختر عميلاً', 'warning'); }
+                });
+                return;
+            }
+            toast('اختر عميلاً', 'warning');
+            return;
+        }
+        if (!this.cart.length) { toast('السلة فارغة', 'warning'); return; }
+        if (!this.selBranch) { toast('اختر فرعاً', 'warning'); return; }
+        var t = this.calcTotals();
+        if (this.minAmt > 0 && t.total < this.minAmt) { toast('الحد الأدنى للفاتورة: ' + fmtNum(this.minAmt), 'warning'); return; }
+        
+        var items = [];
+        for (var i = 0; i < this.cart.length; i++) {
+            items.push({
+                code: this.cart[i].code,
+                name: this.cart[i].name,
+                price: this.cart[i].price,
+                qty: this.cart[i].qty,
+                unit: this.cart[i].unit
+            });
+        }
+        var hdr = {
+            customer_code: this.selCust.customer_code,
+            custName: this.selCust.name,
+            area: this.selCust.area || '',
+            total: t.total,
+            deliveryFees: t.del,
+            status: 'Invoiced',
+            paymentType: this.selCust.payment_type || 'نقدي',
+            taxAmount: t.tax,
+            taxRate: this.taxRate
+        };
+        
+        var self = this;
+        Swal.showLoading();
+        supabase.auth.getSession().then(function(ses) {
+            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+            return fetch(SUPABASE_URL + '/functions/v1/save-sales-invoice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify({ orderHeader: hdr, itemsList: items, branchCode: self.selBranch })
+            });
+        }).then(function(r) { return r.json(); }).then(function(json) {
+            Swal.close();
+            if (json.success) {
+                toast('تم الحفظ: ' + (json.orderID || ''), 'success');
+                self.cart = [];
+                self.selCust = null;
+                var custSelect = byId('posCustSelect');
+                if (custSelect) custSelect.value = '';
+                self.showView('pos');
+            } else {
+                toast(json.msg || 'فشل الحفظ', 'error');
+            }
+        }).catch(function() {
+            Swal.close();
+            toast('فشل الاتصال', 'error');
+        });
+    },
+
+    // ==================== فواتير اليوم ====================
+    renderPOSInvoicesView: function() {
+        var today = new Date().toISOString().split('T')[0];
+        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">فواتير اليوم</h2>';
+        html += '<div class="grid grid-cols-2 gap-3 mb-4" id="posSummary"></div>';
+        html += '<div class="bg-white p-3 rounded-2xl shadow-sm border mb-4"><div class="flex gap-2"><input type="date" id="posInvDateFilter" value="' + today + '" onchange="App.renderPOSInvoicesList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><button onclick="byId(\'posInvDateFilter\').value=\'' + today + '\';App.renderPOSInvoicesList();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">اليوم</button></div></div>';
+        html += '<div id="posInvoicesList" class="space-y-3"><div class="text-center text-gray-400 py-8">جاري التحميل...</div></div></div>';
+        safeHTML(byId('mainContent'), html);
+        this.renderPOSInvoicesList();
+    },
+
+    renderPOSInvoicesList: function() {
+        var self = this;
+        var container = byId('posInvoicesList');
+        var summaryContainer = byId('posSummary');
+        if (!container) return;
+        safeHTML(container, '<div class="text-center text-gray-400 py-8">جاري التحميل...</div>');
+        var dateFilter = byId('posInvDateFilter') ? byId('posInvDateFilter').value : new Date().toISOString().split('T')[0];
+        supabase.from('orders').select('*').eq('created_by', this.currentUser.email).eq('order_date', dateFilter).order('order_date', { ascending: false }).then(function(res) {
+            var invoices = res.data || [];
+            if (!invoices.length) {
+                safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد فواتير لهذا اليوم</div>');
+                if (summaryContainer) safeHTML(summaryContainer, '');
+                return;
+            }
+            var totalAmount = 0, countCash = 0, countCredit = 0;
+            for (var i = 0; i < invoices.length; i++) {
+                totalAmount += Number(invoices[i].total_amount) || 0;
+                if (invoices[i].payment_type === 'نقدي') countCash++; else countCredit++;
+            }
+            if (summaryContainer) {
+                safeHTML(summaryContainer, '<div class="bg-white p-3 rounded-2xl shadow-sm border text-center"><span class="text-xs text-gray-400">عدد الفواتير</span><div class="text-2xl font-black text-emerald-600">' + invoices.length + '</div></div><div class="bg-white p-3 rounded-2xl shadow-sm border text-center"><span class="text-xs text-gray-400">إجمالي اليوم</span><div class="text-2xl font-black text-emerald-600">' + fmtNum(totalAmount) + '</div></div><div class="bg-white p-3 rounded-2xl shadow-sm border text-center"><span class="text-xs text-gray-400">نقدي</span><div class="text-xl font-black text-green-600">' + countCash + '</div></div><div class="bg-white p-3 rounded-2xl shadow-sm border text-center"><span class="text-xs text-gray-400">آجل</span><div class="text-xl font-black text-orange-600">' + countCredit + '</div></div>');
+            }
+            var html = '';
+            for (var j = 0; j < invoices.length; j++) {
+                var inv = invoices[j];
+                html += '<div onclick="App.showOrderDetail(\'' + inv.id + '\')" class="bg-white p-4 rounded-2xl shadow-sm border cursor-pointer hover:bg-emerald-50 transition"><div class="flex justify-between items-start"><div><span class="font-black text-emerald-600 text-sm">' + (inv.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (inv.order_date || '') + '</span></div><span class="font-black text-emerald-600">' + fmtNum(inv.total_amount) + ' EGP</span></div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold">' + (inv.customer_name || '') + '</span><span class="text-xs px-2 py-0.5 rounded-full ' + (inv.payment_type === 'نقدي' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700') + '">' + (inv.payment_type || '') + '</span></div></div>';
+            }
+            safeHTML(container, html);
+        }).catch(function(e) {
+            console.error('Failed to load POS invoices:', e);
+            safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الفواتير</div>');
+        });
+    },
+
+    // ==================== تفاصيل الطلب ====================
+    showOrderDetail: function(orderId) {
+        Swal.showLoading();
+        supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
+            var order = oRes.data;
+            if (!order) { Swal.close(); toast('الأوردر غير موجود', 'error'); return; }
+            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
+                Swal.close();
+                var details = dRes.data || [];
+                var statusLabel = order.order_status || '';
+                if (order.order_status === 'Invoiced') statusLabel = 'مفوتر';
+                else if (order.order_status === 'Delivered') statusLabel = 'تم التوصيل';
+                var html = '<div class="text-right">';
+                html += '<div class="bg-gray-50 p-4 rounded-xl mb-4"><div class="flex justify-between mb-2"><span class="font-black text-lg">' + (order.order_code || '') + '</span><span class="text-sm font-bold">' + statusLabel + '</span></div>';
+                html += '<p><strong>العميل:</strong> ' + (order.customer_name || '') + '</p><p><strong>المنطقة:</strong> ' + (order.area || '') + '</p><p><strong>التاريخ:</strong> ' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p><p><strong>طريقة الدفع:</strong> ' + (order.payment_type || '') + '</p></div>';
+                if (details.length > 0) {
+                    html += '<div class="overflow-x-auto"><table class="w-full text-sm border"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                    var total = 0;
+                    for (var i = 0; i < details.length; i++) {
+                        var d = details[i];
+                        var lt = Number(d.line_amount) || (Number(d.qty) * Number(d.unit_price));
+                        total += lt;
+                        html += '<tr><td class="p-2 font-semibold">' + (d.item_name || '') + '</td><td class="p-2 text-center">' + d.qty + '</td><td class="p-2 text-center">' + fmtNum(d.unit_price) + '</td><td class="p-2 text-center font-bold">' + fmtNum(lt) + '</td></tr>';
+                    }
+                    html += '</tbody></table></div><div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + fmtNum(order.total_amount || total) + ' EGP</div>';
+                }
+                if (order.order_status === 'Invoiced' || order.order_status === 'Delivered') {
+                    html += '<div class="text-center mt-4 pt-4 border-t"><p class="font-bold text-sm mb-2">رمز الفاتورة</p><div id="orderQrCode" class="inline-block"></div></div>';
+                }
+                html += '</div>';
+                Swal.fire({
+                    title: 'تفاصيل الأوردر',
+                    html: html,
+                    width: '700px',
+                    showCloseButton: true,
+                    showConfirmButton: false,
+                    didOpen: function() {
+                        if (order.order_status === 'Invoiced' || order.order_status === 'Delivered') {
+                            setTimeout(function() {
+                                var qrContainer = document.getElementById('orderQrCode');
+                                if (qrContainer && typeof QRCode !== 'undefined') {
+                                    var qrText = (order.order_code || '') + '\n' + (order.customer_name || '') + '\n' + (order.total_amount || '') + '\n' + (order.order_date || '');
+                                    qrContainer.innerHTML = '';
+                                    new QRCode(qrContainer, { text: qrText, width: 120, height: 120 });
+                                }
+                            }, 300);
+                        }
+                    }
+                });
+            });
+        }).catch(function(e) {
+            Swal.close();
+            console.error('Failed to load order detail:', e);
+        });
+    },
+
+    // ==================== باركود ====================
+    startBarcodeScanner: function() {
+        var self = this;
+        byId('barcodeScanner').classList.add('active');
+        if ('BarcodeDetector' in window) {
+            var detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'qr_code'] });
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function(stream) {
+                var video = byId('scannerVideo');
+                video.srcObject = stream;
+                video.play();
+                self.scannerStream = stream;
+                self.scannerActive = true;
+                function scanLoop() {
+                    if (!self.scannerActive) return;
+                    detector.detect(video).then(function(barcodes) {
+                        if (barcodes.length > 0) {
+                            var code = barcodes[0].rawValue;
+                            var now = Date.now();
+                            if (code !== self.lastScanned || (now - self.lastScanTime) > 2000) {
+                                self.lastScanned = code;
+                                self.lastScanTime = now;
+                                self.handleBarcode(code);
+                            }
+                        }
+                        requestAnimationFrame(scanLoop);
+                    }).catch(function() {
+                        requestAnimationFrame(scanLoop);
+                    });
+                }
+                requestAnimationFrame(scanLoop);
+            }).catch(function() {
+                toast('تعذر الوصول للكاميرا', 'error');
+                self.stopBarcodeScanner();
+            });
+        } else {
+            toast('المتصفح لا يدعم الماسح', 'warning');
+            self.stopBarcodeScanner();
+        }
+    },
+
+    stopBarcodeScanner: function() {
+        this.scannerActive = false;
+        if (this.scannerStream) {
+            var tracks = this.scannerStream.getTracks();
+            for (var i = 0; i < tracks.length; i++) tracks[i].stop();
+            this.scannerStream = null;
+        }
+        byId('barcodeScanner').classList.remove('active');
+    },
+
+    handleBarcode: function(code) {
+        var self = this;
+        db.items.filter(function(i) { return i.barcode === code || i.item_code === code; }).first().then(function(item) {
+            if (item) {
+                self.addToCart(item.item_code);
+                toast('تم: ' + (item.name || code), 'success');
+            } else {
+                toast('صنف غير معروف: ' + code, 'warning');
+            }
+        });
+    }
+};
+
+// ============================================================
+// تهيئة التطبيق
+// ============================================================
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('../sw.js').catch(function() {});
+}
+document.addEventListener('DOMContentLoaded', function() {
+    App.init();
+});
+</script>
+</body>
+</html>
