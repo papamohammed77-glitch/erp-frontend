@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>المرتجعات | الروائع ERP</title>
+    <link rel="manifest" href="../manifest.json">
+    <meta name="theme-color" content="#dc2626">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:Tahoma,sans-serif;background:#f1f5f9}
+        .auth-container{background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 40%,#dc2626 100%)}
+        .input-field:focus{border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,0.1)}
+        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
+        .btn-primary{background:#dc2626;color:#fff;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;border:none;cursor:pointer;width:100%}
+        .accordion-content{max-height:0;overflow:hidden;transition:max-height 0.3s ease-out}
+        .accordion-content.open{max-height:2000px}
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+<div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
+    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
+        <div class="text-center mb-6"><div class="w-20 h-20 bg-gradient-to-br from-red-600 to-red-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4"><i class="fa-solid fa-rotate-left text-white text-3xl"></i></div><h1 class="font-black text-2xl text-gray-800">الروائع</h1><p class="text-xs text-gray-400">المرتجعات</p></div>
+        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول</h2>
+        <div class="space-y-3"><div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-red-600 outline-none font-bold text-sm"></div><div class="relative"><input id="loginPass" type="password" placeholder="كلمة السر" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-red-600 outline-none font-bold text-sm pr-12"><button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400"><i id="passIcon" class="fa-solid fa-eye"></i></button></div></div>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-red-600 to-red-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg mt-4">تسجيل الدخول</button>
+        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
+    </div>
+</div>
+
+<div id="mainApp" class="hidden flex flex-col h-full">
+    <header class="bg-red-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+        <span class="font-black text-sm">↩️ المرتجعات</span>
+        <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
+    </header>
+    <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+var db = new Dexie('RW_Returns'); db.version(1).stores({ runsheets: 'runsheet_code', meta: 'key' });
+function byId(id) { return document.getElementById(id); }
+function safeText(el, text) { if (el) el.textContent = text; }
+function safeHTML(el, html) { if (el) el.innerHTML = html; }
+function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
+
+var App = {
+    currentUser: null, runsheets: [], activeTimers: {},
+    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
+    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
+    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('warehouse')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();}});},
+    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.loadRunsheets();},
+    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
+
+    loadRunsheets: function(){
+        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
+        supabase.from('runsheets').select('runsheet_code,driver_id,run_date').in('status',['Returning']).order('run_date',{ascending:false}).then(function(r){s.runsheets=r.data||[];s.renderList();});
+    },
+
+    renderList: function(){
+        if(!this.runsheets.length){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-box-open text-4xl mb-3"></i><p>لا توجد مرتجعات</p></div>');return;}
+        var html='<h2 class="text-lg font-black mb-4">↩️ رانشيتات المرتجعات</h2>';
+        for(var i=0;i<this.runsheets.length;i++){var rs=this.runsheets[i];
+        html+='<div class="card mb-3 cursor-pointer"><div class="flex justify-between items-center" onclick="App.toggleAccordion('+i+',\''+rs.runsheet_code+'\')"><div><span class="font-bold text-lg">'+rs.runsheet_code+'</span><p class="text-xs text-gray-400">'+rs.run_date+' | '+rs.driver_id+'</p></div><i class="fa-solid fa-chevron-down text-gray-400" id="chevron-'+i+'"></i></div>';
+        html+='<div class="accordion-content" id="accordion-'+i+'"><div class="border-t mt-3 pt-3"><p class="text-xs text-gray-500 mb-2">⏱️ <span id="timer-'+i+'" class="font-bold text-red-600">00:00</span></p><div id="details-'+i+'" class="text-center py-4">جاري التحميل...</div><button id="btn-ret-'+i+'" class="btn-primary mt-4 hidden" onclick="App.completeReturn('+i+',\''+rs.runsheet_code+'\')"><i class="fa-solid fa-check ml-2"></i> إنهاء المرتجعات</button></div></div></div>';}
+        safeHTML(byId('mainContent'),html);
+    },
+
+    toggleAccordion: function(i,code){var a=byId('accordion-'+i),c=byId('chevron-'+i);if(!a)return;if(a.classList.contains('open')){a.classList.remove('open');if(c)c.className='fa-solid fa-chevron-down';if(this.activeTimers[i]){clearInterval(this.activeTimers[i]);delete this.activeTimers[i];}}else{a.classList.add('open');if(c)c.className='fa-solid fa-chevron-up';this.startTimer(i);this.loadDetails(i,code);}},
+    startTimer: function(i){var s=this,st=new Date();if(this.activeTimers[i])clearInterval(this.activeTimers[i]);this.activeTimers[i]=setInterval(function(){var d=Math.floor((new Date()-st)/1000),m=Math.floor(d/60),sec=d%60;var el=byId('timer-'+i);if(el)safeText(el,String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0'));},1000);},
+
+    loadDetails: function(i,code){
+        var s=this; safeHTML(byId('details-'+i),'<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i></div>');
+        supabase.from('runsheets').select('id').eq('runsheet_code',code).maybeSingle().then(function(rsR){if(!rsR.data)return;supabase.from('run_sheet_details').select('*').eq('runsheet_id',rsR.data.id).then(function(dR){var items=dR.data||[];if(!items.length)return;var html='';for(var j=0;j<items.length;j++){var it=items[j];html+='<div class="flex items-center justify-between p-2 border-b"><div class="flex-1"><p class="font-bold text-sm">'+(it.item_name||'')+'</p><p class="text-xs text-gray-400">'+(it.item_code||'')+' | مسلّم: <span class="font-bold">'+(it.qty_delivered||0)+'</span></p></div><input type="number" id="rq-'+i+'-'+j+'" value="0" min="0" max="'+(it.qty_delivered||0)+'" class="w-20 p-2 border rounded-lg text-center font-bold text-sm"></div>';}safeHTML(byId('details-'+i),html);var btn=byId('btn-ret-'+i);if(btn)btn.classList.remove('hidden');});});},
+
+    completeReturn: function(i,code){
+        var items=[];var allZero=true;var inputs=document.querySelectorAll('#details-'+i+' input[type="number"]');
+        for(var j=0;j<inputs.length;j++){var q=parseInt(inputs[j].value)||0;if(q>0)allZero=false;items.push({itemCode:'',returnedQty:q,reason:''});}
+        if(allZero){toast('يجب إدخال كمية مرتجعة واحدة','warning');return;}var s=this;Swal.showLoading();
+        supabase.auth.getSession().then(function(se){var t=se.data.session?se.data.session.access_token:null;return fetch(SUPABASE_URL+'/functions/v1/start-return',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({runsheet_code:code})});}).then(function(r){return r.json();}).then(function(j1){if(!j1.success){Swal.close();toast(j1.msg||'فشل','error');return;}supabase.auth.getSession().then(function(se2){var t2=se2.data.session?se2.data.session.access_token:null;return fetch(SUPABASE_URL+'/functions/v1/complete-return',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t2},body:JSON.stringify({runsheet_code:code,items:items})});}).then(function(r2){return r2.json();}).then(function(j2){Swal.close();if(j2.success){toast('تمت المرتجعات','success');if(s.activeTimers[i]){clearInterval(s.activeTimers[i]);delete s.activeTimers[i];}s.runsheets.splice(i,1);s.renderList();}else{toast(j2.msg||'فشل','error');}});}).catch(function(){Swal.close();toast('فشل الاتصال','error');});
+    }
+};
+if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
+document.addEventListener('DOMContentLoaded',function(){App.init();});
+</script>
+</body>
+</html>
