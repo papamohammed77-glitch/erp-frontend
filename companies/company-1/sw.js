@@ -1,71 +1,55 @@
 var CACHE_NAME = 'rawaea-erp-v1';
-
-// جميع تطبيقات الشركة
-var urlsToCache = [
-  '/',
-  '/index.html',
-  '/sales/telesales.html',
-  '/sales/order-taker.html',
-  '/sales/pos.html',
-  '/sales/van-sales.html',
-  '/sales/supervisor.html',
-  '/sales/manager.html',
-  '/warehouse/manager.html',
-  '/warehouse/supervisor.html',
-  '/warehouse/receiver.html',
-  '/warehouse/picker.html',
-  '/warehouse/loader.html',
-  '/warehouse/returns.html',
-  '/warehouse/unloader.html',
-  '/warehouse/counter.html',
-  '/warehouse/vouchers.html',
-  '/delivery/driver.html',
-  '/delivery/supervisor.html',
-  '/purchasing/buyer.html',
-  '/purchasing/supervisor.html',
-  '/office/accountant.html',
-  '/office/hr.html',
-  '/office/finance-manager.html',
-  '/office/general-manager.html',
-  '/office/owner.html',
-  '/store/index.html',
-  '/store/track.html'
+var ASSETS_TO_CACHE = [
+  '/companies/company-1/',
+  '/companies/company-1/index.html',
+  '/companies/company-1/manifest.json'
 ];
 
 self.addEventListener('install', function(event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
-      return cache.addAll(urlsToCache);
+      return cache.addAll(ASSETS_TO_CACHE);
     })
   );
-});
-
-self.addEventListener('fetch', function(event) {
-  event.respondWith(
-    caches.match(event.request).then(function(response) {
-      if (response) return response;
-      return fetch(event.request).then(function(response) {
-        if (!response || response.status !== 200 || response.type !== 'basic') return response;
-        var responseToCache = response.clone();
-        caches.open(CACHE_NAME).then(function(cache) {
-          cache.put(event.request, responseToCache);
-        });
-        return response;
-      });
-    })
-  );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', function(event) {
   event.waitUntil(
-    caches.keys().then(function(cacheNames) {
+    caches.keys().then(function(keys) {
       return Promise.all(
-        cacheNames.map(function(cacheName) {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
+        keys.filter(function(key) { return key !== CACHE_NAME; })
+            .map(function(key) { return caches.delete(key); })
       );
+    })
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', function(event) {
+  if (event.request.method !== 'GET') return;
+  
+  if (event.request.url.indexOf('supabase.co') !== -1 ||
+      event.request.url.indexOf('cdn.jsdelivr.net') !== -1 ||
+      event.request.url.indexOf('cdnjs.cloudflare.com') !== -1 ||
+      event.request.url.indexOf('cdn.tailwindcss.com') !== -1 ||
+      event.request.url.indexOf('fonts.googleapis.com') !== -1) {
+    return;
+  }
+  
+  event.respondWith(
+    caches.match(event.request).then(function(cached) {
+      return cached || fetch(event.request).then(function(response) {
+        if (response && response.status === 200) {
+          var clone = response.clone();
+          caches.open(CACHE_NAME).then(function(cache) {
+            cache.put(event.request, clone);
+          });
+        }
+        return response;
+      }).catch(function() {
+        return cached || new Response('غير متصل', { status: 503 });
+      });
     })
   );
 });
