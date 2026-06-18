@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>الموارد البشرية | الروائع ERP</title>
+    <link rel="manifest" href="../manifest.json">
+    <meta name="theme-color" content="#db2777">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:Tahoma,sans-serif;background:#f1f5f9}
+        .auth-container{background:linear-gradient(135deg,#831843 0%,#be185d 40%,#db2777 100%)}
+        .input-field:focus{border-color:#db2777;box-shadow:0 0 0 3px rgba(219,39,119,0.1)}
+        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
+        .stat-card{background:#fff;border-radius:16px;padding:1rem;box-shadow:0 4px 6px rgba(0,0,0,0.02)}
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+<div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
+    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
+        <div class="text-center mb-6"><div class="w-20 h-20 bg-gradient-to-br from-pink-600 to-pink-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4"><i class="fa-solid fa-id-card text-white text-3xl"></i></div><h1 class="font-black text-2xl text-gray-800">الروائع</h1><p class="text-xs text-gray-400">الموارد البشرية</p></div>
+        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول</h2>
+        <div class="space-y-3"><div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-pink-600 outline-none font-bold text-sm"></div><div class="relative"><input id="loginPass" type="password" placeholder="كلمة السر" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-pink-600 outline-none font-bold text-sm pr-12"><button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400"><i id="passIcon" class="fa-solid fa-eye"></i></button></div></div>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-pink-600 to-pink-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg mt-4">تسجيل الدخول</button>
+        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
+    </div>
+</div>
+
+<div id="mainApp" class="hidden flex flex-col h-full">
+    <header class="bg-pink-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+        <span class="font-black text-sm">👥 الموارد البشرية</span>
+        <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
+    </header>
+    <div class="flex gap-1 p-2 bg-white border-b overflow-x-auto flex-shrink-0">
+        <button onclick="App.switchTab('employees')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm bg-pink-600 text-white" id="tab-employees">👥 الموظفين</button>
+        <button onclick="App.switchTab('attendance')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-attendance">🕐 الحضور</button>
+        <button onclick="App.switchTab('salary')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-salary">💵 الرواتب</button>
+    </div>
+    <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
+</div>
+
+<script>
+var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+var db = new Dexie('RW_HR'); db.version(1).stores({ meta: 'key' });
+function byId(id) { return document.getElementById(id); }
+function safeText(el, text) { if (el) el.textContent = text; }
+function safeHTML(el, html) { if (el) el.innerHTML = html; }
+function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
+function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
+
+var App = {
+    currentUser: null,
+    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
+    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
+    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('users')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();}});},
+    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.switchTab('employees');},
+    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
+    switchTab: function(t){['employees','attendance','salary'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-pink-600','text-white');b.classList.add('text-gray-500');}});var a=byId('tab-'+t);if(a){a.classList.add('bg-pink-600','text-white');a.classList.remove('text-gray-500');}if(t==='employees')this.renderEmployees();else if(t==='attendance')this.renderAttendance();else if(t==='salary')this.renderSalary();},
+
+    renderEmployees: function(){
+        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
+        supabase.from('users').select('name,email,role,status,phone,salary,allowances,deductions').then(function(r){var users=r.data||[],html='<h2 class="text-lg font-black mb-4">👥 الموظفين</h2>';
+        for(var i=0;i<users.length;i++){var u=users[i],st=u.status==='Active'?'bg-green-100 text-green-700':'bg-red-100 text-red-700',initials=(u.name||'؟').charAt(0);
+        html+='<div class="card mb-3"><div class="flex items-center gap-4 mb-3"><div class="w-12 h-12 bg-pink-500 rounded-xl flex items-center justify-center text-white font-black text-lg">'+initials+'</div><div><span class="font-bold">'+u.name+'</span><p class="text-xs text-gray-400">'+u.role+' | '+u.email+'</p></div><span class="px-2 py-0.5 rounded-full text-xs font-bold mr-auto '+st+'">'+(u.status==='Active'?'نشط':'غير نشط')+'</span></div><div class="grid grid-cols-3 gap-2 text-center text-sm"><div><p class="text-xs text-gray-400">الراتب</p><p class="font-bold">'+fmtNum(u.salary)+'</p></div><div><p class="text-xs text-gray-400">البدلات</p><p class="font-bold text-green-600">'+fmtNum(u.allowances)+'</p></div><div><p class="text-xs text-gray-400">الصافي</p><p class="font-bold text-pink-600">'+fmtNum((u.salary||0)+(u.allowances||0)-(u.deductions||0))+'</p></div></div></div>';}
+        safeHTML(byId('mainContent'),html);});
+    },
+
+    renderAttendance: function(){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-clock text-4xl mb-3"></i><p>الحضور والانصراف – قيد التطوير</p></div>');},
+    renderSalary: function(){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-money-bill-wave text-4xl mb-3"></i><p>مسيرات الرواتب – قيد التطوير</p></div>');}
+};
+if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
+document.addEventListener('DOMContentLoaded',function(){App.init();});
+</script>
+</body>
+</html>
