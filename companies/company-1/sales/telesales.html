@@ -6,26 +6,27 @@
     <title>التلي سيلز | الروائع ERP</title>
     <link rel="manifest" href="../manifest.json">
     <meta name="theme-color" content="#1e40af">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="التلي سيلز">
+    <meta name="format-detection" content="telephone=no">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Cairo',sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
-        .cart-sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:24px 24px 0 0;box-shadow:0 -10px 30px rgba(0,0,0,.1);transform:translateY(105%);transition:transform .25s;z-index:50;max-height:70vh;display:flex;flex-direction:column}
-        .cart-sheet.open{transform:translateY(0)}
-        .cart-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:45;display:none}
-        .cart-overlay.show{display:block}
-        .credit-green{background:#dcfce7;color:#166534;border:1px solid #86efac}
-        .credit-yellow{background:#fef9c3;color:#854d0e;border:1px solid #fde047}
-        .credit-red{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
-        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-        .animate-fadeIn{animation:fadeIn .3s}
-        .auth-container{background:linear-gradient(135deg, #1e3a8a 0%, #1e40af 40%, #2563eb 100%)}
+        body{font-family:'Cairo',sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;touch-action:manipulation;-webkit-touch-callout:none}
+        :root{--sat:env(safe-area-inset-top);--sar:env(safe-area-inset-right);--sab:env(safe-area-inset-bottom);--sal:env(safe-area-inset-left)}
+        .auth-container{background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 40%,#2563eb 100%)}
         .input-field:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
+        .no-scrollbar::-webkit-scrollbar{display:none}
+        .no-scrollbar{-ms-overflow-style:none;scrollbar-width:none}
+        @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        .animate-slide-up{animation:slideUp 0.3s ease-out}
+        @keyframes pulse-badge{0%{transform:scale(1)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
+        .pulse-badge{animation:pulse-badge 0.3s ease-in-out}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -75,35 +76,84 @@
 <!-- ============================================================ -->
 <!-- التطبيق الرئيسي -->
 <!-- ============================================================ -->
-<div id="mainApp" class="hidden flex flex-col h-full">
+<div id="mainApp" class="hidden flex flex-col h-full bg-gray-100">
 
-    <header class="bg-blue-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
-        <span class="font-black text-sm">📞 التلي سيلز</span>
+    <!-- الهيدر -->
+    <header class="bg-blue-700 text-white px-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0" style="padding-top:max(12px,var(--sat));min-height:56px">
         <div class="flex items-center gap-2">
+            <i class="fa-solid fa-headset"></i>
+            <span class="font-black text-sm">التلي سيلز</span>
+        </div>
+        <div class="flex items-center gap-3">
             <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
             <span id="connLabel" class="text-[11px] font-bold">متصل</span>
-            <button onclick="App.syncData()" class="relative bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-rotate text-xs"></i></button>
-            <button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
+            <button onclick="App.syncNow()" class="bg-white/10 w-8 h-8 rounded-full flex items-center justify-center">
+                <i class="fa-solid fa-rotate text-xs"></i>
+            </button>
+            <button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full flex items-center justify-center">
+                <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+            </button>
         </div>
     </header>
 
+    <!-- شريط تنبيه الحد الائتماني -->
     <div id="creditBanner" class="hidden text-center py-2 text-sm font-bold flex-shrink-0"></div>
-    <main id="mainContent" class="flex-1 overflow-y-auto pb-20"></main>
 
-    <nav id="bottomNav" class="bg-white border-t fixed bottom-0 left-0 right-0 z-30 h-16 flex justify-around items-center text-gray-400 text-xs flex-shrink-0">
-        <button onclick="App.showView('customers')" class="flex flex-col items-center p-2 text-blue-600" id="nav-customers"><i class="fa-solid fa-users text-lg mb-1"></i><span>العملاء</span></button>
-        <button onclick="App.showView('catalog')" class="flex flex-col items-center p-2" id="nav-catalog"><i class="fa-solid fa-box text-lg mb-1"></i><span>المنتجات</span></button>
-        <button onclick="App.showView('review')" class="flex flex-col items-center p-2" id="nav-review"><i class="fa-solid fa-cart-shopping text-lg mb-1"></i><span>المراجعة</span></button>
-        <button onclick="App.showView('orders')" class="flex flex-col items-center p-2" id="nav-orders"><i class="fa-solid fa-list-check text-lg mb-1"></i><span>أوردراتي</span></button>
-    </nav>
+    <!-- المحتوى الرئيسي -->
+    <main id="mainContent" class="flex-1 overflow-hidden flex flex-col"></main>
 
-    <div class="cart-overlay" id="cartOverlay" onclick="App.closeCart()"></div>
-    <div class="cart-sheet" id="cartSheet">
-        <div class="p-4 border-b flex justify-between items-center"><span class="font-black">السلة</span><button onclick="App.closeCart()" class="w-8 h-8 bg-gray-100 rounded-full"><i class="fa-solid fa-xmark"></i></button></div>
-        <div id="cartBody" class="p-4 overflow-y-auto flex-1"></div>
-        <div class="p-4 border-t"><button onclick="App.closeCart();App.goToReview()" class="w-full bg-blue-700 text-white py-3 rounded-xl font-black">مراجعة وإتمام</button></div>
+    <!-- شريط السلة العائم (يظهر عند وجود منتجات في السلة) -->
+    <div id="floatingCart" class="hidden mx-3 mb-2 bg-gray-900 text-white p-4 rounded-2xl shadow-2xl flex justify-between items-center cursor-pointer active:scale-[0.98] transition-transform z-20 flex-shrink-0" onclick="App.openCartModal()">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 w-10 h-10 rounded-full flex items-center justify-center font-black text-sm" id="cartBadgeCount">0</div>
+            <div>
+                <div class="font-bold text-sm">سلة المشتريات</div>
+                <div class="text-xs text-gray-400" id="cartBadgeSummary">لا توجد أصناف</div>
+            </div>
+        </div>
+        <div class="text-left">
+            <div class="text-xs text-gray-400">الإجمالي</div>
+            <div class="font-black text-lg" id="cartBadgeTotal">0.00</div>
+        </div>
     </div>
 
+    <!-- الشريط السفلي (3 تبويبات) -->
+    <nav class="bg-white border-t flex justify-around items-center flex-shrink-0 z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]" style="padding-bottom:max(8px,var(--sab));min-height:60px">
+        <button onclick="App.switchTab('new-order')" class="tab-btn flex flex-col items-center justify-center py-1 px-3 text-blue-600" data-tab="new-order">
+            <i class="fa-solid fa-cart-plus text-xl mb-0.5"></i>
+            <span class="text-[10px] font-bold">أوردر جديد</span>
+        </button>
+        <button onclick="App.switchTab('my-orders')" class="tab-btn flex flex-col items-center justify-center py-1 px-3 text-gray-400 relative" data-tab="my-orders">
+            <i class="fa-solid fa-clipboard-list text-xl mb-0.5"></i>
+            <span class="text-[10px] font-bold">أوردراتي</span>
+            <span id="pendingBadge" class="hidden absolute -top-1 right-0 bg-red-500 text-white text-[9px] w-5 h-5 rounded-full flex items-center justify-center font-black">0</span>
+        </button>
+        <button onclick="App.switchTab('more')" class="tab-btn flex flex-col items-center justify-center py-1 px-3 text-gray-400" data-tab="more">
+            <i class="fa-solid fa-ellipsis text-xl mb-0.5"></i>
+            <span class="text-[10px] font-bold">المزيد</span>
+        </button>
+    </nav>
+</div>
+
+<!-- مودال السلة للمراجعة والحفظ -->
+<div id="cartModal" class="fixed inset-0 z-50 hidden flex flex-col justify-end">
+    <div class="absolute inset-0 bg-black/50" onclick="App.closeCartModal()"></div>
+    <div class="bg-white rounded-t-3xl flex flex-col animate-slide-up" style="max-height:85vh">
+        <div class="p-4 border-b flex justify-between items-center flex-shrink-0">
+            <h2 class="font-black text-lg">مراجعة الأوردر</h2>
+            <button onclick="App.closeCartModal()" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="cartModalBody" class="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar"></div>
+        <div class="p-4 border-t bg-gray-50 flex-shrink-0">
+            <div class="flex justify-between font-bold text-lg mb-3">
+                <span>الإجمالي النهائي:</span>
+                <span class="text-emerald-600" id="cartModalTotal">0.00</span>
+            </div>
+            <button onclick="App.submitOrder()" class="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-black text-sm shadow-lg active:scale-[0.98] transition">
+                <i class="fa-solid fa-check ml-2"></i> حفظ الأوردر
+            </button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -143,19 +193,14 @@ var App = {
     delFee: 0,
     taxRate: 0,
     minAmt: 0,
-    companyName: 'الروائع',
-    currentCategory: 'الكل',
+    currentTab: 'new-order',
+    isListView: true,
 
     togglePass: function() {
         var passInput = byId('loginPass');
         var icon = byId('passIcon');
-        if (passInput.type === 'password') {
-            passInput.type = 'text';
-            icon.className = 'fa-solid fa-eye-slash';
-        } else {
-            passInput.type = 'password';
-            icon.className = 'fa-solid fa-eye';
-        }
+        if (passInput.type === 'password') { passInput.type = 'text'; icon.className = 'fa-solid fa-eye-slash'; }
+        else { passInput.type = 'password'; icon.className = 'fa-solid fa-eye'; }
     },
 
     forgotPassword: function() {
@@ -172,29 +217,19 @@ var App = {
     doLogin: function() {
         var email = byId('loginEmail').value.trim();
         var pass = byId('loginPass').value.trim();
-        if (!email || !pass) {
-            byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
-            byId('loginMsg').classList.remove('hidden');
-            return;
-        }
+        if (!email || !pass) { byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور'; byId('loginMsg').classList.remove('hidden'); return; }
         byId('loginMsg').classList.add('hidden');
         var self = this;
         Swal.showLoading();
         supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res) {
             Swal.close();
-            if (res.error) {
-                byId('loginMsg').innerText = res.error.message;
-                byId('loginMsg').classList.remove('hidden');
-            } else {
+            if (res.error) { byId('loginMsg').innerText = res.error.message; byId('loginMsg').classList.remove('hidden'); }
+            else {
                 if (byId('rememberMe').checked) localStorage.setItem('telesales_remember_email', email);
                 else localStorage.removeItem('telesales_remember_email');
                 self.init();
             }
-        }).catch(function() {
-            Swal.close();
-            byId('loginMsg').innerText = 'فشل الاتصال بالخادم';
-            byId('loginMsg').classList.remove('hidden');
-        });
+        }).catch(function() { Swal.close(); byId('loginMsg').innerText = 'فشل الاتصال بالخادم'; byId('loginMsg').classList.remove('hidden'); });
     },
 
     init: function() {
@@ -210,20 +245,10 @@ var App = {
                 var perms = meta.permissions || [];
                 var hasAccess = isOwner || (Array.isArray(perms) && (perms.indexOf('orders') !== -1 || perms.indexOf('telesales') !== -1 || perms.indexOf('*') !== -1));
 
-                if (!hasAccess) {
-                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية التلي سيلز', icon: 'error' });
-                    supabase.auth.signOut();
-                    return;
-                }
+                if (!hasAccess) { Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية التلي سيلز', icon: 'error' }); supabase.auth.signOut(); return; }
 
-                // جلب الإعدادات
                 supabase.from('app_settings').select('*').limit(1).single().then(function(sRes) {
-                    if (sRes.data) {
-                        self.delFee = Number(sRes.data.delivery_fee) || 0;
-                        self.taxRate = Number(sRes.data.tax_rate) || 0;
-                        self.minAmt = Number(sRes.data.min_invoice_amount) || 0;
-                        self.companyName = sRes.data.company_name || 'الروائع';
-                    }
+                    if (sRes.data) { self.delFee = Number(sRes.data.delivery_fee) || 0; self.taxRate = Number(sRes.data.tax_rate) || 0; self.minAmt = Number(sRes.data.min_invoice_amount) || 0; }
                 });
 
                 self.enterApp();
@@ -235,10 +260,10 @@ var App = {
         byId('loginScreen').classList.add('hidden');
         byId('mainApp').classList.remove('hidden');
         this.updateConnectionStatus();
-        window.addEventListener('online', function() { App.updateConnectionStatus(); });
+        window.addEventListener('online', function() { App.updateConnectionStatus(); App.syncPendingOrders(); });
         window.addEventListener('offline', function() { App.updateConnectionStatus(); });
         this.syncDown().then(function() { App.loadBranches(); });
-        this.showView('customers');
+        this.switchTab('new-order');
     },
 
     doLogout: function() {
@@ -247,8 +272,7 @@ var App = {
             self.cart = []; self.selCust = null;
             byId('mainApp').classList.add('hidden');
             byId('loginScreen').classList.remove('hidden');
-            byId('loginEmail').value = '';
-            byId('loginPass').value = '';
+            byId('loginEmail').value = ''; byId('loginPass').value = '';
             byId('loginMsg').classList.add('hidden');
         });
     },
@@ -268,55 +292,122 @@ var App = {
         ]);
     },
 
-    syncData: function() {
+    syncNow: function() {
         if (!navigator.onLine) { toast('لا يوجد اتصال', 'warning'); return; }
         var self = this;
         Swal.showLoading();
-        this.syncDown().then(function() { Swal.close(); self.loadBranches(); toast('تمت المزامنة', 'success'); }).catch(function() { Swal.close(); toast('فشلت المزامنة', 'error'); });
+        this.syncDown().then(function() { Swal.close(); self.loadBranches(); self.syncPendingOrders(); toast('تمت المزامنة', 'success'); }).catch(function() { Swal.close(); toast('فشلت المزامنة', 'error'); });
     },
 
-    showView: function(view) {
-        var btns = document.querySelectorAll('#bottomNav button');
-        for (var i = 0; i < btns.length; i++) { btns[i].classList.remove('text-blue-600'); btns[i].classList.add('text-gray-400'); }
-        var activeBtn = byId('nav-' + view);
-        if (activeBtn) { activeBtn.classList.remove('text-gray-400'); activeBtn.classList.add('text-blue-600'); }
-        if (view === 'customers') this.renderCustomerView();
-        else if (view === 'catalog') this.renderCatalogView();
-        else if (view === 'review') this.renderReviewView();
-        else if (view === 'orders') this.renderOrdersView();
+    // ==================== التنقل بين التبويبات ====================
+    switchTab: function(tab) {
+        this.currentTab = tab;
+        var btns = document.querySelectorAll('.tab-btn');
+        for (var i = 0; i < btns.length; i++) {
+            btns[i].classList.remove('text-blue-600');
+            btns[i].classList.add('text-gray-400');
+            if (btns[i].getAttribute('data-tab') === tab) {
+                btns[i].classList.remove('text-gray-400');
+                btns[i].classList.add('text-blue-600');
+            }
+        }
+        var floatingCart = byId('floatingCart');
+        if (tab === 'new-order') {
+            if (floatingCart && this.cart.length > 0) floatingCart.classList.remove('hidden');
+            this.renderNewOrderView();
+        } else if (tab === 'my-orders') {
+            if (floatingCart) floatingCart.classList.add('hidden');
+            this.renderOrdersView();
+        } else if (tab === 'more') {
+            if (floatingCart) floatingCart.classList.add('hidden');
+            this.renderMoreView();
+        }
     },
 
-    // ==================== العملاء ====================
-    renderCustomerView: function() {
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">العملاء</h2>';
-        html += '<input type="text" id="custSearch" oninput="App.searchCustomers(this.value)" placeholder="ابحث باسم، كود، هاتف..." class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm mb-4">';
-        html += '<div id="custResults" class="space-y-2"></div></div>';
+    // ==================== شاشة: أوردر جديد ====================
+    renderNewOrderView: function() {
+        var html = '<div class="flex-1 flex flex-col overflow-hidden">';
+        // قسم العميل
+        html += '<div class="bg-white p-3 shadow-sm flex-shrink-0">';
+        html += '<div id="recentCustomersRow" class="flex gap-2 overflow-x-auto pb-2 mb-2 no-scrollbar"></div>';
+        html += '<div class="relative">';
+        html += '<input type="text" id="custSearch" oninput="App.searchCustomers(this.value)" onfocus="App.showRecentCustomers()" placeholder="🔍 ابحث عن عميل بالاسم أو الهاتف..." class="w-full p-2.5 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:border-blue-500 outline-none">';
+        html += '<i class="fa-solid fa-magnifying-glass absolute right-3 top-3 text-gray-400"></i>';
+        html += '</div>';
+        html += '<div id="custResults" class="mt-1 space-y-1 max-h-48 overflow-y-auto no-scrollbar"></div>';
+        html += '</div>';
+        // معلومات العميل المختار
+        html += '<div id="selectedCustInfo" class="hidden bg-blue-50 p-3 border-b border-blue-100 flex-shrink-0"></div>';
+        // شريط الفرع والتصنيفات
+        html += '<div class="bg-white px-3 py-2 border-b flex items-center gap-2 flex-shrink-0">';
+        html += '<select id="branchSel" onchange="App.onBranchChange(this.value)" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold flex-1"><option value="">-- اختر الفرع --</option></select>';
+        html += '<button onclick="App.toggleViewMode()" class="p-2 bg-gray-100 border rounded-lg text-gray-500"><i id="viewModeIcon" class="fa-solid fa-list"></i></button>';
+        html += '</div>';
+        // شبكة/قائمة المنتجات
+        html += '<div id="productsContainer" class="flex-1 overflow-y-auto p-3 no-scrollbar"><div class="text-center text-gray-400 py-10">اختر فرعاً ثم ابحث عن المنتجات</div></div>';
+        html += '</div>';
         safeHTML(byId('mainContent'), html);
+        this.loadBranches();
+        this.showRecentCustomers();
+        this.updateFloatingCart();
     },
 
+    toggleViewMode: function() {
+        this.isListView = !this.isListView;
+        var icon = byId('viewModeIcon');
+        if (this.isListView) icon.className = 'fa-solid fa-list';
+        else icon.className = 'fa-solid fa-grip';
+        this.searchItems(byId('itemSearch') ? byId('itemSearch').value : '');
+    },
+
+    // ==================== آخر العملاء ====================
+    showRecentCustomers: function() {
+        var self = this;
+        var row = byId('recentCustomersRow');
+        if (!row) return;
+        db.orders.orderBy('created_at').reverse().limit(10).toArray().then(function(orders) {
+            var codes = [];
+            for (var i = 0; i < orders.length; i++) {
+                if (orders[i].customer_code && codes.indexOf(orders[i].customer_code) === -1) codes.push(orders[i].customer_code);
+                if (codes.length >= 5) break;
+            }
+            if (!codes.length) { safeHTML(row, '<span class="text-xs text-gray-400 py-1">لا يوجد عملاء سابقون</span>'); return; }
+            db.customers.where('customer_code').anyOf(codes).toArray().then(function(custs) {
+                var html = '';
+                for (var j = 0; j < custs.length; j++) {
+                    var c = custs[j];
+                    html += '<button onclick="App.selectCustomer(\'' + c.customer_code + '\')" class="whitespace-nowrap bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full text-xs font-bold active:bg-blue-100 flex-shrink-0"><i class="fa-solid fa-clock-rotate-left ml-1 text-blue-400"></i>' + (c.name || c.customer_code) + '</button>';
+                }
+                safeHTML(row, html);
+            });
+        });
+    },
+
+    // ==================== البحث عن العملاء ====================
     searchCustomers: function(q) {
-        if (!q || !q.trim()) { safeHTML(byId('custResults'), ''); return; }
+        var results = byId('custResults');
+        if (!results) return;
+        if (!q || !q.trim()) { safeHTML(results, ''); return; }
         var s = q.toLowerCase();
         var self = this;
         db.customers.toArray().then(function(all) {
             var filtered = [];
             for (var i = 0; i < all.length; i++) {
                 var c = all[i];
-                if ((c.name || '').toLowerCase().indexOf(s) !== -1 || (c.customer_code || '').toLowerCase().indexOf(s) !== -1 || (c.phone || '').indexOf(s) !== -1 || (c.area || '').toLowerCase().indexOf(s) !== -1) { filtered.push(c); }
-                if (filtered.length >= 15) break;
+                if ((c.name || '').toLowerCase().indexOf(s) !== -1 || (c.customer_code || '').toLowerCase().indexOf(s) !== -1 || (c.phone || '').indexOf(s) !== -1 || (c.area || '').toLowerCase().indexOf(s) !== -1) filtered.push(c);
+                if (filtered.length >= 10) break;
             }
+            if (!filtered.length) { safeHTML(results, '<div class="text-center text-gray-400 p-3 bg-white rounded-xl text-sm">لا توجد نتائج</div>'); return; }
             var html = '';
-            if (!filtered.length) { html = '<div class="text-center text-gray-400 p-4">لا توجد نتائج</div>'; }
-            else {
-                for (var j = 0; j < filtered.length; j++) {
-                    var cu = filtered[j];
-                    var debtClass = Number(cu.debt) > 0 ? 'text-red-500' : 'text-green-600';
-                    html += '<div onclick="App.selectCustomer(\'' + cu.customer_code + '\')" class="bg-white p-4 rounded-xl shadow-sm border cursor-pointer hover:bg-blue-50">';
-                    html += '<div class="font-bold">' + (cu.name || '') + '</div><div class="text-xs text-gray-400">' + (cu.customer_code || '') + ' - ' + (cu.area || '') + '</div>';
-                    html += '<div class="text-xs ' + debtClass + ' font-bold mt-1">الرصيد: ' + fmtNum(cu.debt) + ' EGP</div></div>';
-                }
+            for (var j = 0; j < filtered.length; j++) {
+                var cu = filtered[j];
+                var debtClass = Number(cu.debt) > 0 ? 'text-red-500' : 'text-green-600';
+                html += '<div onclick="App.selectCustomer(\'' + cu.customer_code + '\')" class="bg-white p-3 rounded-xl shadow-sm border cursor-pointer hover:bg-blue-50 active:bg-blue-100">';
+                html += '<div class="font-bold text-sm">' + (cu.name || '') + '</div>';
+                html += '<div class="text-xs text-gray-400">' + (cu.customer_code || '') + ' - ' + (cu.area || '') + ' | الرصيد: <span class="' + debtClass + ' font-bold">' + fmtNum(cu.debt) + '</span></div>';
+                html += '</div>';
             }
-            safeHTML(byId('custResults'), html);
+            safeHTML(results, html);
         });
     },
 
@@ -327,23 +418,35 @@ var App = {
             self.selCust = c;
             var limit = Number(c.credit_limit) || 0, debt = Number(c.debt) || 0, pct = limit > 0 ? (debt / limit) * 100 : 0;
             var banner = byId('creditBanner');
-            if (pct >= 90) { banner.className = 'text-center py-2 text-sm font-bold credit-red'; banner.innerHTML = '⚠️ تحذير: تجاوز الحد الائتماني (' + fmtNum(debt) + ' / ' + fmtNum(limit) + ')'; banner.classList.remove('hidden'); }
-            else if (pct >= 60) { banner.className = 'text-center py-2 text-sm font-bold credit-yellow'; banner.innerHTML = 'تنبيه: اقترب من الحد الائتماني (' + fmtNum(debt) + ' / ' + fmtNum(limit) + ')'; banner.classList.remove('hidden'); }
-            else { banner.classList.add('hidden'); }
+            if (pct >= 100) {
+                banner.className = 'text-center py-2 text-sm font-bold flex-shrink-0 bg-red-500 text-white';
+                banner.innerHTML = '⛔ العميل تجاوز الحد الائتماني (' + fmtNum(debt) + ' / ' + fmtNum(limit) + ')';
+            } else if (pct >= 75) {
+                banner.className = 'text-center py-2 text-sm font-bold flex-shrink-0 bg-yellow-100 text-yellow-800 border-b border-yellow-200';
+                banner.innerHTML = '⚠️ العميل يقترب من الحد الائتماني (' + Math.round(pct) + '%)';
+            } else {
+                banner.className = 'hidden';
+            }
+            var infoDiv = byId('selectedCustInfo');
+            if (infoDiv) {
+                infoDiv.classList.remove('hidden');
+                infoDiv.innerHTML = '<div class="flex justify-between items-center"><div><span class="font-black text-blue-800">' + (c.name || '') + '</span><span class="text-xs text-blue-500 mr-2">' + (c.area || '') + '</span></div><button onclick="App.clearCustomer()" class="text-xs text-red-500 font-bold">✕ تغيير</button></div>';
+            }
+            byId('custSearch').value = '';
+            safeHTML(byId('custResults'), '');
             toast('تم اختيار: ' + (c.name || code), 'success');
         });
     },
 
-    // ==================== المنتجات ====================
-    renderCatalogView: function() {
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">المنتجات</h2>';
-        html += '<div class="mb-3"><select id="branchSel" onchange="App.onBranchChange(this.value)" class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm"><option value="">-- اختر الفرع --</option></select></div>';
-        html += '<input type="text" id="itemSearch" oninput="App.searchItems(this.value)" placeholder="ابحث بالاسم أو الباركود..." class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-blue-600 outline-none font-bold text-sm mb-4">';
-        html += '<div id="itemResults" class="grid grid-cols-2 gap-2"></div></div>';
-        safeHTML(byId('mainContent'), html);
-        this.loadBranches();
+    clearCustomer: function() {
+        this.selCust = null;
+        byId('creditBanner').className = 'hidden';
+        var infoDiv = byId('selectedCustInfo');
+        if (infoDiv) infoDiv.classList.add('hidden');
+        toast('تم إلغاء اختيار العميل', 'info');
     },
 
+    // ==================== المنتجات ====================
     loadBranches: function() {
         var self = this;
         db.branches.toArray().then(function(br) {
@@ -354,7 +457,7 @@ var App = {
         });
     },
 
-    onBranchChange: function(v) { this.selBranch = v || null; this.searchItems(byId('itemSearch') ? byId('itemSearch').value : ''); },
+    onBranchChange: function(v) { this.selBranch = v || null; this.renderAllProducts(); },
 
     getAvail: function(itemId) {
         var self = this;
@@ -365,52 +468,66 @@ var App = {
         });
     },
 
-    searchItems: function(q) {
-        if (!this.selBranch) { safeHTML(byId('itemResults'), '<div class="col-span-2 text-center text-amber-500 p-4 bg-white rounded-xl">اختر فرعاً أولاً</div>'); return; }
+    renderAllProducts: function() {
+        var container = byId('productsContainer');
+        if (!container) return;
+        if (!this.selBranch) { safeHTML(container, '<div class="text-center text-amber-500 py-10 bg-white rounded-xl">اختر فرعاً أولاً</div>'); return; }
+        safeHTML(container, '<div class="text-center text-gray-400 py-10">جاري التحميل...</div>');
         var self = this;
-        db.items.toArray().then(function(all) {
-            var filtered = all;
-            if (q && q.trim()) {
-                var s = q.toLowerCase();
-                filtered = [];
-                for (var i = 0; i < all.length; i++) { var it = all[i]; if ((it.name || '').toLowerCase().indexOf(s) !== -1 || (it.item_code || '').toLowerCase().indexOf(s) !== -1 || (it.barcode || '').indexOf(s) !== -1) { filtered.push(it); } }
-            }
-            filtered = filtered.slice(0, 24);
+        db.items.toArray().then(function(items) {
+            if (!items.length) { safeHTML(container, '<div class="text-center text-gray-400 py-10">لا توجد منتجات</div>'); return; }
             var promises = [];
-            for (var j = 0; j < filtered.length; j++) promises.push(self.getAvail(filtered[j].id));
+            for (var i = 0; i < items.length; i++) promises.push(self.getAvail(items[i].id));
             Promise.all(promises).then(function(avails) {
                 var html = '';
-                if (!filtered.length) { html = '<div class="col-span-2 text-center text-gray-400 p-4">لا توجد منتجات</div>'; }
-                else {
-                    for (var k = 0; k < filtered.length; k++) {
-                        var it = filtered[k], avail = avails[k];
-                        var inCart = 0;
-                        for (var x = 0; x < self.cart.length; x++) { if (self.cart[x].code === it.item_code) { inCart = self.cart[x].qty; break; } }
-                        var imgSrc = it.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E';
-                        html += '<div class="bg-white p-3 rounded-2xl shadow-sm border flex flex-col">';
-                        html += '<div class="w-full h-24 bg-gray-100 rounded-xl mb-2 overflow-hidden"><img src="' + imgSrc + '" alt="' + (it.name || '') + '" class="w-full h-full object-cover cursor-pointer" onerror="this.src=\'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E\'" onclick="event.stopPropagation();App.viewImage(\'' + imgSrc + '\',\'' + (it.name || '').replace(/'/g, "\\'") + '\')"></div>';
-                        html += '<div class="font-black text-sm text-slate-700 leading-snug mb-1">' + (it.name || '') + '</div>';
-                        html += '<div class="text-[11px] text-slate-400 font-bold mb-2">' + (it.item_code || '') + '</div>';
-                        html += '<div class="flex justify-between items-center mt-auto">';
-                        html += '<div><span class="text-blue-600 font-black">' + fmtNum(it.sales_price) + '</span><span class="text-[10px] text-gray-400 block">متاح: ' + avail + '</span></div>';
-                        if (inCart > 0) {
-                            html += '<div class="flex items-center gap-1"><button onclick="event.stopPropagation();App.decCart(\'' + it.item_code + '\')" class="w-7 h-7 bg-gray-100 rounded-full font-black">-</button><span class="w-5 text-center font-black">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-7 h-7 bg-blue-600 text-white rounded-full font-black">+</button></div>';
-                        } else {
-                            html += '<button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-8 h-8 bg-blue-600 text-white rounded-full"><i class="fa-solid fa-plus"></i></button>';
-                        }
-                        html += '</div></div>';
-                    }
+                if (self.isListView) html += '<div class="space-y-2">';
+                else html += '<div class="grid grid-cols-2 gap-2">';
+                for (var k = 0; k < items.length; k++) {
+                    var it = items[k], avail = avails[k];
+                    html += self.renderProductCard(it, avail);
                 }
-                safeHTML(byId('itemResults'), html);
+                html += '</div>';
+                safeHTML(container, html);
             });
         });
     },
 
-    viewImage: function(src, name) {
-        Swal.fire({ imageUrl: src, imageAlt: name || 'صورة المنتج', imageWidth: 400, showCloseButton: true, showConfirmButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' } });
+    renderProductCard: function(it, avail) {
+        var self = this;
+        var inCart = 0;
+        for (var x = 0; x < self.cart.length; x++) { if (self.cart[x].code === it.item_code) { inCart = self.cart[x].qty; break; } }
+        var stockColor = avail > 10 ? 'bg-green-500' : avail > 0 ? 'bg-yellow-500' : 'bg-red-500';
+        var stockText = avail > 10 ? 'متوفر' : avail > 0 ? 'ينفذ (باقي ' + avail + ')' : 'نافد';
+
+        if (this.isListView) {
+            // عرض قائمة (List View)
+            var html = '<div class="bg-white p-3 rounded-xl shadow-sm border flex items-center gap-3">';
+            html += '<div class="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0"><img src="' + (it.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22%3E📦%3C/text%3E%3C/svg%3E') + '" class="w-full h-full object-cover" onerror="this.style.display=\'none\'"></div>';
+            html += '<div class="flex-1 min-w-0"><div class="font-bold text-sm truncate">' + (it.name || '') + '</div><div class="text-xs text-gray-400">' + (it.item_code || '') + '</div><div class="flex items-center gap-1 mt-1"><span class="w-2 h-2 rounded-full ' + stockColor + '"></span><span class="text-[10px] text-gray-500">' + stockText + '</span></div></div>';
+            html += '<div class="text-left"><div class="font-black text-blue-700 text-sm">' + fmtNum(it.sales_price) + '</div>';
+            if (inCart > 0) {
+                html += '<div class="flex items-center gap-1 mt-1"><button onclick="event.stopPropagation();App.decCart(\'' + it.item_code + '\')" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black">-</button><span class="text-xs font-black w-5 text-center">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-black">+</button></div>';
+            } else {
+                html += '<button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="mt-1 w-8 h-8 bg-blue-600 text-white rounded-full text-xs flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>';
+            }
+            html += '</div></div>';
+            return html;
+        } else {
+            // عرض شبكي (Grid View)
+            var html = '<div class="bg-white rounded-xl shadow-sm border overflow-hidden">';
+            html += '<div class="aspect-square bg-gray-100 relative"><img src="' + (it.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22%3E📦%3C/text%3E%3C/svg%3E') + '" class="w-full h-full object-cover"><span class="absolute top-1 right-1 w-3 h-3 rounded-full ' + stockColor + ' border border-white"></span></div>';
+            html += '<div class="p-2"><div class="font-bold text-xs truncate">' + (it.name || '') + '</div><div class="flex justify-between items-center mt-1"><span class="font-black text-blue-700 text-xs">' + fmtNum(it.sales_price) + '</span>';
+            if (inCart > 0) {
+                html += '<div class="flex items-center gap-1"><button onclick="event.stopPropagation();App.decCart(\'' + it.item_code + '\')" class="w-5 h-5 bg-gray-100 rounded-full text-[10px] font-black">-</button><span class="text-[10px] font-black">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-5 h-5 bg-blue-600 text-white rounded-full text-[10px] font-black">+</button></div>';
+            } else {
+                html += '<button onclick="event.stopPropagation();App.addToCart(\'' + it.item_code + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-[10px] flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>';
+            }
+            html += '</div></div></div>';
+            return html;
+        }
     },
 
-    // ==================== السلة ====================
+    // ==================== إدارة السلة ====================
     addToCart: function(code) {
         var self = this;
         db.items.get(code).then(function(it) {
@@ -424,14 +541,17 @@ var App = {
                 if (nq > avail) { toast('المتاح: ' + avail, 'warning'); return; }
                 if (existing) { existing.qty = nq; }
                 else { self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 }); }
-                self.searchItems(byId('itemSearch') ? byId('itemSearch').value : '');
+                self.updateFloatingCart();
+                self.renderAllProducts();
+                if (navigator.vibrate) navigator.vibrate(30);
             });
         });
     },
 
     decCart: function(code) {
         for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart[i].qty--; if (this.cart[i].qty <= 0) this.cart.splice(i, 1); break; } }
-        this.searchItems(byId('itemSearch') ? byId('itemSearch').value : '');
+        this.updateFloatingCart();
+        this.renderAllProducts();
     },
 
     calcTotals: function() {
@@ -442,45 +562,44 @@ var App = {
         return { sub: sub, del: d, tax: tx, total: beforeTax + tx };
     },
 
-    openCart: function() { this.renderCartContent(); byId('cartSheet').classList.add('open'); byId('cartOverlay').classList.add('show'); },
-    closeCart: function() { byId('cartSheet').classList.remove('open'); byId('cartOverlay').classList.remove('show'); },
+    updateFloatingCart: function() {
+        var bar = byId('floatingCart');
+        if (!bar) return;
+        var t = this.calcTotals();
+        if (this.cart.length === 0) { bar.classList.add('hidden'); return; }
+        bar.classList.remove('hidden');
+        byId('cartBadgeCount').innerText = this.cart.length;
+        byId('cartBadgeSummary').innerText = this.cart.length === 1 ? this.cart[0].name : (this.cart.length + ' أصناف');
+        byId('cartBadgeTotal').innerText = fmtNum(t.total);
+    },
 
-    renderCartContent: function() {
+    openCartModal: function() {
+        if (this.cart.length === 0) return;
+        byId('cartModal').classList.remove('hidden');
+        this.renderCartModalBody();
+    },
+
+    closeCartModal: function() {
+        byId('cartModal').classList.add('hidden');
+    },
+
+    renderCartModalBody: function() {
         var html = '';
+        var t = this.calcTotals();
         for (var i = 0; i < this.cart.length; i++) {
             var item = this.cart[i];
-            html += '<div class="flex justify-between items-center bg-white p-3 rounded-xl border mb-2">';
-            html += '<div><div class="font-black text-sm">' + item.name + '</div><div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × ' + item.qty + '</div></div>';
-            html += '<div class="flex items-center gap-1"><button onclick="App.decCart(\'' + item.code + '\');App.renderCartContent()" class="w-7 h-7 bg-gray-100 rounded-full font-black">-</button><span class="w-5 text-center font-black">' + item.qty + '</span><button onclick="App.addToCart(\'' + item.code + '\');App.renderCartContent()" class="w-7 h-7 bg-blue-600 text-white rounded-full font-black">+</button></div></div>';
+            html += '<div class="flex items-center justify-between bg-gray-50 p-3 rounded-xl">';
+            html += '<div class="flex-1 min-w-0"><div class="font-bold text-sm">' + item.name + '</div><div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × ' + item.qty + '</div></div>';
+            html += '<div class="flex items-center gap-2 mr-3"><button onclick="App.decCart(\'' + item.code + '\');App.renderCartModalBody()" class="w-7 h-7 bg-red-100 text-red-600 rounded-full text-xs font-black">-</button><span class="text-sm font-black w-6 text-center">' + item.qty + '</span><button onclick="App.addToCart(\'' + item.code + '\');App.renderCartModalBody()" class="w-7 h-7 bg-blue-600 text-white rounded-full text-xs font-black">+</button></div>';
+            html += '</div>';
         }
-        safeHTML(byId('cartBody'), html || '<div class="text-center text-gray-400 p-4">السلة فارغة</div>');
+        safeHTML(byId('cartModalBody'), html || '<div class="text-center text-gray-400 py-10">السلة فارغة</div>');
+        byId('cartModalTotal').innerText = fmtNum(t.total);
     },
 
-    goToReview: function() { this.showView('review'); },
-
-    // ==================== المراجعة والحفظ ====================
-    renderReviewView: function() {
-        var self = this;
-        var t = this.calcTotals();
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">مراجعة الأوردر</h2>';
-        if (this.selCust) { html += '<div class="bg-blue-50 p-4 rounded-2xl mb-4"><div class="font-black text-blue-800">' + (this.selCust.name || '') + '</div><div class="text-sm text-blue-600">' + (this.selCust.customer_code || '') + ' - ' + (this.selCust.area || '') + '</div></div>'; }
-        html += '<div class="bg-white p-4 rounded-2xl shadow-sm border mb-4"><h3 class="font-bold text-sm text-gray-500 mb-3">الأصناف</h3>';
-        if (!this.cart.length) { html += '<div class="text-center text-gray-400 py-4">السلة فارغة</div>'; }
-        else {
-            for (var i = 0; i < this.cart.length; i++) {
-                var item = this.cart[i];
-                var lineTotal = item.price * item.qty;
-                html += '<div class="flex items-center justify-between py-3 border-b last:border-b-0"><div class="flex-1 min-w-0"><div class="font-black text-sm text-gray-800">' + item.name + '</div><div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × ' + item.qty + ' = <span class="font-bold text-blue-600">' + fmtNum(lineTotal) + '</span></div></div><div class="flex items-center gap-2 mr-3"><button onclick="App.decCart(\'' + item.code.replace(/'/g, "\\'") + '\');App.renderReviewView();" class="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full font-black text-gray-600 flex items-center justify-center text-sm">−</button><span class="w-6 text-center font-black text-sm">' + item.qty + '</span><button onclick="App.addToCart(\'' + item.code.replace(/'/g, "\\'") + '\');App.renderReviewView();" class="w-8 h-8 bg-blue-600 hover:bg-blue-700 rounded-full font-black text-white flex items-center justify-center text-sm">+</button></div></div>';
-            }
-        }
-        html += '</div>';
-        html += '<div class="bg-white p-4 rounded-2xl shadow-sm border space-y-2"><div class="flex justify-between"><span>المجموع:</span><span>' + fmtNum(t.sub) + '</span></div><div class="flex justify-between"><span>التوصيل:</span><span class="text-blue-600">' + fmtNum(t.del) + '</span></div><div class="flex justify-between"><span>الضريبة:</span><span class="text-red-600">' + fmtNum(t.tax) + '</span></div><div class="flex justify-between font-black text-lg pt-2 border-t"><span>الإجمالي:</span><span class="text-emerald-600">' + fmtNum(t.total) + '</span></div></div>';
-        html += '<button onclick="App.submitOrder()" class="w-full bg-emerald-600 text-white py-4 rounded-xl font-black mt-4">حفظ الأوردر</button></div>';
-        safeHTML(byId('mainContent'), html);
-    },
-
+    // ==================== حفظ الأوردر ====================
     submitOrder: function() {
-        if (!this.selCust) { toast('اختر عميلاً', 'warning'); return; }
+        if (!this.selCust) { toast('اختر عميلاً أولاً', 'warning'); return; }
         if (!this.cart.length) { toast('السلة فارغة', 'warning'); return; }
         if (!this.selBranch) { toast('اختر فرعاً', 'warning'); return; }
         var t = this.calcTotals();
@@ -489,27 +608,30 @@ var App = {
         for (var i = 0; i < this.cart.length; i++) { items.push({ code: this.cart[i].code, name: this.cart[i].name, price: this.cart[i].price, qty: this.cart[i].qty, unit: this.cart[i].unit }); }
         var hdr = { customer_code: this.selCust.customer_code, custName: this.selCust.name, area: this.selCust.area || '', total: t.total, deliveryFees: t.del, status: 'Confirmed', paymentType: this.selCust.payment_type || 'أجل', taxAmount: t.tax, taxRate: this.taxRate };
         var self = this;
+        this.closeCartModal();
         Swal.showLoading();
         supabase.auth.getSession().then(function(ses) {
             var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
             return fetch(SUPABASE_URL + '/functions/v1/save-sales-invoice', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ orderHeader: hdr, itemsList: items, branchCode: self.selBranch }) });
         }).then(function(r) { return r.json(); }).then(function(json) {
             Swal.close();
-            if (json.success) { toast('تم الحفظ: ' + (json.orderID || ''), 'success'); self.cart = []; self.selCust = null; byId('creditBanner').classList.add('hidden'); self.showView('customers'); }
+            if (json.success) { toast('تم الحفظ: ' + (json.orderID || ''), 'success'); self.cart = []; self.selCust = null; self.clearCustomer(); self.updateFloatingCart(); self.switchTab('new-order'); }
             else { toast(json.msg || 'فشل الحفظ', 'error'); }
         }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
     },
 
-    // ==================== أوردراتي ====================
+    // ==================== شاشة: أوردراتي ====================
     renderOrdersView: function() {
         var self = this;
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">أوردراتي</h2>';
+        var html = '<div class="flex-1 overflow-y-auto p-4 no-scrollbar">';
+        html += '<h2 class="text-lg font-black mb-4">📋 أوردراتي</h2>';
         html += '<div class="bg-white p-3 rounded-2xl shadow-sm border mb-4"><div class="flex gap-2 flex-wrap">';
         html += '<select id="orderStatusFilter" onchange="App.renderOrdersList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><option value="">كل الحالات</option><option value="Draft">مسودة</option><option value="Confirmed">مؤكد</option><option value="Pending">قيد الانتظار</option><option value="Invoiced">مفوتر</option><option value="Delivered">تم التوصيل</option><option value="Cancelled">ملغي</option></select>';
         html += '<input type="date" id="orderDateFilter" onchange="App.renderOrdersList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold">';
         html += '<button onclick="byId(\'orderStatusFilter\').value=\'\';byId(\'orderDateFilter\').value=\'\';App.renderOrdersList();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">إعادة تعيين</button>';
         html += '</div></div>';
-        html += '<div id="ordersListContainer" class="space-y-3"><div class="text-center text-gray-400 py-8">جاري التحميل...</div></div></div>';
+        html += '<div id="ordersListContainer" class="space-y-3"><div class="text-center text-gray-400 py-8">جاري التحميل...</div></div>';
+        html += '</div>';
         safeHTML(byId('mainContent'), html);
         this.renderOrdersList();
     },
@@ -522,34 +644,33 @@ var App = {
         var query = supabase.from('orders').select('*').eq('created_by', this.currentUser.email).order('order_date', { ascending: false }).limit(50);
         var statusFilter = byId('orderStatusFilter') ? byId('orderStatusFilter').value : '';
         var dateFilter = byId('orderDateFilter') ? byId('orderDateFilter').value : '';
-        if (statusFilter) { query = query.eq('order_status', statusFilter); }
-        if (dateFilter) { query = query.eq('order_date', dateFilter); }
+        if (statusFilter) query = query.eq('order_status', statusFilter);
+        if (dateFilter) query = query.eq('order_date', dateFilter);
         query.then(function(res) {
             var orders = res.data || [];
             if (!orders.length) { safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد أوردرات</div>'); return; }
             var html = '';
             for (var i = 0; i < orders.length; i++) {
                 var o = orders[i];
-                var statusColor = '', statusLabel = o.order_status || '';
-                if (o.order_status === 'Draft') { statusColor = 'bg-yellow-100 text-yellow-700'; statusLabel = 'مسودة'; }
-                else if (o.order_status === 'Confirmed') { statusColor = 'bg-blue-100 text-blue-700'; statusLabel = 'مؤكد'; }
-                else if (o.order_status === 'Pending') { statusColor = 'bg-purple-100 text-purple-700'; statusLabel = 'قيد الانتظار'; }
-                else if (o.order_status === 'Invoiced') { statusColor = 'bg-green-100 text-green-700'; statusLabel = 'مفوتر'; }
-                else if (o.order_status === 'Delivered') { statusColor = 'bg-emerald-100 text-emerald-700'; statusLabel = 'تم التوصيل'; }
-                else if (o.order_status === 'Cancelled') { statusColor = 'bg-red-100 text-red-700'; statusLabel = 'ملغي'; }
-                else { statusColor = 'bg-gray-100 text-gray-700'; }
-                html += '<div onclick="App.showOrderDetail(\'' + o.id + '\')" class="bg-white p-4 rounded-2xl shadow-sm border cursor-pointer hover:bg-blue-50 transition">';
-                html += '<div class="flex justify-between items-start mb-2"><div><span class="font-black text-blue-600 text-sm">' + (o.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (o.order_date ? new Date(o.order_date).toLocaleDateString('ar-EG') : '') + '</span></div><span class="px-2 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span></div>';
-                html += '<div class="flex justify-between items-center"><div><span class="font-bold text-sm">' + (o.customer_name || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (o.area || '') + '</span></div><span class="font-black text-emerald-600 text-sm">' + fmtNum(o.total_amount) + ' EGP</span></div>';
-                if (o.order_status === 'Draft') { html += '<div class="flex gap-2 mt-2 pt-2 border-t"><button onclick="event.stopPropagation();App.confirmOrder(\'' + o.order_code + '\')" class="flex-1 bg-blue-600 text-white text-xs py-1.5 rounded-lg font-bold">تأكيد</button><button onclick="event.stopPropagation();App.cancelOrder(\'' + o.order_code + '\')" class="flex-1 bg-red-100 text-red-600 text-xs py-1.5 rounded-lg font-bold">إلغاء</button></div>'; }
-                else if (o.order_status === 'Confirmed') { html += '<div class="flex gap-2 mt-2 pt-2 border-t"><button onclick="event.stopPropagation();App.cancelOrder(\'' + o.order_code + '\')" class="flex-1 bg-red-100 text-red-600 text-xs py-1.5 rounded-lg font-bold">إلغاء</button></div>'; }
+                var sc = ''; var sl = o.order_status || '';
+                if (o.order_status === 'Draft') { sc = 'bg-yellow-100 text-yellow-700'; sl = 'مسودة'; }
+                else if (o.order_status === 'Confirmed') { sc = 'bg-blue-100 text-blue-700'; sl = 'مؤكد'; }
+                else if (o.order_status === 'Pending') { sc = 'bg-purple-100 text-purple-700'; sl = 'قيد الانتظار'; }
+                else if (o.order_status === 'Invoiced') { sc = 'bg-green-100 text-green-700'; sl = 'مفوتر'; }
+                else if (o.order_status === 'Delivered') { sc = 'bg-emerald-100 text-emerald-700'; sl = 'تم التوصيل'; }
+                else if (o.order_status === 'Cancelled') { sc = 'bg-red-100 text-red-700'; sl = 'ملغي'; }
+                else { sc = 'bg-gray-100 text-gray-700'; }
+                html += '<div class="bg-white p-4 rounded-2xl shadow-sm border cursor-pointer hover:bg-blue-50" onclick="App.repeatOrder(\'' + o.id + '\')">';
+                html += '<div class="flex justify-between items-start mb-2"><div><span class="font-black text-blue-600 text-sm">' + (o.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (o.order_date ? new Date(o.order_date).toLocaleDateString('ar-EG') : '') + '</span></div><span class="px-2 py-1 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span></div>';
+                html += '<div class="flex justify-between items-center"><div><span class="font-bold text-sm">' + (o.customer_name || '') + '</span></div><span class="font-black text-emerald-600 text-sm">' + fmtNum(o.total_amount) + ' EGP</span></div>';
+                html += '<div class="flex gap-1 mt-2"><button onclick="event.stopPropagation();App.repeatOrder(\'' + o.id + '\')" class="text-xs bg-blue-50 text-blue-600 px-3 py-1 rounded-full font-bold">🔄 إعادة الطلب</button></div>';
                 html += '</div>';
             }
             safeHTML(container, html);
         }).catch(function() { safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الأوردرات</div>'); });
     },
 
-    showOrderDetail: function(orderId) {
+    repeatOrder: function(orderId) {
         var self = this;
         Swal.showLoading();
         supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
@@ -558,49 +679,37 @@ var App = {
             supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
                 Swal.close();
                 var details = dRes.data || [];
-                var statusLabel = order.order_status || '';
-                if (order.order_status === 'Draft') statusLabel = 'مسودة';
-                else if (order.order_status === 'Confirmed') statusLabel = 'مؤكد';
-                else if (order.order_status === 'Pending') statusLabel = 'قيد الانتظار';
-                else if (order.order_status === 'Invoiced') statusLabel = 'مفوتر';
-                else if (order.order_status === 'Delivered') statusLabel = 'تم التوصيل';
-                else if (order.order_status === 'Cancelled') statusLabel = 'ملغي';
-                var html = '<div class="text-right"><div class="bg-gray-50 p-4 rounded-xl mb-4"><div class="flex justify-between mb-2"><span class="font-black text-lg">' + (order.order_code || '') + '</span><span class="text-sm font-bold">' + statusLabel + '</span></div>';
-                html += '<p><strong>العميل:</strong> ' + (order.customer_name || '') + '</p><p><strong>المنطقة:</strong> ' + (order.area || '') + '</p><p><strong>التاريخ:</strong> ' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p><p><strong>طريقة الدفع:</strong> ' + (order.payment_type || '') + '</p></div>';
-                if (details.length > 0) {
-                    html += '<div class="overflow-x-auto"><table class="w-full text-sm border"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                    var total = 0;
-                    for (var i = 0; i < details.length; i++) { var d = details[i]; var lt = Number(d.line_amount) || (Number(d.qty) * Number(d.unit_price)); total += lt; html += '<tr><td class="p-2 font-semibold">' + (d.item_name || '') + '</td><td class="p-2 text-center">' + d.qty + '</td><td class="p-2 text-center">' + fmtNum(d.unit_price) + '</td><td class="p-2 text-center font-bold">' + fmtNum(lt) + '</td></tr>'; }
-                    html += '</tbody></table></div><div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + fmtNum(order.total_amount || total) + ' EGP</div>';
+                self.cart = [];
+                for (var i = 0; i < details.length; i++) {
+                    self.cart.push({ code: details[i].item_code, name: details[i].item_name, price: Number(details[i].unit_price) || 0, unit: details[i].unit || 'حبة', qty: Number(details[i].qty) || 1 });
                 }
-                if (order.order_status === 'Invoiced' || order.order_status === 'Delivered') { html += '<div class="text-center mt-4 pt-4 border-t"><p class="font-bold text-sm mb-2">رمز الفاتورة</p><div id="orderQrCode" class="inline-block"></div></div>'; }
-                html += '</div>';
-                Swal.fire({ title: 'تفاصيل الأوردر', html: html, width: '700px', showCloseButton: true, showConfirmButton: false,
-                    didOpen: function() {
-                        if (order.order_status === 'Invoiced' || order.order_status === 'Delivered') {
-                            setTimeout(function() { var qrContainer = document.getElementById('orderQrCode'); if (qrContainer && typeof QRCode !== 'undefined') { var qrText = (order.order_code || '') + '\n' + (order.customer_name || '') + '\n' + (order.total_amount || '') + '\n' + (order.order_date || ''); qrContainer.innerHTML = ''; new QRCode(qrContainer, { text: qrText, width: 120, height: 120 }); } }, 300);
-                        }
-                    }
-                });
+                if (order.customer_id) {
+                    db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
+                        if (c) { self.selCust = c; self.selectCustomer(c.customer_code); }
+                    });
+                }
+                self.updateFloatingCart();
+                self.switchTab('new-order');
+                toast('تم نسخ الأوردر للسلة (ابحث عن العميل يدوياً)', 'success');
             });
         }).catch(function() { Swal.close(); });
     },
 
-    confirmOrder: function(orderCode) {
-        var self = this;
-        Swal.fire({ title: 'تأكيد الأوردر', text: 'تحويل ' + orderCode + ' إلى مؤكد؟', icon: 'question', showCancelButton: true, confirmButtonText: 'تأكيد', cancelButtonText: 'إلغاء' }).then(function(cf) {
-            if (!cf.isConfirmed) return;
-            Swal.showLoading();
-            supabase.auth.getSession().then(function(ses) { var t = ses.data.session && ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/confirm-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: orderCode }) }).then(function(res) { return res.json(); }); }).then(function(json) { Swal.close(); if (json.success) { toast('تم التأكيد', 'success'); self.renderOrdersList(); } else { toast(json.msg || 'فشل التأكيد', 'error'); } }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
-        });
+    // ==================== شاشة: المزيد ====================
+    renderMoreView: function() {
+        var html = '<div class="flex-1 overflow-y-auto p-4 no-scrollbar">';
+        html += '<h2 class="text-lg font-black mb-4">⚙️ المزيد</h2>';
+        html += '<div class="space-y-3">';
+        html += '<button onclick="App.syncNow()" class="w-full bg-white p-4 rounded-2xl shadow-sm border flex items-center gap-3"><i class="fa-solid fa-rotate text-blue-600 text-xl"></i><div class="text-right"><div class="font-bold">مزامنة البيانات</div><div class="text-xs text-gray-400">تحديث العملاء والمنتجات والمخزون</div></div></button>';
+        html += '<button onclick="App.doLogout()" class="w-full bg-white p-4 rounded-2xl shadow-sm border flex items-center gap-3"><i class="fa-solid fa-right-from-bracket text-red-500 text-xl"></i><div class="text-right"><div class="font-bold text-red-500">تسجيل الخروج</div><div class="text-xs text-gray-400">العودة إلى شاشة الدخول</div></div></button>';
+        html += '</div></div>';
+        safeHTML(byId('mainContent'), html);
     },
 
-    cancelOrder: function(orderCode) {
-        var self = this;
-        Swal.fire({ title: 'إلغاء الأوردر', text: 'هل أنت متأكد من إلغاء ' + orderCode + '؟', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'نعم، ألغِ', cancelButtonText: 'تراجع' }).then(function(cf) {
-            if (!cf.isConfirmed) return;
-            Swal.showLoading();
-            supabase.auth.getSession().then(function(ses) { var t = ses.data.session && ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/delete-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: orderCode }) }).then(function(res) { return res.json(); }); }).then(function(json) { Swal.close(); if (json.success) { toast('تم الإلغاء', 'success'); self.renderOrdersList(); } else { toast(json.msg || 'فشل الإلغاء', 'error'); } }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
+    syncPendingOrders: function() {
+        db.pending_updates.where('status').equals('pending').toArray().then(function(ops) {
+            var badge = byId('pendingBadge');
+            if (badge) { if (ops.length > 0) { badge.classList.remove('hidden'); badge.innerText = ops.length; } else { badge.classList.add('hidden'); } }
         });
     }
 };
