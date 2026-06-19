@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>التلي سيلز | الروائع ERP</title>
-    <link rel="manifest" href="../manifest.json">
+    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1e40af">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -17,6 +17,7 @@
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
+        html,body{height:100%;overflow:hidden;position:fixed;width:100%}
         body{font-family:'Cairo',sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;touch-action:manipulation;-webkit-touch-callout:none}
         :root{--sat:env(safe-area-inset-top);--sar:env(safe-area-inset-right);--sab:env(safe-area-inset-bottom);--sal:env(safe-area-inset-left)}
         .auth-container{background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 40%,#2563eb 100%)}
@@ -29,7 +30,7 @@
         .pulse-badge{animation:pulse-badge 0.3s ease-in-out}
     </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden">
+<body class="h-full flex flex-col overflow-hidden">
 
 <!-- ============================================================ -->
 <!-- شاشة الدخول -->
@@ -118,7 +119,7 @@
     </div>
 
     <!-- الشريط السفلي (3 تبويبات) -->
-    <nav class="bg-white border-t flex justify-around items-center flex-shrink-0 z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]" style="padding-bottom:max(8px,var(--sab));min-height:60px">
+    <nav class="bg-white border-t flex justify-around items-center flex-shrink-0 z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]" style="padding-bottom:max(12px,var(--sab));min-height:60px">
         <button onclick="App.switchTab('new-order')" class="tab-btn flex flex-col items-center justify-center py-1 px-3 text-blue-600" data-tab="new-order">
             <i class="fa-solid fa-cart-plus text-xl mb-0.5"></i>
             <span class="text-[10px] font-bold">أوردر جديد</span>
@@ -357,7 +358,7 @@ var App = {
         var icon = byId('viewModeIcon');
         if (this.isListView) icon.className = 'fa-solid fa-list';
         else icon.className = 'fa-solid fa-grip';
-        this.searchItems(byId('itemSearch') ? byId('itemSearch').value : '');
+        this.renderAllProducts();
     },
 
     // ==================== آخر العملاء ====================
@@ -497,10 +498,9 @@ var App = {
         var inCart = 0;
         for (var x = 0; x < self.cart.length; x++) { if (self.cart[x].code === it.item_code) { inCart = self.cart[x].qty; break; } }
         var stockColor = avail > 10 ? 'bg-green-500' : avail > 0 ? 'bg-yellow-500' : 'bg-red-500';
-        var stockText = avail > 10 ? 'متوفر' : avail > 0 ? 'ينفذ (باقي ' + avail + ')' : 'نافد';
+        var stockText = avail > 10 ? 'متوفر' : avail > 0 ? 'باقي ' + avail : 'نافد';
 
         if (this.isListView) {
-            // عرض قائمة (List View)
             var html = '<div class="bg-white p-3 rounded-xl shadow-sm border flex items-center gap-3">';
             html += '<div class="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0"><img src="' + (it.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22%3E📦%3C/text%3E%3C/svg%3E') + '" class="w-full h-full object-cover" onerror="this.style.display=\'none\'"></div>';
             html += '<div class="flex-1 min-w-0"><div class="font-bold text-sm truncate">' + (it.name || '') + '</div><div class="text-xs text-gray-400">' + (it.item_code || '') + '</div><div class="flex items-center gap-1 mt-1"><span class="w-2 h-2 rounded-full ' + stockColor + '"></span><span class="text-[10px] text-gray-500">' + stockText + '</span></div></div>';
@@ -513,7 +513,6 @@ var App = {
             html += '</div></div>';
             return html;
         } else {
-            // عرض شبكي (Grid View)
             var html = '<div class="bg-white rounded-xl shadow-sm border overflow-hidden">';
             html += '<div class="aspect-square bg-gray-100 relative"><img src="' + (it.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22%3E📦%3C/text%3E%3C/svg%3E') + '" class="w-full h-full object-cover"><span class="absolute top-1 right-1 w-3 h-3 rounded-full ' + stockColor + ' border border-white"></span></div>';
             html += '<div class="p-2"><div class="font-bold text-xs truncate">' + (it.name || '') + '</div><div class="flex justify-between items-center mt-1"><span class="font-black text-blue-700 text-xs">' + fmtNum(it.sales_price) + '</span>';
@@ -690,7 +689,7 @@ var App = {
                 }
                 self.updateFloatingCart();
                 self.switchTab('new-order');
-                toast('تم نسخ الأوردر للسلة (ابحث عن العميل يدوياً)', 'success');
+                toast('تم نسخ الأوردر للسلة', 'success');
             });
         }).catch(function() { Swal.close(); });
     },
@@ -715,7 +714,34 @@ var App = {
 };
 
 // ============================================================
-// تهيئة التطبيق
+// موجه تثبيت التطبيق على الشاشة الرئيسية
+// ============================================================
+var deferredPrompt;
+window.addEventListener('beforeinstallprompt', function(e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    setTimeout(function() {
+        Swal.fire({
+            title: '📱 تثبيت التطبيق',
+            text: 'ثبّت التطبيق على الشاشة الرئيسية لتجربة كاملة تملأ الشاشة',
+            icon: 'info',
+            showCancelButton: true,
+            confirmButtonText: '✅ تثبيت الآن',
+            cancelButtonText: '⏭️ لاحقاً',
+            confirmButtonColor: '#1e40af'
+        }).then(function(result) {
+            if (result.isConfirmed && deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then(function(choiceResult) {
+                    deferredPrompt = null;
+                });
+            }
+        });
+    }, 2000);
+});
+
+// ============================================================
+// Service Worker وتهيئة التطبيق
 // ============================================================
 if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
 document.addEventListener('DOMContentLoaded', function() { App.init(); });
