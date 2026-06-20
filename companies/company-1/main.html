@@ -3256,39 +3256,41 @@ var RW_Roles = (function() {
     var rolesData = [];
 
     async function render() {
-        const container = byId('rw-page-container'); if (!container) return;
+        var container = byId('rw-page-container'); if (!container) return;
         safeText(byId('rw-header-title'), 'إدارة أدوار المستخدمين');
-        safeHTML(container, `<div class="p-4">
-            <div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-user-shield ml-2"></i>أدوار المستخدمين</h2>
-            <div class="flex gap-2"><button id="btn-seed-roles" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-seedling ml-1"></i> تهيئة الأدوار الافتراضية</button>
-            <button id="btn-add-role" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة دور</button></div></div>
-            <div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="roles-table-wrapper" style="max-height:65vh"></div>
-        </div>`);
-        const { data: d } = await supabase.from('roles').select('*');
-        rolesData = d || [];
+        safeHTML(container, '<div class="p-4">' +
+            '<div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-user-shield ml-2"></i>أدوار المستخدمين</h2>' +
+            '<div class="flex gap-2"><button id="btn-seed-roles" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-seedling ml-1"></i> تهيئة الأدوار الافتراضية</button>' +
+            '<button id="btn-add-role" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة دور</button></div></div>' +
+            '<div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="roles-table-wrapper" style="max-height:65vh"></div>' +
+        '</div>');
+        var dRes = await supabase.from('roles').select('*');
+        rolesData = dRes.data || [];
         renderTable(rolesData);
-        byId('btn-add-role')?.addEventListener('click', () => openModal(null));
-        byId('btn-seed-roles')?.addEventListener('click', seedDefaultRoles);
+        var addBtn = byId('btn-add-role');
+        if (addBtn) addBtn.addEventListener('click', function() { openModal(null); });
+        var seedBtn = byId('btn-seed-roles');
+        if (seedBtn) seedBtn.addEventListener('click', seedDefaultRoles);
     }
 
     function renderTable(data) {
-        const w = byId('roles-table-wrapper'); if (!w) return;
+        var w = byId('roles-table-wrapper'); if (!w) return;
         if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا توجد أدوار</div>'); return; }
-        let html = `<table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3">اسم الدور</th><th class="p-3">الوصف</th><th class="p-3">النوع</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody>`;
-        data.forEach(r => {
-            const typeBadge = r.is_system ? '<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">أساسي</span>' : '<span class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs">مخصص</span>';
-            html += `<tr class="hover:bg-gray-50"><td class="p-3 font-semibold">${r.role_name||''}</td><td class="p-3">${r.description||''}</td><td class="p-3">${typeBadge}</td><td class="p-3 text-center"><button class="text-blue-600" onclick="RW_Roles._openModal('${r.id}')"><i class="fa-solid fa-pen"></i></button></td></tr>`;
-        });
-        html += `</tbody></table>`;
+        var html = '<table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3">اسم الدور</th><th class="p-3">الوصف</th><th class="p-3">النوع</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody>';
+        for (var i = 0; i < data.length; i++) {
+            var r = data[i];
+            var typeBadge = r.is_system ? '<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">أساسي</span>' : '<span class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs">مخصص</span>';
+            html += '<tr class="hover:bg-gray-50"><td class="p-3 font-semibold">' + (r.role_name||'') + '</td><td class="p-3">' + (r.description||'') + '</td><td class="p-3">' + typeBadge + '</td><td class="p-3 text-center"><button class="text-blue-600" onclick="RW_Roles._openModal(\'' + r.id + '\')"><i class="fa-solid fa-pen"></i></button></td></tr>';
+        }
+        html += '</tbody></table>';
         safeHTML(w, html);
     }
 
-function openModal(roleId) {
+    function openModal(roleId) {
         var role = roleId ? rolesData.find(function(r) { return r.id == roleId; }) : null;
         var isEdit = !!role;
         var title = isEdit ? 'تعديل دور' : 'إضافة دور جديد';
         
-        // قائمة الصلاحيات المنظمة
         var appPerms = [
             { key: 'pos', label: 'نقطة البيع (POS)' },
             { key: 'telesales', label: 'التلي سيلز' },
@@ -3375,26 +3377,29 @@ function openModal(roleId) {
 
         Swal.fire({ html: html, width: '700px', showConfirmButton: false, showCancelButton: false, customClass: { popup: '!bg-transparent !shadow-none !p-0' },
             didOpen: function() {
-                byId('btn-save-role').addEventListener('click', async function() {
-                    var name = byId('role-name').value.trim();
-                    if (!name) { showToast('اسم الدور مطلوب', 'error'); return; }
-                    var selectedPerms = [];
-                    var checkboxes = document.querySelectorAll('.role-perm-checkbox:checked');
-                    for (var i = 0; i < checkboxes.length; i++) {
-                        selectedPerms.push(checkboxes[i].value);
-                    }
-                    var payload = { id: role ? role.id : null, role_name: name, description: byId('role-desc').value.trim(), permissions: selectedPerms, is_system: role ? role.is_system || false : false };
-                    showLoader('جاري الحفظ...');
-                    var sessionRes = await supabase.auth.getSession();
-                    var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
-                    try {
-                        var res = await fetch(RW_SUPABASE_URL + '/functions/v1/save-role', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(payload) });
-                        var json = await res.json();
-                        hideLoader();
-                        if (json.success) { showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success'); Swal.close(); var dRes = await supabase.from('roles').select('*'); rolesData = dRes.data || []; renderTable(rolesData); }
-                        else { showToast(json.error || 'فشل الحفظ', 'error'); }
-                    } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
-                });
+                var saveBtn = byId('btn-save-role');
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', async function() {
+                        var name = byId('role-name').value.trim();
+                        if (!name) { showToast('اسم الدور مطلوب', 'error'); return; }
+                        var selectedPerms = [];
+                        var checkboxes = document.querySelectorAll('.role-perm-checkbox:checked');
+                        for (var i = 0; i < checkboxes.length; i++) {
+                            selectedPerms.push(checkboxes[i].value);
+                        }
+                        var payload = { id: role ? role.id : null, role_name: name, description: byId('role-desc').value.trim(), permissions: selectedPerms, is_system: role ? role.is_system || false : false };
+                        showLoader('جاري الحفظ...');
+                        var sessionRes = await supabase.auth.getSession();
+                        var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                        try {
+                            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/save-role', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(payload) });
+                            var json = await res.json();
+                            hideLoader();
+                            if (json.success) { showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success'); Swal.close(); var dRes = await supabase.from('roles').select('*'); rolesData = dRes.data || []; renderTable(rolesData); }
+                            else { showToast(json.error || 'فشل الحفظ', 'error'); }
+                        } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
+                    });
+                }
                 if (isEdit) {
                     var deleteBtn = byId('btn-delete-role');
                     if (deleteBtn) {
@@ -3418,41 +3423,43 @@ function openModal(roleId) {
         });
     }
 
+    function _switchRoleTab(tabId) {
+        var appPanel = byId('role-panel-apps');
+        var erpPanel = byId('role-panel-erp');
+        var appTab = byId('role-tab-apps');
+        var erpTab = byId('role-tab-erp');
+        
+        if (tabId === 'apps') {
+            appPanel.classList.remove('hidden');
+            erpPanel.classList.add('hidden');
+            appTab.classList.add('border-blue-600', 'text-blue-600');
+            appTab.classList.remove('text-gray-500');
+            erpTab.classList.remove('border-blue-600', 'text-blue-600');
+            erpTab.classList.add('text-gray-500');
+        } else {
+            appPanel.classList.add('hidden');
+            erpPanel.classList.remove('hidden');
+            appTab.classList.remove('border-blue-600', 'text-blue-600');
+            appTab.classList.add('text-gray-500');
+            erpTab.classList.add('border-blue-600', 'text-blue-600');
+            erpTab.classList.remove('text-gray-500');
+        }
+    }
+
     async function seedDefaultRoles() {
         showLoader('جاري تهيئة الأدوار...');
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
+        var sessionRes = await supabase.auth.getSession();
+        var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
         try {
-            const res = await fetch(`${RW_SUPABASE_URL}/functions/v1/seed-roles`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } });
-            const json = await res.json();
+            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/seed-roles', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token } });
+            var json = await res.json();
             hideLoader();
-            if (json.success) { showToast(json.message || 'تمت التهيئة', 'success'); const { data: d } = await supabase.from('roles').select('*'); rolesData = d || []; renderTable(rolesData); }
+            if (json.success) { showToast(json.message || 'تمت التهيئة', 'success'); var dRes = await supabase.from('roles').select('*'); rolesData = dRes.data || []; renderTable(rolesData); }
             else { showToast(json.error || 'فشل التهيئة', 'error'); }
         } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
-_switchRoleTab: function(tabId) {
-    var appPanel = byId('role-panel-apps');
-    var erpPanel = byId('role-panel-erp');
-    var appTab = byId('role-tab-apps');
-    var erpTab = byId('role-tab-erp');
-    
-    if (tabId === 'apps') {
-        appPanel.classList.remove('hidden');
-        erpPanel.classList.add('hidden');
-        appTab.classList.add('border-blue-600', 'text-blue-600');
-        appTab.classList.remove('text-gray-500');
-        erpTab.classList.remove('border-blue-600', 'text-blue-600');
-        erpTab.classList.add('text-gray-500');
-    } else {
-        appPanel.classList.add('hidden');
-        erpPanel.classList.remove('hidden');
-        appTab.classList.remove('border-blue-600', 'text-blue-600');
-        appTab.classList.add('text-gray-500');
-        erpTab.classList.add('border-blue-600', 'text-blue-600');
-        erpTab.classList.remove('text-gray-500');
-    }
-}
-    return { render, _openModal: openModal };
+
+    return { render: render, _openModal: openModal, _switchRoleTab: _switchRoleTab };
 })();
 window.RW_Roles = RW_Roles;
 // ============================================================
