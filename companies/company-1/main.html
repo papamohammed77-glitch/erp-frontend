@@ -2485,7 +2485,7 @@ async function render() {
         safeHTML(container, html);
     }
 
-    function openModal(email) {
+function openModal(email) {
     var emp = null;
     if (email) {
         for (var i = 0; i < employeesData.length; i++) {
@@ -2512,16 +2512,15 @@ async function render() {
         var name = br.name || br.branch_name || '';
         var sel = '';
         if (emp && emp.allowed_branch_ids) {
-    var allowed = emp.allowed_branch_ids;
-    // إذا كانت مصفوفة، نستخدمها كما هي. إذا كانت نصاً، نحولها لمصفوفة.
-    if (typeof allowed === 'string') {
-        allowed = allowed.split(',');
-    }
-    for (var a = 0; a < allowed.length; a++) {
-        var val = (typeof allowed[a] === 'string') ? allowed[a].trim() : String(allowed[a]).trim();
-        if (val === code) { sel = ' selected'; break; }
-    }
-}
+            var allowed = emp.allowed_branch_ids;
+            if (typeof allowed === 'string') {
+                allowed = allowed.split(',');
+            }
+            for (var a = 0; a < allowed.length; a++) {
+                var val = (typeof allowed[a] === 'string') ? allowed[a].trim() : String(allowed[a]).trim();
+                if (val === code) { sel = ' selected'; break; }
+            }
+        }
         branchOptions += '<option value="' + code + '"' + sel + '>' + name + ' (' + code + ')</option>';
     }
     
@@ -2540,16 +2539,13 @@ async function render() {
     var deviceIdVal = emp ? (emp.device_id || '') : '';
     
     var permLabels = [
-        // ==========================================
-        // 📱 صلاحيات التطبيقات (توجيه + فتح التطبيقات)
-        // ==========================================
         { key: 'pos', label: '📱 نقطة البيع (POS)' },
         { key: 'telesales', label: '📱 التلي سيلز' },
         { key: 'orders', label: '📱 الأوردرات (مندوب المبيعات)' },
         { key: 'van-sales', label: '📱 فان سيلز' },
         { key: 'sales_supervisor', label: '📱 مشرف المبيعات' },
         { key: 'warehouse_supervisor', label: '📱 مشرف المخازن' },
-        { key: 'warehouse', label: '📱 عمال المخازن (استلام/تحضير/تحميل...)' },
+        { key: 'warehouse', label: '📱 عمال المخازن' },
         { key: 'delivery', label: '📱 مندوب التوصيل' },
         { key: 'delivery_supervisor', label: '📱 مشرف التوصيل' },
         { key: 'purchases', label: '📱 مسؤول المشتريات' },
@@ -2561,9 +2557,6 @@ async function render() {
         { key: 'finance_manager', label: '📱 المدير المالي' },
         { key: 'general_manager', label: '📱 المدير العام' },
         { key: 'hr', label: '📱 الموارد البشرية' },
-        // ==========================================
-        // 🏢 صلاحيات النظام الأم (تبويبات ووظائف)
-        // ==========================================
         { key: 'dash', label: '🏢 لوحة التحكم' },
         { key: 'items', label: '🏢 الأصناف والمخزون' },
         { key: 'customers', label: '🏢 العملاء' },
@@ -2589,6 +2582,7 @@ async function render() {
         { key: 'settings', label: '🏢 إعدادات النظام' },
         { key: 'settlement', label: '🏢 إغلاق اليومية' }
     ];
+    
     var permsHTML = '';
     for (var p = 0; p < permLabels.length; p++) {
         var checked = '';
@@ -2695,7 +2689,8 @@ async function render() {
                     var emailVal = emailInput ? emailInput.value.trim() : '';
                     if (!name || !emailVal) { showToast('الاسم والبريد مطلوبان', 'error'); return; }
                     var passInput = byId('emp-password');
-                    if (!isEdit && passInput && !passInput.value) { showToast('يجب تعيين كلمة مرور', 'error'); return; }
+                    var passValue = (passInput && passInput.value) ? passInput.value : '';
+                    if (!isEdit && !passValue) { showToast('يجب تعيين كلمة مرور', 'error'); return; }
                     
                     var customPerms = [];
                     var toggleEl = document.getElementById('emp-custom-perms-toggle');
@@ -2705,12 +2700,12 @@ async function render() {
                             customPerms.push(checkboxes[c].value);
                         }
                     }
-                                        
+                    
                     var payload = {
                         name: name,
                         email: emailVal,
                         phone: byId('emp-phone') ? byId('emp-phone').value.trim() : '',
-                        password: passInput ? passInput.value : '',
+                        password: passValue || null,
                         role: byId('emp-role') ? byId('emp-role').value : '',
                         status: byId('emp-status') ? byId('emp-status').value : 'Active',
                         expiry_date: byId('emp-expiry') ? byId('emp-expiry').value : '',
@@ -2720,6 +2715,7 @@ async function render() {
                         restrict_to_visit_day: byId('emp-restrict-visit-day') ? byId('emp-restrict-visit-day').checked : true,
                         device_id: byId('emp-device-id') ? byId('emp-device-id').value.trim() : ''
                     };
+                    
                     showLoader('جاري الحفظ...');
                     var sessionRes = await supabase.auth.getSession();
                     var token = null;
