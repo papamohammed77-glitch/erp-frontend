@@ -21,9 +21,8 @@
         .tab-btn{transition:all 0.2s ease}
         .tab-btn:active{transform:scale(0.95)}
         .auth-container{background:linear-gradient(135deg,#064e3b 0%,#065f46 40%,#059669 100%)}
-        .input-field:focus{border-color:#059669;box-shadow:0 0 0 3px rgba(5,150,105,0.1)}
         .pulse{animation:softPulse 2s infinite}
-        @keyframes softPulse{0%{opacity:1}transform:scale(1)}50%{opacity:0.85;transform:scale(1.02)}100%{opacity:1;transform:scale(1)}}
+        @keyframes softPulse{0%{opacity:1;transform:scale(1)}50%{opacity:0.85;transform:scale(1.02)}100%{opacity:1;transform:scale(1)}}
         .accordion-content{max-height:0;overflow:hidden;transition:max-height 0.3s ease-out}
         .accordion-content.open{max-height:2000px}
         .slide-in{animation:slideIn 0.3s ease}
@@ -294,8 +293,23 @@ var App = {
     // ==================== عرض القائمة ====================
     renderList: function() {
         var filtered = this.purchaseOrders;
+        
+        // ✅ تطبيق فلترة الحالة أولاً
         if (this.currentFilter !== 'all') {
-            filtered = this.purchaseOrders.filter(function(po) { return po.status === App.currentFilter; });
+            filtered = filtered.filter(function(po) { return po.status === App.currentFilter; });
+        }
+        
+        // ✅ تطبيق فلترة البحث (من حقل البحث الجديد)
+        var searchInput = byId('searchPO');
+        var searchTerm = '';
+        if (searchInput) {
+            searchTerm = (searchInput.value || '').toLowerCase();
+        }
+        if (searchTerm) {
+            filtered = filtered.filter(function(po) {
+                return (po.po_code || '').toLowerCase().indexOf(searchTerm) !== -1 ||
+                       (po.supplier_name || '').toLowerCase().indexOf(searchTerm) !== -1;
+            });
         }
 
         if (filtered.length === 0) {
@@ -303,7 +317,9 @@ var App = {
             return;
         }
 
-        var html = '<h2 class="text-lg font-black text-slate-800 mb-4">📦 أوامر الشراء المعلقة</h2><p class="text-sm text-slate-400 mb-6">اضغط على أمر الشراء لبدء الاستلام</p>';
+        // ✅ إضافة حقل البحث أعلى القائمة
+        var html = '<div class="mb-6"><input type="text" id="searchPO" placeholder="🔍 ابحث عن أمر شراء أو مورد..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-emerald-400 outline-none font-semibold text-sm transition-all shadow-sm" oninput="App.renderList()"></div>';
+        html += '<h2 class="text-lg font-black text-slate-800 mb-4">📦 أوامر الشراء المعلقة</h2><p class="text-sm text-slate-400 mb-6">اضغط على أمر الشراء لبدء الاستلام</p>';
 
         for (var i = 0; i < filtered.length; i++) {
             var po = filtered[i];
