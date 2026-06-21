@@ -212,14 +212,23 @@ var App = {
     loadPending: function() {
         var self = this;
         safeHTML(byId('mainContent'), '<div class="text-center py-20"><i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-400"></i></div>');
-        supabase.from('runsheets').select('runsheet_code,driver_id,status,run_date').in('status', ['Open', 'Picking']).order('run_date', { ascending: false }).then(function(res) {
+        
+        // ✅ جلب الرانشيتات مع عدد الأصناف من run_sheet_details
+        supabase.from('runsheets').select('runsheet_code,status,run_date, run_sheet_details(count)').in('status', ['Open', 'Picking']).order('run_date', { ascending: false }).then(function(res) {
             var runsheets = res.data || [];
+            var enriched = [];
+            for (var i = 0; i < runsheets.length; i++) {
+                var rs = runsheets[i];
+                rs.itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
+                enriched.push(rs);
+            }
+            
             var html = '<div class="mb-6"><input type="text" id="searchRunsheet" placeholder="🔍 ابحث عن رانشيت..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-indigo-400 outline-none font-semibold text-sm transition-all shadow-sm"></div>';
             html += '<h2 class="text-lg font-black text-slate-800 mb-4">📋 الرانشيتات المعلقة</h2>';
             html += '<div id="runsheetList"></div>';
             safeHTML(byId('mainContent'), html);
-            window._pendingRunsheets = runsheets;
-            self.renderRunsheetList(runsheets);
+            window._pendingRunsheets = enriched;
+            self.renderRunsheetList(enriched);
         }).catch(function() { safeHTML(byId('mainContent'), '<div class="text-center py-20 text-red-400">فشل التحميل</div>'); });
     },
 
@@ -241,8 +250,10 @@ var App = {
             var rs = list[i];
             var statusIcon = rs.status === 'Open' ? '📋' : '🔄';
             var statusColor = rs.status === 'Open' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600';
+            var itemCount = rs.itemCount || 0;
+            
             html += '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openRunsheet(\'' + rs.runsheet_code + '\')" style="animation-delay:' + (i * 0.05) + 's">';
-            html += '<div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">' + statusIcon + '</span><div><span class="font-black text-base text-slate-800">' + rs.runsheet_code + '</span><p class="text-xs text-slate-400 mt-0.5">' + rs.run_date + ' | السائق: ' + (rs.driver_id || '---') + '</p></div></div>';
+            html += '<div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">' + statusIcon + '</span><div><span class="font-black text-base text-slate-800">' + rs.runsheet_code + '</span><p class="text-xs text-slate-400 mt-0.5">' + rs.run_date + ' | الأصناف: <span class="font-bold text-slate-600">' + itemCount + '</span> صنف</p></div></div>';
             html += '<div class="flex items-center gap-2 mt-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + statusColor + '">' + (rs.status === 'Open' ? 'مفتوح' : 'قيد التحضير') + '</span><i class="fa-solid fa-chevron-left text-slate-300 text-xs mr-auto"></i></div>';
             html += '</div>';
         }
