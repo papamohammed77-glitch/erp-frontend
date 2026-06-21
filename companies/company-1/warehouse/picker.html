@@ -291,17 +291,19 @@ var App = {
         Swal.fire({ html: html, width: '380px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-300 !text-lg' } });
     },
 
+    // ==================== ✅ تم الإصلاح: استخدام supabase.functions.invoke ====================
     startPicking: function(code) {
         var self = this;
         Swal.showLoading();
-        supabase.auth.getSession().then(function(se) {
-            var t = se.data.session ? se.data.session.access_token : null;
-            return fetch(SUPABASE_URL + '/functions/v1/start-picking', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code }) });
-        }).then(function(r) { return r.json(); }).then(function(j) {
+        supabase.functions.invoke('start-picking', {
+            body: { runsheet_code: code }
+        }).then(function(res) {
             Swal.close();
-            if (!j.success) { toast(j.msg || 'فشل بدء التحضير', 'error'); return; }
+            if (res.error) { toast(res.error.message || 'فشل بدء التحضير', 'error'); return; }
+            var j = res.data;
+            if (!j || !j.success) { toast((j && j.msg) || 'فشل بدء التحضير', 'error'); return; }
             self.createSession(code);
-        }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
+        }).catch(function() { Swal.close(); toast('فشل الاتصال بـ Edge Function', 'error'); });
     },
 
     createSession: function(code) {
@@ -379,20 +381,26 @@ var App = {
         });
     },
 
+    // ==================== ✅ تم الإصلاح: استخدام supabase.functions.invoke ====================
     completePicking: function() {
         var self = this;
         if (!this.session) return;
         var items = [];
         for (var i = 0; i < this.session.items.length; i++) { items.push({ itemCode: this.session.items[i].item_code, pickedQty: this.session.items[i].qty_picked, notes: this.session.items[i].notes }); }
         Swal.showLoading();
-        supabase.auth.getSession().then(function(se) {
-            var t = se.data.session ? se.data.session.access_token : null;
-            return fetch(SUPABASE_URL + '/functions/v1/complete-picking', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code, items: items }) });
-        }).then(function(r) { return r.json(); }).then(function(j) {
+        supabase.functions.invoke('complete-picking', {
+            body: { runsheet_code: self.session.runsheet_code, items: items }
+        }).then(function(res) {
             Swal.close();
-            if (j.success) { toast('تم إنهاء التحضير بنجاح', 'success'); db.session.clear(); self.session = null; if (self.timerInterval) clearInterval(self.timerInterval); self.loadPending(); }
-            else { toast(j.msg || 'فشل إنهاء التحضير', 'error'); }
-        }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
+            if (res.error) { toast(res.error.message || 'فشل إنهاء التحضير', 'error'); return; }
+            var j = res.data;
+            if (!j || !j.success) { toast((j && j.msg) || 'فشل إنهاء التحضير', 'error'); return; }
+            toast('تم إنهاء التحضير بنجاح', 'success');
+            db.session.clear();
+            self.session = null;
+            if (self.timerInterval) clearInterval(self.timerInterval);
+            self.loadPending();
+        }).catch(function() { Swal.close(); toast('فشل الاتصال بـ Edge Function', 'error'); });
     },
 
     loadCompleted: function() {
