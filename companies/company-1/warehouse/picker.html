@@ -213,7 +213,6 @@ var App = {
         var self = this;
         safeHTML(byId('mainContent'), '<div class="text-center py-20"><i class="fa-solid fa-spinner fa-spin text-3xl text-indigo-400"></i></div>');
         
-        // ✅ جلب الرانشيتات مع عدد الأصناف من run_sheet_details
         supabase.from('runsheets').select('runsheet_code,status,run_date, run_sheet_details(count)').in('status', ['Open', 'Picking']).order('run_date', { ascending: false }).then(function(res) {
             var runsheets = res.data || [];
             var enriched = [];
@@ -422,7 +421,37 @@ var App = {
     }
 };
 
-if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
+// ==================== تنبيه التحديث ====================
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('../sw.js').then(function(reg) {
+        reg.addEventListener('updatefound', function() {
+            var newWorker = reg.installing;
+            newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    Swal.fire({
+                        title: '🔄 تحديث متاح',
+                        text: 'تم تحميل نسخة أحدث من التطبيق. اضغط "تحديث" للتطبيق الفوري.',
+                        icon: 'info',
+                        showCancelButton: false,
+                        confirmButtonText: 'تحديث الآن',
+                        allowOutsideClick: false,
+                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-indigo-600 !px-8' }
+                    }).then(function() {
+                        newWorker.postMessage({ action: 'skipWaiting' });
+                        window.location.reload();
+                    });
+                }
+            });
+        });
+    });
+    
+    navigator.serviceWorker.addEventListener('message', function(event) {
+        if (event.data && event.data.action === 'skipWaiting') {
+            self.skipWaiting();
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() { App.init(); });
 </script>
 </body>
