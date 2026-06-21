@@ -121,7 +121,6 @@ var App = {
             var code = rs.runsheet_code;
             var statusIcon = rs.status === 'Open' ? '📋' : '🔄'; 
             var statusColor = rs.status === 'Open' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600';
-            // ✅ تم الإصلاح: تمرير الكود مباشرة بدلاً من الفهرس
             html += '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openRunsheet(\'' + code + '\')" style="animation-delay:' + (i * 0.05) + 's"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">' + statusIcon + '</span><div><span class="font-black text-base text-slate-800">' + code + '</span><p class="text-xs text-slate-400 mt-0.5">' + rs.run_date + ' | الأصناف: <span class="font-bold text-slate-600">' + (rs.itemCount || 0) + '</span> صنف</p></div></div><div class="flex items-center gap-2 mt-3"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + statusColor + '">' + (rs.status === 'Open' ? 'مفتوح' : 'قيد التحضير') + '</span><i class="fa-solid fa-chevron-left text-slate-300 text-xs mr-auto"></i></div></div>'; 
         }
         safeHTML(byId('runsheetList'), html);
@@ -146,14 +145,38 @@ var App = {
         var imgHtml = img ? '<img src="' + img + '" class="w-full h-48 object-cover rounded-2xl mb-4 shadow-sm" onerror="this.style.display=\'none\'">' : '<div class="w-full h-48 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400 mb-4"><i class="fa-solid fa-box text-4xl"></i></div>';
         Swal.fire({ html: '<div class="text-right">' + imgHtml + '<h3 class="font-black text-xl text-slate-800 mb-2">' + name + '</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-400">الكود</span><span class="font-bold text-slate-600">' + code + '</span></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + unit + '</span></div><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة</span><span class="font-bold text-indigo-600 text-lg">' + qty + '</span></div></div>' + (desc ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + desc + '</p>' : '') + '</div>', width: '380px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-300 !text-lg' } });
     },
+
+    // ==================== ✅ تم إصلاح createSession ====================
     createSession: function(code) {
         var self = this;
-        supabase.from('run_sheet_details').select('*').eq('runsheet_code', code).then(function(detRes) {
-            var items = detRes.data || []; var session = { runsheet_code: code, start_time: new Date().toISOString(), items: [] };
-            for (var i = 0; i < items.length; i++) { session.items.push({ item_code: items[i].item_code, item_name: items[i].item_name || '', unit: items[i].unit || 'حبة', qty_ordered: items[i].qty_ordered || 0, qty_picked: items[i].qty_ordered || 0, notes: '' }); }
-            db.session.clear().then(function() { db.session.put(session).then(function() { self.session = session; self.renderActiveSession(); }); });
+        // نجلب الـ runsheet_id أولاً من runsheets باستخدام runsheet_code
+        supabase.from('runsheets').select('id').eq('runsheet_code', code).maybeSingle().then(function(rsRes) {
+            if (!rsRes.data) { toast('الرانشيت غير موجود', 'error'); return; }
+            var rsId = rsRes.data.id;
+            // ثم نجلب التفاصيل باستخدام runsheet_id
+            supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsId).then(function(detRes) {
+                var items = detRes.data || [];
+                var session = { runsheet_code: code, start_time: new Date().toISOString(), items: [] };
+                for (var i = 0; i < items.length; i++) {
+                    session.items.push({
+                        item_code: items[i].item_code,
+                        item_name: items[i].item_name || '',
+                        unit: items[i].unit || 'حبة',
+                        qty_ordered: items[i].qty_ordered || 0,
+                        qty_picked: items[i].qty_ordered || 0,
+                        notes: ''
+                    });
+                }
+                db.session.clear().then(function() {
+                    db.session.put(session).then(function() {
+                        self.session = session;
+                        self.renderActiveSession();
+                    });
+                });
+            });
         });
     },
+
     resumePicking: function(code) { var self = this; db.session.get(code).then(function(s) { if (s) { self.session = s; self.renderActiveSession(); } else { self.createSession(code); } }); },
     renderActiveSession: function() {
         var self = this; if (!this.session) { this.loadPending(); return; } var s = this.session;
