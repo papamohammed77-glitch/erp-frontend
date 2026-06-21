@@ -1,16 +1,8 @@
-var CACHE_NAME = 'rawaea-erp-v1';
-var ASSETS_TO_CACHE = [
-  '/companies/company-1/',
-  '/companies/company-1/index.html',
-  '/companies/company-1/manifest.json'
-];
+// sw.js – الروائع ERP
+// الإصدار 2.0 – Network First مع إشعار فوري بالتحديث
+var CACHE_NAME = 'rawaea-erp-v2';
 
 self.addEventListener('install', function(event) {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(function(cache) {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
-  );
   self.skipWaiting();
 });
 
@@ -21,14 +13,16 @@ self.addEventListener('activate', function(event) {
         keys.filter(function(key) { return key !== CACHE_NAME; })
             .map(function(key) { return caches.delete(key); })
       );
+    }).then(function() {
+      self.clients.claim();
     })
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', function(event) {
   if (event.request.method !== 'GET') return;
-  
+
+  // لا يُخبَّأ Supabase أو CDNs
   if (event.request.url.indexOf('supabase.co') !== -1 ||
       event.request.url.indexOf('cdn.jsdelivr.net') !== -1 ||
       event.request.url.indexOf('cdnjs.cloudflare.com') !== -1 ||
@@ -36,18 +30,20 @@ self.addEventListener('fetch', function(event) {
       event.request.url.indexOf('fonts.googleapis.com') !== -1) {
     return;
   }
-  
+
   event.respondWith(
-    caches.match(event.request).then(function(cached) {
-      return cached || fetch(event.request).then(function(response) {
-        if (response && response.status === 200) {
-          var clone = response.clone();
-          caches.open(CACHE_NAME).then(function(cache) {
-            cache.put(event.request, clone);
-          });
-        }
-        return response;
-      }).catch(function() {
+    fetch(event.request).then(function(networkResponse) {
+      // ✅ الشبكة أولاً – نُحدِّث الكاش بالنسخة الجديدة
+      if (networkResponse && networkResponse.status === 200) {
+        var clone = networkResponse.clone();
+        caches.open(CACHE_NAME).then(function(cache) {
+          cache.put(event.request, clone);
+        });
+      }
+      return networkResponse;
+    }).catch(function() {
+      // ⚠️ فقط عند فشل الشبكة، نستخدم الكاش
+      return caches.match(event.request).then(function(cached) {
         return cached || new Response('غير متصل', { status: 503 });
       });
     })
