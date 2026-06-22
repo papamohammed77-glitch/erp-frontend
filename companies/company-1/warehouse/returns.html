@@ -16,11 +16,10 @@
         body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
         .auth-container{background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 40%,#dc2626 100%)}
         .card{background:#fff;border-radius:24px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.02),0 8px 24px rgba(0,0,0,0.03);transition:all 0.2s ease}
-        .card:active{transform:scale(0.985);background:#fafafa}
-        .btn-primary{background:linear-gradient(135deg,#dc2626,#ef4444);color:#fff;padding:1rem 1.5rem;border-radius:16px;font-weight:700;border:none;cursor:pointer;width:100%;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(220,38,38,0.25)}
-        .btn-primary:active{transform:scale(0.97);box-shadow:0 2px 6px rgba(220,38,38,0.15)}
-        .btn-danger{background:linear-gradient(135deg,#991b1b,#dc2626);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(153,27,27,0.2)}
-        .btn-danger:active{transform:scale(0.97)}
+        .card:active{transform:scale(0.985)}
+        .btn-primary{background:linear-gradient(135deg,#dc2626,#ef4444);color:#fff;padding:1rem 1.5rem;border-radius:16px;font-weight:700;border:none;cursor:pointer;width:100%;box-shadow:0 4px 12px rgba(220,38,38,0.25)}
+        .btn-primary:active{transform:scale(0.97)}
+        .btn-danger{background:linear-gradient(135deg,#991b1b,#dc2626);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(153,27,27,0.2)}
         .tab-btn{transition:all 0.2s ease}
         .tab-btn:active{transform:scale(0.95)}
         .progress-bar{transition:width 0.4s ease}
@@ -29,12 +28,10 @@
         .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
         @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
         .search-dropdown{max-height:60vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.12)}
-        .sticky-top{position:sticky;top:0;z-index:20}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-<!-- شاشة الدخول -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
     <div class="bg-white rounded-[36px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
         <div class="text-center mb-6">
@@ -53,7 +50,6 @@
     </div>
 </div>
 
-<!-- التطبيق الرئيسي -->
 <div id="mainApp" class="hidden flex flex-col h-full">
     <header class="bg-gradient-to-r from-red-700 to-red-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
         <span class="font-black text-base">↩️ المرتجعات</span>
@@ -78,6 +74,7 @@ function safeText(el, text) { if (el) el.textContent = text; }
 function safeHTML(el, html) { if (el) el.innerHTML = html; }
 function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
+var ITEMS_IMAGE_CACHE = {};
 var App = {
     currentUser: null, pubUserId: null, currentTab: 'pending',
     session: null, timerInterval: null, searchTimer: null,
@@ -85,7 +82,7 @@ var App = {
 
     togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
     doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
-    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('warehouse')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}supabase.from('users').select('id,name,active_warehouse_role').eq('email',s.currentUser.email).maybeSingle().then(function(u){s.pubUserId=u.data?u.data.id:null;var n=u.data?u.data.name:null;var ar=u.data?u.data.active_warehouse_role:'';if(!isO&&ar!=='مرتجعات'){Swal.fire({title:'تنبيه',text:'دورك النشط هو "'+(ar||'غير محدد')+'"',icon:'warning'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),n||m.name||s.currentUser.email);s.enterApp();}).catch(function(){safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();});}});},
+    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('warehouse')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}supabase.from('items').select('item_code, image_url').then(function(imgRes){var items=imgRes.data||[];for(var i=0;i<items.length;i++){if(items[i].item_code&&items[i].image_url)ITEMS_IMAGE_CACHE[items[i].item_code]=items[i].image_url;}}).catch(function(){});supabase.from('users').select('id,name,active_warehouse_role').eq('email',s.currentUser.email).maybeSingle().then(function(u){s.pubUserId=u.data?u.data.id:null;var n=u.data?u.data.name:null;var ar=u.data?u.data.active_warehouse_role:'';if(!isO&&ar!=='مرتجعات'){Swal.fire({title:'تنبيه',text:'دورك النشط هو "'+(ar||'غير محدد')+'"',icon:'warning'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),n||m.name||s.currentUser.email);s.enterApp();}).catch(function(){safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();});}});},
     enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.switchTab('pending');},
     doLogout: function(){var s=this;if(this.timerInterval)clearInterval(this.timerInterval);supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
     switchTab: function(t){this.currentTab=t;['pending','completed','account'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-red-600','text-white','shadow-sm','shadow-red-200');b.classList.add('text-slate-400');}});var a=byId('tab-'+t);if(a){a.classList.add('bg-red-600','text-white','shadow-sm','shadow-red-200');a.classList.remove('text-slate-400');}if(t==='pending')this.loadRunsheets();else if(t==='completed')this.loadCompleted();else this.renderAccount();},
@@ -125,7 +122,7 @@ var App = {
             var isActive=(rs.status==='Returning'&&(rs.return_handler_id===s.pubUserId||rs.return_handler_id===s.currentUser.email));
             if(isActive){
                 s.session={runsheet_code:code,runsheet_id:rs.id,start_time:rs.return_start||new Date().toISOString(),items:[]};
-                for(var i=0;i<items.length;i++){s.session.items.push({item_code:items[i].item_code,item_name:items[i].item_name,unit:items[i].unit||'حبة',qty_delivered:items[i].qty_delivered||0,qty_returned:items[i].qty_returned||0,notes:''});}
+                for(var i=0;i<items.length;i++){s.session.items.push({item_code:items[i].item_code,item_name:items[i].item_name,unit:items[i].unit||'حبة',description:items[i].description||'',qty_delivered:items[i].qty_delivered||0,qty_returned:items[i].qty_returned||0,notes:''});}
                 s.renderActiveSession(); return;
             }
             var html='<div class="flex items-center gap-3 mb-6"><button onclick="App.switchTab(\'pending\')" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-red-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl">'+code+'</span></div>';
@@ -154,22 +151,49 @@ var App = {
     startTimer: function(){var s=this;if(this.timerInterval)clearInterval(this.timerInterval);this.timerInterval=setInterval(function(){if(s.session&&s.session.start_time){var d=Math.floor((new Date()-new Date(s.session.start_time))/1000);var el=document.querySelector('.bg-white.text-red-600');if(el)safeText(el,'⏱️ '+String(Math.floor(d/60)).padStart(2,'0')+':'+String(d%60).padStart(2,'0'));}},1000);},
 
     editReturnedItem: function(index){
-        var it=this.session.items[index];
-        Swal.fire({title:'<span class="text-slate-800">'+it.item_name+'</span>',html:'<div class="text-right"><p class="text-sm mb-4">الكمية المسلّمة: <strong>'+it.qty_delivered+'</strong></p><label class="block text-xs font-bold mb-2">الكمية المُرتجعة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="'+it.qty_returned+'" min="0" max="'+it.qty_delivered+'"><label class="block text-xs font-bold mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="'+(it.notes||'')+'" placeholder="سبب الارتجاع..."></div>',showCancelButton:true,confirmButtonText:'حفظ',cancelButtonText:'إلغاء',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-red-600 !px-8',cancelButton:'!rounded-xl'},preConfirm:function(){return{qty:Math.max(0,Math.min(parseInt(document.getElementById('swal-qty').value)||0,it.qty_delivered)),notes:document.getElementById('swal-notes').value.trim()};}}).then(function(r){if(r.isConfirmed){App.session.items[index].qty_returned=r.value.qty;App.session.items[index].notes=r.value.notes;supabase.from('run_sheet_details').update({qty_returned:r.value.qty}).eq('runsheet_id',App.session.runsheet_id).eq('item_code',it.item_code).then(function(){});App.renderActiveSession();if(r.value.qty>0&&!r.value.notes){Swal.fire({title:'تنبيه',text:'هل تريد إضافة سبب الارتجاع؟',icon:'question',showCancelButton:true,confirmButtonText:'إضافة سبب',cancelButtonText:'تخطي',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-amber-500 !px-6',cancelButton:'!rounded-xl'}}).then(function(r2){if(r2.isConfirmed)App.editReturnedItem(index);});}}});
+        var s=this; var it=this.session.items[index];
+        var img = ITEMS_IMAGE_CACHE[it.item_code] || '';
+        var imgHtml = img ? '<img src="' + img + '" class="w-20 h-20 rounded-2xl object-cover mx-auto shadow-sm mb-3" onerror="this.style.display=\'none\'">' : '<div class="w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl mx-auto flex items-center justify-center text-slate-400 mb-3"><i class="fa-solid fa-box text-2xl"></i></div>';
+        var unitHtml = it.unit ? '<div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + it.unit + '</span></div>' : '';
+        var descHtml = it.description ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + it.description + '</p>' : '';
+
+        Swal.fire({
+            title: '<span class="text-slate-800">' + it.item_name + '</span>',
+            html: '<div class="text-center">' + imgHtml + '</div><div class="text-right text-sm space-y-2"><div class="flex justify-between"><span class="text-slate-400">الكمية المسلّمة</span><strong class="text-slate-700">' + it.qty_delivered + '</strong></div>' + unitHtml + '</div>' + descHtml + '<div class="mt-4 text-right"><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المُرتجعة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="' + it.qty_returned + '" min="0" max="' + it.qty_delivered + '"><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes||'') + '" placeholder="سبب الارتجاع..."></div>',
+            showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-600 !px-8', cancelButton: '!rounded-xl' },
+            preConfirm: function(){ return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-qty').value) || 0, it.qty_delivered)), notes: document.getElementById('swal-notes').value.trim() }; }
+        }).then(function(r){
+            if(r.isConfirmed){
+                s.session.items[index].qty_returned = r.value.qty;
+                s.session.items[index].notes = r.value.notes;
+                // ✅ حفظ فوري
+                supabase.from('run_sheet_details').update({ qty_returned: r.value.qty }).eq('runsheet_id', s.session.runsheet_id).eq('item_code', it.item_code).then(function(){});
+                s.renderActiveSession();
+                if(r.value.qty > 0 && !r.value.notes){
+                    Swal.fire({ title: 'تنبيه', text: 'هل تريد إضافة سبب الارتجاع؟', icon: 'question', showCancelButton: true, confirmButtonText: 'إضافة سبب', cancelButtonText: 'تخطي', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl' } }).then(function(r2){ if(r2.isConfirmed) s.editReturnedItem(index); });
+                }
+            }
+        });
     },
 
     completeReturn: function(){
         var s=this; if(!this.session)return; if(!navigator.onLine){toast('أنت غير متصل','warning');return;}
-        var items=[]; for(var i=0;i<this.session.items.length;i++){var it=this.session.items[i];items.push({itemCode:it.item_code,returnedQty:it.qty_returned,reason:it.notes});}
+        var items=[]; var fullCount=0, partialCount=0, zeroCount=0;
+        for(var i=0;i<this.session.items.length;i++){var it=this.session.items[i]; items.push({itemCode:it.item_code,returnedQty:it.qty_returned,reason:it.notes}); if(it.qty_returned>=it.qty_delivered)fullCount++; else if(it.qty_returned>0)partialCount++; else zeroCount++;}
+        var summaryHtml = '<div class="text-right text-sm"><p>أنت على وشك إنهاء مرتجعات الرانشيت <strong>' + this.session.runsheet_code + '</strong>.</p><div class="mt-3 space-y-1"><div>✅ <strong>' + fullCount + '</strong> أصناف مكتملة</div><div>⚠️ <strong>' + partialCount + '</strong> أصناف منقوصة</div><div>❌ <strong>' + zeroCount + '</strong> أصناف لم تُرتجع</div></div>';
+        if(partialCount>0||zeroCount>0){summaryHtml+='<hr class="my-3"><p class="text-amber-600 font-bold text-xs">الأصناف الناقصة:</p><ul class="text-xs space-y-1 mt-1">';for(var k=0;k<this.session.items.length;k++){var item=this.session.items[k];if(item.qty_returned<item.qty_delivered){summaryHtml+='<li>• '+item.item_name+' ('+item.qty_returned+'/'+item.qty_delivered+') '+(item.notes?'– '+item.notes:'<span class="text-red-400">بدون سبب</span>')+'</li>';}}summaryHtml+='</ul>';}summaryHtml+='</div>';
+        Swal.fire({title:'تأكيد إنهاء المرتجعات',html:summaryHtml,icon:'info',showCancelButton:true,confirmButtonText:'تأكيد ومتابعة',cancelButtonText:'إلغاء',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-red-600 !px-8',cancelButton:'!rounded-xl'}}).then(function(r){if(!r.isConfirmed)return;
         Swal.fire({title:'جاري إنهاء المرتجعات...',allowOutsideClick:false,didOpen:function(){Swal.showLoading();}});
         supabase.auth.getSession().then(function(ses){var t=ses.data.session.access_token;return fetch(SUPABASE_URL+'/functions/v1/complete-return',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({runsheet_code:s.session.runsheet_code,items:items})});}).then(function(r){return r.json();}).then(function(j){Swal.close();if(j.success){toast('تمت المرتجعات','success');s.session=null;if(s.timerInterval)clearInterval(s.timerInterval);s.loadRunsheets();}else{toast(j.msg||'فشل','error');}}).catch(function(){Swal.close();});
+        });
     },
 
     loadCompleted: function(){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-slate-400">قريباً</div>');},
     renderAccount: function(){var html='<div class="text-center mb-8 mt-4"><div class="w-20 h-20 bg-gradient-to-br from-red-400 to-red-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg mb-4">'+(this.currentUser.user_metadata.name||'?').charAt(0)+'</div><h2 class="font-black text-xl">'+(this.currentUser.user_metadata.name||this.currentUser.email)+'</h2><p class="text-sm text-slate-400">مرتجعات</p></div><div class="card mb-3"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center"><i class="fa-solid fa-envelope"></i></div><div><p class="text-xs text-slate-400">البريد الإلكتروني</p><p class="font-bold text-sm">'+this.currentUser.email+'</p></div></div></div><button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button>';safeHTML(byId('mainContent'),html);}
 };
 if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
-document.addEventListener('DOMContentLoaded',function(){App.init();});
+document.addEventListener('DOMContentLoaded',function(){App.init()});
 </script>
 </body>
 </html>
