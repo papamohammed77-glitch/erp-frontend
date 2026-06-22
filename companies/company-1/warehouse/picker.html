@@ -313,10 +313,11 @@ var App = {
         safeHTML(dropdown, html); dropdown.classList.remove('hidden');
     },
 
-    // ==================== فتح تفاصيل الرانشيت (يقرأ الجلسة الحقيقية) ====================
+    // ==================== فتح تفاصيل الرانشيت (إصلاح classList) ====================
     openRunsheet: function(code){
         var self = this;
-        byId('searchDropdown').classList.add('hidden');
+        var searchDropdown = byId('searchDropdown');
+        if (searchDropdown) { searchDropdown.classList.add('hidden'); }
         safeHTML(byId('mainContent'), '<div class="text-center py-20"><div class="skeleton h-48 w-full mb-4"></div></div>');
         supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle().then(function(rsRes){
             if(!rsRes.data){ toast('الرانشيت غير موجود', 'error'); self.renderPendingTab(); return; }
@@ -324,7 +325,6 @@ var App = {
             supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id).then(function(detRes){
                 var items = detRes.data || [];
                 if(rs.status === 'Picking' && (rs.picker_id === self.pubUserId || rs.picker_id === self.currentUser.email)){
-                    // بناء الجلسة من البيانات الحقيقية
                     self.session = { runsheet_code: code, runsheet_id: rs.id, start_time: rs.picker_start || new Date().toISOString(), items: [] };
                     for(var i = 0; i < items.length; i++){
                         self.session.items.push({
@@ -340,7 +340,6 @@ var App = {
                     self.renderActiveSession();
                     return;
                 }
-                // عرض عادي للرانشيت المفتوح
                 var html = '';
                 html += '<div class="flex items-center gap-3 mb-6"><button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + '</span></div>';
                 if(rs.status === 'Open'){
@@ -367,6 +366,7 @@ var App = {
         Swal.fire({ html: '<div class="text-right">' + imgHtml + '<h3 class="font-black text-xl text-slate-800 mb-2">' + name + '</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-400">الكود</span><span class="font-bold text-slate-600">' + code + '</span></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + unit + '</span></div><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة</span><span class="font-bold text-indigo-600 text-lg">' + qty + '</span></div></div>' + (desc ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + desc + '</p>' : '') + '</div>', width: '380px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-300 !text-lg' } });
     },
 
+    // ==================== بدء التحضير (مع معالجة خطأ تعدد المهام) ====================
     startPicking: function(code){
         var self = this;
         if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
@@ -381,10 +381,28 @@ var App = {
             return res.json();
         }).then(function(json){
             Swal.close();
-            if(!json || !json.success){ toast((json && json.msg) || 'فشل', 'error'); return; }
+            if(!json || !json.success){
+                var msg = (json && json.msg) || 'فشل بدء التحضير';
+                // إذا كان الخطأ هو وجود رانشيت نشط، نوجه المستخدم إليه
+                if(msg.indexOf('لديك بالفعل رانشيت قيد التحضير') !== -1){
+                    Swal.fire({ title: 'تنبيه', text: msg, icon: 'info', customClass: { popup: '!rounded-3xl' } });
+                    self.renderPendingTab(); // إعادة التحميل لإظهار الرانشيت النشط
+                } else {
+                    toast(msg, 'error');
+                }
+                return;
+            }
             toast('تم بنجاح', 'success');
             self.openRunsheet(code);
-        }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+        }).catch(function(err){
+            Swal.close();
+            // محاولة عرض رسالة خطأ ذات معنى
+            if(err.message.indexOf('لديك بالفعل رانشيت قيد التحضير') !== -1){
+                Swal.fire({ title: 'تنبيه', text: err.message, icon: 'info', customClass: { popup: '!rounded-3xl' } });
+            } else {
+                toast(err.message || 'فشل الاتصال', 'error');
+            }
+        });
     },
 
     cancelPicking: function(code){
@@ -434,7 +452,7 @@ var App = {
         }, 1000);
     },
 
-    // ==================== ✅ نافذة تعديل الكمية (مع الصورة والوحدة والوصف) ====================
+    // ==================== نافذة تعديل الكمية (مع الصورة والوحدة والوصف) ====================
     editPickedItem: function(index){
         var self = this; var it = this.session.items[index];
         var img = ITEMS_IMAGE_CACHE[it.item_code] || '';
