@@ -34,9 +34,7 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-<!-- ============================================================ -->
 <!-- شاشة الدخول -->
-<!-- ============================================================ -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
     <div class="bg-white rounded-[36px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
         <div class="text-center mb-6">
@@ -68,11 +66,8 @@
     </div>
 </div>
 
-<!-- ============================================================ -->
 <!-- التطبيق الرئيسي -->
-<!-- ============================================================ -->
 <div id="mainApp" class="hidden flex flex-col h-full">
-    <!-- الهيدر -->
     <header class="bg-gradient-to-r from-indigo-700 to-indigo-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
         <span class="font-black text-base">📋 المحضّر</span>
         <div class="flex items-center gap-2">
@@ -83,21 +78,16 @@
         </div>
     </header>
 
-    <!-- التبويبات -->
     <div class="flex gap-1.5 p-2 bg-white border-b border-slate-100 overflow-x-auto flex-shrink-0">
         <button onclick="App.switchTab('pending')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm bg-indigo-600 text-white shadow-sm shadow-indigo-200" id="tab-pending">📋 قيد التحضير</button>
         <button onclick="App.switchTab('completed')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-completed">✅ مكتملة</button>
         <button onclick="App.switchTab('account')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-account">⚙️ حسابي</button>
     </div>
 
-    <!-- المحتوى الرئيسي -->
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
 </div>
 
 <script>
-// ============================================================
-// التهيئة
-// ============================================================
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -120,14 +110,12 @@ var App = {
     allRunsheets: [],
     searchResults: [],
 
-    // ==================== عدسة كلمة المرور ====================
     togglePass: function(){
         var p = byId('loginPass'), i = byId('passIcon');
         if(p.type === 'password'){ p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; }
         else { p.type = 'password'; i.className = 'fa-solid fa-eye'; }
     },
 
-    // ==================== الدخول ====================
     doLogin: function(){
         var email = byId('loginEmail').value.trim();
         var pass = byId('loginPass').value.trim();
@@ -170,7 +158,6 @@ var App = {
                     return;
                 }
 
-                // جلب الصور مرة واحدة
                 supabase.from('items').select('item_code, image_url').then(function(imgRes){
                     var items = imgRes.data || [];
                     for(var i = 0; i < items.length; i++){
@@ -178,7 +165,6 @@ var App = {
                     }
                 }).catch(function(){});
 
-                // جلب public.users.id
                 supabase.from('users').select('id, name, active_warehouse_role').eq('email', self.currentUser.email).maybeSingle().then(function(uRes){
                     var userData = uRes.data || {};
                     self.pubUserId = userData.id || null;
@@ -198,7 +184,6 @@ var App = {
                     safeText(byId('headerUserName'), userName);
                     self.enterApp();
                 }).catch(function(){
-                    // فشل RLS – نعتمد على user_metadata
                     var activeRole = meta.active_warehouse_role || '';
                     if(!isOwner && activeRole !== 'تحضير'){
                         Swal.fire({ title: 'تنبيه', text: 'تعذر التحقق من دورك النشط.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
@@ -242,7 +227,6 @@ var App = {
         });
     },
 
-    // ==================== التبويبات ====================
     switchTab: function(tab){
         this.currentTab = tab;
         var tabs = ['pending', 'completed', 'account'];
@@ -257,20 +241,13 @@ var App = {
         else if(tab === 'account') this.renderAccount();
     },
 
-    // ==================== تبويب قيد التحضير ====================
     renderPendingTab: function(){
         var self = this;
-        // Skeleton loading
         safeHTML(byId('mainContent'),
-            '<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div><div class="skeleton h-32 w-full mb-3"></div><div class="skeleton h-32 w-full mb-3"></div></div>'
+            '<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div><div class="skeleton h-32 w-full mb-3"></div></div>'
         );
-
-        // تحميل الرانشيتات النشطة لهذا المحضّر
         var p1 = supabase.from('runsheets').select('runsheet_code, status, run_date, picker_id').eq('status', 'Picking').eq('picker_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
-
-        // تحميل الرانشيتات المفتوحة المتاحة للجميع
         var p2 = supabase.from('runsheets').select('runsheet_code, status, run_date').eq('status', 'Open').order('run_date', { ascending: false }).limit(50);
-
         Promise.all([p1, p2]).then(function(results){
             var myRunsheets = results[0].data || [];
             var openRunsheets = results[1].data || [];
@@ -283,20 +260,15 @@ var App = {
 
     renderRunsheetLists: function(myRunsheets, openRunsheets){
         var html = '';
-
-        // تحية المستخدم
         var userName = this.currentUser.user_metadata.name || this.currentUser.email.split('@')[0] || 'زميل';
         var hour = new Date().getHours();
         var greeting = hour < 12 ? 'صباح الخير' : (hour < 18 ? 'مساء الخير' : 'مساء الخير');
         html += '<div class="mb-4"><p class="text-slate-400 text-sm">' + greeting + '، <span class="font-bold text-slate-700">' + userName + '</span> 👋</p></div>';
-
-        // شريط البحث الذكي
         html += '<div class="relative mb-6">';
         html += '<input type="text" id="searchRunsheet" placeholder="🔍 ابحث عن رقم رانشيت..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-indigo-400 outline-none font-semibold text-sm transition-all shadow-sm" oninput="App.onSearchInput(this.value)">';
         html += '<div id="searchDropdown" class="search-dropdown absolute top-full left-0 right-0 bg-white rounded-2xl mt-2 hidden z-40"></div>';
         html += '</div>';
 
-        // قسم "مهامي النشطة"
         if(myRunsheets.length > 0){
             html += '<h2 class="text-lg font-black text-slate-800 mb-3">📌 مهامي النشطة</h2>';
             for(var i = 0; i < myRunsheets.length; i++){
@@ -305,7 +277,6 @@ var App = {
             html += '<hr class="my-6 border-slate-100">';
         }
 
-        // قسم "مهام متاحة"
         html += '<h2 class="text-lg font-black text-slate-800 mb-3">📋 مهام متاحة للتحضير</h2>';
         if(openRunsheets.length === 0){
             html += '<div class="text-center py-12"><div class="text-6xl mb-4">☕</div><p class="text-slate-400 font-bold">لا توجد مهام متاحة في الوقت الحالي.</p><p class="text-slate-300 text-sm mt-1">استمتع بقهوتك حتى تأتي مهمة جديدة!</p></div>';
@@ -314,7 +285,6 @@ var App = {
                 html += this._buildRunsheetCard(openRunsheets[j], false);
             }
         }
-
         safeHTML(byId('mainContent'), html);
     },
 
@@ -344,16 +314,13 @@ var App = {
         '</div>';
     },
 
-    // ==================== البحث الذكي ====================
     onSearchInput: function(query){
         var self = this;
         if(this.searchTimer) clearTimeout(this.searchTimer);
-
         if(!query || query.trim().length < 1){
             byId('searchDropdown').classList.add('hidden');
             return;
         }
-
         this.searchTimer = setTimeout(function(){
             supabase.from('runsheets')
                 .select('runsheet_code, status, run_date, picker_id')
@@ -369,14 +336,12 @@ var App = {
     renderSearchDropdown: function(){
         var dropdown = byId('searchDropdown');
         if(!dropdown) return;
-
         var results = this.searchResults;
         if(results.length === 0){
             safeHTML(dropdown, '<div class="p-4 text-center text-slate-400 text-sm">🔍 لا يوجد رانشيت بهذا الرقم. تأكد مع المشرف.</div>');
             dropdown.classList.remove('hidden');
             return;
         }
-
         var html = '';
         for(var i = 0; i < results.length; i++){
             var rs = results[i];
@@ -386,7 +351,6 @@ var App = {
             var label = isMine ? 'قيد تحضيرك' : (isTaken ? 'مع زميل آخر' : 'مفتوح');
             var bg = isMine ? 'bg-amber-50' : (isTaken ? 'bg-red-50' : 'bg-blue-50');
             var textColor = isMine ? 'text-amber-600' : (isTaken ? 'text-red-500' : 'text-blue-600');
-
             html += '<div onclick="App.openRunsheet(\'' + rs.runsheet_code + '\')" class="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex justify-between items-center">';
             html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><br><span class="text-xs text-slate-400">' + (rs.run_date || '') + '</span></div>';
             html += '<span class="px-2 py-0.5 rounded-full text-xs font-bold ' + bg + ' ' + textColor + '">' + icon + ' ' + label + '</span>';
@@ -396,28 +360,22 @@ var App = {
         dropdown.classList.remove('hidden');
     },
 
-    // ==================== فتح تفاصيل الرانشيت ====================
     openRunsheet: function(code){
         var self = this;
         byId('searchDropdown').classList.add('hidden');
         safeHTML(byId('mainContent'), '<div class="text-center py-20"><div class="skeleton h-48 w-full mb-4"></div><div class="skeleton h-12 w-3/4 mb-3"></div></div>');
-
         supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle().then(function(rsRes){
             if(!rsRes.data){ toast('الرانشيت غير موجود', 'error'); self.renderPendingTab(); return; }
             var rs = rsRes.data;
-
             supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id).then(function(detRes){
                 var items = detRes.data || [];
                 var isActive = (rs.status === 'Picking' && (rs.picker_id === self.pubUserId || rs.picker_id === self.currentUser.email));
                 var isOpen = (rs.status === 'Open');
-
                 var html = '';
                 html += '<div class="flex items-center gap-3 mb-6">';
                 html += '<button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm hover:shadow-md transition-all"><i class="fa-solid fa-arrow-right"></i></button>';
                 html += '<span class="font-black text-xl text-slate-800">' + code + '</span>';
                 html += '</div>';
-
-                // زر بدء التحضير في الأعلى
                 if(isOpen){
                     html += '<button onclick="App.startPicking(\'' + code + '\')" class="btn-primary mb-6 sticky-top"><i class="fa-solid fa-play ml-2"></i> بدء التحضير</button>';
                 }
@@ -425,7 +383,6 @@ var App = {
                     html += '<button onclick="App.resumePicking(\'' + code + '\')" class="btn-primary mb-6 sticky-top"><i class="fa-solid fa-play ml-2"></i> متابعة التحضير</button>';
                     html += '<button onclick="App.cancelPickingFromDetail(\'' + code + '\')" class="btn-danger w-full mb-6"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التحضير</button>';
                 }
-
                 html += '<p class="text-sm text-slate-400 mb-6">اضغط على الصنف لرؤية التفاصيل</p>';
                 for(var i = 0; i < items.length; i++){
                     var it = items[i];
@@ -452,7 +409,6 @@ var App = {
         });
     },
 
-    // ==================== بدء التحضير ====================
     startPicking: function(code){
         var self = this;
         if(!navigator.onLine){ toast('أنت غير متصل بالإنترنت', 'warning'); return; }
@@ -491,7 +447,7 @@ var App = {
                         item_name: items[i].item_name || '',
                         unit: items[i].unit || 'حبة',
                         qty_ordered: items[i].qty_ordered || 0,
-                        qty_picked: items[i].qty_ordered || 0,
+                        qty_picked: 0,  // ✅ إصلاح: فارغة، المحضّر يُدخل الكمية
                         notes: ''
                     });
                 }
@@ -513,7 +469,6 @@ var App = {
         });
     },
 
-    // ==================== إلغاء التحضير ====================
     cancelPicking: function(code){
         var self = this;
         Swal.fire({
@@ -555,7 +510,6 @@ var App = {
         this.cancelPicking(code);
     },
 
-    // ==================== الجلسة النشطة ====================
     renderActiveSession: function(){
         var self = this;
         if(!this.session){ this.renderPendingTab(); return; }
@@ -660,7 +614,6 @@ var App = {
         }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
     },
 
-    // ==================== تبويب مكتملة ====================
     loadCompleted: function(){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="text-center py-20"><div class="skeleton h-12 w-3/4 mb-3"></div><div class="skeleton h-12 w-1/2 mb-3"></div></div>');
@@ -680,7 +633,6 @@ var App = {
         });
     },
 
-    // ==================== تبويب حسابي ====================
     renderAccount: function(){
         var html = '<div class="text-center mb-8 mt-4"><div class="w-20 h-20 bg-gradient-to-br from-indigo-400 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-indigo-200 mb-4">' + (this.currentUser.user_metadata.name || '?').charAt(0) + '</div><h2 class="font-black text-xl text-slate-800">' + (this.currentUser.user_metadata.name || this.currentUser.email) + '</h2><p class="text-sm text-slate-400">محضّر</p></div>';
         html += '<div class="card mb-3"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-envelope"></i></div><div><p class="text-xs text-slate-400">البريد الإلكتروني</p><p class="font-bold text-slate-700 text-sm">' + this.currentUser.email + '</p></div></div></div>';
@@ -701,7 +653,6 @@ var App = {
     }
 };
 
-// ==================== Service Worker ====================
 if('serviceWorker' in navigator){
     navigator.serviceWorker.register('../sw.js').then(function(reg){
         reg.addEventListener('updatefound', function(){
