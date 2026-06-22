@@ -4,374 +4,190 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>مشرف المخازن | الروائع ERP</title>
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="../manifest.json">
     <meta name="theme-color" content="#2563eb">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Cairo',sans-serif;background:#f3f4f6;-webkit-tap-highlight-color:transparent}
-        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
-        .stat-card{background:#fff;border-radius:16px;padding:1rem;box-shadow:0 4px 6px rgba(0,0,0,0.02);transition:transform 0.2s;cursor:pointer}
-        .stat-card:active{transform:scale(0.98)}
-        .btn-primary{background:#2563eb;color:#fff;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;border:none;cursor:pointer;width:100%}
-        .btn-primary:active{background:#1d4ed8}
-        .role-select{width:100%;padding:0.5rem;border:1px solid #e5e7eb;border-radius:10px;font-weight:600;font-size:0.875rem;background:#f9fafb}
+        body{font-family:'Cairo',sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
         .auth-container{background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 40%,#2563eb 100%)}
-        .input-field:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,0.1)}
-        .pulse{animation:pulse 2s infinite}
-        @keyframes pulse{0%{opacity:1}50%{opacity:0.6}100%{opacity:1}}
+        .card{background:#fff;border-radius:24px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.02),0 8px 24px rgba(0,0,0,0.03);transition:all 0.2s ease}
+        .stat-card{background:#fff;border-radius:20px;padding:1rem;box-shadow:0 1px 3px rgba(0,0,0,0.02),0 8px 20px rgba(0,0,0,0.03);cursor:pointer;transition:all 0.2s ease}
+        .stat-card:active{transform:scale(0.97)}
+        .btn-primary{background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;padding:0.75rem 1.5rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;width:100%;box-shadow:0 4px 12px rgba(37,99,235,0.2)}
+        .tab-btn{transition:all 0.2s ease}
+        .slide-in{animation:slideIn 0.3s ease}
+        @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        .pulse{animation:softPulse 2s infinite}
+        @keyframes softPulse{0%{opacity:1}50%{opacity:0.7}100%{opacity:1}}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-<!-- ============================================================ -->
-<!-- شاشة الدخول -->
-<!-- ============================================================ -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
-    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
+    <div class="bg-white rounded-[36px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
         <div class="text-center mb-6">
-            <div class="w-20 h-20 bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
+            <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-700 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-blue-200 mb-5">
                 <i class="fa-solid fa-warehouse text-white text-3xl"></i>
             </div>
-            <h1 class="font-black text-2xl text-gray-800">الروائع</h1>
-            <p class="text-xs text-gray-400 font-bold mt-1">مشرف المخازن</p>
+            <h1 class="font-black text-2xl text-slate-800">الروائع</h1>
+            <p class="text-sm text-slate-400 font-semibold mt-1">مشرف المخازن</p>
         </div>
-        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول إلى حسابك</h2>
-        <div class="space-y-3">
-            <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني <span class="text-red-500">*</span></label>
-                <input id="loginEmail" type="email" placeholder="example@domain.com" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-blue-600 focus:bg-white outline-none font-bold text-sm transition-all">
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر <span class="text-red-500">*</span></label>
-                <div class="relative">
-                    <input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-blue-600 focus:bg-white outline-none font-bold text-sm transition-all pr-12">
-                    <button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600">
-                        <i id="passIcon" class="fa-solid fa-eye"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="flex justify-between items-center text-sm">
-                <label class="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" id="rememberMe" class="accent-blue-600 w-4 h-4"> 
-                    <span class="text-xs text-gray-600 font-bold">تذكرني</span>
-                </label>
-                <button onclick="App.forgotPassword()" class="text-blue-600 font-bold text-xs hover:underline">نسيت كلمة المرور؟</button>
-            </div>
+        <div class="space-y-4">
+            <div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-blue-500 outline-none font-semibold text-sm"></div>
+            <div class="relative"><input id="loginPass" type="password" placeholder="كلمة السر" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-blue-500 outline-none font-semibold text-sm pr-12"><button type="button" onclick="App.togglePass()" class="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-300"><i id="passIcon" class="fa-solid fa-eye"></i></button></div>
         </div>
-        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-blue-200 hover:shadow-xl transition-all mt-4">
-            تسجيل الدخول
-        </button>
-        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-4 rounded-2xl font-bold text-base shadow-lg mt-6">تسجيل الدخول</button>
+        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-4 hidden"></p>
     </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- التطبيق الرئيسي -->
-<!-- ============================================================ -->
 <div id="mainApp" class="hidden flex flex-col h-full">
-    <header class="bg-blue-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
-        <span class="font-black text-sm">مشرف المخازن</span>
-        <div class="flex items-center gap-2">
-            <span class="text-xs font-bold" id="headerUserName"></span>
-            <button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
-        </div>
+    <header class="bg-gradient-to-r from-blue-700 to-blue-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+        <span class="font-black text-base">👨‍💼 مشرف المخازن</span>
+        <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
     </header>
-
     <div class="flex gap-1 p-2 bg-white border-b overflow-x-auto flex-shrink-0">
-        <button onclick="App.switchTab('dashboard')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm bg-blue-600 text-white" id="tab-dashboard">📊 لوحة التحكم</button>
-        <button onclick="App.switchTab('roster')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-roster">👥 الفريق</button>
-        <button onclick="App.switchTab('live')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-live">🔴 الحي</button>
+        <button onclick="App.switchTab('dashboard')" class="tab-btn whitespace-nowrap px-4 py-2.5 rounded-2xl font-bold text-sm bg-blue-600 text-white" id="tab-dashboard">📊 لوحة التحكم</button>
+        <button onclick="App.switchTab('roster')" class="tab-btn whitespace-nowrap px-4 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-roster">👥 الفريق</button>
+        <button onclick="App.switchTab('live')" class="tab-btn whitespace-nowrap px-4 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-live">🔴 الحي</button>
     </div>
-
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
 </div>
 
 <script>
-// ============================================================
-// التهيئة
-// ============================================================
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 function byId(id) { return document.getElementById(id); }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function safeText(el, text) { if (el) el.textContent = text; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG'); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
+function safeText(el, t) { if(el) el.textContent = t; }
+function safeHTML(el, h) { if(el) el.innerHTML = h; }
+function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t||'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
-// ============================================================
-// التطبيق
-// ============================================================
 var App = {
-    currentUser: null,
-    staffList: [],
-    dashboardData: {},
-    currentTab: 'dashboard',
-    currentLiveCat: 'picking',
+    currentUser: null, staffList: [], currentTab: 'dashboard', chartInstance: null,
+    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash'}else{p.type='password';i.className='fa-solid fa-eye'}},
+    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden')}else{s.init()}}).catch(function(){Swal.close()})},
+    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||perms.indexOf('warehouse_supervisor')!==-1||perms.indexOf('warehouse')!==-1;if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp()}})},
+    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.loadStaff();this.switchTab('dashboard')},
+    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden')})},
 
-    // ==================== عدسة كلمة المرور ====================
-    togglePass: function() {
-        var passInput = byId('loginPass');
-        var icon = byId('passIcon');
-        if (passInput.type === 'password') {
-            passInput.type = 'text';
-            icon.className = 'fa-solid fa-eye-slash';
-        } else {
-            passInput.type = 'password';
-            icon.className = 'fa-solid fa-eye';
-        }
-    },
+    switchTab: function(t){this.currentTab=t;['dashboard','roster','live'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-blue-600','text-white');b.classList.add('text-slate-400')}});var a=byId('tab-'+t);if(a){a.classList.add('bg-blue-600','text-white');a.classList.remove('text-slate-400')}if(t==='dashboard')this.renderDashboard();else if(t==='roster')this.renderRoster();else if(t==='live')this.renderLive()},
 
-    // ==================== نسيت كلمة المرور ====================
-    forgotPassword: function() {
-        var email = byId('loginEmail').value.trim();
-        if (!email) { toast('أدخل بريدك الإلكتروني أولاً', 'warning'); return; }
-        Swal.showLoading();
-        supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password' }).then(function(res) {
-            Swal.close();
-            if (res.error) toast(res.error.message, 'error');
-            else toast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك', 'success');
-        }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
-    },
-
-    // ==================== الدخول ====================
-    doLogin: function() {
-        var email = byId('loginEmail').value.trim();
-        var pass = byId('loginPass').value.trim();
-        if (!email || !pass) {
-            byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
-            byId('loginMsg').classList.remove('hidden');
-            return;
-        }
-        byId('loginMsg').classList.add('hidden');
-        var self = this;
-        Swal.showLoading();
-        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res) {
-            Swal.close();
-            if (res.error) {
-                byId('loginMsg').innerText = res.error.message;
-                byId('loginMsg').classList.remove('hidden');
-            } else {
-                if (byId('rememberMe').checked) localStorage.setItem('remember_email', email);
-                else localStorage.removeItem('remember_email');
-                self.init();
-            }
-        }).catch(function() {
-            Swal.close();
-            byId('loginMsg').innerText = 'فشل الاتصال بالخادم';
-            byId('loginMsg').classList.remove('hidden');
+    loadStaff: function(){
+        var s=this;
+        supabase.from('users').select('id,name,email,role,active_warehouse_role').then(function(r){
+            s.staffList = r.data || [];
         });
-    },
-
-    init: function() {
-        var self = this;
-        var remembered = localStorage.getItem('remember_email');
-        if (remembered) { byId('loginEmail').value = remembered; byId('rememberMe').checked = true; }
-
-        supabase.auth.getSession().then(function(res) {
-            if (res.data && res.data.session) {
-                self.currentUser = res.data.session.user;
-                var meta = self.currentUser.user_metadata || {};
-                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-                var perms = meta.permissions || [];
-                var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('warehouse_supervisor') !== -1);
-
-                if (hasAccess) {
-                    safeText(byId('headerUserName'), meta.name || self.currentUser.email);
-                    self.enterApp();
-                } else {
-                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية مشرف مخازن', icon: 'error' });
-                    supabase.auth.signOut();
-                }
-            }
-        });
-    },
-
-    enterApp: function() {
-        byId('loginScreen').classList.add('hidden');
-        byId('mainApp').classList.remove('hidden');
-        this.switchTab('dashboard');
-    },
-
-    doLogout: function() {
-        var self = this;
-        supabase.auth.signOut().then(function() {
-            self.currentUser = null;
-            byId('mainApp').classList.add('hidden');
-            byId('loginScreen').classList.remove('hidden');
-            byId('loginEmail').value = '';
-            byId('loginPass').value = '';
-            byId('loginMsg').classList.add('hidden');
-        });
-    },
-
-    // ==================== التبويبات ====================
-    switchTab: function(tab) {
-        this.currentTab = tab;
-        var tabs = ['dashboard', 'roster', 'live'];
-        for (var i = 0; i < tabs.length; i++) {
-            var btn = byId('tab-' + tabs[i]);
-            if (btn) { btn.classList.remove('bg-blue-600', 'text-white'); btn.classList.add('text-gray-500'); }
-        }
-        var activeBtn = byId('tab-' + tab);
-        if (activeBtn) { activeBtn.classList.add('bg-blue-600', 'text-white'); activeBtn.classList.remove('text-gray-500'); }
-        if (tab === 'dashboard') this.renderDashboard();
-        else if (tab === 'roster') this.renderRoster();
-        else if (tab === 'live') this.renderLiveView();
     },
 
     // ==================== لوحة التحكم ====================
-    renderDashboard: function() {
-        var self = this;
-        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+    renderDashboard: function(){
+        var s=this; safeHTML(byId('mainContent'),'<div class="mb-6"><div class="skeleton h-20 w-full mb-4"></div><div class="skeleton h-20 w-full mb-3"></div></div>');
         Promise.all([
-            supabase.from('purchase_orders').select('id').in('status', ['Sent','Partially Received']),
-            supabase.from('runsheets').select('id').eq('status', 'Picking'),
-            supabase.from('runsheets').select('id').eq('status', 'Loading'),
-            supabase.from('runsheets').select('id').eq('status', 'Returning'),
-            supabase.from('runsheets').select('id').eq('status', 'Loaded')
-        ]).then(function(results) {
-            self.dashboardData = {
-                receiving: { count: results[0].data ? results[0].data.length : 0 },
-                picking: { count: results[1].data ? results[1].data.length : 0 },
-                loading: { count: results[2].data ? results[2].data.length : 0 },
-                returns: { count: results[3].data ? results[3].data.length : 0 },
-                unloading: { count: results[4].data ? results[4].data.length : 0 }
+            supabase.from('purchase_orders').select('id').in('status',['Sent','Partially Received']),
+            supabase.from('runsheets').select('id').eq('status','Picking'),
+            supabase.from('runsheets').select('id').eq('status','Loading'),
+            supabase.from('runsheets').select('id').eq('status','Returning'),
+            supabase.from('runsheets').select('id').eq('status','Loaded')
+        ]).then(function(r){
+            var d = {
+                receiving: (r[0].data||[]).length,
+                picking: (r[1].data||[]).length,
+                loading: (r[2].data||[]).length,
+                returns: (r[3].data||[]).length,
+                unloading: (r[4].data||[]).length
             };
-            var html = '<h2 class="text-lg font-black mb-4">نظرة عامة</h2><div class="grid grid-cols-2 gap-3">';
-            var keys = ['receiving', 'picking', 'loading', 'returns', 'unloading'];
-            var labels = ['📦 استلام', '📋 تحضير', '🚛 تحميل', '↩️ مرتجعات', '🔄 تفريغ'];
-            for (var i = 0; i < keys.length; i++) {
-                html += '<div class="stat-card" onclick="App.switchTab(\'live\');App.switchLiveCat(\'' + keys[i] + '\')"><div class="text-2xl mb-1">' + labels[i].split(' ')[0] + '</div><div class="text-2xl font-black">' + self.dashboardData[keys[i]].count + '</div><div class="text-xs text-gray-500">' + labels[i].split(' ')[1] + '</div></div>';
+            var userName = s.currentUser.user_metadata.name||'مشرف';
+            var html='<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">'+userName+'</span> 👋</p><p class="text-xs text-slate-400 mt-1">آخر تحديث: '+new Date().toLocaleTimeString('ar-EG')+'</p></div>';
+            html+='<h2 class="text-lg font-black mb-4">📊 نظرة عامة</h2>';
+            html+='<div class="grid grid-cols-2 gap-3 mb-6">';
+            var items = [
+                {key:'receiving',icon:'📦',label:'استلام',color:'from-emerald-500 to-emerald-600'},
+                {key:'picking',icon:'📋',label:'تحضير',color:'from-indigo-500 to-indigo-600'},
+                {key:'loading',icon:'🚛',label:'تحميل',color:'from-orange-500 to-orange-600'},
+                {key:'returns',icon:'↩️',label:'مرتجعات',color:'from-red-500 to-red-600'},
+                {key:'unloading',icon:'🔄',label:'تفريغ',color:'from-cyan-500 to-cyan-600'}
+            ];
+            for(var i=0;i<items.length;i++){
+                var it=items[i];
+                html+='<div class="stat-card" onclick="App.switchTab(\'live\')"><div class="bg-gradient-to-br '+it.color+' w-10 h-10 rounded-2xl flex items-center justify-center text-white text-lg mb-2">'+it.icon+'</div><div class="text-2xl font-black text-slate-800">'+d[it.key]+'</div><div class="text-xs text-slate-400">'+it.label+'</div></div>';
             }
-            html += '</div><button onclick="App.switchTab(\'roster\')" class="btn-primary mt-4"><i class="fa-solid fa-users ml-2"></i> إدارة الفريق</button>';
-            safeHTML(byId('mainContent'), html);
-        }).catch(function() {
-            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');
+            html+='</div>';
+            html+='<button onclick="App.switchTab(\'roster\')" class="btn-primary"><i class="fa-solid fa-users ml-2"></i> إدارة الفريق</button>';
+            safeHTML(byId('mainContent'),html);
         });
     },
 
     // ==================== الفريق ====================
-    renderRoster: function() {
-        var self = this;
-        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
-        
-        supabase.from('users').select('id, name, email, role, active_warehouse_role').then(function(res) {
-            if (res.error) {
-                safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');
-                return;
-            }
-            
-            var allUsers = res.data || [];
-            var warehouseStaff = [];
-            var warehouseRoles = ['مخزني', 'أمين مخزن', 'امين مخزن', 'warehouse'];
-            for (var i = 0; i < allUsers.length; i++) {
-                var u = allUsers[i];
-                var userRole = (u.role || '').toLowerCase();
-                for (var j = 0; j < warehouseRoles.length; j++) {
-                    if (userRole === warehouseRoles[j].toLowerCase()) {
-                        warehouseStaff.push(u);
-                        break;
-                    }
-                }
-            }
-            
-            self.staffList = warehouseStaff;
-            var html = '<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-gray-500 mb-4">اختر دوراً جديداً لكل موظف. التغيير فوري.</p>';
-            if (!self.staffList.length) {
-                html += '<div class="card text-center text-gray-500">لا يوجد موظفون مخزنيون</div>';
-            } else {
-                var roles = ['استلام', 'تحضير', 'تحميل', 'مرتجعات', 'تفريغ', 'جرد', 'أذونات', 'احتياطي'];
-                var icons = { 'استلام':'📦','تحضير':'📋','تحميل':'🚛','مرتجعات':'↩️','تفريغ':'🔄','جرد':'🔍','أذونات':'📄','احتياطي':'🪑' };
-                for (var i = 0; i < self.staffList.length; i++) {
-                    var emp = self.staffList[i];
-                    var role = emp.active_warehouse_role || 'احتياطي';
-                    html += '<div class="card mb-3"><div class="flex justify-between items-center mb-3"><div><span class="font-bold">' + emp.name + '</span><br><span class="text-xs text-gray-400">' + emp.email + '</span></div><span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">' + (icons[role]||'') + ' ' + role + '</span></div><select class="role-select" onchange="App.updateRole(\'' + emp.id + '\', this.value)">';
-                    for (var j = 0; j < roles.length; j++) {
-                        html += '<option value="' + roles[j] + '"' + (roles[j] === role ? ' selected' : '') + '>' + (icons[roles[j]]||'') + ' ' + roles[j] + '</option>';
-                    }
-                    html += '</select></div>';
-                }
-            }
-            safeHTML(byId('mainContent'), html);
-        }).catch(function() {
-            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');
-        });
+    renderRoster: function(){
+        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-400"></i></div>');
+        var roles=['استلام','تحضير','تحميل','مرتجعات','تفريغ','أذونات','جرد','احتياطي'];
+        var icons={'استلام':'📦','تحضير':'📋','تحميل':'🚛','مرتجعات':'↩️','تفريغ':'🔄','أذونات':'📄','جرد':'🔍','احتياطي':'🪑'};
+        var html='<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-slate-400 mb-4">اختر دوراً لكل موظف. التغيير فوري.</p>';
+        if(!s.staffList.length){html+='<div class="card text-center text-slate-400">لا يوجد موظفون</div>'}
+        else {for(var i=0;i<s.staffList.length;i++){var emp=s.staffList[i];var role=emp.active_warehouse_role||'احتياطي';
+            html+='<div class="card mb-3 slide-in"><div class="flex justify-between items-center mb-3"><div><span class="font-bold">'+emp.name+'</span><br><span class="text-xs text-slate-400">'+emp.email+'</span></div><span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">'+(icons[role]||'')+' '+role+'</span></div><select class="w-full p-3 bg-slate-50 rounded-xl border font-bold text-sm" onchange="App.updateRole(\''+emp.id+'\',this.value)">';
+            for(var j=0;j<roles.length;j++){html+='<option value="'+roles[j]+'"'+(roles[j]===role?' selected':'')+'>'+(icons[roles[j]]||'')+' '+roles[j]+'</option>'}
+            html+='</select></div>';
+        }}
+        safeHTML(byId('mainContent'),html);
     },
 
-    updateRole: function(userId, newRole) {
-        var self = this;
-        Swal.showLoading();
-        supabase.from('users').update({ active_warehouse_role: newRole }).eq('id', userId).then(function(res) {
+    updateRole: function(userId,newRole){
+        var s=this; Swal.showLoading();
+        supabase.from('users').update({active_warehouse_role:newRole}).eq('id',userId).then(function(r){
             Swal.close();
-            if (res.error) { Swal.fire({ title: 'خطأ', text: res.error.message, icon: 'error' }); }
-            else {
-                for (var i = 0; i < self.staffList.length; i++) {
-                    if (self.staffList[i].id === userId) { self.staffList[i].active_warehouse_role = newRole; break; }
-                }
-                self.renderRoster();
-            }
+            if(r.error){Swal.fire({title:'خطأ',text:r.error.message,icon:'error'})}
+            else {for(var i=0;i<s.staffList.length;i++){if(s.staffList[i].id===userId){s.staffList[i].active_warehouse_role=newRole;break}}s.renderRoster()}
         });
     },
 
     // ==================== العرض الحي ====================
-    renderLiveView: function() {
-        var html = '<h2 class="text-lg font-black mb-4">🔴 مراقبة حية</h2>';
-        html += '<div class="flex gap-2 overflow-x-auto pb-2 mb-4">';
-        var cats = ['picking', 'loading', 'returns', 'receiving', 'unloading'];
-        var labels = ['📋 تحضير', '🚛 تحميل', '↩️ مرتجعات', '📦 استلام', '🔄 تفريغ'];
-        for (var i = 0; i < cats.length; i++) {
-            var activeClass = (this.currentLiveCat === cats[i]) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600';
-            html += '<button onclick="App.switchLiveCat(\'' + cats[i] + '\')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm ' + activeClass + '">' + labels[i] + '</button>';
-        }
-        html += '</div><div id="liveContent"><div class="text-center py-10 text-gray-400">جاري التحميل...</div></div>';
-        safeHTML(byId('mainContent'), html);
-        this.switchLiveCat(this.currentLiveCat);
-    },
-
-    switchLiveCat: function(cat) {
-        this.currentLiveCat = cat;
-        var container = byId('liveContent');
-        if (!container) return;
-        safeHTML(container, '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        var query;
-        if (cat === 'receiving') {
-            query = supabase.from('purchase_orders').select('id, po_code, supplier_name').in('status', ['Sent','Partially Received']);
-        } else {
-            var status = cat === 'picking' ? 'Picking' : cat === 'loading' ? 'Loading' : cat === 'returns' ? 'Returning' : 'Loaded';
-            query = supabase.from('runsheets').select('id, runsheet_code, picker_id, loader_id, return_handler_id, picker_start, loader_start, return_start').eq('status', status);
-        }
-        query.then(function(res) {
-            var items = res.data || [];
-            var html = '';
-            if (!items.length) { html = '<div class="card text-center text-gray-500">لا توجد عمليات جارية</div>'; }
-            else {
-                var staffMap = {};
-                for (var s = 0; s < App.staffList.length; s++) { staffMap[App.staffList[s].id] = App.staffList[s].name; }
-                for (var i = 0; i < items.length; i++) {
-                    var item = items[i];
-                    var code = item.runsheet_code || item.po_code || '---';
-                    var staffId = item.picker_id || item.loader_id || item.return_handler_id || null;
-                    var startTime = item.picker_start || item.loader_start || item.return_start || null;
-                    var elapsed = '---';
-                    if (startTime) { var diff = Math.floor((new Date() - new Date(startTime)) / 1000); var m = Math.floor(diff / 60), s = diff % 60; elapsed = m + ':' + String(s).padStart(2, '0'); }
-                    html += '<div class="card mb-3"><div class="flex justify-between items-center"><div><span class="font-bold">' + code + '</span></div><span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold pulse">⏱️ ' + elapsed + '</span></div><div class="mt-2 text-sm text-gray-600"><i class="fa-solid fa-user ml-1"></i> ' + (staffId ? (staffMap[staffId] || staffId) : 'غير معين') + '</div></div>';
+    renderLive: function(){
+        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-400"></i></div>');
+        var html='<h2 class="text-lg font-black mb-4">🔴 مراقبة حية</h2>';
+        html+='<div class="grid grid-cols-2 gap-3" id="liveGrid"></div>';
+        safeHTML(byId('mainContent'),html);
+        Promise.all([
+            supabase.from('purchase_orders').select('po_code,supplier_name').in('status',['Sent','Partially Received']),
+            supabase.from('runsheets').select('runsheet_code,picker_id').eq('status','Picking'),
+            supabase.from('runsheets').select('runsheet_code,loader_id').eq('status','Loading'),
+            supabase.from('runsheets').select('runsheet_code,return_handler_id').eq('status','Returning'),
+            supabase.from('runsheets').select('runsheet_code').eq('status','Loaded')
+        ]).then(function(r){
+            var staffMap={};for(var i=0;i<s.staffList.length;i++){staffMap[s.staffList[i].id]=s.staffList[i].name}
+            var cats=[
+                {icon:'📦',label:'استلام',items:r[0].data||[],codeKey:'po_code',staffKey:null,staffLabel:'supplier_name'},
+                {icon:'📋',label:'تحضير',items:r[1].data||[],codeKey:'runsheet_code',staffKey:'picker_id',staffLabel:null},
+                {icon:'🚛',label:'تحميل',items:r[2].data||[],codeKey:'runsheet_code',staffKey:'loader_id',staffLabel:null},
+                {icon:'↩️',label:'مرتجعات',items:r[3].data||[],codeKey:'runsheet_code',staffKey:'return_handler_id',staffLabel:null},
+                {icon:'🔄',label:'تفريغ',items:r[4].data||[],codeKey:'runsheet_code',staffKey:null,staffLabel:null}
+            ];
+            var gridHtml='';
+            for(var j=0;j<cats.length;j++){
+                var c=cats[j];
+                gridHtml+='<div class="stat-card"><div class="text-2xl mb-1">'+c.icon+'</div><div class="text-lg font-black">'+(c.items.length)+'</div><div class="text-xs text-slate-400">'+c.label+'</div>';
+                for(var k=0;k<Math.min(c.items.length,3);k++){
+                    var item=c.items[k];
+                    var staffName=c.staffKey?(staffMap[item[c.staffKey]]||item[c.staffKey]):(c.staffLabel?item[c.staffLabel]:'');
+                    gridHtml+='<div class="text-xs text-slate-500 mt-1">'+item[c.codeKey]+(staffName?' - '+staffName:'')+'</div>';
                 }
+                if(c.items.length>3) gridHtml+='<div class="text-xs text-blue-500 mt-1">+ '+(c.items.length-3)+' أكثر</div>';
+                gridHtml+='</div>';
             }
-            safeHTML(container, html);
-        }).catch(function() { safeHTML(container, '<div class="text-center py-10 text-red-500">فشل التحميل</div>'); });
+            safeHTML(byId('liveGrid'),gridHtml);
+        });
     }
 };
-
-// ============================================================
-// بدء التشغيل
-// ============================================================
-document.addEventListener('DOMContentLoaded', function() { App.init(); });
+if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){})}
+document.addEventListener('DOMContentLoaded',function(){App.init()});
 </script>
 </body>
 </html>
