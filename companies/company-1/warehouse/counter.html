@@ -13,29 +13,43 @@
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:Tahoma,sans-serif;background:#f1f5f9}
+        body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
         .auth-container{background:linear-gradient(135deg,#78350f 0%,#92400e 40%,#b45309 100%)}
-        .input-field:focus{border-color:#b45309;box-shadow:0 0 0 3px rgba(180,83,9,0.1)}
-        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
-        .btn-primary{background:#b45309;color:#fff;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;border:none;cursor:pointer;width:100%}
+        .card{background:#fff;border-radius:24px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.02),0 8px 24px rgba(0,0,0,0.03);transition:all 0.2s ease}
+        .card:active{transform:scale(0.985)}
+        .btn-primary{background:linear-gradient(135deg,#b45309,#d97706);color:#fff;padding:1rem 1.5rem;border-radius:16px;font-weight:700;border:none;cursor:pointer;width:100%;box-shadow:0 4px 12px rgba(180,83,9,0.25)}
+        .btn-primary:active{transform:scale(0.97)}
+        .tab-btn{transition:all 0.2s ease}
+        .slide-in{animation:slideIn 0.3s ease}
+        @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
-    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
-        <div class="text-center mb-6"><div class="w-20 h-20 bg-gradient-to-br from-amber-600 to-amber-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4"><i class="fa-solid fa-clipboard-check text-white text-3xl"></i></div><h1 class="font-black text-2xl text-gray-800">الروائع</h1><p class="text-xs text-gray-400">الجرد</p></div>
-        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول</h2>
-        <div class="space-y-3"><div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-amber-600 outline-none font-bold text-sm"></div><div class="relative"><input id="loginPass" type="password" placeholder="كلمة السر" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-amber-600 outline-none font-bold text-sm pr-12"><button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400"><i id="passIcon" class="fa-solid fa-eye"></i></button></div></div>
-        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-amber-600 to-amber-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg mt-4">تسجيل الدخول</button>
-        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
+    <div class="bg-white rounded-[36px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
+        <div class="text-center mb-6">
+            <div class="w-20 h-20 bg-gradient-to-br from-amber-500 to-amber-700 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-amber-200 mb-5">
+                <i class="fa-solid fa-clipboard-check text-white text-3xl"></i>
+            </div>
+            <h1 class="font-black text-2xl text-slate-800">الروائع</h1>
+            <p class="text-sm text-slate-400 font-semibold mt-1">الجرد</p>
+        </div>
+        <div class="space-y-4">
+            <div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-amber-500 outline-none font-semibold text-sm"></div>
+            <div class="relative"><input id="loginPass" type="password" placeholder="كلمة السر" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-amber-500 outline-none font-semibold text-sm pr-12"><button type="button" onclick="App.togglePass()" class="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-300"><i id="passIcon" class="fa-solid fa-eye"></i></button></div>
+        </div>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-amber-600 to-amber-500 text-white py-4 rounded-2xl font-bold text-base shadow-lg mt-6">تسجيل الدخول</button>
+        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-4 hidden"></p>
     </div>
 </div>
 
 <div id="mainApp" class="hidden flex flex-col h-full">
-    <header class="bg-amber-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
-        <span class="font-black text-sm">🔍 الجرد</span>
-        <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
+    <header class="bg-gradient-to-r from-amber-700 to-amber-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+        <span class="font-black text-base">🔍 الجرد</span>
+        <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
     </header>
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
 </div>
@@ -44,46 +58,39 @@
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-var db = new Dexie('RW_Counter'); db.version(1).stores({ items: 'item_code', cart: '++id', meta: 'key' });
+
 function byId(id) { return document.getElementById(id); }
 function safeText(el, text) { if (el) el.textContent = text; }
 function safeHTML(el, html) { if (el) el.innerHTML = html; }
 function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
 var App = {
-    currentUser: null, cart: [], countType: 'branch', entityId: '', countRef: '',
+    currentUser: null, pubUserId: null, cart: [], countType: 'branch', entityId: '',
     togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
     doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
-    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('warehouse')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.renderMain();}});},
+    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('warehouse')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}supabase.from('users').select('id,name,active_warehouse_role').eq('email',s.currentUser.email).maybeSingle().then(function(u){s.pubUserId=u.data?u.data.id:null;var n=u.data?u.data.name:null;var ar=u.data?u.data.active_warehouse_role:'';if(!isO&&ar!=='جرد'){Swal.fire({title:'تنبيه',text:'دورك النشط هو "'+(ar||'غير محدد')+'"',icon:'warning'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),n||m.name||s.currentUser.email);s.renderMain();}).catch(function(){safeText(byId('headerUserName'),m.name||s.currentUser.email);s.renderMain();});}});},
     enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');},
     doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
 
     renderMain: function(){
-        this.enterApp();this.cart=[];
-        var html='<h2 class="text-lg font-black mb-4">🔍 الجرد</h2>';
-        html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">نوع الجرد</label><select id="countType" onchange="App.countType=this.value" class="w-full p-3 bg-gray-50 rounded-xl border font-bold"><option value="branch">جرد فرع</option><option value="vehicle">جرد سيارة</option><option value="general">جرد عام</option></select></div>';
-        html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">المعرف (الفرع/المندوب)</label><input id="countEntity" class="w-full p-3 bg-gray-50 rounded-xl border font-bold" placeholder="أدخل المعرف..."></div>';
-        html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">بحث عن صنف</label><div class="flex gap-2"><input id="itemSearch" oninput="App.searchItems(this.value)" placeholder="ابحث..." class="flex-1 p-3 bg-gray-50 rounded-xl border font-bold"><button onclick="App.startBarcode()" class="bg-amber-600 text-white px-4 rounded-xl"><i class="fa-solid fa-camera"></i></button></div><div id="searchResults" class="mt-2 max-h-48 overflow-y-auto"></div></div>';
-        html+='<div class="card mb-4"><h3 class="font-bold mb-2">أصناف الجرد <span id="cartCount" class="text-xs text-gray-400">(0)</span></h3><div id="cartItems"><p class="text-gray-400 text-center py-4">أضف أصنافاً</p></div></div>';
+        this.enterApp(); this.cart=[];
+        var html='<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">'+(this.currentUser.user_metadata.name||'زميل')+'</span> 👋</p></div>';
+        html+='<h2 class="text-lg font-black mb-4">🔍 الجرد</h2>';
+        html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">نوع الجرد</label><select id="countType" onchange="App.countType=this.value" class="w-full p-3 bg-slate-50 rounded-xl border font-bold"><option value="branch">جرد فرع</option><option value="vehicle">جرد سيارة</option><option value="general">جرد عام</option></select></div>';
+        html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">المعرف (الفرع/المندوب)</label><input id="countEntity" class="w-full p-3 bg-slate-50 rounded-xl border font-bold" placeholder="أدخل المعرف..."></div>';
+        html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">بحث عن صنف</label><div class="flex gap-2"><input id="itemSearch" oninput="App.searchItems(this.value)" placeholder="ابحث..." class="flex-1 p-3 bg-slate-50 rounded-xl border font-bold"></div><div id="searchResults" class="mt-2 max-h-48 overflow-y-auto"></div></div>';
+        html+='<div class="card mb-4"><h3 class="font-bold mb-2">أصناف الجرد <span id="cartCount" class="text-xs text-slate-400">(0)</span></h3><div id="cartItems"><p class="text-slate-400 text-center py-4">أضف أصنافاً</p></div></div>';
         html+='<button onclick="App.submitCount()" class="btn-primary text-lg py-4"><i class="fa-solid fa-check ml-2"></i> حفظ الجرد</button>';
         safeHTML(byId('mainContent'),html);
     },
 
     searchItems: function(q){
         if(!q||!q.trim()){safeHTML(byId('searchResults'),'');return;}
-        var s=this;
-        supabase.from('items').select('item_code,name,unit').or('name.ilike.%'+q+'%,item_code.ilike.%'+q+'%').limit(10).then(function(r){var items=r.data||[];var html='';for(var i=0;i<items.length;i++){html+='<div onclick="App.addToCart(\''+items[i].item_code+'\',\''+(items[i].name||'').replace(/'/g,"\\'")+'\',\''+(items[i].unit||'حبة')+'\')" class="p-2 hover:bg-amber-50 cursor-pointer border-b font-bold text-sm">'+items[i].name+' ('+items[i].item_code+')</div>';}safeHTML(byId('searchResults'),html||'<p class="text-gray-400 text-sm p-2">لا توجد نتائج</p>');});
+        supabase.from('items').select('item_code,name,unit').or('name.ilike.%'+q+'%,item_code.ilike.%'+q+'%').limit(10).then(function(r){var items=r.data||[];var html='';for(var i=0;i<items.length;i++){html+='<div onclick="App.addToCart(\''+items[i].item_code+'\',\''+(items[i].name||'').replace(/'/g,"\\'")+'\',\''+(items[i].unit||'حبة')+'\')" class="p-2 hover:bg-amber-50 cursor-pointer border-b font-bold text-sm">'+items[i].name+' ('+items[i].item_code+')</div>';}safeHTML(byId('searchResults'),html||'<p class="text-slate-400 text-sm p-2">لا توجد نتائج</p>');});
     },
 
-    addToCart: function(code,name,unit){
-        var ex=null;for(var i=0;i<this.cart.length;i++){if(this.cart[i].code===code){ex=this.cart[i];break;}}
-        if(ex){ex.qty++;}else{this.cart.push({code:code,name:name,unit:unit,qty:1});}
-        this.renderCart();
-    },
-
-    renderCart: function(){
-        if(!this.cart.length){safeHTML(byId('cartItems'),'<p class="text-gray-400 text-center py-4">أضف أصنافاً</p>');safeText(byId('cartCount'),'(0)');return;}
-        var html='';for(var i=0;i<this.cart.length;i++){var it=this.cart[i];html+='<div class="flex justify-between items-center p-2 border-b"><span class="font-bold text-sm">'+it.name+'</span><div class="flex items-center gap-1"><button onclick="App.decCart('+i+')" class="w-6 h-6 bg-gray-100 rounded-full text-xs">-</button><span class="w-6 text-center font-black">'+it.qty+'</span><button onclick="App.incCart('+i+')" class="w-6 h-6 bg-amber-600 text-white rounded-full text-xs">+</button></div></div>';}safeHTML(byId('cartItems'),html);safeText(byId('cartCount'),'('+this.cart.length+')');},
+    addToCart: function(code,name,unit){var ex=null;for(var i=0;i<this.cart.length;i++){if(this.cart[i].code===code){ex=this.cart[i];break;}}if(ex){ex.qty++;}else{this.cart.push({code:code,name:name,unit:unit,qty:1});}this.renderCart();},
+    renderCart: function(){if(!this.cart.length){safeHTML(byId('cartItems'),'<p class="text-slate-400 text-center py-4">أضف أصنافاً</p>');safeText(byId('cartCount'),'(0)');return;}var html='';for(var i=0;i<this.cart.length;i++){var it=this.cart[i];html+='<div class="flex justify-between items-center p-2 border-b"><span class="font-bold text-sm">'+it.name+'</span><div class="flex items-center gap-1"><button onclick="App.decCart('+i+')" class="w-6 h-6 bg-slate-100 rounded-full text-xs">-</button><span class="w-6 text-center font-black">'+it.qty+'</span><button onclick="App.incCart('+i+')" class="w-6 h-6 bg-amber-600 text-white rounded-full text-xs">+</button></div></div>';}safeHTML(byId('cartItems'),html);safeText(byId('cartCount'),'('+this.cart.length+')');},
     incCart: function(i){this.cart[i].qty++;this.renderCart();},
     decCart: function(i){this.cart[i].qty--;if(this.cart[i].qty<=0)this.cart.splice(i,1);this.renderCart();},
 
@@ -92,12 +99,7 @@ var App = {
         if(!entity&&type!=='general'){toast('أدخل المعرف','warning');return;}if(!this.cart.length){toast('أضف أصنافاً','warning');return;}
         var items=[];for(var i=0;i<this.cart.length;i++){items.push({itemCode:this.cart[i].code,itemName:this.cart[i].name,unit:this.cart[i].unit,qty:this.cart[i].qty,unitPrice:0,notes:''});}
         var s=this;Swal.showLoading();
-        supabase.auth.getSession().then(function(se){var t=se.data.session?se.data.session.access_token:null;return fetch(SUPABASE_URL+'/functions/v1/save-inventory-count',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({type:type,entityId:entity||'MAIN',reference:'جرد - '+new Date().toLocaleDateString('ar-EG'),items:items})});}).then(function(r){return r.json();}).then(function(j){Swal.close();if(j.success){toast('تم حفظ الجرد','success');s.cart=[];s.renderCart();}else{toast(j.msg||'فشل','error');}}).catch(function(){Swal.close();toast('فشل الاتصال','error');});
-    },
-
-    startBarcode: function(){
-        var s=this;
-        if('BarcodeDetector' in window){var d=new BarcodeDetector({formats:['ean_13','ean_8','code_128','code_39','qr_code']});navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(st){var v=document.createElement('video');v.srcObject=st;v.play();function scan(){d.detect(v).then(function(b){if(b.length>0){var code=b[0].rawValue;s.searchItems(code);st.getTracks().forEach(function(t){t.stop();});}}).catch(function(){requestAnimationFrame(scan);});}requestAnimationFrame(scan);}).catch(function(){toast('تعذر الوصول للكاميرا','error');});}else{toast('الماسح غير مدعوم','warning');}
+        supabase.auth.getSession().then(function(se){var t=se.data.session.access_token;return fetch(SUPABASE_URL+'/functions/v1/save-inventory-count',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({type:type,entityId:entity||'MAIN',reference:'جرد - '+new Date().toLocaleDateString('ar-EG'),items:items})});}).then(function(r){return r.json();}).then(function(j){Swal.close();if(j.success){toast('تم حفظ الجرد','success');s.cart=[];s.renderCart();}else{toast(j.msg||'فشل','error');}}).catch(function(){Swal.close();toast('فشل الاتصال','error');});
     }
 };
 if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
