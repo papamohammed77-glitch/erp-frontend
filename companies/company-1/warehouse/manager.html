@@ -13,427 +13,190 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Cairo',sans-serif;background:#f3f4f6;-webkit-tap-highlight-color:transparent}
-        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
-        .stat-card{background:#fff;border-radius:16px;padding:1rem;box-shadow:0 4px 6px rgba(0,0,0,0.02);transition:transform 0.2s;cursor:pointer}
-        .stat-card:active{transform:scale(0.98)}
-        .btn-primary{background:#0f766e;color:#fff;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;border:none;cursor:pointer;width:100%}
-        .btn-primary:active{background:#115e59}
-        .role-select{width:100%;padding:0.5rem;border:1px solid #e5e7eb;border-radius:10px;font-weight:600;font-size:0.875rem;background:#f9fafb}
+        body{font-family:'Cairo',sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
         .auth-container{background:linear-gradient(135deg,#134e4a 0%,#0f766e 40%,#14b8a6 100%)}
-        .input-field:focus{border-color:#0f766e;box-shadow:0 0 0 3px rgba(15,118,110,0.1)}
-        .pulse{animation:pulse 2s infinite}
-        @keyframes pulse{0%{opacity:1}50%{opacity:0.6}100%{opacity:1}}
-        .tab-active{background:#0f766e;color:#fff}
-        .chart-container{position:relative;width:100%;max-height:300px}
+        .card{background:#fff;border-radius:24px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.02),0 8px 24px rgba(0,0,0,0.03)}
+        .stat-card{background:#fff;border-radius:20px;padding:1rem;box-shadow:0 1px 3px rgba(0,0,0,0.02),0 8px 20px rgba(0,0,0,0.03);transition:all 0.2s ease}
+        .stat-card:active{transform:scale(0.97)}
+        .btn-primary{background:linear-gradient(135deg,#0f766e,#14b8a6);color:#fff;padding:0.75rem 1.5rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;width:100%}
+        .tab-btn{transition:all 0.2s ease}
+        .slide-in{animation:slideIn 0.3s ease}
+        @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        .chart-container{position:relative;width:100%;max-height:280px}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-<!-- ============================================================ -->
-<!-- شاشة الدخول -->
-<!-- ============================================================ -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
-    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
+    <div class="bg-white rounded-[36px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
         <div class="text-center mb-6">
-            <div class="w-20 h-20 bg-gradient-to-br from-teal-600 to-teal-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
+            <div class="w-20 h-20 bg-gradient-to-br from-teal-500 to-teal-700 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-teal-200 mb-5">
                 <i class="fa-solid fa-chart-pie text-white text-3xl"></i>
             </div>
-            <h1 class="font-black text-2xl text-gray-800">الروائع</h1>
-            <p class="text-xs text-gray-400 font-bold mt-1">مدير المخازن</p>
+            <h1 class="font-black text-2xl text-slate-800">الروائع</h1>
+            <p class="text-sm text-slate-400 font-semibold mt-1">مدير المخازن</p>
         </div>
-        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول إلى حسابك</h2>
-        <div class="space-y-3">
-            <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني <span class="text-red-500">*</span></label>
-                <input id="loginEmail" type="email" placeholder="example@domain.com" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-teal-600 focus:bg-white outline-none font-bold text-sm transition-all">
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر <span class="text-red-500">*</span></label>
-                <div class="relative">
-                    <input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-teal-600 focus:bg-white outline-none font-bold text-sm transition-all pr-12">
-                    <button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600">
-                        <i id="passIcon" class="fa-solid fa-eye"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="flex justify-between items-center text-sm">
-                <label class="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" id="rememberMe" class="accent-teal-600 w-4 h-4"> 
-                    <span class="text-xs text-gray-600 font-bold">تذكرني</span>
-                </label>
-                <button onclick="App.forgotPassword()" class="text-teal-600 font-bold text-xs hover:underline">نسيت كلمة المرور؟</button>
-            </div>
+        <div class="space-y-4">
+            <div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-teal-500 outline-none font-semibold text-sm"></div>
+            <div class="relative"><input id="loginPass" type="password" placeholder="كلمة السر" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-teal-500 outline-none font-semibold text-sm pr-12"><button type="button" onclick="App.togglePass()" class="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-300"><i id="passIcon" class="fa-solid fa-eye"></i></button></div>
         </div>
-        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-teal-600 to-teal-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-teal-200 hover:shadow-xl transition-all mt-4">
-            تسجيل الدخول
-        </button>
-        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-teal-600 to-teal-500 text-white py-4 rounded-2xl font-bold text-base shadow-lg mt-6">تسجيل الدخول</button>
+        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-4 hidden"></p>
     </div>
 </div>
 
-<!-- ============================================================ -->
-<!-- التطبيق الرئيسي -->
-<!-- ============================================================ -->
 <div id="mainApp" class="hidden flex flex-col h-full">
-    <header class="bg-teal-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
-        <span class="font-black text-sm">مدير المخازن</span>
-        <div class="flex items-center gap-2">
-            <span class="text-xs font-bold" id="headerUserName"></span>
-            <button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
-        </div>
+    <header class="bg-gradient-to-r from-teal-700 to-teal-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+        <span class="font-black text-base">📊 مدير المخازن</span>
+        <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
     </header>
-
     <div class="flex gap-1 p-2 bg-white border-b overflow-x-auto flex-shrink-0">
-        <button onclick="App.switchTab('dashboard')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm tab-active" id="tab-dashboard">📊 لوحة التحكم</button>
-        <button onclick="App.switchTab('roster')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-roster">👥 الفريق</button>
-        <button onclick="App.switchTab('reports')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-reports">📋 التقارير</button>
+        <button onclick="App.switchTab('dashboard')" class="tab-btn whitespace-nowrap px-4 py-2.5 rounded-2xl font-bold text-sm bg-teal-600 text-white" id="tab-dashboard">📊 لوحة التحكم</button>
+        <button onclick="App.switchTab('roster')" class="tab-btn whitespace-nowrap px-4 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-roster">👥 الفريق</button>
+        <button onclick="App.switchTab('reports')" class="tab-btn whitespace-nowrap px-4 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-reports">📋 التقارير</button>
     </div>
-
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
 </div>
 
 <script>
-// ============================================================
-// التهيئة
-// ============================================================
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 function byId(id) { return document.getElementById(id); }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function safeText(el, text) { if (el) el.textContent = text; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG'); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
+function safeText(el, t) { if(el) el.textContent = t; }
+function safeHTML(el, h) { if(el) el.innerHTML = h; }
+function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t||'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
-// ============================================================
-// التطبيق
-// ============================================================
 var App = {
-    currentUser: null,
-    staffList: [],
-    currentTab: 'dashboard',
-    chartInstance: null,
+    currentUser: null, staffList: [], currentTab: 'dashboard', chartInstances: {},
+    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash'}else{p.type='password';i.className='fa-solid fa-eye'}},
+    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden')}else{s.init()}}).catch(function(){Swal.close()})},
+    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||perms.indexOf('warehouse_manager')!==-1||perms.indexOf('reports')!==-1;if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp()}})},
+    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.loadStaff();this.switchTab('dashboard')},
+    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden')})},
 
-    togglePass: function() {
-        var passInput = byId('loginPass');
-        var icon = byId('passIcon');
-        if (passInput.type === 'password') {
-            passInput.type = 'text';
-            icon.className = 'fa-solid fa-eye-slash';
-        } else {
-            passInput.type = 'password';
-            icon.className = 'fa-solid fa-eye';
-        }
-    },
+    switchTab: function(t){this.currentTab=t;['dashboard','roster','reports'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-teal-600','text-white');b.classList.add('text-slate-400')}});var a=byId('tab-'+t);if(a){a.classList.add('bg-teal-600','text-white');a.classList.remove('text-slate-400')}if(t==='dashboard')this.renderDashboard();else if(t==='roster')this.renderRoster();else if(t==='reports')this.renderReports()},
 
-    forgotPassword: function() {
-        var email = byId('loginEmail').value.trim();
-        if (!email) { toast('أدخل بريدك الإلكتروني أولاً', 'warning'); return; }
-        Swal.showLoading();
-        supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password' }).then(function(res) {
-            Swal.close();
-            if (res.error) toast(res.error.message, 'error');
-            else toast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك', 'success');
-        }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
-    },
-
-    doLogin: function() {
-        var email = byId('loginEmail').value.trim();
-        var pass = byId('loginPass').value.trim();
-        if (!email || !pass) {
-            byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
-            byId('loginMsg').classList.remove('hidden');
-            return;
-        }
-        byId('loginMsg').classList.add('hidden');
-        var self = this;
-        Swal.showLoading();
-        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res) {
-            Swal.close();
-            if (res.error) {
-                byId('loginMsg').innerText = res.error.message;
-                byId('loginMsg').classList.remove('hidden');
-            } else {
-                if (byId('rememberMe').checked) localStorage.setItem('remember_email', email);
-                else localStorage.removeItem('remember_email');
-                self.init();
-            }
-        }).catch(function() {
-            Swal.close();
-            byId('loginMsg').innerText = 'فشل الاتصال بالخادم';
-            byId('loginMsg').classList.remove('hidden');
-        });
-    },
-
-    init: function() {
-        var self = this;
-        var remembered = localStorage.getItem('remember_email');
-        if (remembered) { byId('loginEmail').value = remembered; byId('rememberMe').checked = true; }
-
-        supabase.auth.getSession().then(function(res) {
-            if (res.data && res.data.session) {
-                self.currentUser = res.data.session.user;
-                var meta = self.currentUser.user_metadata || {};
-                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-                var perms = meta.permissions || [];
-                var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('reports') !== -1);
-
-                if (hasAccess) {
-                    safeText(byId('headerUserName'), meta.name || self.currentUser.email);
-                    self.enterApp();
-                } else {
-                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية مدير مخازن (تحتاج صلاحية التقارير)', icon: 'error' });
-                    supabase.auth.signOut();
-                }
-            }
-        });
-    },
-
-    enterApp: function() {
-        byId('loginScreen').classList.add('hidden');
-        byId('mainApp').classList.remove('hidden');
-        this.switchTab('dashboard');
-    },
-
-    doLogout: function() {
-        var self = this;
-        supabase.auth.signOut().then(function() {
-            self.currentUser = null;
-            byId('mainApp').classList.add('hidden');
-            byId('loginScreen').classList.remove('hidden');
-            byId('loginEmail').value = '';
-            byId('loginPass').value = '';
-            byId('loginMsg').classList.add('hidden');
-        });
-    },
-
-    switchTab: function(tab) {
-        this.currentTab = tab;
-        var tabs = ['dashboard', 'roster', 'reports'];
-        for (var i = 0; i < tabs.length; i++) {
-            var btn = byId('tab-' + tabs[i]);
-            if (btn) { btn.classList.remove('tab-active'); btn.classList.add('text-gray-500'); }
-        }
-        var activeBtn = byId('tab-' + tab);
-        if (activeBtn) { activeBtn.classList.add('tab-active'); activeBtn.classList.remove('text-gray-500'); }
-        if (tab === 'dashboard') this.renderDashboard();
-        else if (tab === 'roster') this.renderRoster();
-        else if (tab === 'reports') this.renderReports();
+    loadStaff: function(){
+        var s=this;
+        supabase.from('users').select('id,name,email,role,active_warehouse_role').then(function(r){s.staffList=r.data||[]});
     },
 
     // ==================== لوحة التحكم ====================
-    renderDashboard: function() {
-        var self = this;
-        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
-        
+    renderDashboard: function(){
+        var s=this; safeHTML(byId('mainContent'),'<div class="mb-6"><div class="skeleton h-20 w-full mb-4"></div><div class="skeleton h-40 w-full mb-3"></div></div>');
         Promise.all([
-            supabase.from('stock_branches').select('qty,cost_price'),
-            supabase.from('items').select('id').lte('reorder_point', 0).gt('qty', 0),
-            supabase.from('runsheets').select('id').in('status', ['Picking','Loading','Delivering']),
-            supabase.from('items').select('id,name,qty,reorder_point').order('qty', { ascending: true }).limit(5)
-        ]).then(function(results) {
-            var stockData = results[0].data || [];
-            var totalValue = 0;
-            for (var i = 0; i < stockData.length; i++) {
-                totalValue += (Number(stockData[i].qty) || 0) * (Number(stockData[i].cost_price) || 0);
-            }
-            
-            var lowStock = results[1].data ? results[1].data.length : 0;
-            var activeRunsheets = results[2].data ? results[2].data.length : 0;
-            
-            var html = '<h2 class="text-lg font-black mb-4">📊 نظرة عامة</h2>';
-            html += '<div class="grid grid-cols-2 gap-3 mb-4">';
-            html += '<div class="stat-card"><div class="text-3xl mb-1">💰</div><div class="text-xl font-black">' + fmtNum(totalValue) + '</div><div class="text-xs text-gray-500">قيمة المخزون</div></div>';
-            html += '<div class="stat-card"><div class="text-3xl mb-1">⚠️</div><div class="text-xl font-black">' + lowStock + '</div><div class="text-xs text-gray-500">أصناف منخفضة</div></div>';
-            html += '<div class="stat-card"><div class="text-3xl mb-1">🔄</div><div class="text-xl font-black">' + activeRunsheets + '</div><div class="text-xs text-gray-500">رانشيتات جارية</div></div>';
-            html += '<div class="stat-card" onclick="App.switchTab(\'reports\')"><div class="text-3xl mb-1">📋</div><div class="text-lg font-black">التقارير</div><div class="text-xs text-gray-500">عرض الكل</div></div>';
-            html += '</div>';
-            
-            html += '<div class="card mb-4"><h3 class="font-bold mb-3">📈 حركة المخزون اليومية</h3><div class="chart-container"><canvas id="stockChart"></canvas></div></div>';
-            
-            safeHTML(byId('mainContent'), html);
-            
-            setTimeout(function() { self.renderStockChart(); }, 300);
-        }).catch(function() {
-            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');
+            supabase.from('stock_branches').select('qty,item_id'),
+            supabase.from('items').select('id,name,qty,reorder_point').order('qty',{ascending:true}).limit(10),
+            supabase.from('runsheets').select('id,status').in('status',['Picking','Loading','Delivering','Returning']),
+            supabase.from('stock_vouchers').select('id,type,status').order('created_at',{ascending:false}).limit(10)
+        ]).then(function(r){
+            var stockItems=r[0].data||[], lowStock=r[1].data||[], activeRS=r[2].data||[], vouchers=r[3].data||[];
+            var totalItems=stockItems.length;
+            var userName=s.currentUser.user_metadata.name||'مدير';
+            var html='<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">'+userName+'</span> 👋</p><p class="text-xs text-slate-400 mt-1">آخر تحديث: '+new Date().toLocaleTimeString('ar-EG')+'</p></div>';
+            html+='<h2 class="text-lg font-black mb-4">📊 مؤشرات الأداء</h2>';
+            html+='<div class="grid grid-cols-2 gap-3 mb-6">';
+            html+='<div class="stat-card"><div class="text-3xl mb-1">📦</div><div class="text-xl font-black">'+totalItems+'</div><div class="text-xs text-slate-400">إجمالي الأصناف</div></div>';
+            html+='<div class="stat-card"><div class="text-3xl mb-1">⚠️</div><div class="text-xl font-black">'+lowStock.length+'</div><div class="text-xs text-slate-400">أصناف منخفضة</div></div>';
+            html+='<div class="stat-card"><div class="text-3xl mb-1">🔄</div><div class="text-xl font-black">'+activeRS.length+'</div><div class="text-xs text-slate-400">عمليات جارية</div></div>';
+            html+='<div class="stat-card"><div class="text-3xl mb-1">📄</div><div class="text-xl font-black">'+vouchers.length+'</div><div class="text-xs text-slate-400">أذونات حديثة</div></div>';
+            html+='</div>';
+            html+='<div class="card mb-4"><h3 class="font-bold mb-3">📈 توزيع العمليات الجارية</h3><div class="chart-container"><canvas id="opsChart"></canvas></div></div>';
+            html+='<button onclick="App.switchTab(\'reports\')" class="btn-primary mt-4"><i class="fa-solid fa-chart-bar ml-2"></i> التقارير التفصيلية</button>';
+            safeHTML(byId('mainContent'),html);
+            setTimeout(function(){s.renderOpsChart(activeRS)},300);
         });
     },
 
-    renderStockChart: function() {
-        var ctx = document.getElementById('stockChart');
-        if (!ctx) return;
-        if (this.chartInstance) this.chartInstance.destroy();
-        this.chartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: ['السبت', 'الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة'],
-                datasets: [{
-                    label: 'داخل',
-                    data: [120, 90, 150, 80, 200, 110, 70],
-                    borderColor: '#0f766e',
-                    backgroundColor: 'rgba(15,118,110,0.1)',
-                    fill: true,
-                    tension: 0.4
-                }, {
-                    label: 'خارج',
-                    data: [80, 110, 70, 130, 90, 100, 60],
-                    borderColor: '#ef4444',
-                    backgroundColor: 'rgba(239,68,68,0.1)',
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom', labels: { font: { family: 'Cairo', size: 10 } } } },
-                scales: {
-                    y: { beginAtZero: true, ticks: { font: { family: 'Cairo', size: 9 } } },
-                    x: { ticks: { font: { family: 'Cairo', size: 9 } } }
-                }
-            }
-        });
+    renderOpsChart: function(activeRS){
+        var ctx=document.getElementById('opsChart');if(!ctx)return;
+        var statuses={Picking:0,Loading:0,Delivering:0,Returning:0};
+        for(var i=0;i<activeRS.length;i++){statuses[activeRS[i].status]++}
+        if(this.chartInstances['opsChart'])this.chartInstances['opsChart'].destroy();
+        this.chartInstances['opsChart']=new Chart(ctx,{type:'doughnut',data:{labels:['تحضير','تحميل','توصيل','مرتجعات'],datasets:[{data:[statuses.Picking,statuses.Loading,statuses.Delivering,statuses.Returning],backgroundColor:['#6366f1','#ea580c','#2563eb','#dc2626']}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{font:{family:'Cairo',size:10}}}}}});
     },
 
     // ==================== الفريق ====================
-    renderRoster: function() {
-        var self = this;
-        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
-        
-        Promise.all([
-            supabase.from('users').select('id, name, email, role, active_warehouse_role'),
-            supabase.from('runsheets').select('picker_id, loader_id').in('status', ['Picked','Loaded']),
-            supabase.from('purchase_orders').select('id').in('status', ['Received'])
-        ]).then(function(results) {
-            var allUsers = results[0].data || [];
-            var runsheetOps = results[1].data || [];
-            var receivedPOs = results[2].data ? results[2].data.length : 0;
-            
-            var warehouseStaff = [];
-            var warehouseRoles = ['مخزني', 'أمين مخزن', 'امين مخزن', 'warehouse'];
-            for (var i = 0; i < allUsers.length; i++) {
-                var u = allUsers[i];
-                var userRole = (u.role || '').toLowerCase();
-                for (var j = 0; j < warehouseRoles.length; j++) {
-                    if (userRole === warehouseRoles[j].toLowerCase()) {
-                        var completedOps = 0;
-                        for (var k = 0; k < runsheetOps.length; k++) {
-                            if (runsheetOps[k].picker_id === u.id || runsheetOps[k].loader_id === u.id) completedOps++;
-                        }
-                        u._completedOps = completedOps;
-                        warehouseStaff.push(u);
-                        break;
-                    }
+    renderRoster: function(){
+        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-teal-400"></i></div>');
+        var roles=['استلام','تحضير','تحميل','مرتجعات','تفريغ','أذونات','جرد','احتياطي'];
+        var icons={'استلام':'📦','تحضير':'📋','تحميل':'🚛','مرتجعات':'↩️','تفريغ':'🔄','أذونات':'📄','جرد':'🔍','احتياطي':'🪑'};
+        var html='<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-slate-400 mb-4">KPI لكل موظف: عدد العمليات المنجزة</p>';
+        if(!s.staffList.length){html+='<div class="card text-center text-slate-400">لا يوجد موظفون</div>'}
+        else {
+            // جلب KPIs من runsheets و purchase_orders
+            Promise.all([
+                supabase.from('runsheets').select('picker_id,loader_id,return_handler_id').in('status',['Picked','Loaded','Returned']),
+                supabase.from('purchase_orders').select('id').in('status',['Received','Partially Received'])
+            ]).then(function(r){
+                var ops=r[0].data||[];
+                var kpiMap={};
+                for(var i=0;i<ops.length;i++){
+                    var ids=[ops[i].picker_id,ops[i].loader_id,ops[i].return_handler_id];
+                    for(var j=0;j<ids.length;j++){if(ids[j])kpiMap[ids[j]]=(kpiMap[ids[j]]||0)+1}
                 }
-            }
-            
-            self.staffList = warehouseStaff;
-            var html = '<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2>';
-            html += '<p class="text-sm text-gray-500 mb-2">عدد الفريق: ' + warehouseStaff.length + ' | أوامر شراء مستلمة: ' + receivedPOs + '</p>';
-            html += '<p class="text-sm text-gray-500 mb-4">اختر دوراً جديداً لكل موظف. التغيير فوري.</p>';
-            
-            if (!self.staffList.length) {
-                html += '<div class="card text-center text-gray-500">لا يوجد موظفون مخزنيون</div>';
-            } else {
-                var roles = ['استلام', 'تحضير', 'تحميل', 'مرتجعات', 'تفريغ', 'جرد', 'أذونات', 'احتياطي'];
-                var icons = { 'استلام':'📦','تحضير':'📋','تحميل':'🚛','مرتجعات':'↩️','تفريغ':'🔄','جرد':'🔍','أذونات':'📄','احتياطي':'🪑' };
-                for (var i = 0; i < self.staffList.length; i++) {
-                    var emp = self.staffList[i];
-                    var role = emp.active_warehouse_role || 'احتياطي';
-                    html += '<div class="card mb-3"><div class="flex justify-between items-center mb-2"><div><span class="font-bold">' + emp.name + '</span><br><span class="text-xs text-gray-400">' + emp.email + '</span></div><span class="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold">✅ ' + emp._completedOps + ' عملية</span></div>';
-                    html += '<div class="flex justify-between items-center mb-3"><span class="text-xs text-gray-500">الدور الحالي:</span><span class="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold">' + (icons[role]||'') + ' ' + role + '</span></div>';
-                    html += '<select class="role-select" onchange="App.updateRole(\'' + emp.id + '\', this.value)">';
-                    for (var j = 0; j < roles.length; j++) {
-                        html += '<option value="' + roles[j] + '"' + (roles[j] === role ? ' selected' : '') + '>' + (icons[roles[j]]||'') + ' ' + roles[j] + '</option>';
-                    }
-                    html += '</select></div>';
-                }
-            }
-            safeHTML(byId('mainContent'), html);
-        }).catch(function() {
-            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');
-        });
+                for(var k=0;k<s.staffList.length;k++){s.staffList[k]._kpi=kpiMap[s.staffList[k].id]||0}
+                s._renderRosterHTML(roles,icons);
+            });
+        }
     },
 
-    updateRole: function(userId, newRole) {
-        var self = this;
-        Swal.showLoading();
-        supabase.from('users').update({ active_warehouse_role: newRole }).eq('id', userId).then(function(res) {
+    _renderRosterHTML: function(roles,icons){
+        var html='<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-slate-400 mb-4">KPI لكل موظف: عدد العمليات المنجزة</p>';
+        for(var i=0;i<this.staffList.length;i++){var emp=this.staffList[i];var role=emp.active_warehouse_role||'احتياطي';
+            html+='<div class="card mb-3 slide-in"><div class="flex justify-between items-center mb-2"><div><span class="font-bold">'+emp.name+'</span><br><span class="text-xs text-slate-400">'+emp.email+'</span></div><span class="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold">✅ '+emp._kpi+' عملية</span></div><div class="flex justify-between items-center mb-3"><span class="text-xs text-slate-500">الدور:</span><span class="bg-teal-100 text-teal-700 px-3 py-1 rounded-full text-xs font-bold">'+(icons[role]||'')+' '+role+'</span></div><select class="w-full p-3 bg-slate-50 rounded-xl border font-bold text-sm" onchange="App.updateRole(\''+emp.id+'\',this.value)">';
+            for(var j=0;j<roles.length;j++){html+='<option value="'+roles[j]+'"'+(roles[j]===role?' selected':'')+'>'+(icons[roles[j]]||'')+' '+roles[j]+'</option>'}
+            html+='</select></div>';
+        }
+        safeHTML(byId('mainContent'),html);
+    },
+
+    updateRole: function(userId,newRole){
+        var s=this; Swal.showLoading();
+        supabase.from('users').update({active_warehouse_role:newRole}).eq('id',userId).then(function(r){
             Swal.close();
-            if (res.error) { Swal.fire({ title: 'خطأ', text: res.error.message, icon: 'error' }); }
-            else {
-                for (var i = 0; i < self.staffList.length; i++) {
-                    if (self.staffList[i].id === userId) { self.staffList[i].active_warehouse_role = newRole; break; }
-                }
-                self.renderRoster();
-            }
+            if(r.error){Swal.fire({title:'خطأ',text:r.error.message,icon:'error'})}
+            else {for(var i=0;i<s.staffList.length;i++){if(s.staffList[i].id===userId){s.staffList[i].active_warehouse_role=newRole;break}}s.renderRoster()}
         });
     },
 
     // ==================== التقارير ====================
-    renderReports: function() {
-        var self = this;
-        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
-        
+    renderReports: function(){
+        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-teal-400"></i></div>');
         Promise.all([
-            supabase.from('stock_branches').select('item_id, qty, items!inner(name)').order('qty', { ascending: false }).limit(10),
-            supabase.from('items').select('id, name, qty, reorder_point').lte('qty', supabase.sql`reorder_point`).gt('qty', 0).limit(20),
-            supabase.from('items').select('id, name, qty, updated_at').order('updated_at', { ascending: true }).limit(20),
-            supabase.from('stock_vouchers').select('id, voucher_code, type, status, created_at').order('created_at', { ascending: false }).limit(20)
-        ]).then(function(results) {
-            var topItems = results[0].data || [];
-            var lowItems = results[1].data || [];
-            var dormantItems = results[2].data || [];
-            var vouchers = results[3].data || [];
-            
-            var html = '<h2 class="text-lg font-black mb-4">📋 التقارير</h2>';
-            
-            // أفضل 10 أصناف
-            html += '<div class="card mb-4"><h3 class="font-bold mb-3">🏆 أفضل 10 أصناف حركة</h3>';
-            if (!topItems.length) { html += '<p class="text-gray-500 text-sm">لا توجد بيانات</p>'; }
-            else {
-                for (var i = 0; i < Math.min(topItems.length, 10); i++) {
-                    var item = topItems[i];
-                    html += '<div class="flex justify-between items-center py-2 border-b"><span class="text-sm">' + (i+1) + '. ' + (item.items ? item.items.name : item.item_id) + '</span><span class="font-bold text-sm">' + fmtNum(item.qty) + '</span></div>';
-                }
-            }
-            html += '</div>';
-            
-            // أصناف منخفضة
-            html += '<div class="card mb-4"><h3 class="font-bold mb-3">⚠️ أصناف منخفضة (أقل من حد الطلب)</h3>';
-            if (!lowItems.length) { html += '<p class="text-green-600 text-sm">✅ لا توجد أصناف منخفضة</p>'; }
-            else {
-                for (var j = 0; j < Math.min(lowItems.length, 10); j++) {
-                    html += '<div class="flex justify-between items-center py-2 border-b"><span class="text-sm">' + lowItems[j].name + '</span><span class="text-red-600 font-bold text-sm">' + fmtNum(lowItems[j].qty) + ' / حد: ' + fmtNum(lowItems[j].reorder_point) + '</span></div>';
-                }
-            }
-            html += '</div>';
-            
-            // أذونات مخزنية
-            html += '<div class="card mb-4"><h3 class="font-bold mb-3">📄 آخر الأذونات المخزنية</h3>';
-            if (!vouchers.length) { html += '<p class="text-gray-500 text-sm">لا توجد أذونات</p>'; }
-            else {
-                for (var k = 0; k < Math.min(vouchers.length, 10); k++) {
-                    var v = vouchers[k];
-                    var statusColor = v.status === 'Completed' ? 'text-green-600' : v.status === 'Draft' ? 'text-gray-400' : 'text-blue-600';
-                    html += '<div class="flex justify-between items-center py-2 border-b"><div><span class="text-sm font-bold">' + v.voucher_code + '</span><br><span class="text-xs text-gray-400">' + v.type + '</span></div><span class="' + statusColor + ' text-xs font-bold">' + v.status + '</span></div>';
-                }
-            }
-            html += '</div>';
-            
-            safeHTML(byId('mainContent'), html);
-        }).catch(function() {
-            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل التقارير</div>');
+            supabase.from('items').select('id,name,qty,reorder_point').order('qty',{ascending:false}).limit(10),
+            supabase.from('items').select('id,name,qty,reorder_point').order('qty',{ascending:true}).limit(10),
+            supabase.from('stock_vouchers').select('voucher_code,type,status,voucher_date').order('voucher_date',{ascending:false}).limit(15),
+            supabase.from('runsheets').select('runsheet_code,status,run_date').order('run_date',{ascending:false}).limit(20)
+        ]).then(function(r){
+            var topItems=r[0].data||[], lowItems=r[1].data||[], vouchers=r[2].data||[], runsheets=r[3].data||[];
+            var html='<h2 class="text-lg font-black mb-4">📋 التقارير</h2>';
+
+            html+='<div class="card mb-4"><h3 class="font-bold mb-3">🏆 أفضل 10 أصناف</h3>';
+            for(var i=0;i<topItems.length;i++){html+='<div class="flex justify-between py-2 border-b text-sm"><span>'+(i+1)+'. '+topItems[i].name+'</span><span class="font-bold">'+topItems[i].qty+'</span></div>'}
+            html+='</div>';
+
+            html+='<div class="card mb-4"><h3 class="font-bold mb-3">⚠️ الأصناف المنخفضة</h3>';
+            for(var j=0;j<lowItems.length;j++){html+='<div class="flex justify-between py-2 border-b text-sm"><span>'+lowItems[j].name+'</span><span class="text-red-600 font-bold">'+lowItems[j].qty+' / '+lowItems[j].reorder_point+'</span></div>'}
+            html+='</div>';
+
+            html+='<div class="card mb-4"><h3 class="font-bold mb-3">📄 آخر الأذونات المخزنية</h3>';
+            for(var k=0;k<vouchers.length;k++){var v=vouchers[k];html+='<div class="flex justify-between py-2 border-b text-sm"><span class="font-bold">'+v.voucher_code+'</span><span class="text-xs text-slate-400">'+v.type+' | '+v.status+'</span></div>'}
+            html+='</div>';
+
+            html+='<div class="card mb-4"><h3 class="font-bold mb-3">🚛 آخر الرانشيتات</h3>';
+            for(var m=0;m<runsheets.length;m++){var rs=runsheets[m];html+='<div class="flex justify-between py-2 border-b text-sm"><span class="font-bold">'+rs.runsheet_code+'</span><span class="text-xs text-slate-400">'+rs.status+' | '+rs.run_date+'</span></div>'}
+            html+='</div>';
+
+            safeHTML(byId('mainContent'),html);
         });
     }
 };
-
-// ============================================================
-// بدء التشغيل
-// ============================================================
-document.addEventListener('DOMContentLoaded', function() { App.init(); });
+if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){})}
+document.addEventListener('DOMContentLoaded',function(){App.init()});
 </script>
 </body>
 </html>
