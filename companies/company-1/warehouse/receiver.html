@@ -110,7 +110,17 @@ var App = {
 
     submitReceiving: function(i,code){
         var items=[]; var qtyInputs=document.querySelectorAll('#details-'+i+' input[type="number"]');
-        for(var j=0;j<qtyInputs.length;j++){var q=parseInt(qtyInputs[j].value)||0;items.push({itemCode:'',itemName:'',receivedQty:q,reason:''});}
+        for(var j=0;j<qtyInputs.length;j++){
+            var q=parseInt(qtyInputs[j].value)||0;
+            // استخراج item_code من العنصر الشقيق (p الذي يحتوي على الكود)
+            var parentRow = qtyInputs[j].parentElement;
+            var itemCode = '';
+            if(parentRow){
+                var codeEl = parentRow.querySelector('.text-xs.text-slate-400');
+                if(codeEl) itemCode = codeEl.textContent.trim();
+            }
+            items.push({itemCode: itemCode, itemName: '', receivedQty: q, reason: ''});
+        }
         var s=this; Swal.fire({title:'تأكيد الاستلام',text:'اعتماد استلام '+code+'؟',icon:'question',showCancelButton:true,confirmButtonText:'نعم',cancelButtonText:'لا',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-emerald-600',cancelButton:'!rounded-xl'}}).then(function(r){if(!r.isConfirmed)return;Swal.showLoading();
         supabase.auth.getSession().then(function(ses){var t=ses.data.session.access_token;return fetch(SUPABASE_URL+'/functions/v1/receive-purchase',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({po_code:code,itemsReceived:items,notes:''})});}).then(function(r){return r.json();}).then(function(j){Swal.close();if(j.success){toast('تم الاستلام','success');s.loadPurchaseOrders();}else{toast(j.msg||'فشل','error');}}).catch(function(){Swal.close();});
         });
