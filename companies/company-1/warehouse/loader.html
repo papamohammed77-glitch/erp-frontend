@@ -298,7 +298,6 @@ var App = {
                 var isAvailable = (rs.status === 'Picked');
 
                 if(isActive){
-                    // بناء الجلسة من البيانات الحقيقية
                     self.session = { runsheet_code: code, runsheet_id: rs.id, start_time: rs.loader_start || new Date().toISOString(), items: [] };
                     for(var i = 0; i < items.length; i++){
                         self.session.items.push({
@@ -315,7 +314,6 @@ var App = {
                     return;
                 }
 
-                // عرض الرانشيت الجاهز
                 var html = '';
                 html += '<div class="flex items-center gap-3 mb-6"><button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-orange-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + '</span></div>';
                 if(isAvailable){
@@ -324,11 +322,22 @@ var App = {
                 html += '<p class="text-sm text-slate-400 mb-4">الأصناف الجاهزة للتحميل:</p>';
                 for(var k = 0; k < items.length; k++){
                     var it = items[k];
-                    html += '<div class="card mb-2"><div class="flex items-center gap-4"><div class="w-12 h-12 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></div><div><p class="font-bold text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + (it.item_code || '') + ' | محضّر: <span class="font-bold text-slate-600">' + (it.qty_picked || 0) + '</span> ' + (it.unit || 'حبة') + '</p></div></div></div>';
+                    html += '<div class="card mb-2 cursor-pointer" onclick="App.showItemDetail(\'' + it.item_code + '\', \'' + (it.item_name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\', ' + (it.qty_picked || 0) + ', \'' + (it.description || '').replace(/'/g, "\\'") + '\')"><div class="flex items-center gap-4">' + self._img(it.item_code) + '<div><p class="font-bold text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + (it.item_code || '') + ' | محضّر: <span class="font-bold text-slate-600">' + (it.qty_picked || 0) + '</span> ' + (it.unit || 'حبة') + '</p></div></div></div>';
                 }
                 safeHTML(byId('mainContent'), html);
             });
         });
+    },
+
+    _img: function(code){
+        var url = ITEMS_IMAGE_CACHE[code];
+        return url ? '<img src="' + url + '" class="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow-sm" onerror="this.style.display=\'none\'">' : '<div class="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></div>';
+    },
+
+    showItemDetail: function(code, name, unit, qty, desc){
+        var img = ITEMS_IMAGE_CACHE[code] || '';
+        var imgHtml = img ? '<img src="' + img + '" class="w-full h-48 object-cover rounded-2xl mb-4 shadow-sm" onerror="this.style.display=\'none\'">' : '<div class="w-full h-48 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400 mb-4"><i class="fa-solid fa-box text-4xl"></i></div>';
+        Swal.fire({ html: '<div class="text-right">' + imgHtml + '<h3 class="font-black text-xl text-slate-800 mb-2">' + name + '</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-400">الكود</span><span class="font-bold text-slate-600">' + code + '</span></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + unit + '</span></div><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة</span><span class="font-bold text-orange-600 text-lg">' + qty + '</span></div></div>' + (desc ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + desc + '</p>' : '') + '</div>', width: '380px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-300 !text-lg' } });
     },
 
     // ==================== بدء التحميل ====================
@@ -401,7 +410,7 @@ var App = {
         html += '<p class="text-sm text-slate-400 mb-4">اضغط على الصنف لإدخال الكمية المحمّلة</p>';
         for(var i = 0; i < s.items.length; i++){
             var it = s.items[i]; var isDone = it.qty_loaded > 0;
-            html += '<div class="card mb-3 cursor-pointer slide-in ' + (isDone ? 'border-r-4 border-orange-400' : '') + '" onclick="App.editLoadedItem(' + i + ')"><div class="flex items-center justify-between"><div class="flex items-center gap-4"><div class="w-12 h-12 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></div><div><p class="font-bold text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400 mt-0.5">محضّر: ' + (it.qty_picked || 0) + ' | <span class="font-bold ' + (isDone ? 'text-orange-600' : 'text-slate-500') + '">محمّل: ' + (it.qty_loaded || 0) + '</span></p></div></div><i class="fa-solid fa-pen text-slate-300 text-sm"></i></div></div>';
+            html += '<div class="card mb-3 cursor-pointer slide-in ' + (isDone ? 'border-r-4 border-orange-400' : '') + '" onclick="App.editLoadedItem(' + i + ')"><div class="flex items-center justify-between"><div class="flex items-center gap-4">' + self._img(it.item_code) + '<div><p class="font-bold text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400 mt-0.5">محضّر: ' + (it.qty_picked || 0) + ' | <span class="font-bold ' + (isDone ? 'text-orange-600' : 'text-slate-500') + '">محمّل: ' + (it.qty_loaded || 0) + '</span></p></div></div><i class="fa-solid fa-pen text-slate-300 text-sm"></i></div></div>';
         }
         html += '<button onclick="App.completeLoading()" class="btn-primary mt-6"><i class="fa-solid fa-check ml-2"></i> إنهاء التحميل</button>';
         html += '<button onclick="App.cancelLoading(\'' + s.runsheet_code + '\')" class="btn-danger w-full mt-3"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التحميل</button>';
@@ -436,7 +445,6 @@ var App = {
             if(r.isConfirmed){
                 self.session.items[index].qty_loaded = r.value.qty;
                 self.session.items[index].notes = r.value.notes;
-                // حفظ فوري في قاعدة البيانات
                 supabase.from('run_sheet_details').update({ qty_loaded: r.value.qty }).eq('runsheet_id', self.session.runsheet_id || null).eq('item_code', it.item_code).then(function(){});
                 self.renderActiveSession();
                 if(r.value.qty < it.qty_picked && !r.value.notes){
