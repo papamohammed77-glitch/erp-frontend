@@ -194,24 +194,7 @@ var App = {
     enterApp: function(){
         byId('loginScreen').classList.add('hidden');
         byId('mainApp').classList.remove('hidden');
-        this.checkSession();
-    },
-
-    checkSession: function(){
-        var self = this;
-        db.session.toArray().then(function(sessions){
-            if(sessions.length > 0 && sessions[0].runsheet_code){
-                Swal.fire({
-                    title: 'جلسة سابقة',
-                    text: 'لديك جلسة تحضير سابقة للرانشيت ' + sessions[0].runsheet_code + '. استئناف؟',
-                    icon: 'question', showCancelButton: true, confirmButtonText: 'نعم', cancelButtonText: 'لا',
-                    customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-indigo-600', cancelButton: '!rounded-xl' }
-                }).then(function(r){
-                    if(r.isConfirmed){ self.session = sessions[0]; self.renderActiveSession(); }
-                    else { db.session.clear(); self.switchTab('pending'); }
-                });
-            } else { self.switchTab('pending'); }
-        });
+        this.switchTab('pending');
     },
 
     switchTab: function(tab){
@@ -330,6 +313,7 @@ var App = {
         safeHTML(dropdown, html); dropdown.classList.remove('hidden');
     },
 
+    // ==================== ✅ فتح تفاصيل الرانشيت (الإصلاح الجذري) ====================
     openRunsheet: function(code){
         var self = this;
         byId('searchDropdown').classList.add('hidden');
@@ -337,20 +321,34 @@ var App = {
         supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle().then(function(rsRes){
             if(!rsRes.data){ toast('الرانشيت غير موجود', 'error'); self.renderPendingTab(); return; }
             var rs = rsRes.data;
+            // ✅ تحميل الأصناف مباشرة من قاعدة البيانات
             supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id).then(function(detRes){
                 var items = detRes.data || [];
-                var isActive = (rs.status === 'Picking' && (rs.picker_id === self.pubUserId || rs.picker_id === self.currentUser.email));
-                var isOpen = (rs.status === 'Open');
+                // ✅ إذا كان الرانشيت قيد التحضير لهذا المحضر، نعرض الكميات من قاعدة البيانات مباشرة
+                if(rs.status === 'Picking' && (rs.picker_id === self.pubUserId || rs.picker_id === self.currentUser.email)){
+                    self.session = { runsheet_code: code, start_time: rs.picker_start || new Date().toISOString(), items: [] };
+                    for(var i = 0; i < items.length; i++){
+                        self.session.items.push({
+                            item_code: items[i].item_code,
+                            item_name: items[i].item_name || '',
+                            unit: items[i].unit || 'حبة',
+                            qty_ordered: items[i].qty_ordered || 0,
+                            qty_picked: items[i].qty_picked || 0,  // ✅ الكمية الحقيقية من قاعدة البيانات
+                            notes: items[i].notes || ''
+                        });
+                    }
+                    self.renderActiveSession();
+                    return;
+                }
+                // عرض تفاصيل الرانشيت المفتوح (بدون جلسة)
                 var html = '';
                 html += '<div class="flex items-center gap-3 mb-6"><button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + '</span></div>';
-                if(isOpen){ html += '<button onclick="App.startPicking(\'' + code + '\')" class="btn-primary mb-6 sticky-top"><i class="fa-solid fa-play ml-2"></i> بدء التحضير</button>'; }
-                if(isActive){
-                    html += '<button onclick="App.resumePicking(\'' + code + '\')" class="btn-primary mb-6 sticky-top"><i class="fa-solid fa-play ml-2"></i> متابعة التحضير</button>';
-                    html += '<button onclick="App.cancelPickingFromDetail(\'' + code + '\')" class="btn-danger w-full mb-6"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التحضير</button>';
+                if(rs.status === 'Open'){
+                    html += '<button onclick="App.startPicking(\'' + code + '\')" class="btn-primary mb-6 sticky-top"><i class="fa-solid fa-play ml-2"></i> بدء التحضير</button>';
                 }
                 html += '<p class="text-sm text-slate-400 mb-6">اضغط على الصنف لرؤية التفاصيل</p>';
-                for(var i = 0; i < items.length; i++){
-                    var it = items[i];
+                for(var k = 0; k < items.length; k++){
+                    var it = items[k];
                     html += '<div class="card mb-3 cursor-pointer slide-in" onclick="App.showItemDetail(\'' + it.item_code + '\', \'' + (it.item_name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\', ' + (it.qty_ordered || 0) + ', \'' + (it.description || '').replace(/'/g, "\\'") + '\')"><div class="flex items-center gap-4">' + self._img(it.item_code) + '<div><p class="font-bold text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400 mt-0.5">' + (it.unit || 'حبة') + ' | الكمية: <span class="font-bold text-slate-600">' + (it.qty_ordered || 0) + '</span></p></div></div></div>';
                 }
                 safeHTML(byId('mainContent'), html);
@@ -384,29 +382,9 @@ var App = {
         }).then(function(json){
             Swal.close();
             if(!json || !json.success){ toast((json && json.msg) || 'فشل', 'error'); return; }
-            toast('تم بنجاح', 'success'); self.createSession(code);
+            toast('تم بنجاح', 'success');
+            self.openRunsheet(code);  // ✅ إعادة فتح الرانشيت لتحميل الجلسة
         }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
-    },
-
-    createSession: function(code){
-        var self = this;
-        supabase.from('runsheets').select('id').eq('runsheet_code', code).maybeSingle().then(function(rsRes){
-            if(!rsRes.data){ toast('الرانشيت غير موجود', 'error'); return; }
-            var rsId = rsRes.data.id;
-            supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsId).then(function(detRes){
-                var items = detRes.data || [];
-                var session = { runsheet_code: code, start_time: new Date().toISOString(), items: [] };
-                for(var i = 0; i < items.length; i++){
-                    session.items.push({ item_code: items[i].item_code, item_name: items[i].item_name || '', unit: items[i].unit || 'حبة', qty_ordered: items[i].qty_ordered || 0, qty_picked: 0, notes: '' });
-                }
-                db.session.clear().then(function(){ db.session.put(session).then(function(){ self.session = session; self.renderActiveSession(); }); });
-            });
-        });
-    },
-
-    resumePicking: function(code){
-        var self = this;
-        db.session.get(code).then(function(s){ if(s){ self.session = s; self.renderActiveSession(); } else { self.createSession(code); } });
     },
 
     cancelPicking: function(code){
@@ -427,8 +405,6 @@ var App = {
             }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
         });
     },
-
-    cancelPickingFromDetail: function(code){ this.cancelPicking(code); },
 
     renderActiveSession: function(){
         var self = this; if(!this.session){ this.renderPendingTab(); return; }
@@ -458,6 +434,7 @@ var App = {
         }, 1000);
     },
 
+    // ==================== ✅ تحرير الكمية (مع مانع الزيادة) ====================
     editPickedItem: function(index){
         var self = this; var it = this.session.items[index];
         Swal.fire({
@@ -465,12 +442,16 @@ var App = {
             html: '<div class="text-right"><p class="text-sm text-slate-400 mb-4">الكمية المطلوبة: <strong class="text-slate-700">' + it.qty_ordered + '</strong></p><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المحضّرة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="' + it.qty_picked + '" min="0" max="' + it.qty_ordered + '"><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes || '') + '" placeholder="سبب النقص..."></div>',
             showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
             customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-indigo-600 !px-8', cancelButton: '!rounded-xl' },
-            preConfirm: function(){ return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-qty').value) || 0, it.qty_ordered)), notes: document.getElementById('swal-notes').value.trim() }; }
+            preConfirm: function(){
+                return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-qty').value) || 0, it.qty_ordered)), notes: document.getElementById('swal-notes').value.trim() };
+            }
         }).then(function(r){
             if(r.isConfirmed){
                 self.session.items[index].qty_picked = r.value.qty;
                 self.session.items[index].notes = r.value.notes;
-                db.session.put(self.session).then(function(){ self.renderActiveSession(); });
+                // حفظ فوري في قاعدة البيانات
+                supabase.from('run_sheet_details').update({ qty_picked: r.value.qty }).eq('runsheet_id', self.session.runsheet_id || null).eq('item_code', it.item_code).then(function(){});
+                self.renderActiveSession();
                 // تنبيه سبب النقص
                 if(r.value.qty < it.qty_ordered && !r.value.notes){
                     Swal.fire({
@@ -478,9 +459,7 @@ var App = {
                         text: 'الكمية المحضّرة أقل من المطلوبة. هل تريد إضافة سبب النقص؟',
                         icon: 'question', showCancelButton: true, confirmButtonText: 'إضافة سبب', cancelButtonText: 'تخطي',
                         customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl' }
-                    }).then(function(r2){
-                        if(r2.isConfirmed){ self.editPickedItem(index); }
-                    });
+                    }).then(function(r2){ if(r2.isConfirmed){ self.editPickedItem(index); } });
                 }
             }
         });
@@ -496,7 +475,6 @@ var App = {
             else if(it.qty_picked > 0) partialCount++;
             else zeroCount++;
         }
-        // نافذة تأكيد التلخيص
         var summaryHtml = '<div class="text-right text-sm"><p>أنت على وشك إنهاء تحضير الرانشيت <strong>' + this.session.runsheet_code + '</strong>.</p><div class="mt-3 space-y-1"><div>✅ <strong>' + fullCount + '</strong> أصناف مكتملة</div><div>⚠️ <strong>' + partialCount + '</strong> أصناف منقوصة</div><div>❌ <strong>' + zeroCount + '</strong> أصناف لم تُحضّر</div></div>';
         if(partialCount > 0 || zeroCount > 0){
             summaryHtml += '<hr class="my-3"><p class="text-amber-600 font-bold text-xs">الأصناف الناقصة:</p><ul class="text-xs space-y-1 mt-1">';
@@ -509,7 +487,6 @@ var App = {
             summaryHtml += '</ul>';
         }
         summaryHtml += '</div>';
-
         Swal.fire({
             title: 'تأكيد إنهاء التحضير',
             html: summaryHtml,
@@ -535,7 +512,7 @@ var App = {
     // ==================== تبويب مكتملة ====================
     renderCompletedTab: function(){
         var self = this;
-        safeHTML(byId('mainContent'), '<div class="text-center py-20"><div class="skeleton h-12 w-3/4 mb-3"></div><div class="skeleton h-12 w-1/2 mb-3"></div></div>');
+        safeHTML(byId('mainContent'), '<div class="text-center py-20"><div class="skeleton h-12 w-3/4 mb-3"></div></div>');
         supabase.from('runsheets').select('runsheet_code, run_date, status').eq('status', 'Picked').eq('picker_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(50).then(function(res){
             self.completedRunsheets = res.data || [];
             self.renderCompletedList(self.completedRunsheets);
@@ -569,7 +546,6 @@ var App = {
 
     reopenPicking: function(code){
         var self = this;
-        // تحقق سريع من الحالة الحالية قبل الإعادة
         supabase.from('runsheets').select('status').eq('runsheet_code', code).maybeSingle().then(function(res){
             if(!res.data || res.data.status !== 'Picked'){
                 Swal.fire({ title: 'لا يمكن التعديل', text: 'الرانشيت لم يعد في حالة مكتمل التحضير. قد يكون قيد التحميل.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
