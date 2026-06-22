@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>الجرد | الروائع ERP</title>
+    <title>الجرد الذكي | الروائع ERP</title>
     <link rel="manifest" href="../manifest.json">
     <meta name="theme-color" content="#b45309">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
@@ -24,6 +24,9 @@
         @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
         @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        #reader__scan_region{min-height:200px;background:#000;border-radius:24px;overflow:hidden;}
+        #reader__scan_region video{width:100%!important;height:100%!important;object-fit:cover}
+        .scanner-active{position:fixed;inset:0;z-index:100;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -35,7 +38,7 @@
                 <i class="fa-solid fa-clipboard-check text-white text-3xl"></i>
             </div>
             <h1 class="font-black text-2xl text-slate-800">الروائع</h1>
-            <p class="text-sm text-slate-400 font-semibold mt-1">الجرد</p>
+            <p class="text-sm text-slate-400 font-semibold mt-1">الجرد الذكي</p>
         </div>
         <div class="space-y-4">
             <div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-amber-500 outline-none font-semibold text-sm"></div>
@@ -48,7 +51,7 @@
 
 <div id="mainApp" class="hidden flex flex-col h-full">
     <header class="bg-gradient-to-r from-amber-700 to-amber-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
-        <span class="font-black text-base">🔍 الجرد</span>
+        <span class="font-black text-base">🔍 الجرد الذكي</span>
         <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
     </header>
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
@@ -65,21 +68,24 @@ function safeHTML(el, html) { if (el) el.innerHTML = html; }
 function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
 var App = {
-    currentUser: null, pubUserId: null, cart: [], countType: 'branch', entityId: '',
+    currentUser: null, pubUserId: null, cart: [], countType: 'branch', entityId: '', html5QrcodeScanner: null,
+
     togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
     doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
     init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('warehouse')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}supabase.from('users').select('id,name,active_warehouse_role').eq('email',s.currentUser.email).maybeSingle().then(function(u){s.pubUserId=u.data?u.data.id:null;var n=u.data?u.data.name:null;var ar=u.data?u.data.active_warehouse_role:'';if(!isO&&ar!=='جرد'){Swal.fire({title:'تنبيه',text:'دورك النشط هو "'+(ar||'غير محدد')+'"',icon:'warning'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),n||m.name||s.currentUser.email);s.renderMain();}).catch(function(){safeText(byId('headerUserName'),m.name||s.currentUser.email);s.renderMain();});}});},
     enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');},
-    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
+    doLogout: function(){this.stopScanner();supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
 
     renderMain: function(){
         this.enterApp(); this.cart=[];
         var html='<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">'+(this.currentUser.user_metadata.name||'زميل')+'</span> 👋</p></div>';
-        html+='<h2 class="text-lg font-black mb-4">🔍 الجرد</h2>';
-        html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">نوع الجرد</label><select id="countType" onchange="App.countType=this.value" class="w-full p-3 bg-slate-50 rounded-xl border font-bold"><option value="branch">جرد فرع</option><option value="vehicle">جرد سيارة</option><option value="general">جرد عام</option></select></div>';
+        html+='<h2 class="text-lg font-black mb-4">🔍 إعداد الجرد</h2>';
+        html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">نوع الجرد</label><select id="countType" onchange="App.countType=this.value" class="w-full p-3 bg-slate-50 rounded-xl border font-bold"><option value="branch">🏭 جرد فرع</option><option value="vehicle">🚛 جرد سيارة</option><option value="general">🏢 جرد عام</option></select></div>';
         html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">المعرف (الفرع/المندوب)</label><input id="countEntity" class="w-full p-3 bg-slate-50 rounded-xl border font-bold" placeholder="أدخل المعرف..."></div>';
+        html+='<hr class="my-6">';
+        html+='<div class="flex items-center justify-between mb-4"><h2 class="text-lg font-black">📦 أصناف الجرد <span id="cartCount" class="text-sm text-slate-400">(0)</span></h2><button onclick="App.startScanner()" class="bg-amber-600 text-white w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-200"><i class="fa-solid fa-qrcode text-xl"></i></button></div>';
+        html+='<div id="cartItems" class="mb-4"><p class="text-slate-400 text-center py-4">أضف أصنافاً يدوياً أو امسح الباركود</p></div>';
         html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">بحث عن صنف</label><div class="flex gap-2"><input id="itemSearch" oninput="App.searchItems(this.value)" placeholder="ابحث..." class="flex-1 p-3 bg-slate-50 rounded-xl border font-bold"></div><div id="searchResults" class="mt-2 max-h-48 overflow-y-auto"></div></div>';
-        html+='<div class="card mb-4"><h3 class="font-bold mb-2">أصناف الجرد <span id="cartCount" class="text-xs text-slate-400">(0)</span></h3><div id="cartItems"><p class="text-slate-400 text-center py-4">أضف أصنافاً</p></div></div>';
         html+='<button onclick="App.submitCount()" class="btn-primary text-lg py-4"><i class="fa-solid fa-check ml-2"></i> حفظ الجرد</button>';
         safeHTML(byId('mainContent'),html);
     },
@@ -89,8 +95,18 @@ var App = {
         supabase.from('items').select('item_code,name,unit').or('name.ilike.%'+q+'%,item_code.ilike.%'+q+'%').limit(10).then(function(r){var items=r.data||[];var html='';for(var i=0;i<items.length;i++){html+='<div onclick="App.addToCart(\''+items[i].item_code+'\',\''+(items[i].name||'').replace(/'/g,"\\'")+'\',\''+(items[i].unit||'حبة')+'\')" class="p-2 hover:bg-amber-50 cursor-pointer border-b font-bold text-sm">'+items[i].name+' ('+items[i].item_code+')</div>';}safeHTML(byId('searchResults'),html||'<p class="text-slate-400 text-sm p-2">لا توجد نتائج</p>');});
     },
 
-    addToCart: function(code,name,unit){var ex=null;for(var i=0;i<this.cart.length;i++){if(this.cart[i].code===code){ex=this.cart[i];break;}}if(ex){ex.qty++;}else{this.cart.push({code:code,name:name,unit:unit,qty:1});}this.renderCart();},
-    renderCart: function(){if(!this.cart.length){safeHTML(byId('cartItems'),'<p class="text-slate-400 text-center py-4">أضف أصنافاً</p>');safeText(byId('cartCount'),'(0)');return;}var html='';for(var i=0;i<this.cart.length;i++){var it=this.cart[i];html+='<div class="flex justify-between items-center p-2 border-b"><span class="font-bold text-sm">'+it.name+'</span><div class="flex items-center gap-1"><button onclick="App.decCart('+i+')" class="w-6 h-6 bg-slate-100 rounded-full text-xs">-</button><span class="w-6 text-center font-black">'+it.qty+'</span><button onclick="App.incCart('+i+')" class="w-6 h-6 bg-amber-600 text-white rounded-full text-xs">+</button></div></div>';}safeHTML(byId('cartItems'),html);safeText(byId('cartCount'),'('+this.cart.length+')');},
+    addToCart: function(code,name,unit){
+        var ex=null;for(var i=0;i<this.cart.length;i++){if(this.cart[i].code===code){ex=this.cart[i];break;}}
+        if(ex){ex.qty++;}else{this.cart.push({code:code,name:name,unit:unit,qty:1});}
+        this.renderCart();
+        if(window.navigator && window.navigator.vibrate) window.navigator.vibrate(50);
+        toast('✅ تمت إضافة ' + name, 'success');
+    },
+
+    renderCart: function(){
+        if(!this.cart.length){safeHTML(byId('cartItems'),'<p class="text-slate-400 text-center py-4">أضف أصنافاً يدوياً أو امسح الباركود</p>');safeText(byId('cartCount'),'(0)');return;}
+        var html='';for(var i=0;i<this.cart.length;i++){var it=this.cart[i];html+='<div class="flex justify-between items-center p-3 bg-white rounded-2xl mb-2 shadow-sm"><span class="font-bold text-sm">'+it.name+'</span><div class="flex items-center gap-2"><button onclick="App.decCart('+i+')" class="w-8 h-8 bg-slate-100 rounded-full text-xs font-black">-</button><span class="w-8 text-center font-black text-lg">'+it.qty+'</span><button onclick="App.incCart('+i+')" class="w-8 h-8 bg-amber-600 text-white rounded-full text-xs font-black">+</button></div></div>';}safeHTML(byId('cartItems'),html);safeText(byId('cartCount'),'('+this.cart.length+')');
+    },
     incCart: function(i){this.cart[i].qty++;this.renderCart();},
     decCart: function(i){this.cart[i].qty--;if(this.cart[i].qty<=0)this.cart.splice(i,1);this.renderCart();},
 
@@ -100,6 +116,65 @@ var App = {
         var items=[];for(var i=0;i<this.cart.length;i++){items.push({itemCode:this.cart[i].code,itemName:this.cart[i].name,unit:this.cart[i].unit,qty:this.cart[i].qty,unitPrice:0,notes:''});}
         var s=this;Swal.showLoading();
         supabase.auth.getSession().then(function(se){var t=se.data.session.access_token;return fetch(SUPABASE_URL+'/functions/v1/save-inventory-count',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({type:type,entityId:entity||'MAIN',reference:'جرد - '+new Date().toLocaleDateString('ar-EG'),items:items})});}).then(function(r){return r.json();}).then(function(j){Swal.close();if(j.success){toast('تم حفظ الجرد','success');s.cart=[];s.renderCart();}else{toast(j.msg||'فشل','error');}}).catch(function(){Swal.close();toast('فشل الاتصال','error');});
+    },
+
+    startScanner: function(){
+        var self = this;
+        if(this.html5QrcodeScanner){
+            this.html5QrcodeScanner.resume();
+            return;
+        }
+        Swal.fire({
+            title: 'مسح الباركود',
+            html: '<div id="reader" style="width:100%;max-width:300px;margin:0 auto;"></div>',
+            showCancelButton: false,
+            showConfirmButton: false,
+            customClass: { popup: '!rounded-3xl !p-4' },
+            didOpen: function() {
+                self.html5QrcodeScanner = new Html5Qrcode("reader");
+                self.html5QrcodeScanner.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: { width: 250, height: 150 } },
+                    function(decodedText) {
+                        // نجاح المسح
+                        supabase.from('items').select('item_code, name, unit').eq('item_code', decodedText).maybeSingle().then(function(r){
+                            if(r.data) {
+                                self.addToCart(r.data.item_code, r.data.name, r.data.unit || 'حبة');
+                            } else {
+                                toast('❌ صنف غير معروف: ' + decodedText, 'error');
+                            }
+                        });
+                    },
+                    function(errorMessage) {
+                        // فشل القراءة (طبيعي جداً في كل إطار)
+                    }
+                ).catch(function(err) {
+                    Swal.close();
+                    toast('فشل تشغيل الكاميرا: ' + err.message, 'error');
+                });
+            },
+            willClose: function() {
+                if(self.html5QrcodeScanner) {
+                    self.html5QrcodeScanner.stop().then(function() {
+                        self.html5QrcodeScanner.clear();
+                        self.html5QrcodeScanner = null;
+                    }).catch(function(err) {
+                        console.error("فشل إيقاف الماسح:", err);
+                    });
+                }
+            }
+        });
+    },
+
+    stopScanner: function() {
+        if(this.html5QrcodeScanner) {
+            this.html5QrcodeScanner.stop().then(function() {
+                this.html5QrcodeScanner.clear();
+                this.html5QrcodeScanner = null;
+            }.bind(this)).catch(function(err) {
+                console.error("فشل إيقاف الماسح:", err);
+            });
+        }
     }
 };
 if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
