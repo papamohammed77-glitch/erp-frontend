@@ -190,8 +190,9 @@ var App = {
     renderPendingTab: function(){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>');
-        var p1 = supabase.from('runsheets').select('runsheet_code, status, run_date, loader_id').eq('status', 'Loading').eq('loader_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
-        var p2 = supabase.from('runsheets').select('runsheet_code, status, run_date').eq('status', 'Picked').order('run_date', { ascending: false }).limit(50);
+        // ✅ جلب عدد الأصناف مع الرانشيت
+        var p1 = supabase.from('runsheets').select('runsheet_code, status, run_date, loader_id, run_sheet_details(count)').eq('status', 'Loading').eq('loader_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
+        var p2 = supabase.from('runsheets').select('runsheet_code, status, run_date, run_sheet_details(count)').eq('status', 'Picked').order('run_date', { ascending: false }).limit(50);
         Promise.all([p1, p2]).then(function(results){
             var myRunsheets = results[0].data || [];
             var availableRunsheets = results[1].data || [];
@@ -228,6 +229,7 @@ var App = {
 
     _buildRunsheetCard: function(rs, isActive){
         var code = rs.runsheet_code || '';
+        var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
         var statusIcon = isActive ? '🔄' : '📦';
         var statusLabel = isActive ? 'قيد التحميل' : 'جاهز';
         var statusColor = isActive ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600';
@@ -241,7 +243,7 @@ var App = {
                     '<span class="text-2xl">' + statusIcon + '</span>' +
                     '<div>' +
                         '<span class="font-black text-base text-slate-800">' + code + '</span>' +
-                        '<p class="text-xs text-slate-400 mt-0.5">' + (rs.run_date || '') + '</p>' +
+                        '<p class="text-xs text-slate-400 mt-0.5">' + (rs.run_date || '') + ' | عدد الأصناف: <span class="font-bold text-slate-600">' + itemCount + '</span></p>' +
                     '</div>' +
                 '</div>' +
                 '<div class="flex items-center gap-2">' +
@@ -256,7 +258,7 @@ var App = {
         var self = this; if(this.searchTimer) clearTimeout(this.searchTimer);
         if(!query || query.trim().length < 1){ var dd = byId('searchDropdown'); if(dd) dd.classList.add('hidden'); return; }
         this.searchTimer = setTimeout(function(){
-            supabase.from('runsheets').select('runsheet_code, status, run_date').or('status.eq.Picked,status.eq.Loading').ilike('runsheet_code', '%' + query.trim() + '%').limit(10).then(function(res){
+            supabase.from('runsheets').select('runsheet_code, status, run_date, run_sheet_details(count)').or('status.eq.Picked,status.eq.Loading').ilike('runsheet_code', '%' + query.trim() + '%').limit(10).then(function(res){
                 self.searchResults = res.data || []; self.renderSearchDropdown();
             });
         }, 300);
@@ -272,12 +274,13 @@ var App = {
         var html = '';
         for(var i = 0; i < results.length; i++){
             var rs = results[i];
+            var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
             var icon = rs.status === 'Loading' ? '🔄' : '📦';
             var label = rs.status === 'Loading' ? 'قيد التحميل' : 'جاهز';
             var bg = rs.status === 'Loading' ? 'bg-amber-50' : 'bg-blue-50';
             var textColor = rs.status === 'Loading' ? 'text-amber-600' : 'text-blue-600';
             html += '<div onclick="App.openLoader(\'' + rs.runsheet_code + '\')" class="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex justify-between items-center">';
-            html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><br><span class="text-xs text-slate-400">' + (rs.run_date || '') + '</span></div>';
+            html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><br><span class="text-xs text-slate-400">' + (rs.run_date || '') + ' | ' + itemCount + ' صنف</span></div>';
             html += '<span class="px-2 py-0.5 rounded-full text-xs font-bold ' + bg + ' ' + textColor + '">' + icon + ' ' + label + '</span>';
             html += '</div>';
         }
@@ -293,6 +296,7 @@ var App = {
             var rs = rsRes.data;
             supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id).then(function(detRes){
                 var items = detRes.data || [];
+                var itemCount = items.length;
                 var isActive = (rs.status === 'Loading' && (rs.loader_id === self.pubUserId || rs.loader_id === self.currentUser.email));
                 var isAvailable = (rs.status === 'Picked');
 
@@ -314,7 +318,7 @@ var App = {
                 }
 
                 var html = '';
-                html += '<div class="flex items-center gap-3 mb-6"><button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-orange-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + '</span></div>';
+                html += '<div class="flex items-center gap-3 mb-6"><button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-orange-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + ' | عدد الأصناف: ' + itemCount + '</span></div>';
                 if(isAvailable){
                     html += '<button onclick="App.startLoading(\'' + code + '\')" class="btn-primary mb-6 sticky-top"><i class="fa-solid fa-play ml-2"></i> بدء التحميل</button>';
                 }
