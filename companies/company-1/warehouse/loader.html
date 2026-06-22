@@ -21,6 +21,7 @@
         .btn-primary:active{transform:scale(0.97);box-shadow:0 2px 6px rgba(234,88,12,0.15)}
         .btn-danger{background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(239,68,68,0.2)}
         .btn-danger:active{transform:scale(0.97)}
+        .btn-reopen{background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(245,158,11,0.2)}
         .tab-btn{transition:all 0.2s ease}
         .tab-btn:active{transform:scale(0.95)}
         .progress-bar{transition:width 0.4s ease}
@@ -103,7 +104,7 @@ var ITEMS_IMAGE_CACHE = {};
 var App = {
     currentUser: null, pubUserId: null, currentTab: 'pending',
     session: null, timerInterval: null, searchTimer: null,
-    allRunsheets: [], searchResults: [],
+    allRunsheets: [], searchResults: [], completedRunsheets: [],
 
     togglePass: function(){
         var p = byId('loginPass'), i = byId('passIcon');
@@ -182,7 +183,7 @@ var App = {
         var act = byId('tab-' + tab);
         if(act){ act.classList.add('bg-orange-600', 'text-white', 'shadow-sm', 'shadow-orange-200'); act.classList.remove('text-slate-400'); }
         if(tab === 'pending') this.renderPendingTab();
-        else if(tab === 'completed') this.loadCompleted();
+        else if(tab === 'completed') this.renderCompletedTab();
         else if(tab === 'account') this.renderAccount();
     },
 
@@ -251,7 +252,6 @@ var App = {
         '</div>';
     },
 
-    // ==================== البحث الذكي ====================
     onSearchInput: function(query){
         var self = this; if(this.searchTimer) clearTimeout(this.searchTimer);
         if(!query || query.trim().length < 1){ var dd = byId('searchDropdown'); if(dd) dd.classList.add('hidden'); return; }
@@ -284,7 +284,6 @@ var App = {
         safeHTML(dropdown, html); dropdown.classList.remove('hidden');
     },
 
-    // ==================== فتح تفاصيل الرانشيت ====================
     openLoader: function(code){
         var self = this;
         var dd = byId('searchDropdown'); if(dd) dd.classList.add('hidden');
@@ -337,10 +336,9 @@ var App = {
     showItemDetail: function(code, name, unit, qty, desc){
         var img = ITEMS_IMAGE_CACHE[code] || '';
         var imgHtml = img ? '<img src="' + img + '" class="w-full h-48 object-cover rounded-2xl mb-4 shadow-sm" onerror="this.style.display=\'none\'">' : '<div class="w-full h-48 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400 mb-4"><i class="fa-solid fa-box text-4xl"></i></div>';
-        Swal.fire({ html: '<div class="text-right">' + imgHtml + '<h3 class="font-black text-xl text-slate-800 mb-2">' + name + '</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-400">الكود</span><span class="font-bold text-slate-600">' + code + '</span></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + unit + '</span></div><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة</span><span class="font-bold text-orange-600 text-lg">' + qty + '</span></div></div>' + (desc ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + desc + '</p>' : '') + '</div>', width: '380px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-300 !text-lg' } });
+        Swal.fire({ html: '<div class="text-right">' + imgHtml + '<h3 class="font-black text-xl text-slate-800 mb-2">' + name + '</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-400">الكود</span><span class="font-bold text-slate-600">' + code + '</span></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + unit + '</span></div><div class="flex justify-between"><span class="text-slate-400">الكمية المحضّرة</span><span class="font-bold text-orange-600 text-lg">' + qty + '</span></div></div>' + (desc ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + desc + '</p>' : '') + '</div>', width: '380px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-300 !text-lg' } });
     },
 
-    // ==================== بدء التحميل ====================
     startLoading: function(code){
         var self = this;
         if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
@@ -373,7 +371,6 @@ var App = {
         });
     },
 
-    // ==================== إلغاء التحميل ====================
     cancelLoading: function(code){
         var self = this;
         Swal.fire({
@@ -398,7 +395,6 @@ var App = {
         });
     },
 
-    // ==================== الجلسة النشطة ====================
     renderActiveSession: function(){
         var self = this; if(!this.session){ this.renderPendingTab(); return; }
         var s = this.session;
@@ -427,7 +423,6 @@ var App = {
         }, 1000);
     },
 
-    // ==================== تحرير الكمية (مع الصورة والوصف والتذكير) ====================
     editLoadedItem: function(index){
         var self = this; var it = this.session.items[index];
         var img = ITEMS_IMAGE_CACHE[it.item_code] || '';
@@ -458,14 +453,13 @@ var App = {
         });
     },
 
-    // ==================== إنهاء التحميل (مع نافذة التأكيد) ====================
     completeLoading: function(){
         var self = this; if(!this.session) return; if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
         var items = []; var fullCount = 0, partialCount = 0, zeroCount = 0;
         for(var i = 0; i < this.session.items.length; i++){
             var it = this.session.items[i];
             items.push({ itemCode: it.item_code, loadedQty: it.qty_loaded, notes: it.notes });
-            if(it.qty_loaded >= it.qty_picked) fullCount++;
+            if(it.qty_loaded >= it.qty_picked && it.qty_picked > 0) fullCount++;
             else if(it.qty_loaded > 0) partialCount++;
             else zeroCount++;
         }
@@ -495,14 +489,63 @@ var App = {
         });
     },
 
-    loadCompleted: function(){
+    renderCompletedTab: function(){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="text-center py-20"><div class="skeleton h-12 w-3/4 mb-3"></div></div>');
-        supabase.from('runsheets').select('runsheet_code, run_date').eq('status', 'Loaded').eq('loader_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(30).then(function(res){
-            var list = res.data || []; var html = '<h2 class="text-lg font-black text-slate-800 mb-4">✅ الرانشيتات التي حمّلتها</h2>';
-            if(!list.length){ html += '<div class="text-center py-16"><div class="text-6xl mb-4">🏆</div><p class="text-slate-400 font-bold">لم تنهِ أي رانشيت بعد.</p></div>'; }
-            else { for(var i = 0; i < list.length; i++){ html += '<div class="card mb-3 slide-in"><div class="flex justify-between items-center"><div><span class="font-black text-base text-slate-800">' + list[i].runsheet_code + '</span><p class="text-xs text-slate-400 mt-0.5">' + list[i].run_date + '</p></div><span class="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold">✓ مكتمل</span></div></div>'; } }
-            safeHTML(byId('mainContent'), html);
+        supabase.from('runsheets').select('runsheet_code, run_date, status').eq('status', 'Loaded').eq('loader_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(50).then(function(res){
+            self.completedRunsheets = res.data || [];
+            self.renderCompletedList(self.completedRunsheets);
+        }).catch(function(){ safeHTML(byId('mainContent'), '<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>'); });
+    },
+
+    renderCompletedList: function(list){
+        var html = '<h2 class="text-lg font-black text-slate-800 mb-4">✅ الرانشيتات التي حمّلتها</h2>';
+        html += '<input type="text" id="searchCompleted" placeholder="🔍 ابحث في المكتملة..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-orange-400 outline-none font-semibold text-sm transition-all shadow-sm mb-4" oninput="App.searchCompleted(this.value)">';
+        if(!list.length){
+            html += '<div class="text-center py-16"><div class="text-6xl mb-4">🏆</div><p class="text-slate-400 font-bold">لم تنهِ أي رانشيت بعد. العمل الجاد يُؤتي ثماره!</p></div>';
+        } else {
+            html += '<div id="completedList">';
+            for(var i = 0; i < list.length; i++){
+                var rs = list[i];
+                html += '<div class="card mb-3 slide-in"><div class="flex justify-between items-center"><div><span class="font-black text-base text-slate-800">' + rs.runsheet_code + '</span><p class="text-xs text-slate-400 mt-0.5">' + rs.run_date + '</p></div><button onclick="App.reopenLoading(\'' + rs.runsheet_code + '\')" class="btn-reopen text-xs px-3 py-1.5"><i class="fa-solid fa-pen-to-square ml-1"></i> تعديل التحميل</button></div></div>';
+            }
+            html += '</div>';
+        }
+        safeHTML(byId('mainContent'), html);
+    },
+
+    searchCompleted: function(query){
+        var filtered = this.completedRunsheets;
+        if(query && query.trim()){
+            var q = query.trim().toLowerCase();
+            filtered = this.completedRunsheets.filter(function(rs){ return (rs.runsheet_code || '').toLowerCase().indexOf(q) !== -1; });
+        }
+        this.renderCompletedList(filtered);
+    },
+
+    reopenLoading: function(code){
+        var self = this;
+        supabase.from('runsheets').select('status').eq('runsheet_code', code).maybeSingle().then(function(res){
+            if(!res.data || res.data.status !== 'Loaded'){
+                Swal.fire({ title: 'لا يمكن التعديل', text: 'الرانشيت لم يعد في حالة محمّل. قد يكون خرج للتوصيل.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
+                self.renderCompletedTab();
+                return;
+            }
+            Swal.fire({ title: 'تأكيد التعديل', text: 'سيتم إعادة فتح الرانشيت ' + code + ' لتعديل التحميل. متابعة؟', icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، تعديل', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-8', cancelButton: '!rounded-xl' } }).then(function(r){
+                if(!r.isConfirmed) return;
+                Swal.showLoading();
+                supabase.auth.getSession().then(function(ses){
+                    var token = ses.data.session ? ses.data.session.access_token : null;
+                    if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+                    return fetch(SUPABASE_URL + '/functions/v1/reopen-loading', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: code }) });
+                }).then(function(res){
+                    if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
+                }).then(function(json){
+                    Swal.close();
+                    if(json && json.success){ toast('تم إعادة فتح الرانشيت للتعديل', 'success'); self.renderPendingTab(); }
+                    else { toast((json && json.msg) || 'فشل', 'error'); self.renderCompletedTab(); }
+                }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); self.renderCompletedTab(); });
+            });
         });
     },
 
