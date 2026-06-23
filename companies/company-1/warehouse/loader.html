@@ -428,17 +428,19 @@ var App = {
     },
 
     // ==================== تحرير الكمية (يسمح بتجاوز الكمية المحضّرة بشرط ألا يتجاوز الكمية المطلوبة) ====================
-    editLoadedItem: function(index){
+    editLoadedItem: function(index, prefillQty){
         var self = this; var it = this.session.items[index];
         var img = ITEMS_IMAGE_CACHE[it.item_code] || '';
         var imgHtml = img ? '<img src="' + img + '" class="w-20 h-20 rounded-2xl object-cover mx-auto shadow-sm mb-3" onerror="this.style.display=\'none\'">' : '<div class="w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl mx-auto flex items-center justify-center text-slate-400 mb-3"><i class="fa-solid fa-box text-2xl"></i></div>';
         var unitHtml = it.unit ? '<div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + it.unit + '</span></div>' : '';
         var descHtml = it.description ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + it.description + '</p>' : '';
 
-        // ✅ تم تغيير max إلى qty_ordered (الكمية المطلوبة في الرانشيت)
+        // ✅ إذا تم استدعاء الدالة مع قيمة مسبقة (من فشل سابق)، نستخدمها
+        var currentVal = (typeof prefillQty !== 'undefined') ? prefillQty : it.qty_loaded;
+
         Swal.fire({
             title: '<span class="text-slate-800">' + it.item_name + '</span>',
-            html: '<div class="text-center">' + imgHtml + '</div><div class="text-right text-sm space-y-2"><div class="flex justify-between"><span class="text-slate-400">الكمية المحضّرة</span><strong class="text-slate-700">' + it.qty_picked + '</strong></div><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة</span><strong class="text-slate-700">' + it.qty_ordered + '</strong></div>' + unitHtml + '</div>' + descHtml + '<div class="mt-4 text-right"><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المحمّلة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="' + it.qty_loaded + '" min="0" max="' + it.qty_ordered + '"><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes || '') + '" placeholder="سبب النقص أو الزيادة..."></div>',
+            html: '<div class="text-center">' + imgHtml + '</div><div class="text-right text-sm space-y-2"><div class="flex justify-between"><span class="text-slate-400">الكمية المحضّرة</span><strong class="text-slate-700">' + it.qty_picked + '</strong></div><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة</span><strong class="text-slate-700">' + it.qty_ordered + '</strong></div>' + unitHtml + '</div>' + descHtml + '<div class="mt-4 text-right"><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المحمّلة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="' + currentVal + '" min="0" max="' + it.qty_ordered + '"><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes || '') + '" placeholder="سبب النقص أو الزيادة..."></div>',
             showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
             customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-orange-600 !px-8', cancelButton: '!rounded-xl' },
             preConfirm: function(){ return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-qty').value) || 0, it.qty_ordered)), notes: document.getElementById('swal-notes').value.trim() }; }
@@ -454,7 +456,7 @@ var App = {
                         text: 'الكمية المحمّلة أكبر من المحضّرة. يجب ذكر السبب.',
                         icon: 'warning', showCancelButton: true, confirmButtonText: 'إضافة سبب', cancelButtonText: 'تخطي',
                         customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl' }
-                    }).then(function(r2){ if(r2.isConfirmed){ self.editLoadedItem(index); } });
+                    }).then(function(r2){ if(r2.isConfirmed){ self.editLoadedItem(index, newQty); } }); // ✅ نمرر الكمية التي حاول إدخالها
                     return;
                 }
 
@@ -474,26 +476,34 @@ var App = {
                         title: 'تنبيه', text: 'الكمية المحمّلة أقل من المحضّرة. هل تريد إضافة سبب؟',
                         icon: 'question', showCancelButton: true, confirmButtonText: 'إضافة سبب', cancelButtonText: 'تخطي',
                         customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl' }
-                    }).then(function(r2){ if(r2.isConfirmed){ self.editLoadedItem(index); } });
+                    }).then(function(r2){ if(r2.isConfirmed){ self.editLoadedItem(index, newQty); } }); // ✅ نمرر الكمية التي حاول إدخالها
                 }
             }
         });
     },
 
+    // ==================== إنهاء التحميل (تقرير مُصلح) ====================
     completeLoading: function(){
         var self = this; if(!this.session) return; if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
         var items = []; var fullCount = 0, partialCount = 0, zeroCount = 0;
         for(var i = 0; i < this.session.items.length; i++){
             var it = this.session.items[i];
             items.push({ itemCode: it.item_code, loadedQty: it.qty_loaded, notes: it.notes });
-            if(it.qty_loaded >= it.qty_picked && it.qty_picked > 0) fullCount++;
+            // ✅ الإحصاء بناءً على الكمية المطلوبة (qty_ordered)
+            if(it.qty_loaded >= it.qty_ordered) fullCount++;
             else if(it.qty_loaded > 0) partialCount++;
             else zeroCount++;
         }
         var summaryHtml = '<div class="text-right text-sm"><p>أنت على وشك إنهاء تحميل الرانشيت <strong>' + this.session.runsheet_code + '</strong>.</p><div class="mt-3 space-y-1"><div>✅ <strong>' + fullCount + '</strong> أصناف مكتملة</div><div>⚠️ <strong>' + partialCount + '</strong> أصناف منقوصة</div><div>❌ <strong>' + zeroCount + '</strong> أصناف لم تُحمّل</div></div>';
         if(partialCount > 0 || zeroCount > 0){
-            summaryHtml += '<hr class="my-3"><p class="text-amber-600 font-bold text-xs">الأصناف الناقصة:</p><ul class="text-xs space-y-1 mt-1">';
-            for(var k = 0; k < this.session.items.length; k++){ var item = this.session.items[k]; if(item.qty_loaded < item.qty_picked){ summaryHtml += '<li>• ' + item.item_name + ' (' + item.qty_loaded + '/' + item.qty_picked + ') ' + (item.notes ? '– ' + item.notes : '<span class="text-red-400">بدون سبب</span>') + '</li>'; } }
+            summaryHtml += '<hr class="my-3"><p class="text-amber-600 font-bold text-xs">الأصناف الناقصة (مقارنة بالكمية المطلوبة):</p><ul class="text-xs space-y-1 mt-1">';
+            // ✅ نعرض كل صنف لم يكتمل للكمية المطلوبة
+            for(var k = 0; k < this.session.items.length; k++){
+                var item = this.session.items[k];
+                if(item.qty_loaded < item.qty_ordered){
+                    summaryHtml += '<li>• ' + item.item_name + ' (' + item.qty_loaded + '/' + item.qty_ordered + ') ' + (item.notes ? '– ' + item.notes : '<span class="text-red-400">بدون سبب</span>') + '</li>';
+                }
+            }
             summaryHtml += '</ul>';
         }
         summaryHtml += '</div>';
