@@ -115,7 +115,7 @@ function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'inf
 
 var App = {
     currentUser: null,
-    pubUserId: null,   // ✅ UUID من public.users
+    pubUserId: null,
     currentTab: 'map',
     runsheets: [],
     activeRunsheet: null,
@@ -172,12 +172,10 @@ var App = {
                     return;
                 }
                 
-                // ✅ جلب UUID العام للمستخدم
                 supabase.from('users').select('id').eq('email', self.currentUser.email).maybeSingle().then(function(uRes){
                     if(uRes.data){
                         self.pubUserId = uRes.data.id;
                     } else {
-                        // إذا لم يوجد، نحاول إضافته (مثل start-picking)
                         supabase.from('users').insert({
                             email: self.currentUser.email,
                             name: meta.name || self.currentUser.email,
@@ -232,16 +230,15 @@ var App = {
         else if(tab === 'account') this.renderAccount();
     },
 
-    // ==================== شاشة الخريطة ====================
     renderMap: function(){
         var self = this;
-        if(!this.pubUserId){ toast('لم يتم تحميل حسابك بعد، حاول مرة أخرى', 'warning'); return; }
+        if(!this.pubUserId){ toast('لم يتم تحميل حسابك بعد', 'warning'); return; }
         safeHTML(byId('mainContent'), '<div class="h-full flex flex-col"><div class="skeleton h-64 w-full mb-4"></div><div class="skeleton h-20 w-full"></div></div>');
 
         var today = new Date().toISOString().split('T')[0];
         supabase.from('runsheets')
             .select('runsheet_code, status, run_date, vehicle_id, delivery_start')
-            .eq('driver_id', this.pubUserId)  // ✅ UUID
+            .eq('driver_id', this.pubUserId)
             .in('status', ['Loaded', 'Delivering'])
             .order('run_date', { ascending: false })
             .limit(5)
@@ -289,7 +286,6 @@ var App = {
 
         html += '</div>';
         safeHTML(byId('mainContent'), html);
-
         setTimeout(function(){ self.initMap(); }, 300);
     },
 
@@ -297,7 +293,6 @@ var App = {
         var self = this;
         var mapEl = byId('leafletMap');
         if(!mapEl) return;
-
         if(this.mapObj){ this.mapObj.remove(); this.mapObj = null; }
         this.mapMarkers = [];
         if(this.mapRoute){ this.mapRoute = null; }
@@ -310,7 +305,6 @@ var App = {
         if(this.activeRunsheet){
             this.loadOrdersForMap(this.activeRunsheet.runsheet_code);
         }
-
         setTimeout(function(){ if(self.mapObj) self.mapObj.invalidateSize(); }, 500);
     },
 
@@ -331,12 +325,7 @@ var App = {
                     if(lat && lng){
                         var isDone = o.order_status === 'Delivered';
                         var isActive = o.order_status === 'Delivering';
-                        var icon = L.divIcon({
-                            className: '',
-                            html: '<div class="map-pin ' + (isDone ? 'done' : (isActive ? 'active' : '')) + '"></div>',
-                            iconSize: [isActive ? 16 : 12, isActive ? 16 : 12],
-                            iconAnchor: [isActive ? 8 : 6, isActive ? 8 : 6]
-                        });
+                        var icon = L.divIcon({ className: '', html: '<div class="map-pin ' + (isDone ? 'done' : (isActive ? 'active' : '')) + '"></div>', iconSize: [isActive ? 16 : 12, isActive ? 16 : 12], iconAnchor: [isActive ? 8 : 6, isActive ? 8 : 6] });
                         var marker = L.marker([lat, lng], { icon: icon }).addTo(self.mapObj);
                         marker.bindPopup('<div class="text-right"><strong>' + o.customer_name + '</strong><br><span class="text-xs">' + o.order_code + ' | ' + fmtNum(o.total_amount) + ' ج.م</span><br><a href="tel:' + (o.customer_phone || '') + '" class="text-sky-600 text-xs">📞 اتصال</a></div>');
                         marker.on('click', function(e){ self.mapObj.setView(e.latlng, 15); });
@@ -363,66 +352,35 @@ var App = {
     startDelivery: function(code){
         var self = this;
         if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
-        Swal.fire({
-            title: 'بدء التوصيل',
-            text: 'هل أنت متأكد من بدء توصيل الرانشيت ' + code + '؟',
-            icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، ابدأ', cancelButtonText: 'رجوع',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }
-        }).then(function(result){
+        Swal.fire({ title: 'بدء التوصيل', text: 'هل أنت متأكد من بدء توصيل الرانشيت ' + code + '؟', icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، ابدأ', cancelButtonText: 'رجوع', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' } }).then(function(result){
             if(!result.isConfirmed) return;
             Swal.showLoading();
             supabase.auth.getSession().then(function(sessionRes){
                 var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
                 if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                return fetch(SUPABASE_URL + '/functions/v1/start-delivery', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                    body: JSON.stringify({ runsheet_code: code })
-                });
+                return fetch(SUPABASE_URL + '/functions/v1/start-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: code }) });
             }).then(function(res){
                 if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
             }).then(function(json){
                 Swal.close();
-                if(json && json.success){
-                    toast('تم بدء التوصيل', 'success');
-                    self.runsheets = [];
-                    self.activeRunsheet = null;
-                    self.renderMap();
-                } else {
-                    toast((json && json.msg) || 'فشل بدء التوصيل', 'error');
-                }
+                if(json && json.success){ toast('تم بدء التوصيل', 'success'); self.runsheets = []; self.activeRunsheet = null; self.renderMap(); }
+                else { toast((json && json.msg) || 'فشل بدء التوصيل', 'error'); }
             }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
         });
     },
 
-    // ==================== شاشة جلسة التوصيل النشطة ====================
     renderActiveDeliverySession: function(code){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20"><div class="skeleton h-48 w-full mb-4"></div></div>');
         supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle().then(function(rsRes){
-            if(!rsRes.data || rsRes.data.status !== 'Delivering'){
-                toast('الرانشيت ليس قيد التوصيل', 'error');
-                self.renderMap();
-                return;
-            }
+            if(!rsRes.data || rsRes.data.status !== 'Delivering'){ toast('الرانشيت ليس قيد التوصيل', 'error'); self.renderMap(); return; }
             var rs = rsRes.data;
-            supabase.from('orders')
-                .select('order_code, customer_name, customer_phone, area, total_amount, order_status')
-                .eq('runsheet_id', rs.id)
-                .neq('order_status', 'Cancelled')
-                .then(function(ordersRes){
-                    var orders = ordersRes.data || [];
-                    self.session = {
-                        runsheet_code: code,
-                        runsheet_id: rs.id,
-                        start_time: rs.delivery_start || new Date().toISOString(),
-                        orders: orders
-                    };
-                    self.renderDeliveryOrdersView();
-                });
-        }).catch(function(){
-            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
-        });
+            supabase.from('orders').select('order_code, customer_name, customer_phone, area, total_amount, order_status').eq('runsheet_id', rs.id).neq('order_status', 'Cancelled').then(function(ordersRes){
+                var orders = ordersRes.data || [];
+                self.session = { runsheet_code: code, runsheet_id: rs.id, start_time: rs.delivery_start || new Date().toISOString(), orders: orders };
+                self.renderDeliveryOrdersView();
+            });
+        }).catch(function(){ safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>'); });
     },
 
     renderDeliveryOrdersView: function(){
@@ -430,50 +388,21 @@ var App = {
         var s = this.session;
         if(!s) { this.renderMap(); return; }
         var deliveredCount = 0;
-        for(var i = 0; i < s.orders.length; i++){
-            if(s.orders[i].order_status === 'Delivered') deliveredCount++;
-        }
+        for(var i = 0; i < s.orders.length; i++){ if(s.orders[i].order_status === 'Delivered') deliveredCount++; }
         var progress = s.orders.length ? Math.round((deliveredCount / s.orders.length) * 100) : 0;
         var elapsed = '';
-        if(s.start_time){
-            var diff = Math.floor((new Date() - new Date(s.start_time)) / 1000);
-            var m = Math.floor(diff / 60), sec = diff % 60;
-            elapsed = String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
-        }
+        if(s.start_time){ var diff = Math.floor((new Date() - new Date(s.start_time)) / 1000); var m = Math.floor(diff / 60), sec = diff % 60; elapsed = String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0'); }
 
         var html = '<div class="p-4">';
-        html += '<div class="bg-sky-50 rounded-3xl p-5 mb-6 slide-in">';
-        html += '<div class="flex items-center justify-between mb-4">';
-        html += '<span class="font-black text-2xl text-slate-800">' + s.runsheet_code + '</span>';
-        html += '<span class="bg-white text-sky-600 px-4 py-2 rounded-2xl text-sm font-black shadow-sm">⏱️ ' + elapsed + '</span>';
-        html += '</div>';
-        html += '<div class="bg-white rounded-2xl p-4 shadow-sm">';
-        html += '<div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>تقدم التوصيل</span><span>' + deliveredCount + ' / ' + s.orders.length + ' أوردر</span></div>';
-        html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full" style="width:' + progress + '%"></div></div>';
-        html += '</div></div>';
-
+        html += '<div class="bg-sky-50 rounded-3xl p-5 mb-6 slide-in"><div class="flex items-center justify-between mb-4"><span class="font-black text-2xl text-slate-800">' + s.runsheet_code + '</span><span class="bg-white text-sky-600 px-4 py-2 rounded-2xl text-sm font-black shadow-sm">⏱️ ' + elapsed + '</span></div><div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>تقدم التوصيل</span><span>' + deliveredCount + ' / ' + s.orders.length + ' أوردر</span></div><div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full" style="width:' + progress + '%"></div></div></div></div>';
         html += '<p class="text-sm text-slate-400 mb-4">اضغط على الأوردر لإدخال كميات التسليم</p>';
         for(var j = 0; j < s.orders.length; j++){
             var o = s.orders[j];
             var isDone = o.order_status === 'Delivered';
-            html += '<div class="card mb-3 cursor-pointer slide-in ' + (isDone ? 'border-r-4 border-sky-400' : '') + '" onclick="App.openOrderForDelivery(\'' + o.order_code + '\')">';
-            html += '<div class="flex justify-between items-center">';
-            html += '<div>';
-            html += '<p class="font-bold text-slate-700">' + o.customer_name + '</p>';
-            html += '<p class="text-xs text-slate-400">' + o.order_code + ' | ' + (o.area || '') + ' | ' + fmtNum(o.total_amount) + ' ج.م</p>';
-            html += '</div>';
-            html += '<span class="px-2 py-1 rounded-full text-xs font-bold ' + (isDone ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700') + '">' + (isDone ? '✅ تم' : '🟡 جاري') + '</span>';
-            html += '</div>';
-            html += '<div class="flex gap-2 mt-2">';
-            html += '<a href="tel:' + (o.customer_phone || '') + '" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i></a>';
-            html += '<a href="https://wa.me/' + (o.customer_phone || '').replace(/\D/g,'') + '" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i></a>';
-            html += '<a href="https://www.google.com/maps?q=' + encodeURIComponent(o.customer_name || '') + '" target="_blank" class="bg-sky-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-map-location-dot ml-1"></i></a>';
-            html += '</div></div>';
+            html += '<div class="card mb-3 cursor-pointer slide-in ' + (isDone ? 'border-r-4 border-sky-400' : '') + '" onclick="App.openOrderForDelivery(\'' + o.order_code + '\')"><div class="flex justify-between items-center"><div><p class="font-bold text-slate-700">' + o.customer_name + '</p><p class="text-xs text-slate-400">' + o.order_code + ' | ' + (o.area || '') + ' | ' + fmtNum(o.total_amount) + ' ج.م</p></div><span class="px-2 py-1 rounded-full text-xs font-bold ' + (isDone ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700') + '">' + (isDone ? '✅ تم' : '🟡 جاري') + '</span></div><div class="flex gap-2 mt-2"><a href="tel:' + (o.customer_phone || '') + '" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i></a><a href="https://wa.me/' + (o.customer_phone || '').replace(/\D/g,'') + '" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i></a><a href="https://www.google.com/maps?q=' + encodeURIComponent(o.customer_name || '') + '" target="_blank" class="bg-sky-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-map-location-dot ml-1"></i></a></div></div>';
         }
-
         html += '<button onclick="App.completeDelivery()" class="btn-primary mt-6"><i class="fa-solid fa-check ml-2"></i> إنهاء التوصيل</button>';
-        html += '<button onclick="App.cancelDelivery()" class="btn-danger w-full mt-3"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التوصيل</button>';
-        html += '</div>';
+        html += '<button onclick="App.cancelDelivery()" class="btn-danger w-full mt-3"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التوصيل</button></div>';
         safeHTML(byId('mainContent'), html);
         this.startTimer();
     },
@@ -483,27 +412,22 @@ var App = {
         if(this.timerInterval) clearInterval(this.timerInterval);
         this.timerInterval = setInterval(function(){
             if(self.session && self.session.start_time){
-                var diff = Math.floor((new Date() - new Date(self.session.start_time)) / 1000);
-                var m = Math.floor(diff / 60), sec = diff % 60;
+                var diff = Math.floor((new Date() - new Date(self.session.start_time)) / 1000); var m = Math.floor(diff / 60), sec = diff % 60;
                 var el = document.querySelector('.bg-white.text-sky-600');
                 if(el) safeText(el, '⏱️ ' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0'));
             }
         }, 1000);
     },
 
-    // ==================== إدخال كميات التسليم ====================
     openOrderForDelivery: function(orderCode){
         var self = this;
         Swal.showLoading();
-        supabase.from('order_details')
-            .select('item_code, item_name, unit, unit_price, qty_loaded, qty_delivered, reason_refused')
-            .eq('order_code', orderCode)
-            .then(function(res){
-                Swal.close();
-                var items = res.data || [];
-                if(!items.length){ toast('لا توجد أصناف', 'error'); return; }
-                self._showDeliveryModal(orderCode, items);
-            });
+        supabase.from('order_details').select('item_code, item_name, unit, unit_price, qty_loaded, qty_delivered, reason_refused').eq('order_code', orderCode).then(function(res){
+            Swal.close();
+            var items = res.data || [];
+            if(!items.length){ toast('لا توجد أصناف', 'error'); return; }
+            self._showDeliveryModal(orderCode, items);
+        });
     },
 
     _showDeliveryModal: function(orderCode, items){
@@ -513,38 +437,22 @@ var App = {
             var it = items[i];
             var loaded = Number(it.qty_loaded) || 0;
             var delivered = Number(it.qty_delivered) || 0;
-            html += '<div class="border rounded-xl p-3 bg-slate-50">';
-            html += '<div class="flex justify-between mb-2"><span class="font-bold text-slate-700">' + it.item_name + '</span><span class="text-xs text-slate-400">' + it.unit + '</span></div>';
-            html += '<div class="flex items-center gap-2 mb-2"><span class="text-xs text-slate-400">محمّل: ' + loaded + '</span><span class="text-xs text-slate-400">| مسلّم: <input id="del_qty_' + i + '" type="number" class="w-20 p-2 border rounded-xl text-center font-bold" value="' + delivered + '" min="0" max="' + loaded + '" oninput="App.calcRefused(' + i + ',' + loaded + ')"></span><span class="text-xs text-slate-400">| مرفوض: <input id="ref_qty_' + i + '" type="text" class="w-16 p-2 border rounded-xl text-center font-bold text-red-500" value="' + (loaded - delivered) + '" readonly></span></div>';
-            html += '<input id="reason_' + i + '" type="text" class="w-full p-2 border rounded-xl text-sm" placeholder="سبب الرفض (اختياري)" value="' + (it.reason_refused || '') + '">';
-            html += '</div>';
+            html += '<div class="border rounded-xl p-3 bg-slate-50"><div class="flex justify-between mb-2"><span class="font-bold text-slate-700">' + it.item_name + '</span><span class="text-xs text-slate-400">' + it.unit + '</span></div><div class="flex items-center gap-2 mb-2"><span class="text-xs text-slate-400">محمّل: ' + loaded + '</span><span class="text-xs text-slate-400">| مسلّم: <input id="del_qty_' + i + '" type="number" class="w-20 p-2 border rounded-xl text-center font-bold" value="' + delivered + '" min="0" max="' + loaded + '" oninput="App.calcRefused(' + i + ',' + loaded + ')"></span><span class="text-xs text-slate-400">| مرفوض: <input id="ref_qty_' + i + '" type="text" class="w-16 p-2 border rounded-xl text-center font-bold text-red-500" value="' + (loaded - delivered) + '" readonly></span></div><input id="reason_' + i + '" type="text" class="w-full p-2 border rounded-xl text-sm" placeholder="سبب الرفض (اختياري)" value="' + (it.reason_refused || '') + '"></div>';
         }
         html += '</div>';
 
-        Swal.fire({
-            title: 'تفاصيل الأوردر ' + orderCode,
-            html: html,
-            width: '600px',
-            showCancelButton: true,
-            confirmButtonText: '💾 حفظ',
-            cancelButtonText: 'إلغاء',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-6', cancelButton: '!rounded-xl' },
-            preConfirm: function(){
-                var result = [];
-                for(var i = 0; i < items.length; i++){
-                    var delEl = document.getElementById('del_qty_' + i);
-                    var refEl = document.getElementById('ref_qty_' + i);
-                    var reasonEl = document.getElementById('reason_' + i);
-                    var delQty = parseInt(delEl ? delEl.value : 0) || 0;
-                    if(delQty < 0 || delQty > items[i].qty_loaded) { Swal.showValidationMessage('الكمية المسلّمة غير صالحة لـ ' + items[i].item_name); return false; }
-                    result.push({ itemCode: items[i].item_code, deliveredQty: delQty, reason: reasonEl ? reasonEl.value.trim() : '' });
-                }
-                return result;
+        Swal.fire({ title: 'تفاصيل الأوردر ' + orderCode, html: html, width: '600px', showCancelButton: true, confirmButtonText: '💾 حفظ', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-6', cancelButton: '!rounded-xl' }, preConfirm: function(){
+            var result = [];
+            for(var j = 0; j < items.length; j++){
+                var delEl = document.getElementById('del_qty_' + j);
+                var reasonEl = document.getElementById('reason_' + j);
+                var delQty = parseInt(delEl ? delEl.value : 0) || 0;
+                if(delQty < 0 || delQty > items[j].qty_loaded) { Swal.showValidationMessage('الكمية المسلّمة غير صالحة لـ ' + items[j].item_name); return false; }
+                result.push({ itemCode: items[j].item_code, deliveredQty: delQty, reason: reasonEl ? reasonEl.value.trim() : '' });
             }
-        }).then(function(res){
-            if(res.isConfirmed){
-                self.saveDeliveryItems(orderCode, res.value);
-            }
+            return result;
+        } }).then(function(res){
+            if(res.isConfirmed){ self.saveDeliveryItems(orderCode, res.value); }
         });
     },
 
@@ -553,8 +461,7 @@ var App = {
         var refEl = document.getElementById('ref_qty_' + index);
         if(!delEl || !refEl) return;
         var del = parseInt(delEl.value) || 0;
-        var ref = Math.max(0, loaded - del);
-        refEl.value = ref;
+        refEl.value = Math.max(0, loaded - del);
     },
 
     saveDeliveryItems: function(orderCode, items){
@@ -564,11 +471,7 @@ var App = {
         supabase.auth.getSession().then(function(sessionRes){
             var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
             if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-            return fetch(SUPABASE_URL + '/functions/v1/save-delivery-item', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ runsheet_code: self.session.runsheet_code, order_code: orderCode, items: items })
-            });
+            return fetch(SUPABASE_URL + '/functions/v1/save-delivery-item', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code, order_code: orderCode, items: items }) });
         }).then(function(res){
             if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
         }).then(function(json){
@@ -576,125 +479,70 @@ var App = {
             if(json && json.success){
                 toast('تم حفظ بيانات الأوردر', 'success');
                 var idx = -1;
-                for(var i = 0; i < self.session.orders.length; i++){
-                    if(self.session.orders[i].order_code === orderCode) { idx = i; break; }
-                }
-                if(idx !== -1){
-                    self.session.orders[idx].order_status = 'Delivered';
-                }
+                for(var i = 0; i < self.session.orders.length; i++){ if(self.session.orders[i].order_code === orderCode){ idx = i; break; } }
+                if(idx !== -1){ self.session.orders[idx].order_status = 'Delivered'; }
                 self.renderDeliveryOrdersView();
-            } else {
-                toast((json && json.msg) || 'فشل الحفظ', 'error');
-            }
+            } else { toast((json && json.msg) || 'فشل الحفظ', 'error'); }
         }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
     },
 
-    // ==================== إنهاء التوصيل ====================
     completeDelivery: function(){
         var self = this;
         if(!this.session) return;
         var deliveredCount = 0;
-        for(var i = 0; i < this.session.orders.length; i++){
-            if(this.session.orders[i].order_status === 'Delivered') deliveredCount++;
-        }
-        var totalOrders = this.session.orders.length;
-
-        Swal.fire({
-            title: 'تأكيد إنهاء التوصيل',
-            html: '<div class="text-right"><p>أنت على وشك إنهاء توصيل الرانشيت <strong>' + this.session.runsheet_code + '</strong>.</p><div class="mt-3 space-y-1"><div>✅ <strong>' + deliveredCount + '</strong> أوردر مكتمل</div><div>❌ <strong>' + (totalOrders - deliveredCount) + '</strong> أوردر لم يُسلّم بعد</div></div><p class="text-red-500 text-xs mt-3">لن تتمكن من تعديل الكميات بعد الإنهاء. متابعة؟</p></div>',
-            icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، أنهِ التوصيل', cancelButtonText: 'رجوع',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }
-        }).then(function(result){
+        for(var i = 0; i < this.session.orders.length; i++){ if(this.session.orders[i].order_status === 'Delivered') deliveredCount++; }
+        Swal.fire({ title: 'تأكيد إنهاء التوصيل', html: '<div class="text-right"><p>أنت على وشك إنهاء توصيل الرانشيت <strong>' + this.session.runsheet_code + '</strong>.</p><div class="mt-3 space-y-1"><div>✅ <strong>' + deliveredCount + '</strong> أوردر مكتمل</div><div>❌ <strong>' + (this.session.orders.length - deliveredCount) + '</strong> أوردر لم يُسلّم بعد</div></div><p class="text-red-500 text-xs mt-3">لن تتمكن من تعديل الكميات بعد الإنهاء. متابعة؟</p></div>', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، أنهِ التوصيل', cancelButtonText: 'رجوع', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' } }).then(function(result){
             if(!result.isConfirmed) return;
             Swal.showLoading();
             supabase.auth.getSession().then(function(sessionRes){
                 var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
                 if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                return fetch(SUPABASE_URL + '/functions/v1/complete-delivery', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                    body: JSON.stringify({ runsheet_code: self.session.runsheet_code })
-                });
+                return fetch(SUPABASE_URL + '/functions/v1/complete-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code }) });
             }).then(function(res){
                 if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
             }).then(function(json){
                 Swal.close();
-                if(json && json.success){
-                    toast('تم إنهاء التوصيل', 'success');
-                    self.session = null;
-                    if(self.timerInterval) clearInterval(self.timerInterval);
-                    self.renderMap();
-                } else {
-                    toast((json && json.msg) || 'فشل إنهاء التوصيل', 'error');
-                }
+                if(json && json.success){ toast('تم إنهاء التوصيل', 'success'); self.session = null; if(self.timerInterval) clearInterval(self.timerInterval); self.renderMap(); }
+                else { toast((json && json.msg) || 'فشل إنهاء التوصيل', 'error'); }
             }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
         });
     },
 
-    // ==================== إلغاء التوصيل ====================
     cancelDelivery: function(){
         var self = this;
         if(!this.session) return;
-        Swal.fire({
-            title: 'تأكيد الإلغاء',
-            text: 'سيتم إلغاء التوصيل وإعادة الرانشيت إلى حالة "محمّل". كل الكميات المسلّمة ستفقد.',
-            icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ', cancelButtonText: 'رجوع',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' }
-        }).then(function(result){
+        Swal.fire({ title: 'تأكيد الإلغاء', text: 'سيتم إلغاء التوصيل وإعادة الرانشيت إلى حالة "محمّل". كل الكميات المسلّمة ستفقد.', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ', cancelButtonText: 'رجوع', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' } }).then(function(result){
             if(!result.isConfirmed) return;
             Swal.showLoading();
             supabase.auth.getSession().then(function(sessionRes){
                 var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
                 if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                return fetch(SUPABASE_URL + '/functions/v1/cancel-delivery', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                    body: JSON.stringify({ runsheet_code: self.session.runsheet_code })
-                });
+                return fetch(SUPABASE_URL + '/functions/v1/cancel-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code }) });
             }).then(function(res){
                 if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
             }).then(function(json){
                 Swal.close();
-                if(json && json.success){
-                    toast('تم إلغاء التوصيل', 'success');
-                    self.session = null;
-                    if(self.timerInterval) clearInterval(self.timerInterval);
-                    self.renderMap();
-                } else {
-                    toast((json && json.msg) || 'فشل الإلغاء', 'error');
-                }
+                if(json && json.success){ toast('تم إلغاء التوصيل', 'success'); self.session = null; if(self.timerInterval) clearInterval(self.timerInterval); self.renderMap(); }
+                else { toast((json && json.msg) || 'فشل الإلغاء', 'error'); }
             }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
         });
     },
 
-    // ==================== شاشة القائمة ====================
     renderList: function(){
         var self = this;
         if(!this.pubUserId){ toast('لم يتم تحميل حسابك بعد', 'warning'); return; }
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-24 w-full mb-3"></div></div>');
-
-        supabase.from('runsheets')
-            .select('runsheet_code, status, run_date, vehicle_id, delivery_start')
-            .eq('driver_id', this.pubUserId)  // ✅ UUID
-            .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning'])
-            .order('run_date', { ascending: false })
-            .limit(20)
-            .then(function(res){
-                var runsheets = res.data || [];
-                self.renderListView(runsheets);
-            }).catch(function(){
-                safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
-            });
+        supabase.from('runsheets').select('runsheet_code, status, run_date, vehicle_id, delivery_start').eq('driver_id', this.pubUserId).in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning']).order('run_date', { ascending: false }).limit(20).then(function(res){
+            var runsheets = res.data || [];
+            self.renderListView(runsheets);
+        }).catch(function(){ safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>'); });
     },
 
     renderListView: function(runsheets){
         var userName = (this.currentUser && this.currentUser.user_metadata) ? (this.currentUser.user_metadata.name || this.currentUser.email.split('@')[0]) : 'زميل';
         var hour = new Date().getHours();
         var greeting = hour < 12 ? 'صباح الخير' : 'مساء الخير';
-        var html = '<div class="p-4">';
-        html += '<p class="text-slate-400 text-sm mb-4">' + greeting + '، <span class="font-bold text-slate-700">' + userName + '</span> 👋</p>';
-        html += '<h2 class="text-lg font-black text-slate-800 mb-4">📋 رحلاتي</h2>';
-
+        var html = '<div class="p-4"><p class="text-slate-400 text-sm mb-4">' + greeting + '، <span class="font-bold text-slate-700">' + userName + '</span> 👋</p><h2 class="text-lg font-black text-slate-800 mb-4">📋 رحلاتي</h2>';
         if(!runsheets.length){
             html += '<div class="text-center py-16"><div class="text-6xl mb-4">🎉</div><p class="text-slate-400 font-bold">لا توجد رحلات معلقة اليوم.</p></div>';
         } else {
@@ -702,13 +550,7 @@ var App = {
                 var rs = runsheets[i];
                 var sc = rs.status === 'Delivered' ? 'bg-green-100 text-green-700' : rs.status === 'Delivering' ? 'bg-sky-100 text-sky-700' : rs.status === 'Returning' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700';
                 var sl = rs.status === 'Delivered' ? '✅ تم التوصيل' : rs.status === 'Delivering' ? '🟢 جاري' : rs.status === 'Returning' ? '↩️ مرتجعات' : '📦 جاهز';
-                html += '<div class="card mb-3 slide-in" onclick="App.openRunsheetFromList(\'' + rs.runsheet_code + '\', \'' + rs.status + '\')">';
-                html += '<div class="flex justify-between items-center">';
-                html += '<span class="font-bold text-lg text-slate-800">' + rs.runsheet_code + '</span>';
-                html += '<span class="px-2 py-1 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span>';
-                html += '</div>';
-                html += '<p class="text-xs text-slate-400 mt-1">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + '</p>';
-                html += '</div>';
+                html += '<div class="card mb-3 slide-in" onclick="App.openRunsheetFromList(\'' + rs.runsheet_code + '\', \'' + rs.status + '\')"><div class="flex justify-between items-center"><span class="font-bold text-lg text-slate-800">' + rs.runsheet_code + '</span><span class="px-2 py-1 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span></div><p class="text-xs text-slate-400 mt-1">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + '</p></div>';
             }
         }
         html += '</div>';
@@ -716,129 +558,52 @@ var App = {
     },
 
     openRunsheetFromList: function(code, status){
-        if(status === 'Delivering'){
-            this.renderActiveDeliverySession(code);
-        } else {
-            toast('هذه الرحلة ليست قيد التوصيل', 'info');
-        }
+        if(status === 'Delivering'){ this.renderActiveDeliverySession(code); }
+        else { toast('هذه الرحلة ليست قيد التوصيل', 'info'); }
     },
 
-    // ==================== شاشة رصيدي ====================
     renderBalance: function(){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
-
         var today = new Date().toISOString().split('T')[0];
         var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-
         Promise.all([
-            supabase.from('runsheets')
-                .select('runsheet_code, status, total_amount')
-                .eq('driver_id', this.pubUserId)  // ✅ UUID
-                .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning'])
-                .gte('run_date', firstDay)
-                .lte('run_date', today),
-            supabase.from('driver_ledger')
-                .select('*')
-                .eq('driver_email', this.currentUser.email)
-                .order('entry_date', { ascending: false })
-                .limit(30)
+            supabase.from('runsheets').select('runsheet_code, status, total_amount').eq('driver_id', this.pubUserId).in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning']).gte('run_date', firstDay).lte('run_date', today),
+            supabase.from('driver_ledger').select('*').eq('driver_email', this.currentUser.email).order('entry_date', { ascending: false }).limit(30)
         ]).then(function(results){
             var runsheets = results[0].data || [];
             var ledger = results[1].data || [];
             self.renderBalanceView(runsheets, ledger);
-        }).catch(function(){
-            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
-        });
+        }).catch(function(){ safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>'); });
     },
 
     renderBalanceView: function(runsheets, ledger){
         var loadedTotal = 0, deliveredTotal = 0;
-        for(var i = 0; i < runsheets.length; i++){
-            loadedTotal += Number(runsheets[i].total_amount) || 0;
-            if(runsheets[i].status === 'Delivered') deliveredTotal += Number(runsheets[i].total_amount) || 0;
-        }
+        for(var i = 0; i < runsheets.length; i++){ loadedTotal += Number(runsheets[i].total_amount) || 0; if(runsheets[i].status === 'Delivered') deliveredTotal += Number(runsheets[i].total_amount) || 0; }
         var tD = 0, tC = 0;
-        for(var j = 0; j < ledger.length; j++){
-            tD += Number(ledger[j].debit) || 0;
-            tC += Number(ledger[j].credit) || 0;
-        }
+        for(var j = 0; j < ledger.length; j++){ tD += Number(ledger[j].debit) || 0; tC += Number(ledger[j].credit) || 0; }
         var bal = tD - tC;
 
-        var html = '<div class="p-4">';
-        html += '<h2 class="text-lg font-black text-slate-800 mb-4">⚖️ رصيدي</h2>';
-
-        html += '<div class="card text-center mb-4">';
-        html += '<p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p>';
-        html += '<p class="text-4xl font-black ' + (bal <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(bal)) + ' ج.م</p>';
-        html += '<div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + (bal <= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' + (bal <= 0 ? '🟢 أنا ملتزم' : '🔴 عليّ مستحقات') + '</span></div>';
-        html += '</div>';
-
-        html += '<div class="grid grid-cols-2 gap-3 mb-4">';
-        html += '<div class="card text-center"><p class="text-xs text-slate-400">المحمّل (الشهر)</p><p class="text-xl font-black text-sky-600">' + fmtNum(loadedTotal) + '</p></div>';
-        html += '<div class="card text-center"><p class="text-xs text-slate-400">تم تسليمه</p><p class="text-xl font-black text-green-600">' + fmtNum(deliveredTotal) + '</p></div>';
-        html += '</div>';
-
-        html += '<h3 class="font-bold text-slate-700 mb-3">📊 آخر الحركات</h3>';
-        html += '<div class="space-y-2 max-h-60 overflow-y-auto">';
-        if(ledger.length === 0){
-            html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد حركات</p>';
-        } else {
-            for(var k = 0; k < ledger.length; k++){
-                var rw = ledger[k];
-                var sign = rw.debit > 0 ? '+' : '-';
-                var color = rw.debit > 0 ? 'text-red-600' : 'text-green-600';
-                html += '<div class="flex justify-between p-2 bg-slate-50 rounded-lg">';
-                html += '<span class="text-xs text-slate-400">' + (rw.entry_date || '') + '</span>';
-                html += '<span class="font-bold text-sm">' + (rw.description || '') + '</span>';
-                html += '<span class="font-bold ' + color + '">' + sign + fmtNum(rw.debit || rw.credit) + '</span>';
-                html += '</div>';
-            }
-        }
-        html += '</div>';
-        html += '</div>';
+        var html = '<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">⚖️ رصيدي</h2><div class="card text-center mb-4"><p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p><p class="text-4xl font-black ' + (bal <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(bal)) + ' ج.م</p><div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + (bal <= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' + (bal <= 0 ? '🟢 أنا ملتزم' : '🔴 عليّ مستحقات') + '</span></div></div><div class="grid grid-cols-2 gap-3 mb-4"><div class="card text-center"><p class="text-xs text-slate-400">المحمّل (الشهر)</p><p class="text-xl font-black text-sky-600">' + fmtNum(loadedTotal) + '</p></div><div class="card text-center"><p class="text-xs text-slate-400">تم تسليمه</p><p class="text-xl font-black text-green-600">' + fmtNum(deliveredTotal) + '</p></div></div><h3 class="font-bold text-slate-700 mb-3">📊 آخر الحركات</h3><div class="space-y-2 max-h-60 overflow-y-auto">';
+        if(ledger.length === 0){ html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد حركات</p>'; }
+        else { for(var k = 0; k < ledger.length; k++){ var rw = ledger[k]; var sign = rw.debit > 0 ? '+' : '-'; var color = rw.debit > 0 ? 'text-red-600' : 'text-green-600'; html += '<div class="flex justify-between p-2 bg-slate-50 rounded-lg"><span class="text-xs text-slate-400">' + (rw.entry_date || '') + '</span><span class="font-bold text-sm">' + (rw.description || '') + '</span><span class="font-bold ' + color + '">' + sign + fmtNum(rw.debit || rw.credit) + '</span></div>'; } }
+        html += '</div></div>';
         safeHTML(byId('mainContent'), html);
     },
 
-    // ==================== شاشة حسابي ====================
     renderAccount: function(){
-        var html = '<div class="p-4">';
-        html += '<div class="text-center mb-8 mt-4">';
-        html += '<div class="w-20 h-20 bg-gradient-to-br from-sky-400 to-sky-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-sky-200 mb-4">';
-        html += (this.currentUser && this.currentUser.user_metadata && this.currentUser.user_metadata.name) ? this.currentUser.user_metadata.name.charAt(0) : '?';
-        html += '</div>';
-        html += '<h2 class="font-black text-xl text-slate-800">' + ((this.currentUser && this.currentUser.user_metadata) ? (this.currentUser.user_metadata.name || this.currentUser.email) : '') + '</h2>';
-        html += '<p class="text-sm text-slate-400">مندوب توصيل</p>';
-        html += '</div>';
-        html += '<div class="card mb-3">';
-        html += '<div class="flex items-center gap-3">';
-        html += '<div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-envelope"></i></div>';
-        html += '<div><p class="text-xs text-slate-400">البريد الإلكتروني</p><p class="font-bold text-slate-700 text-sm">' + (this.currentUser ? this.currentUser.email : '') + '</p></div>';
-        html += '</div></div>';
-        html += '<button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all mt-6">';
-        html += '<i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج';
-        html += '</button>';
-        html += '</div>';
+        var html = '<div class="p-4"><div class="text-center mb-8 mt-4"><div class="w-20 h-20 bg-gradient-to-br from-sky-400 to-sky-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-sky-200 mb-4">' + ((this.currentUser && this.currentUser.user_metadata && this.currentUser.user_metadata.name) ? this.currentUser.user_metadata.name.charAt(0) : '?') + '</div><h2 class="font-black text-xl text-slate-800">' + ((this.currentUser && this.currentUser.user_metadata) ? (this.currentUser.user_metadata.name || this.currentUser.email) : '') + '</h2><p class="text-sm text-slate-400">مندوب توصيل</p></div><div class="card mb-3"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-envelope"></i></div><div><p class="text-xs text-slate-400">البريد الإلكتروني</p><p class="font-bold text-slate-700 text-sm">' + (this.currentUser ? this.currentUser.email : '') + '</p></div></div></div><button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button></div>';
         safeHTML(byId('mainContent'), html);
     }
 };
 
-// ==================== Service Worker ====================
 if('serviceWorker' in navigator){
     navigator.serviceWorker.register('../sw.js').then(function(reg){
         reg.addEventListener('updatefound', function(){
             var newWorker = reg.installing;
             newWorker.addEventListener('statechange', function(){
                 if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
-                    Swal.fire({
-                        title: '🔄 تحديث متاح',
-                        text: 'تم تحميل نسخة أحدث من التطبيق.',
-                        icon: 'info', showCancelButton: false, confirmButtonText: 'تحديث الآن',
-                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8' }
-                    }).then(function(){
-                        newWorker.postMessage({ action: 'skipWaiting' });
-                        window.location.reload();
-                    });
+                    Swal.fire({ title: '🔄 تحديث متاح', text: 'تم تحميل نسخة أحدث من التطبيق.', icon: 'info', showCancelButton: false, confirmButtonText: 'تحديث الآن', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8' } }).then(function(){ newWorker.postMessage({ action: 'skipWaiting' }); window.location.reload(); });
                 }
             });
         });
