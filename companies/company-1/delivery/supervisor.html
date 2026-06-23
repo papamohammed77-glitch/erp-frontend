@@ -14,105 +14,474 @@
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:Tahoma,sans-serif;background:#f1f5f9}
+        body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
         .auth-container{background:linear-gradient(135deg,#134e4a 0%,#0f766e 40%,#0d9488 100%)}
-        .input-field:focus{border-color:#0d9488;box-shadow:0 0 0 3px rgba(13,148,136,0.1)}
-        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
-        .stat-card{background:#fff;border-radius:16px;padding:1rem;box-shadow:0 4px 6px rgba(0,0,0,0.02);transition:transform 0.2s;cursor:pointer}
+        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.02),0 8px 24px rgba(0,0,0,0.03);transition:all 0.2s ease}
+        .card:active{transform:scale(0.985);background:#fafafa}
+        .btn-primary{background:linear-gradient(135deg,#0d9488,#2dd4bf);color:#fff;padding:0.75rem 1.5rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;width:100%;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(13,148,136,0.2)}
+        .btn-primary:active{transform:scale(0.97)}
+        .tab-btn{transition:all 0.2s ease}
+        .tab-btn:active{transform:scale(0.95)}
+        .progress-bar{transition:width 0.4s ease}
+        .slide-in{animation:slideIn 0.3s ease}
+        @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        .stat-card{transition:transform 0.2s;cursor:pointer}
         .stat-card:active{transform:scale(0.98)}
-        .pulse{animation:pulse 2s infinite}
-        @keyframes pulse{0%{opacity:1}50%{opacity:0.6}100%{opacity:1}}
-        .kpi-up{color:#10b981}.kpi-down{color:#ef4444}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
+<!-- شاشة الدخول -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
-    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
-        <div class="text-center mb-6"><div class="w-20 h-20 bg-gradient-to-br from-teal-600 to-teal-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4"><i class="fa-solid fa-truck-fast text-white text-3xl"></i></div><h1 class="font-black text-2xl text-gray-800">الروائع</h1><p class="text-xs text-gray-400">مشرف التوصيل</p></div>
-        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول</h2>
-        <div class="space-y-3"><div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-teal-600 outline-none font-bold text-sm"></div><div class="relative"><input id="loginPass" type="password" placeholder="كلمة السر" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-teal-600 outline-none font-bold text-sm pr-12"><button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400"><i id="passIcon" class="fa-solid fa-eye"></i></button></div></div>
-        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-teal-600 to-teal-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg mt-4">تسجيل الدخول</button>
-        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
+    <div class="bg-white rounded-[36px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
+        <div class="text-center mb-6">
+            <div class="w-20 h-20 bg-gradient-to-br from-teal-500 to-teal-700 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-teal-200 mb-5">
+                <i class="fa-solid fa-truck-fast text-white text-3xl"></i>
+            </div>
+            <h1 class="font-black text-2xl text-slate-800">الروائع</h1>
+            <p class="text-sm text-slate-400 font-semibold mt-1">مشرف التوصيل</p>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-1.5">البريد الإلكتروني</label>
+                <input id="loginEmail" type="email" placeholder="example@domain.com" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-teal-500 focus:bg-white outline-none font-semibold text-sm transition-all">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-1.5">كلمة السر</label>
+                <div class="relative">
+                    <input id="loginPass" type="password" placeholder="••••••••" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-teal-500 focus:bg-white outline-none font-semibold text-sm transition-all pr-12">
+                    <button type="button" onclick="App.togglePass()" class="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-300 hover:text-teal-500 transition-colors">
+                        <i id="passIcon" class="fa-solid fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-teal-600 to-teal-500 text-white py-4 rounded-2xl font-bold text-base shadow-lg shadow-teal-200 hover:shadow-xl transition-all mt-6">
+            تسجيل الدخول
+        </button>
+        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-4 hidden"></p>
     </div>
 </div>
 
+<!-- التطبيق الرئيسي -->
 <div id="mainApp" class="hidden flex flex-col h-full">
-    <header class="bg-teal-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
-        <span class="font-black text-sm">مشرف التوصيل</span>
-        <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
+    <header class="bg-gradient-to-r from-teal-700 to-teal-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+        <span class="font-black text-base">📊 مشرف التوصيل</span>
+        <div class="flex items-center gap-2">
+            <span class="text-xs font-bold opacity-90" id="headerUserName"></span>
+            <button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/25 transition-colors">
+                <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+            </button>
+        </div>
     </header>
-    <div class="flex gap-1 p-2 bg-white border-b overflow-x-auto flex-shrink-0">
-        <button onclick="App.switchTab('dashboard')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm bg-teal-600 text-white" id="tab-dashboard">📊 KPI</button>
-        <button onclick="App.switchTab('team')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-team">👥 السائقين</button>
-        <button onclick="App.switchTab('live')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-live">🔴 الحي</button>
-    </div>
-    <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
+
+    <main id="mainContent" class="flex-1 overflow-y-auto"></main>
+
+    <!-- التبويبات السفلية -->
+    <nav class="flex-shrink-0 bg-white border-t border-slate-100 flex">
+        <button onclick="App.switchTab('dashboard')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-teal-600 font-bold text-xs" id="tab-dashboard">
+            <i class="fa-solid fa-chart-pie text-lg"></i><span>الأداء</span>
+        </button>
+        <button onclick="App.switchTab('team')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-team">
+            <i class="fa-solid fa-users text-lg"></i><span>السائقين</span>
+        </button>
+        <button onclick="App.switchTab('runsheets')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-runsheets">
+            <i class="fa-solid fa-clipboard-list text-lg"></i><span>الرانشيتات</span>
+        </button>
+        <button onclick="App.switchTab('account')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-account">
+            <i class="fa-solid fa-user text-lg"></i><span>حسابي</span>
+        </button>
+    </nav>
 </div>
 
 <script>
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-var db = new Dexie('RW_DelSupervisor'); db.version(1).stores({ meta: 'key' });
+var db = new Dexie('RW_DelSup'); db.version(1).stores({ meta: 'key' });
+
 function byId(id) { return document.getElementById(id); }
 function safeText(el, text) { if (el) el.textContent = text; }
 function safeHTML(el, html) { if (el) el.innerHTML = html; }
 function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
+function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000, customClass: { popup: '!rounded-2xl !shadow-xl' } }); }
 
 var App = {
-    currentUser: null, charts: {},
-    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
-    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
-    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('delivery_supervisor')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();}});},
-    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.switchTab('dashboard');},
-    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
-    switchTab: function(t){['dashboard','team','live'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-teal-600','text-white');b.classList.add('text-gray-500');}});var a=byId('tab-'+t);if(a){a.classList.add('bg-teal-600','text-white');a.classList.remove('text-gray-500');}if(t==='dashboard')this.renderDashboard();else if(t==='team')this.renderTeam();else if(t==='live')this.renderLive();},
-    destroyCharts: function(){for(var k in this.charts){if(this.charts.hasOwnProperty(k)&&this.charts[k]){this.charts[k].destroy();this.charts[k]=null;}}},
+    currentUser: null,
+    currentTab: 'dashboard',
+    chartInstance: null,
+    driversList: [],       // تخزين قائمة السائقين
+    loadedRunsheets: [],   // الرانشيتات الجاهزة
 
-    renderDashboard: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        var today=new Date().toISOString().split('T')[0],firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
-        Promise.all([supabase.from('runsheets').select('status,total_amount').gte('run_date',firstDay).lte('run_date',today),supabase.from('users').select('email').in('role',['سائق','مندوب'])]).then(function(r){
-            var rs=r[0].data||[],users=r[1].data||[];var total=0,delivered=0,returning=0,loaded=0;
-            for(var i=0;i<rs.length;i++){total+=Number(rs[i].total_amount)||0;if(rs[i].status==='Delivered')delivered++;else if(rs[i].status==='Returning')returning++;else if(rs[i].status==='Loaded'||rs[i].status==='Delivering')loaded++;}
-            s.destroyCharts();
-            var html='<h2 class="text-lg font-black mb-4">📊 مؤشرات التوصيل – الشهر</h2>';
-            html+='<div class="grid grid-cols-2 gap-3 mb-4">';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">إجمالي الرحلات</p><p class="text-2xl font-black text-teal-600">'+rs.length+'</p></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">القيمة الإجمالية</p><p class="text-2xl font-black text-teal-600">'+fmtNum(total)+' ج.م</p></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">✅ تم التوصيل</p><p class="text-2xl font-black text-green-600">'+delivered+'</p></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">⏳ جارية</p><p class="text-2xl font-black text-amber-600">'+loaded+'</p></div>';
-            html+='</div><div class="grid grid-cols-2 gap-3 mb-4">';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">↩️ مرتجعات</p><p class="text-2xl font-black text-red-600">'+returning+'</p></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">👥 السائقين</p><p class="text-2xl font-black text-indigo-600">'+users.length+'</p></div>';
-            html+='</div><button onclick="App.switchTab(\'team\')" class="w-full bg-teal-600 text-white py-4 rounded-xl font-black text-lg"><i class="fa-solid fa-users ml-2"></i> أداء السائقين</button>';
-            safeHTML(byId('mainContent'),html);
+    togglePass: function(){
+        var p = byId('loginPass'), i = byId('passIcon');
+        if(p.type === 'password'){ p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; }
+        else { p.type = 'password'; i.className = 'fa-solid fa-eye'; }
+    },
+
+    doLogin: function(){
+        var email = byId('loginEmail').value.trim();
+        var pass = byId('loginPass').value.trim();
+        if(!email || !pass){
+            byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
+            byId('loginMsg').classList.remove('hidden');
+            return;
+        }
+        byId('loginMsg').classList.add('hidden');
+        var self = this;
+        Swal.showLoading();
+        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res){
+            Swal.close();
+            if(res.error){
+                byId('loginMsg').innerText = res.error.message;
+                byId('loginMsg').classList.remove('hidden');
+            } else {
+                self.init();
+            }
+        }).catch(function(){
+            Swal.close();
+            byId('loginMsg').innerText = 'فشل الاتصال بالخادم';
+            byId('loginMsg').classList.remove('hidden');
         });
     },
 
-    renderTeam: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        var today=new Date().toISOString().split('T')[0],firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
-        supabase.from('users').select('email,name').in('role',['سائق','مندوب']).then(function(uR){var users=uR.data||[];
-        supabase.from('runsheets').select('driver_id,status,total_amount').gte('run_date',firstDay).lte('run_date',today).then(function(rR){var rs=rR.data||[],stats={};
-        for(var i=0;i<rs.length;i++){var d=rs[i].driver_id||'';if(!stats[d])stats[d]={count:0,total:0,delivered:0};stats[d].count++;stats[d].total+=Number(rs[i].total_amount)||0;if(rs[i].status==='Delivered')stats[d].delivered++;}
-        var html='<h2 class="text-lg font-black mb-4">👥 أداء السائقين</h2>';
-        for(var j=0;j<users.length;j++){var u=users[j],st=stats[u.email]||{count:0,total:0,delivered:0},rate=st.count>0?Math.round((st.delivered/st.count)*100):0,has=st.count>0;
-        html+='<div class="card mb-3 '+(has?'border-teal-200':'border-gray-100 bg-gray-50')+'"><div class="flex justify-between mb-2"><span class="font-bold">'+(u.name||u.email)+'</span>'+(has?'<span class="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-bold pulse">🟢 نشط</span>':'<span class="px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full text-xs">⚪ غير نشط</span>')+'</div><div class="grid grid-cols-3 gap-2 text-center"><div><p class="text-xs text-gray-400">رحلات</p><p class="font-black">'+st.count+'</p></div><div><p class="text-xs text-gray-400">القيمة</p><p class="font-black text-teal-600">'+fmtNum(st.total)+'</p></div><div><p class="text-xs text-gray-400">توصيل</p><p class="font-black text-green-600">'+rate+'%</p></div></div></div>';}
-        safeHTML(byId('mainContent'),html);});});
+    init: function(){
+        var self = this;
+        supabase.auth.getSession().then(function(res){
+            if(res.data && res.data.session){
+                self.currentUser = res.data.session.user;
+                var meta = self.currentUser.user_metadata || {};
+                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
+                var perms = meta.permissions || [];
+                var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('delivery_supervisor') !== -1);
+                if(!hasAccess){
+                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية مشرف توصيل', icon: 'error', customClass: { popup: '!rounded-3xl' } });
+                    supabase.auth.signOut();
+                    return;
+                }
+                safeText(byId('headerUserName'), meta.name || self.currentUser.email);
+                self.enterApp();
+            }
+        });
     },
 
-    renderLive: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        supabase.from('runsheets').select('runsheet_code,driver_id,status,run_date').in('status',['Delivering','Loaded']).order('run_date',{ascending:false}).limit(20).then(function(r){var rs=r.data||[],html='<h2 class="text-lg font-black mb-4">🔴 الرحلات الجارية</h2>';
-        if(!rs.length){html+='<div class="text-center text-gray-400 py-10">لا توجد رحلات جارية</div>';}else{for(var i=0;i<rs.length;i++){html+='<div class="card mb-2"><div class="flex justify-between"><span class="font-bold">'+rs[i].runsheet_code+'</span><span class="px-2 py-0.5 rounded-full text-xs font-bold '+(rs[i].status==='Delivering'?'bg-sky-100 text-sky-700':'bg-amber-100 text-amber-700')+'">'+(rs[i].status==='Delivering'?'جاري التوصيل':'محمّلة')+'</span></div><p class="text-xs text-gray-400">'+rs[i].driver_id+' | '+rs[i].run_date+'</p></div>';}}
-        safeHTML(byId('mainContent'),html);});
+    enterApp: function(){
+        byId('loginScreen').classList.add('hidden');
+        byId('mainApp').classList.remove('hidden');
+        this.switchTab('dashboard');
+    },
+
+    doLogout: function(){
+        if(this.chartInstance){ this.chartInstance.destroy(); this.chartInstance = null; }
+        supabase.auth.signOut().then(function(){
+            byId('mainApp').classList.add('hidden');
+            byId('loginScreen').classList.remove('hidden');
+            byId('loginEmail').value = '';
+            byId('loginPass').value = '';
+        });
+    },
+
+    switchTab: function(tab){
+        this.currentTab = tab;
+        var tabs = ['dashboard', 'team', 'runsheets', 'account'];
+        for(var i = 0; i < tabs.length; i++){
+            var btn = byId('tab-' + tabs[i]);
+            if(btn){ btn.classList.remove('text-teal-600'); btn.classList.add('text-slate-400'); }
+        }
+        var act = byId('tab-' + tab);
+        if(act){ act.classList.add('text-teal-600'); act.classList.remove('text-slate-400'); }
+
+        if(tab === 'dashboard') this.renderDashboard();
+        else if(tab === 'team') this.renderTeam();
+        else if(tab === 'runsheets') this.renderRunsheets();
+        else if(tab === 'account') this.renderAccount();
+    },
+
+    // ==================== تبويب الأداء (KPI) ====================
+    renderDashboard: function(){
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div><div class="skeleton h-48 w-full"></div></div>');
+
+        var today = new Date().toISOString().split('T')[0];
+        var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
+        Promise.all([
+            supabase.from('runsheets').select('status, total_amount').gte('run_date', firstDay).lte('run_date', today),
+            supabase.from('users').select('email, name').in('role', ['سائق', 'مندوب', 'Driver']).eq('status', 'Active')
+        ]).then(function(results){
+            var allRS = results[0].data || [];
+            var drivers = results[1].data || [];
+            
+            var totalRS = allRS.length;
+            var totalValue = 0;
+            var deliveredCount = 0, deliveringCount = 0, loadedCount = 0;
+            
+            for(var i = 0; i < allRS.length; i++){
+                totalValue += Number(allRS[i].total_amount) || 0;
+                if(allRS[i].status === 'Delivered') deliveredCount++;
+                else if(allRS[i].status === 'Delivering') deliveringCount++;
+                else if(allRS[i].status === 'Loaded') loadedCount++;
+            }
+            
+            var percentage = totalRS > 0 ? Math.round((deliveredCount / totalRS) * 100) : 0;
+            
+            var html = '<div class="p-4">';
+            html += '<p class="text-slate-400 text-sm mb-4">مرحباً، <span class="font-bold text-slate-700">' + (self.currentUser.user_metadata?.name || 'مشرف') + '</span> 👋</p>';
+            html += '<h2 class="text-lg font-black text-slate-800 mb-4">📊 مؤشرات الأداء – الشهر الحالي</h2>';
+            
+            // بطاقات KPI
+            html += '<div class="grid grid-cols-2 gap-3 mb-4">';
+            html += '<div class="stat-card card bg-gradient-to-br from-teal-50 to-white border-teal-100"><p class="text-xs text-teal-400">إجمالي الرحلات</p><p class="text-2xl font-black text-teal-600">' + totalRS + '</p></div>';
+            html += '<div class="stat-card card bg-gradient-to-br from-blue-50 to-white border-blue-100"><p class="text-xs text-blue-400">قيمة الرحلات</p><p class="text-2xl font-black text-blue-600">' + fmtNum(totalValue) + ' ج.م</p></div>';
+            html += '<div class="stat-card card bg-gradient-to-br from-green-50 to-white border-green-100"><p class="text-xs text-green-400">تم التوصيل</p><p class="text-2xl font-black text-green-600">' + deliveredCount + '</p></div>';
+            html += '<div class="stat-card card bg-gradient-to-br from-amber-50 to-white border-amber-100"><p class="text-xs text-amber-400">جاري / جاهز</p><p class="text-2xl font-black text-amber-600">' + (deliveringCount + loadedCount) + '</p></div>';
+            html += '</div>';
+            
+            // الرسم البياني
+            html += '<div class="card mb-4"><h3 class="font-bold text-slate-700 mb-3">نسبة الإنجاز</h3><div class="w-full h-48 relative"><canvas id="kpiChart"></canvas></div></div>';
+            
+            html += '<div class="text-center text-sm text-slate-500">👥 عدد السائقين النشطين: <strong>' + drivers.length + '</strong></div>';
+            html += '</div>';
+            
+            safeHTML(byId('mainContent'), html);
+            
+            // رسم البيان
+            setTimeout(function(){
+                var ctx = byId('kpiChart');
+                if(ctx){
+                    if(self.chartInstance) self.chartInstance.destroy();
+                    self.chartInstance = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['تم التوصيل', 'جاري / جاهز'],
+                            datasets: [{
+                                data: [deliveredCount, totalRS - deliveredCount],
+                                backgroundColor: ['#10b981', '#f59e0b'],
+                                borderWidth: 0
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } }
+                            }
+                        }
+                    });
+                }
+            }, 200);
+        });
+    },
+
+    // ==================== تبويب السائقين ====================
+    renderTeam: function(){
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-24 w-full mb-3"></div></div>');
+
+        // جلب السائقين وإحصائياتهم
+        var today = new Date().toISOString().split('T')[0];
+        var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
+        Promise.all([
+            supabase.from('users').select('email, name').in('role', ['سائق', 'مندوب', 'Driver']).eq('status', 'Active'),
+            supabase.from('runsheets').select('driver_id, status, total_amount').gte('run_date', firstDay).lte('run_date', today)
+        ]).then(function(results){
+            var drivers = results[0].data || [];
+            var runsheets = results[1].data || [];
+            
+            // تجميع الإحصائيات لكل سائق
+            var stats = {};
+            for(var i = 0; i < runsheets.length; i++){
+                var rs = runsheets[i];
+                var driver = rs.driver_id || '';
+                if(!stats[driver]) stats[driver] = { count: 0, total: 0, delivered: 0 };
+                stats[driver].count++;
+                stats[driver].total += Number(rs.total_amount) || 0;
+                if(rs.status === 'Delivered') stats[driver].delivered++;
+            }
+            
+            self.driversList = drivers;
+            
+            var html = '<div class="p-4">';
+            html += '<h2 class="text-lg font-black text-slate-800 mb-4">👥 فريقي</h2>';
+            
+            if(!drivers.length){
+                html += '<div class="text-center py-16"><div class="text-6xl mb-4">👥</div><p class="text-slate-400 font-bold">لا يوجد سائقين مسجلين.</p></div>';
+            } else {
+                for(var j = 0; j < drivers.length; j++){
+                    var driver = drivers[j];
+                    var st = stats[driver.email] || { count: 0, total: 0, delivered: 0 };
+                    var rate = st.count > 0 ? Math.round((st.delivered / st.count) * 100) : 0;
+                    var has = st.count > 0;
+                    
+                    html += '<div class="card mb-3 ' + (has ? '' : 'opacity-70') + '">';
+                    html += '<div class="flex justify-between mb-2">';
+                    html += '<span class="font-bold">' + (driver.name || driver.email) + '</span>';
+                    html += has ? '<span class="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-bold">🟢 نشط</span>' : '<span class="px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full text-xs">⚪ غير نشط</span>';
+                    html += '</div>';
+                    html += '<div class="grid grid-cols-3 gap-2 text-center">';
+                    html += '<div><p class="text-xs text-gray-400">رحلات</p><p class="font-black">' + st.count + '</p></div>';
+                    html += '<div><p class="text-xs text-gray-400">القيمة</p><p class="font-black text-teal-600">' + fmtNum(st.total) + '</p></div>';
+                    html += '<div><p class="text-xs text-gray-400">توصيل</p><p class="font-black text-green-600">' + rate + '%</p></div>';
+                    html += '</div>';
+                    html += '<div class="w-full h-1.5 bg-gray-100 rounded-full mt-2"><div class="h-full bg-teal-500 rounded-full" style="width:' + rate + '%"></div></div>';
+                    html += '<div class="mt-2 text-left"><button onclick="App.openAssignModal(\'' + driver.email + '\', \'' + (driver.name || '').replace(/'/g, "\\'") + '\')" class="text-xs bg-teal-100 text-teal-700 px-3 py-1 rounded-full font-bold">تخصيص رانشيت</button></div>';
+                    html += '</div>';
+                }
+            }
+            html += '</div>';
+            safeHTML(byId('mainContent'), html);
+        });
+    },
+
+    openAssignModal: function(driverEmail, driverName){
+        var self = this;
+        // جلب الرانشيتات الجاهزة التي ليس لها سائق
+        supabase.from('runsheets').select('runsheet_code, run_date, total_amount').eq('status', 'Loaded').is('driver_id', null).order('run_date', { ascending: false }).then(function(res){
+            var loaded = res.data || [];
+            var options = '';
+            if(loaded.length === 0){
+                Swal.fire({ title: 'لا توجد رانشيتات', text: 'جميع الرانشيتات المحملة لها سائقين.', icon: 'info', customClass: { popup: '!rounded-3xl' } });
+                return;
+            }
+            for(var i = 0; i < loaded.length; i++){
+                options += '<option value="' + loaded[i].runsheet_code + '">' + loaded[i].runsheet_code + ' - ' + loaded[i].run_date + ' (' + fmtNum(loaded[i].total_amount) + ' ج.م)</option>';
+            }
+            Swal.fire({
+                title: 'تخصيص رانشيت لـ ' + driverName,
+                html: '<select id="swal-rs-select" class="swal2-input w-full text-right rounded-xl">' + options + '</select>',
+                showCancelButton: true,
+                confirmButtonText: 'تخصيص',
+                cancelButtonText: 'إلغاء',
+                customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-teal-600 !px-8', cancelButton: '!rounded-xl' },
+                preConfirm: function(){ return document.getElementById('swal-rs-select').value; }
+            }).then(function(result){
+                if(result.isConfirmed && result.value){
+                    self.assignDriver(result.value, driverEmail);
+                }
+            });
+        });
+    },
+
+    assignDriver: function(runsheetCode, driverEmail){
+        var self = this;
+        Swal.showLoading();
+        supabase.from('runsheets').update({ driver_id: driverEmail }).eq('runsheet_code', runsheetCode).then(function(res){
+            Swal.close();
+            if(res.error){
+                Swal.fire({ title: 'خطأ', text: res.error.message, icon: 'error', customClass: { popup: '!rounded-3xl' } });
+            } else {
+                toast('تم تعيين السائق بنجاح', 'success');
+                self.renderTeam(); // إعادة تحميل
+            }
+        });
+    },
+
+    // ==================== تبويب الرانشيتات ====================
+    renderRunsheets: function(){
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>');
+
+        supabase.from('runsheets')
+            .select('runsheet_code, run_date, status, total_amount, driver_id')
+            .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning'])
+            .order('run_date', { ascending: false })
+            .limit(30)
+            .then(function(res){
+                self.loadedRunsheets = res.data || [];
+                self.renderRunsheetList();
+            });
+    },
+
+    renderRunsheetList: function(){
+        var html = '<div class="p-4">';
+        html += '<h2 class="text-lg font-black text-slate-800 mb-4">📋 جميع الرحلات</h2>';
+
+        if(!this.loadedRunsheets.length){
+            html += '<div class="text-center py-16"><div class="text-6xl mb-4">📋</div><p class="text-slate-400 font-bold">لا توجد رحلات حتى الآن.</p></div>';
+        } else {
+            for(var i = 0; i < this.loadedRunsheets.length; i++){
+                var rs = this.loadedRunsheets[i];
+                var statusBadge = '';
+                if(rs.status === 'Loaded') statusBadge = '<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-xs">📦 محملة</span>';
+                else if(rs.status === 'Delivering') statusBadge = '<span class="bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full text-xs">🟢 جاري</span>';
+                else if(rs.status === 'Delivered') statusBadge = '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">✅ تم</span>';
+                else if(rs.status === 'Returning') statusBadge = '<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs">↩️ مرتجعات</span>';
+                
+                html += '<div class="card mb-3 slide-in">';
+                html += '<div class="flex justify-between items-center mb-2">';
+                html += '<span class="font-bold text-lg">' + rs.runsheet_code + '</span>';
+                html += statusBadge;
+                html += '</div>';
+                html += '<p class="text-xs text-slate-400">' + rs.run_date + ' | ' + fmtNum(rs.total_amount) + ' ج.م | السائق: ' + (rs.driver_id || 'غير محدد') + '</p>';
+                
+                if(rs.status === 'Loaded'){
+                    html += '<div class="mt-2 flex gap-2"><button onclick="App.changeDriver(\'' + rs.runsheet_code + '\')" class="text-xs bg-teal-100 text-teal-700 px-3 py-1 rounded-full font-bold">تعيين/تغيير السائق</button></div>';
+                }
+                html += '</div>';
+            }
+        }
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
+    },
+
+    changeDriver: function(rsCode){
+        var self = this;
+        // عرض قائمة السائقين للاختيار
+        var driverOptions = '';
+        if(!this.driversList.length){
+            // جلبهم إذا لم يكونوا محملين
+            supabase.from('users').select('email, name').in('role', ['سائق', 'مندوب', 'Driver']).then(function(res){
+                self.driversList = res.data || [];
+                self.showDriverSelect(rsCode);
+            });
+        } else {
+            this.showDriverSelect(rsCode);
+        }
+    },
+
+    showDriverSelect: function(rsCode){
+        var options = '';
+        for(var i = 0; i < this.driversList.length; i++){
+            var d = this.driversList[i];
+            options += '<option value="' + d.email + '">' + (d.name || d.email) + '</option>';
+        }
+        Swal.fire({
+            title: 'اختيار السائق',
+            html: '<select id="swal-driver-select" class="swal2-input w-full text-right rounded-xl">' + options + '</select>',
+            showCancelButton: true,
+            confirmButtonText: 'حفظ',
+            cancelButtonText: 'إلغاء',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-teal-600 !px-8' },
+            preConfirm: function(){ return document.getElementById('swal-driver-select').value; }
+        }).then(function(result){
+            if(result.isConfirmed && result.value){
+                App.assignDriver(rsCode, result.value);
+            }
+        });
+    },
+
+    // ==================== حسابي ====================
+    renderAccount: function(){
+        var html = '<div class="p-4 text-center">';
+        html += '<div class="w-20 h-20 bg-gradient-to-br from-teal-400 to-teal-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-teal-200 mb-4 mt-8">' + (this.currentUser.user_metadata?.name?.charAt(0) || 'م') + '</div>';
+        html += '<h2 class="font-black text-xl text-slate-800">' + (this.currentUser.user_metadata?.name || 'المشرف') + '</h2>';
+        html += '<p class="text-sm text-slate-400">مشرف توصيل</p>';
+        html += '<div class="card mt-4 text-right"><p class="text-xs text-slate-400">البريد</p><p class="font-bold">' + (this.currentUser?.email || '') + '</p></div>';
+        html += '<button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button>';
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
     }
 };
-if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
-document.addEventListener('DOMContentLoaded',function(){App.init();});
+
+// Service Worker
+if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('../sw.js').catch(function(){});
+}
+
+document.addEventListener('DOMContentLoaded', function(){ App.init(); });
 </script>
 </body>
 </html>
