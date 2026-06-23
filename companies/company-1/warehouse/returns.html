@@ -87,13 +87,15 @@ var App = {
     doLogout: function(){var s=this;if(this.timerInterval)clearInterval(this.timerInterval);supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
     switchTab: function(t){this.currentTab=t;['pending','completed','account'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-red-600','text-white','shadow-sm','shadow-red-200');b.classList.add('text-slate-400');}});var a=byId('tab-'+t);if(a){a.classList.add('bg-red-600','text-white','shadow-sm','shadow-red-200');a.classList.remove('text-slate-400');}if(t==='pending')this.loadRunsheets();else if(t==='completed')this.loadCompleted();else this.renderAccount();},
 
+    // ✅ جراحة 1: إضافة run_sheet_details(count) إلى الاستعلامين
     loadRunsheets: function(){
         var s=this; safeHTML(byId('mainContent'),'<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>');
-        var p1 = supabase.from('runsheets').select('runsheet_code,run_date,status,return_handler_id').eq('status','Returning').eq('return_handler_id',this.pubUserId||this.currentUser.email).order('run_date',{ascending:false}).limit(20);
-        var p2 = supabase.from('runsheets').select('runsheet_code,run_date,status').eq('status','Delivered').order('run_date',{ascending:false}).limit(50);
+        var p1 = supabase.from('runsheets').select('runsheet_code,run_date,status,return_handler_id, run_sheet_details(count)').eq('status','Returning').eq('return_handler_id',this.pubUserId||this.currentUser.email).order('run_date',{ascending:false}).limit(20);
+        var p2 = supabase.from('runsheets').select('runsheet_code,run_date,status, run_sheet_details(count)').eq('status','Delivered').order('run_date',{ascending:false}).limit(50);
         Promise.all([p1,p2]).then(function(r){s.allRunsheets=(r[0].data||[]).concat(r[1].data||[]);s.renderList(r[0].data||[],r[1].data||[]);});
     },
 
+    // ✅ جراحة 2: عرض عدد الأصناف في البطاقة
     renderList: function(myActive,available){
         var self=this; var html='';
         var userName=this.currentUser.user_metadata.name||this.currentUser.email.split('@')[0]||'زميل';
@@ -106,26 +108,29 @@ var App = {
     },
 
     _buildCard: function(rs,isActive){
-        var code=rs.runsheet_code||''; var icon=isActive?'🔄':'📦'; var label=isActive?'قيد المرتجعات':'مسلّم'; var color=isActive?'bg-amber-50 text-amber-600':'bg-blue-50 text-blue-600';
+        var code=rs.runsheet_code||'';
+        var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
+        var icon=isActive?'🔄':'📦'; var label=isActive?'قيد المرتجعات':'مسلّم'; var color=isActive?'bg-amber-50 text-amber-600':'bg-blue-50 text-blue-600';
         var btn=''; if(isActive){btn='<button onclick="event.stopPropagation();App.cancelReturn(\''+code+'\')" class="btn-danger mt-3 text-xs px-3 py-1.5"><i class="fa-solid fa-xmark ml-1"></i> إلغاء المرتجعات</button>';}
-        return '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openReturn(\''+code+'\')"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">'+icon+'</span><div><span class="font-black">'+code+'</span><p class="text-xs text-slate-400">'+rs.run_date+'</p></div></div><span class="px-2.5 py-0.5 rounded-full text-xs font-bold '+color+'">'+label+'</span></div>'+btn+'</div>';
+        return '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openReturn(\''+code+'\')"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">'+icon+'</span><div><span class="font-black">'+code+'</span><p class="text-xs text-slate-400">'+rs.run_date+' | عدد الأصناف: <span class="font-bold text-slate-600">'+itemCount+'</span></p></div></div><span class="px-2.5 py-0.5 rounded-full text-xs font-bold '+color+'">'+label+'</span></div>'+btn+'</div>';
     },
 
-    onSearchInput: function(query){var s=this;if(this.searchTimer)clearTimeout(this.searchTimer);if(!query||query.trim().length<1){var dd=byId('searchDropdown');if(dd)dd.classList.add('hidden');return;}this.searchTimer=setTimeout(function(){supabase.from('runsheets').select('runsheet_code,status,run_date').in('status',['Delivered','Returning']).ilike('runsheet_code','%'+query.trim()+'%').limit(10).then(function(r){s.searchResults=r.data||[];s.renderSearchDropdown();});},300);},
-    renderSearchDropdown: function(){var dd=byId('searchDropdown');if(!dd)return;if(this.searchResults.length===0){safeHTML(dd,'<div class="p-4 text-center text-slate-400">🔍 لا يوجد رانشيت.</div>');dd.classList.remove('hidden');return;}var html='';for(var i=0;i<this.searchResults.length;i++){var rs=this.searchResults[i];html+='<div onclick="App.openReturn(\''+rs.runsheet_code+'\')" class="p-3 border-b hover:bg-slate-50 cursor-pointer flex justify-between"><span class="font-bold">'+rs.runsheet_code+'</span><span class="text-xs">'+rs.status+'</span></div>';}safeHTML(dd,html);dd.classList.remove('hidden');},
+    onSearchInput: function(query){var s=this;if(this.searchTimer)clearTimeout(this.searchTimer);if(!query||query.trim().length<1){var dd=byId('searchDropdown');if(dd)dd.classList.add('hidden');return;}this.searchTimer=setTimeout(function(){supabase.from('runsheets').select('runsheet_code,status,run_date, run_sheet_details(count)').in('status',['Delivered','Returning']).ilike('runsheet_code','%'+query.trim()+'%').limit(10).then(function(r){s.searchResults=r.data||[];s.renderSearchDropdown();});},300);},
+    renderSearchDropdown: function(){var dd=byId('searchDropdown');if(!dd)return;if(this.searchResults.length===0){safeHTML(dd,'<div class="p-4 text-center text-slate-400">🔍 لا يوجد رانشيت.</div>');dd.classList.remove('hidden');return;}var html='';for(var i=0;i<this.searchResults.length;i++){var rs=this.searchResults[i];var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;html+='<div onclick="App.openReturn(\''+rs.runsheet_code+'\')" class="p-3 border-b hover:bg-slate-50 cursor-pointer flex justify-between"><span class="font-bold">'+rs.runsheet_code+'</span><span class="text-xs">'+rs.status+' | '+itemCount+' صنف</span></div>';}safeHTML(dd,html);dd.classList.remove('hidden');},
 
     openReturn: function(code){
         var s=this;var dd=byId('searchDropdown');if(dd)dd.classList.add('hidden');
         safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-3xl text-red-400"></i></div>');
         supabase.from('runsheets').select('id,status,return_handler_id,return_start').eq('runsheet_code',code).maybeSingle().then(function(rsR){if(!rsR.data)return;var rs=rsR.data;
         supabase.from('run_sheet_details').select('*').eq('runsheet_id',rs.id).then(function(dR){var items=dR.data||[];
+            var itemCount = items.length; // ✅ جراحة 3: عدد الأصناف في التفاصيل
             var isActive=(rs.status==='Returning'&&(rs.return_handler_id===s.pubUserId||rs.return_handler_id===s.currentUser.email));
             if(isActive){
                 s.session={runsheet_code:code,runsheet_id:rs.id,start_time:rs.return_start||new Date().toISOString(),items:[]};
                 for(var i=0;i<items.length;i++){s.session.items.push({item_code:items[i].item_code,item_name:items[i].item_name,unit:items[i].unit||'حبة',description:items[i].description||'',qty_delivered:items[i].qty_delivered||0,qty_returned:items[i].qty_returned||0,notes:''});}
                 s.renderActiveSession(); return;
             }
-            var html='<div class="flex items-center gap-3 mb-6"><button onclick="App.switchTab(\'pending\')" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-red-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl">'+code+'</span></div>';
+            var html='<div class="flex items-center gap-3 mb-6"><button onclick="App.switchTab(\'pending\')" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-red-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl">'+code+' | عدد الأصناف: '+itemCount+'</span></div>';
             if(rs.status==='Delivered'){html+='<button onclick="App.startReturn(\''+code+'\')" class="btn-primary mb-6"><i class="fa-solid fa-play ml-2"></i> بدء المرتجعات</button>';}
             safeHTML(byId('mainContent'),html);
         });});
@@ -167,7 +172,6 @@ var App = {
             if(r.isConfirmed){
                 s.session.items[index].qty_returned = r.value.qty;
                 s.session.items[index].notes = r.value.notes;
-                // ✅ حفظ فوري
                 supabase.from('run_sheet_details').update({ qty_returned: r.value.qty }).eq('runsheet_id', s.session.runsheet_id).eq('item_code', it.item_code).then(function(){});
                 s.renderActiveSession();
                 if(r.value.qty > 0 && !r.value.notes){
