@@ -216,8 +216,9 @@ var App = {
         safeHTML(byId('mainContent'),
             '<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>'
         );
-        var p1 = supabase.from('runsheets').select('runsheet_code, status, run_date, picker_id').eq('status', 'Picking').eq('picker_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
-        var p2 = supabase.from('runsheets').select('runsheet_code, status, run_date').eq('status', 'Open').order('run_date', { ascending: false }).limit(50);
+        // ✅ جلب عدد الأصناف مع الرانشيت
+        var p1 = supabase.from('runsheets').select('runsheet_code, status, run_date, picker_id, run_sheet_details(count)').eq('status', 'Picking').eq('picker_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
+        var p2 = supabase.from('runsheets').select('runsheet_code, status, run_date, run_sheet_details(count)').eq('status', 'Open').order('run_date', { ascending: false }).limit(50);
         Promise.all([p1, p2]).then(function(results){
             var myRunsheets = results[0].data || [];
             var openRunsheets = results[1].data || [];
@@ -254,6 +255,8 @@ var App = {
 
     _buildRunsheetCard: function(rs, isActive){
         var code = rs.runsheet_code || '';
+        // ✅ استخراج عدد الأصناف
+        var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
         var statusIcon = isActive ? '🔄' : '📋';
         var statusLabel = isActive ? 'قيد التحضير' : 'مفتوح';
         var statusColor = isActive ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600';
@@ -267,7 +270,7 @@ var App = {
                     '<span class="text-2xl">' + statusIcon + '</span>' +
                     '<div>' +
                         '<span class="font-black text-base text-slate-800">' + code + '</span>' +
-                        '<p class="text-xs text-slate-400 mt-0.5">' + (rs.run_date || '') + '</p>' +
+                        '<p class="text-xs text-slate-400 mt-0.5">' + (rs.run_date || '') + ' | عدد الأصناف: <span class="font-bold text-slate-600">' + itemCount + '</span></p>' +
                     '</div>' +
                 '</div>' +
                 '<div class="flex items-center gap-2">' +
@@ -283,7 +286,7 @@ var App = {
         if(this.searchTimer) clearTimeout(this.searchTimer);
         if(!query || query.trim().length < 1){ byId('searchDropdown').classList.add('hidden'); return; }
         this.searchTimer = setTimeout(function(){
-            supabase.from('runsheets').select('runsheet_code, status, run_date, picker_id').ilike('runsheet_code', '%' + query.trim() + '%').limit(10).then(function(res){
+            supabase.from('runsheets').select('runsheet_code, status, run_date, picker_id, run_sheet_details(count)').ilike('runsheet_code', '%' + query.trim() + '%').limit(10).then(function(res){
                 self.searchResults = res.data || []; self.renderSearchDropdown();
             });
         }, 300);
@@ -299,6 +302,7 @@ var App = {
         var html = '';
         for(var i = 0; i < results.length; i++){
             var rs = results[i];
+            var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
             var isMine = (rs.status === 'Picking' && (rs.picker_id === this.pubUserId || rs.picker_id === this.currentUser.email));
             var isTaken = (rs.status === 'Picking' && !isMine);
             var icon = isMine ? '🔄' : (isTaken ? '🔒' : '📋');
@@ -306,24 +310,24 @@ var App = {
             var bg = isMine ? 'bg-amber-50' : (isTaken ? 'bg-red-50' : 'bg-blue-50');
             var textColor = isMine ? 'text-amber-600' : (isTaken ? 'text-red-500' : 'text-blue-600');
             html += '<div onclick="App.openRunsheet(\'' + rs.runsheet_code + '\')" class="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex justify-between items-center">';
-            html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><br><span class="text-xs text-slate-400">' + (rs.run_date || '') + '</span></div>';
+            html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><br><span class="text-xs text-slate-400">' + (rs.run_date || '') + ' | ' + itemCount + ' صنف</span></div>';
             html += '<span class="px-2 py-0.5 rounded-full text-xs font-bold ' + bg + ' ' + textColor + '">' + icon + ' ' + label + '</span>';
             html += '</div>';
         }
         safeHTML(dropdown, html); dropdown.classList.remove('hidden');
     },
 
-    // ==================== فتح تفاصيل الرانشيت (إصلاح classList) ====================
+    // ==================== فتح تفاصيل الرانشيت (يقرأ الجلسة الحقيقية) ====================
     openRunsheet: function(code){
         var self = this;
-        var searchDropdown = byId('searchDropdown');
-        if (searchDropdown) { searchDropdown.classList.add('hidden'); }
+        byId('searchDropdown').classList.add('hidden');
         safeHTML(byId('mainContent'), '<div class="text-center py-20"><div class="skeleton h-48 w-full mb-4"></div></div>');
         supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle().then(function(rsRes){
             if(!rsRes.data){ toast('الرانشيت غير موجود', 'error'); self.renderPendingTab(); return; }
             var rs = rsRes.data;
             supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id).then(function(detRes){
                 var items = detRes.data || [];
+                var itemCount = items.length;
                 if(rs.status === 'Picking' && (rs.picker_id === self.pubUserId || rs.picker_id === self.currentUser.email)){
                     self.session = { runsheet_code: code, runsheet_id: rs.id, start_time: rs.picker_start || new Date().toISOString(), items: [] };
                     for(var i = 0; i < items.length; i++){
@@ -341,7 +345,7 @@ var App = {
                     return;
                 }
                 var html = '';
-                html += '<div class="flex items-center gap-3 mb-6"><button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + '</span></div>';
+                html += '<div class="flex items-center gap-3 mb-6"><button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + ' | عدد الأصناف: ' + itemCount + '</span></div>';
                 if(rs.status === 'Open'){
                     html += '<button onclick="App.startPicking(\'' + code + '\')" class="btn-primary mb-6 sticky-top"><i class="fa-solid fa-play ml-2"></i> بدء التحضير</button>';
                 }
@@ -366,7 +370,6 @@ var App = {
         Swal.fire({ html: '<div class="text-right">' + imgHtml + '<h3 class="font-black text-xl text-slate-800 mb-2">' + name + '</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-400">الكود</span><span class="font-bold text-slate-600">' + code + '</span></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + unit + '</span></div><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة</span><span class="font-bold text-indigo-600 text-lg">' + qty + '</span></div></div>' + (desc ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + desc + '</p>' : '') + '</div>', width: '380px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-300 !text-lg' } });
     },
 
-    // ==================== بدء التحضير (مع معالجة خطأ تعدد المهام) ====================
     startPicking: function(code){
         var self = this;
         if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
@@ -381,28 +384,10 @@ var App = {
             return res.json();
         }).then(function(json){
             Swal.close();
-            if(!json || !json.success){
-                var msg = (json && json.msg) || 'فشل بدء التحضير';
-                // إذا كان الخطأ هو وجود رانشيت نشط، نوجه المستخدم إليه
-                if(msg.indexOf('لديك بالفعل رانشيت قيد التحضير') !== -1){
-                    Swal.fire({ title: 'تنبيه', text: msg, icon: 'info', customClass: { popup: '!rounded-3xl' } });
-                    self.renderPendingTab(); // إعادة التحميل لإظهار الرانشيت النشط
-                } else {
-                    toast(msg, 'error');
-                }
-                return;
-            }
+            if(!json || !json.success){ toast((json && json.msg) || 'فشل', 'error'); return; }
             toast('تم بنجاح', 'success');
             self.openRunsheet(code);
-        }).catch(function(err){
-            Swal.close();
-            // محاولة عرض رسالة خطأ ذات معنى
-            if(err.message.indexOf('لديك بالفعل رانشيت قيد التحضير') !== -1){
-                Swal.fire({ title: 'تنبيه', text: err.message, icon: 'info', customClass: { popup: '!rounded-3xl' } });
-            } else {
-                toast(err.message || 'فشل الاتصال', 'error');
-            }
-        });
+        }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
     },
 
     cancelPicking: function(code){
@@ -431,7 +416,7 @@ var App = {
         if(s.start_time){ var diff = Math.floor((new Date() - new Date(s.start_time)) / 1000); var m = Math.floor(diff / 60), sec = diff % 60; elapsed = String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0'); }
         var pickedCount = 0; for(var j = 0; j < s.items.length; j++){ if(s.items[j].qty_picked > 0) pickedCount++; }
         var progress = s.items.length ? Math.round((pickedCount / s.items.length) * 100) : 0;
-        var html = '<div class="bg-indigo-50 rounded-3xl p-5 mb-6 slide-in"><div class="flex items-center justify-between mb-4"><span class="font-black text-2xl text-slate-800">' + s.runsheet_code + '</span><span class="bg-white text-indigo-600 px-4 py-2 rounded-2xl text-sm font-black shadow-sm">⏱️ ' + elapsed + '</span></div><div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>تقدم التحضير</span><span>' + pickedCount + ' / ' + s.items.length + ' صنف</span></div><div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" style="width:' + progress + '%"></div></div></div></div>';
+        var html = '<div class="bg-indigo-50 rounded-3xl p-5 mb-6 slide-in"><div class="flex items-center justify-between mb-4"><span class="font-black text-2xl text-slate-800">' + s.runsheet_code + ' | ' + s.items.length + ' صنف</span><span class="bg-white text-indigo-600 px-4 py-2 rounded-2xl text-sm font-black shadow-sm">⏱️ ' + elapsed + '</span></div><div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>تقدم التحضير</span><span>' + pickedCount + ' / ' + s.items.length + ' صنف</span></div><div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full" style="width:' + progress + '%"></div></div></div></div>';
         html += '<p class="text-sm text-slate-400 mb-4">اضغط على الصنف لإدخال الكمية</p>';
         for(var i = 0; i < s.items.length; i++){
             var it = s.items[i]; var isDone = it.qty_picked > 0;
