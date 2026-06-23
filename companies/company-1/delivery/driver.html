@@ -8,123 +8,826 @@
     <meta name="theme-color" content="#0284c7">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:Tahoma,sans-serif;background:#f1f5f9}
+        body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
         .auth-container{background:linear-gradient(135deg,#0c4a6e 0%,#0369a1 40%,#0284c7 100%)}
-        .input-field:focus{border-color:#0284c7;box-shadow:0 0 0 3px rgba(2,132,199,0.1)}
-        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
-        .btn-primary{background:#0284c7;color:#fff;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;border:none;cursor:pointer;width:100%}
-        .accordion-content{max-height:0;overflow:hidden;transition:max-height 0.3s ease-out}
-        .accordion-content.open{max-height:2000px}
-        .map-btn{background:#10b981;color:#fff;padding:0.5rem 1rem;border-radius:10px;font-weight:700;border:none;cursor:pointer;font-size:0.75rem}
+        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.02),0 8px 24px rgba(0,0,0,0.03);transition:all 0.2s ease}
+        .card:active{transform:scale(0.985);background:#fafafa}
+        .btn-primary{background:linear-gradient(135deg,#0284c7,#38bdf8);color:#fff;padding:1rem 1.5rem;border-radius:16px;font-weight:700;border:none;cursor:pointer;width:100%;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(2,132,199,0.25)}
+        .btn-primary:active{transform:scale(0.97);box-shadow:0 2px 6px rgba(2,132,199,0.15)}
+        .btn-danger{background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(239,68,68,0.2)}
+        .btn-danger:active{transform:scale(0.97)}
+        .tab-btn{transition:all 0.2s ease}
+        .tab-btn:active{transform:scale(0.95)}
+        .progress-bar{transition:width 0.4s ease}
+        .slide-in{animation:slideIn 0.3s ease}
+        @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        .map-pin{width:12px;height:12px;border-radius:50%;background:#0284c7;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
+        .map-pin.done{background:#10b981}
+        .map-pin.active{background:#f59e0b;width:16px;height:16px}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
+<!-- شاشة الدخول -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
-    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
-        <div class="text-center mb-6"><div class="w-20 h-20 bg-gradient-to-br from-sky-600 to-sky-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4"><i class="fa-solid fa-motorcycle text-white text-3xl"></i></div><h1 class="font-black text-2xl text-gray-800">الروائع</h1><p class="text-xs text-gray-400">مندوب التوصيل</p></div>
-        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول</h2>
-        <div class="space-y-3"><div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-sky-600 outline-none font-bold text-sm"></div><div class="relative"><input id="loginPass" type="password" placeholder="كلمة السر" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-sky-600 outline-none font-bold text-sm pr-12"><button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400"><i id="passIcon" class="fa-solid fa-eye"></i></button></div></div>
-        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-sky-600 to-sky-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg mt-4">تسجيل الدخول</button>
-        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
+    <div class="bg-white rounded-[36px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
+        <div class="text-center mb-6">
+            <div class="w-20 h-20 bg-gradient-to-br from-sky-500 to-sky-700 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-sky-200 mb-5">
+                <i class="fa-solid fa-motorcycle text-white text-3xl"></i>
+            </div>
+            <h1 class="font-black text-2xl text-slate-800">الروائع</h1>
+            <p class="text-sm text-slate-400 font-semibold mt-1">مندوب التوصيل</p>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-1.5">البريد الإلكتروني</label>
+                <input id="loginEmail" type="email" placeholder="example@domain.com" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-sky-500 focus:bg-white outline-none font-semibold text-sm transition-all">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-500 mb-1.5">كلمة السر</label>
+                <div class="relative">
+                    <input id="loginPass" type="password" placeholder="••••••••" class="w-full p-3.5 bg-slate-50 rounded-2xl border-2 border-slate-100 focus:border-sky-500 focus:bg-white outline-none font-semibold text-sm transition-all pr-12">
+                    <button type="button" onclick="App.togglePass()" class="absolute left-3 top-1/2 -translate-y-1/2 p-2 text-slate-300 hover:text-sky-500 transition-colors">
+                        <i id="passIcon" class="fa-solid fa-eye"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-sky-600 to-sky-500 text-white py-4 rounded-2xl font-bold text-base shadow-lg shadow-sky-200 hover:shadow-xl transition-all mt-6">
+            تسجيل الدخول
+        </button>
+        <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-4 hidden"></p>
     </div>
 </div>
 
+<!-- التطبيق الرئيسي -->
 <div id="mainApp" class="hidden flex flex-col h-full">
-    <header class="bg-sky-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
-        <span class="font-black text-sm">🛵 مندوب التوصيل</span>
-        <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
+    <header class="bg-gradient-to-r from-sky-700 to-sky-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+        <span class="font-black text-base">🛵 مندوب التوصيل</span>
+        <div class="flex items-center gap-2">
+            <span class="text-xs font-bold opacity-90" id="headerUserName"></span>
+            <button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full flex items-center justify-center hover:bg-white/25 transition-colors">
+                <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>
+            </button>
+        </div>
     </header>
-    <div class="flex gap-1 p-2 bg-white border-b overflow-x-auto flex-shrink-0">
-        <button onclick="App.switchTab('runsheets')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm bg-sky-600 text-white" id="tab-runsheets">📋 رحلاتي</button>
-        <button onclick="App.switchTab('map')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-map">🗺️ الخريطة</button>
-        <button onclick="App.switchTab('returns')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-returns">↩️ مرتجعات</button>
-        <button onclick="App.switchTab('balance')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-balance">⚖️ رصيدي</button>
-    </div>
-    <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
+
+    <main id="mainContent" class="flex-1 overflow-y-auto"></main>
+
+    <!-- التبويبات السفلية -->
+    <nav class="flex-shrink-0 bg-white border-t border-slate-100 flex">
+        <button onclick="App.switchTab('map')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-sky-600 font-bold text-xs" id="tab-map">
+            <i class="fa-solid fa-map text-lg"></i><span>الخريطة</span>
+        </button>
+        <button onclick="App.switchTab('list')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-list">
+            <i class="fa-solid fa-list text-lg"></i><span>القائمة</span>
+        </button>
+        <button onclick="App.switchTab('balance')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-balance">
+            <i class="fa-solid fa-scale-balanced text-lg"></i><span>رصيدي</span>
+        </button>
+        <button onclick="App.switchTab('account')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-account">
+            <i class="fa-solid fa-user text-lg"></i><span>حسابي</span>
+        </button>
+    </nav>
 </div>
 
 <script>
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-var db = new Dexie('RW_Driver'); db.version(1).stores({ runsheets: 'runsheet_code', orders: 'order_code', meta: 'key' });
+var db = new Dexie('RW_Driver');
+db.version(1).stores({ runsheets: 'runsheet_code', orders: 'order_code', meta: 'key' });
+
 function byId(id) { return document.getElementById(id); }
 function safeText(el, text) { if (el) el.textContent = text; }
 function safeHTML(el, html) { if (el) el.innerHTML = html; }
 function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
+function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000, customClass: { popup: '!rounded-2xl !shadow-xl' } }); }
 
 var App = {
-    currentUser: null, currentTab: 'runsheets', runsheets: [], orders: [],
+    currentUser: null,
+    currentTab: 'map',
+    runsheets: [],
+    activeRunsheet: null,
+    mapObj: null,
+    mapMarkers: [],
+    mapRoute: null,
+    timerInterval: null,
+    session: null,  // جلسة التوصيل النشطة { runsheet_code, runsheet_id, start_time, orders }
 
-    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
-    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
-    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('delivery')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();}});},
-    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.switchTab('runsheets');},
-    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
-    switchTab: function(t){this.currentTab=t;['runsheets','map','returns','balance'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-sky-600','text-white');b.classList.add('text-gray-500');}});var a=byId('tab-'+t);if(a){a.classList.add('bg-sky-600','text-white');a.classList.remove('text-gray-500');}if(t==='runsheets')this.renderRunsheets();else if(t==='map')this.renderMap();else if(t==='returns')this.renderReturns();else if(t==='balance')this.renderBalance();},
-
-    // ==================== رحلاتي ====================
-    renderRunsheets: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        supabase.from('runsheets').select('runsheet_code,status,run_date,driver_id,vehicle_id').eq('driver_id',this.currentUser.email).in('status',['Loaded','Delivering','Delivered','Returning']).order('run_date',{ascending:false}).then(function(r){s.runsheets=r.data||[];s.renderRunsheetList();});
+    togglePass: function(){
+        var p = byId('loginPass'), i = byId('passIcon');
+        if(p.type === 'password'){ p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; }
+        else { p.type = 'password'; i.className = 'fa-solid fa-eye'; }
     },
 
-    renderRunsheetList: function(){
-        if(!this.runsheets.length){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-clipboard-list text-4xl mb-3"></i><p>لا توجد رحلات</p></div>');return;}
-        var html='<h2 class="text-lg font-black mb-4">📋 رحلاتي</h2>';
-        for(var i=0;i<this.runsheets.length;i++){var rs=this.runsheets[i],sc=rs.status==='Delivered'?'bg-green-100 text-green-700':rs.status==='Delivering'?'bg-sky-100 text-sky-700':rs.status==='Returning'?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700',sl=rs.status==='Delivered'?'تم التوصيل':rs.status==='Delivering'?'جاري التوصيل':rs.status==='Returning'?'مرتجعات':'محمّلة';
-        html+='<div class="card mb-3" onclick="App.showRunsheetOrders(\''+rs.runsheet_code+'\')"><div class="flex justify-between items-center"><div><span class="font-bold text-lg">'+rs.runsheet_code+'</span><p class="text-xs text-gray-400">'+rs.run_date+' | '+rs.vehicle_id+'</p></div><span class="px-2 py-1 rounded-full text-xs font-bold '+sc+'">'+sl+'</span></div></div>';}
-        safeHTML(byId('mainContent'),html);
+    doLogin: function(){
+        var email = byId('loginEmail').value.trim();
+        var pass = byId('loginPass').value.trim();
+        if(!email || !pass){
+            byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
+            byId('loginMsg').classList.remove('hidden');
+            return;
+        }
+        byId('loginMsg').classList.add('hidden');
+        var self = this;
+        Swal.showLoading();
+        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res){
+            Swal.close();
+            if(res.error){
+                byId('loginMsg').innerText = res.error.message;
+                byId('loginMsg').classList.remove('hidden');
+            } else {
+                self.init();
+            }
+        }).catch(function(){
+            Swal.close();
+            byId('loginMsg').innerText = 'فشل الاتصال بالخادم';
+            byId('loginMsg').classList.remove('hidden');
+        });
     },
 
-    showRunsheetOrders: function(rsCode){
-        var s=this;Swal.showLoading();
-        supabase.from('orders').select('order_code,customer_name,customer_phone,total_amount,area,order_status').eq('runsheet_id',rsCode).neq('order_status','Cancelled').then(function(r){Swal.close();var orders=r.data||[];if(!orders.length){toast('لا توجد أوردرات','info');return;}
-        var html='<div class="text-right"><h3 class="font-bold mb-3">'+rsCode+'</h3>';
-        for(var i=0;i<orders.length;i++){var o=orders[i];html+='<div class="card mb-2"><div class="flex justify-between"><span class="font-bold">'+o.order_code+'</span><span class="font-black text-sky-600">'+fmtNum(o.total_amount)+' ج.م</span></div><p class="text-sm">'+o.customer_name+' | '+o.area+'</p><div class="flex gap-2 mt-2"><a href="tel:'+(o.customer_phone||'')+'" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i></a><a href="https://wa.me/'+(o.customer_phone||'').replace(/\\D/g,'')+'" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i></a><a href="https://www.google.com/maps?q='+encodeURIComponent(o.customer_name||'')+'" target="_blank" class="map-btn"><i class="fa-solid fa-map-location-dot ml-1"></i> خريطة</a></div></div>';}
-        html+='</div>';Swal.fire({title:'تفاصيل الرحلة',html:html,width:'600px',showCloseButton:true,showConfirmButton:false});});
+    init: function(){
+        var self = this;
+        supabase.auth.getSession().then(function(res){
+            if(res.data && res.data.session){
+                self.currentUser = res.data.session.user;
+                var meta = self.currentUser.user_metadata || {};
+                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
+                var perms = meta.permissions || [];
+                var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('delivery') !== -1);
+                if(!hasAccess){
+                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية الوصول للتوصيل', icon: 'error', customClass: { popup: '!rounded-3xl' } });
+                    supabase.auth.signOut();
+                    return;
+                }
+                safeText(byId('headerUserName'), meta.name || self.currentUser.email);
+                self.enterApp();
+            }
+        });
     },
 
-    // ==================== الخريطة ====================
+    enterApp: function(){
+        byId('loginScreen').classList.add('hidden');
+        byId('mainApp').classList.remove('hidden');
+        this.switchTab('map');
+    },
+
+    doLogout: function(){
+        var self = this;
+        if(this.timerInterval) clearInterval(this.timerInterval);
+        if(this.mapObj){ this.mapObj.remove(); this.mapObj = null; }
+        supabase.auth.signOut().then(function(){
+            self.currentUser = null;
+            byId('mainApp').classList.add('hidden');
+            byId('loginScreen').classList.remove('hidden');
+            byId('loginEmail').value = '';
+            byId('loginPass').value = '';
+        });
+    },
+
+    switchTab: function(tab){
+        this.currentTab = tab;
+        var tabs = ['map', 'list', 'balance', 'account'];
+        for(var i = 0; i < tabs.length; i++){
+            var btn = byId('tab-' + tabs[i]);
+            if(btn){ btn.classList.remove('text-sky-600'); btn.classList.add('text-slate-400'); }
+        }
+        var act = byId('tab-' + tab);
+        if(act){ act.classList.add('text-sky-600'); act.classList.remove('text-slate-400'); }
+
+        if(tab === 'map') this.renderMap();
+        else if(tab === 'list') this.renderList();
+        else if(tab === 'balance') this.renderBalance();
+        else if(tab === 'account') this.renderAccount();
+    },
+
+    // ==================== شاشة الخريطة ====================
     renderMap: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        supabase.from('orders').select('customer_name,area,customer_phone').eq('created_by',this.currentUser.email).neq('order_status','Cancelled').order('order_date',{ascending:false}).then(function(r){var orders=r.data||[];var custMap={};
-        for(var i=0;i<orders.length;i++){var nm=orders[i].customer_name||'';if(nm&&!custMap[nm])custMap[nm]=orders[i];}
-        var html='<h2 class="text-lg font-black mb-4">🗺️ خريطة العملاء</h2><p class="text-xs text-gray-500 mb-4">اضغط لفتح موقع العميل</p><div class="space-y-2">';
-        for(var k in custMap){if(custMap.hasOwnProperty(k)){var c=custMap[k];html+='<a href="https://www.google.com/maps?q='+encodeURIComponent(c.customer_name+' '+c.area)+'" target="_blank" class="card block hover:bg-sky-50 cursor-pointer"><div class="flex justify-between items-center"><span class="font-bold">'+c.customer_name+'</span><i class="fa-solid fa-location-dot text-sky-600"></i></div><p class="text-xs text-gray-400">'+c.area+'</p></a>';}}
-        html+='</div>';safeHTML(byId('mainContent'),html);});
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="h-full flex flex-col"><div class="skeleton h-64 w-full mb-4"></div><div class="skeleton h-20 w-full"></div></div>');
+
+        var today = new Date().toISOString().split('T')[0];
+        supabase.from('runsheets')
+            .select('runsheet_code, status, run_date, vehicle_id, delivery_start')
+            .eq('driver_id', this.currentUser.email)
+            .in('status', ['Loaded', 'Delivering'])
+            .order('run_date', { ascending: false })
+            .limit(5)
+            .then(function(res){
+                self.runsheets = res.data || [];
+                self.renderMapView();
+            }).catch(function(){
+                safeHTML(byId('mainContent'), '<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>');
+            });
     },
 
-    // ==================== مرتجعات ====================
-    renderReturns: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        supabase.from('runsheets').select('runsheet_code,run_date').eq('driver_id',this.currentUser.email).eq('status','Returning').then(function(r){var rs=r.data||[];var html='<h2 class="text-lg font-black mb-4">↩️ مرتجعاتي</h2>';
-        if(!rs.length){html+='<div class="text-center text-gray-400 py-10">لا توجد مرتجعات</div>';}else{for(var i=0;i<rs.length;i++){html+='<div class="card mb-2"><span class="font-bold">'+rs[i].runsheet_code+'</span><p class="text-xs text-gray-400">'+rs[i].run_date+'</p></div>';}}
-        safeHTML(byId('mainContent'),html);});
+    renderMapView: function(){
+        var self = this;
+        var html = '<div class="relative h-full flex flex-col">';
+        html += '<div id="leafletMap" class="flex-1 w-full" style="min-height:300px;"></div>';
+
+        if(this.runsheets.length > 0){
+            var rs = this.runsheets[0];
+            var isDelivering = rs.status === 'Delivering';
+            var statusLabel = isDelivering ? '🟢 جاري التوصيل' : '📦 جاهز للتوصيل';
+            var statusColor = isDelivering ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700';
+            var elapsed = '';
+            if(isDelivering && rs.delivery_start){
+                var diff = Math.floor((new Date() - new Date(rs.delivery_start)) / 1000);
+                var m = Math.floor(diff / 60), sec = diff % 60;
+                elapsed = '<span class="text-xs font-bold ml-2">⏱️ ' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0') + '</span>';
+            }
+
+            html += '<div class="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-lg p-4 z-[1000] slide-in">';
+            html += '<div class="flex justify-between items-center mb-2">';
+            html += '<span class="font-black text-lg text-slate-800">' + rs.runsheet_code + '</span>';
+            html += '<span class="px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span>';
+            html += '</div>';
+            html += '<div class="text-xs text-slate-400 mb-3">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + elapsed + '</div>';
+            html += '<button onclick="App.openActiveRunsheet(\'' + rs.runsheet_code + '\')" class="btn-primary text-sm py-3">';
+            html += isDelivering ? '<i class="fa-solid fa-truck-fast ml-2"></i> متابعة التوصيل' : '<i class="fa-solid fa-play ml-2"></i> بدء التوصيل';
+            html += '</button>';
+            html += '</div>';
+
+            this.activeRunsheet = rs;
+        } else {
+            html += '<div class="absolute inset-0 flex items-center justify-center z-[500] pointer-events-none"><div class="text-center bg-white/80 backdrop-blur-sm rounded-3xl p-8"><div class="text-6xl mb-4">🎉</div><p class="text-slate-400 font-bold">لا توجد رحلات معلقة اليوم.</p><p class="text-slate-300 text-sm mt-1">استمتع بوقتك!</p></div></div>';
+            this.activeRunsheet = null;
+        }
+
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
+
+        setTimeout(function(){ self.initMap(); }, 300);
     },
 
-    // ==================== رصيدي ====================
+    initMap: function(){
+        var self = this;
+        var mapEl = byId('leafletMap');
+        if(!mapEl) return;
+
+        if(this.mapObj){ this.mapObj.remove(); this.mapObj = null; }
+        this.mapMarkers = [];
+        if(this.mapRoute){ this.mapRoute = null; }
+
+        var defaultLat = 30.0444, defaultLng = 31.2357;
+        this.mapObj = L.map('leafletMap', { attributionControl: false, zoomControl: false }).setView([defaultLat, defaultLng], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.mapObj);
+        L.control.zoom({ position: 'bottomright' }).addTo(this.mapObj);
+
+        if(this.activeRunsheet){
+            this.loadOrdersForMap(this.activeRunsheet.runsheet_code);
+        }
+
+        setTimeout(function(){ if(self.mapObj) self.mapObj.invalidateSize(); }, 500);
+    },
+
+    loadOrdersForMap: function(rsCode){
+        var self = this;
+        supabase.from('orders')
+            .select('order_code, customer_name, customer_phone, area, total_amount, order_status, customers(location_lat, location_lng)')
+            .eq('runsheet_id', rsCode)
+            .neq('order_status', 'Cancelled')
+            .then(function(res){
+                var orders = res.data || [];
+                var bounds = [];
+                for(var i = 0; i < orders.length; i++){
+                    var o = orders[i];
+                    var cust = o.customers || {};
+                    var lat = Number(cust.location_lat) || null;
+                    var lng = Number(cust.location_lng) || null;
+                    if(lat && lng){
+                        var isDone = o.order_status === 'Delivered';
+                        var isActive = o.order_status === 'Delivering';
+                        var icon = L.divIcon({
+                            className: '',
+                            html: '<div class="map-pin ' + (isDone ? 'done' : (isActive ? 'active' : '')) + '"></div>',
+                            iconSize: [isActive ? 16 : 12, isActive ? 16 : 12],
+                            iconAnchor: [isActive ? 8 : 6, isActive ? 8 : 6]
+                        });
+                        var marker = L.marker([lat, lng], { icon: icon }).addTo(self.mapObj);
+                        marker.bindPopup('<div class="text-right"><strong>' + o.customer_name + '</strong><br><span class="text-xs">' + o.order_code + ' | ' + fmtNum(o.total_amount) + ' ج.م</span><br><a href="tel:' + (o.customer_phone || '') + '" class="text-sky-600 text-xs">📞 اتصال</a></div>');
+                        marker.on('click', function(e){ self.mapObj.setView(e.latlng, 15); });
+                        self.mapMarkers.push(marker);
+                        bounds.push([lat, lng]);
+                    }
+                }
+                if(bounds.length > 0 && self.mapObj){
+                    self.mapObj.fitBounds(bounds, { padding: [50, 50] });
+                }
+            });
+    },
+
+    openActiveRunsheet: function(code){
+        var rs = this.activeRunsheet;
+        if(!rs) return;
+        if(rs.status === 'Loaded'){
+            this.startDelivery(code);
+        } else if(rs.status === 'Delivering'){
+            this.renderActiveDeliverySession(code);
+        }
+    },
+
+    startDelivery: function(code){
+        var self = this;
+        if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
+        Swal.fire({
+            title: 'بدء التوصيل',
+            text: 'هل أنت متأكد من بدء توصيل الرانشيت ' + code + '؟',
+            icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، ابدأ', cancelButtonText: 'رجوع',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }
+        }).then(function(result){
+            if(!result.isConfirmed) return;
+            Swal.showLoading();
+            supabase.auth.getSession().then(function(sessionRes){
+                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+                return fetch(SUPABASE_URL + '/functions/v1/start-delivery', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ runsheet_code: code })
+                });
+            }).then(function(res){
+                if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
+            }).then(function(json){
+                Swal.close();
+                if(json && json.success){
+                    toast('تم بدء التوصيل', 'success');
+                    self.runsheets = [];
+                    self.activeRunsheet = null;
+                    self.renderMap();
+                } else {
+                    toast((json && json.msg) || 'فشل بدء التوصيل', 'error');
+                }
+            }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+        });
+    },
+
+    // ==================== شاشة جلسة التوصيل النشطة ====================
+    renderActiveDeliverySession: function(code){
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20"><div class="skeleton h-48 w-full mb-4"></div></div>');
+        supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle().then(function(rsRes){
+            if(!rsRes.data || rsRes.data.status !== 'Delivering'){
+                toast('الرانشيت ليس قيد التوصيل', 'error');
+                self.renderMap();
+                return;
+            }
+            var rs = rsRes.data;
+            supabase.from('orders')
+                .select('order_code, customer_name, customer_phone, area, total_amount, order_status')
+                .eq('runsheet_id', rs.id)
+                .neq('order_status', 'Cancelled')
+                .then(function(ordersRes){
+                    var orders = ordersRes.data || [];
+                    self.session = {
+                        runsheet_code: code,
+                        runsheet_id: rs.id,
+                        start_time: rs.delivery_start || new Date().toISOString(),
+                        orders: orders
+                    };
+                    self.renderDeliveryOrdersView();
+                });
+        }).catch(function(){
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
+        });
+    },
+
+    renderDeliveryOrdersView: function(){
+        var self = this;
+        var s = this.session;
+        if(!s) { this.renderMap(); return; }
+        var deliveredCount = 0;
+        for(var i = 0; i < s.orders.length; i++){
+            if(s.orders[i].order_status === 'Delivered') deliveredCount++;
+        }
+        var progress = s.orders.length ? Math.round((deliveredCount / s.orders.length) * 100) : 0;
+        var elapsed = '';
+        if(s.start_time){
+            var diff = Math.floor((new Date() - new Date(s.start_time)) / 1000);
+            var m = Math.floor(diff / 60), sec = diff % 60;
+            elapsed = String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+        }
+
+        var html = '<div class="p-4">';
+        html += '<div class="bg-sky-50 rounded-3xl p-5 mb-6 slide-in">';
+        html += '<div class="flex items-center justify-between mb-4">';
+        html += '<span class="font-black text-2xl text-slate-800">' + s.runsheet_code + '</span>';
+        html += '<span class="bg-white text-sky-600 px-4 py-2 rounded-2xl text-sm font-black shadow-sm">⏱️ ' + elapsed + '</span>';
+        html += '</div>';
+        html += '<div class="bg-white rounded-2xl p-4 shadow-sm">';
+        html += '<div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>تقدم التوصيل</span><span>' + deliveredCount + ' / ' + s.orders.length + ' أوردر</span></div>';
+        html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full" style="width:' + progress + '%"></div></div>';
+        html += '</div></div>';
+
+        html += '<p class="text-sm text-slate-400 mb-4">اضغط على الأوردر لإدخال كميات التسليم</p>';
+        for(var j = 0; j < s.orders.length; j++){
+            var o = s.orders[j];
+            var isDone = o.order_status === 'Delivered';
+            html += '<div class="card mb-3 cursor-pointer slide-in ' + (isDone ? 'border-r-4 border-sky-400' : '') + '" onclick="App.openOrderForDelivery(\'' + o.order_code + '\')">';
+            html += '<div class="flex justify-between items-center">';
+            html += '<div>';
+            html += '<p class="font-bold text-slate-700">' + o.customer_name + '</p>';
+            html += '<p class="text-xs text-slate-400">' + o.order_code + ' | ' + (o.area || '') + ' | ' + fmtNum(o.total_amount) + ' ج.م</p>';
+            html += '</div>';
+            html += '<span class="px-2 py-1 rounded-full text-xs font-bold ' + (isDone ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700') + '">' + (isDone ? '✅ تم' : '🟡 جاري') + '</span>';
+            html += '</div>';
+            html += '<div class="flex gap-2 mt-2">';
+            html += '<a href="tel:' + (o.customer_phone || '') + '" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i></a>';
+            html += '<a href="https://wa.me/' + (o.customer_phone || '').replace(/\D/g,'') + '" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i></a>';
+            html += '<a href="https://www.google.com/maps?q=' + encodeURIComponent(o.customer_name || '') + '" target="_blank" class="bg-sky-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-map-location-dot ml-1"></i></a>';
+            html += '</div></div>';
+        }
+
+        html += '<button onclick="App.completeDelivery()" class="btn-primary mt-6"><i class="fa-solid fa-check ml-2"></i> إنهاء التوصيل</button>';
+        html += '<button onclick="App.cancelDelivery()" class="btn-danger w-full mt-3"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التوصيل</button>';
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
+        this.startTimer();
+    },
+
+    startTimer: function(){
+        var self = this;
+        if(this.timerInterval) clearInterval(this.timerInterval);
+        this.timerInterval = setInterval(function(){
+            if(self.session && self.session.start_time){
+                var diff = Math.floor((new Date() - new Date(self.session.start_time)) / 1000);
+                var m = Math.floor(diff / 60), sec = diff % 60;
+                var el = document.querySelector('.bg-white.text-sky-600');
+                if(el) safeText(el, '⏱️ ' + String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0'));
+            }
+        }, 1000);
+    },
+
+    // ==================== إدخال كميات التسليم ====================
+    openOrderForDelivery: function(orderCode){
+        var self = this;
+        Swal.showLoading();
+        supabase.from('order_details')
+            .select('item_code, item_name, unit, unit_price, qty_loaded, qty_delivered, reason_refused')
+            .eq('order_code', orderCode)
+            .then(function(res){
+                Swal.close();
+                var items = res.data || [];
+                if(!items.length){ toast('لا توجد أصناف', 'error'); return; }
+                self._showDeliveryModal(orderCode, items);
+            });
+    },
+
+    _showDeliveryModal: function(orderCode, items){
+        var self = this;
+        var html = '<div class="text-right space-y-3" style="max-height:400px;overflow-y:auto;">';
+        for(var i = 0; i < items.length; i++){
+            var it = items[i];
+            var loaded = Number(it.qty_loaded) || 0;
+            var delivered = Number(it.qty_delivered) || 0;
+            html += '<div class="border rounded-xl p-3 bg-slate-50">';
+            html += '<div class="flex justify-between mb-2"><span class="font-bold text-slate-700">' + it.item_name + '</span><span class="text-xs text-slate-400">' + it.unit + '</span></div>';
+            html += '<div class="flex items-center gap-2 mb-2"><span class="text-xs text-slate-400">محمّل: ' + loaded + '</span><span class="text-xs text-slate-400">| مسلّم: <input id="del_qty_' + i + '" type="number" class="w-20 p-2 border rounded-xl text-center font-bold" value="' + delivered + '" min="0" max="' + loaded + '" oninput="App.calcRefused(' + i + ',' + loaded + ')"></span><span class="text-xs text-slate-400">| مرفوض: <input id="ref_qty_' + i + '" type="text" class="w-16 p-2 border rounded-xl text-center font-bold text-red-500" value="' + (loaded - delivered) + '" readonly></span></div>';
+            html += '<input id="reason_' + i + '" type="text" class="w-full p-2 border rounded-xl text-sm" placeholder="سبب الرفض (اختياري)" value="' + (it.reason_refused || '') + '">';
+            html += '</div>';
+        }
+        html += '</div>';
+
+        Swal.fire({
+            title: 'تفاصيل الأوردر ' + orderCode,
+            html: html,
+            width: '600px',
+            showCancelButton: true,
+            confirmButtonText: '💾 حفظ',
+            cancelButtonText: 'إلغاء',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-6', cancelButton: '!rounded-xl' },
+            preConfirm: function(){
+                var result = [];
+                for(var i = 0; i < items.length; i++){
+                    var delEl = document.getElementById('del_qty_' + i);
+                    var refEl = document.getElementById('ref_qty_' + i);
+                    var reasonEl = document.getElementById('reason_' + i);
+                    var delQty = parseInt(delEl ? delEl.value : 0) || 0;
+                    var refQty = parseInt(refEl ? refEl.value : 0) || 0;
+                    var reason = reasonEl ? reasonEl.value.trim() : '';
+                    if(delQty < 0 || delQty > items[i].qty_loaded) { Swal.showValidationMessage('الكمية المسلّمة غير صالحة لـ ' + items[i].item_name); return false; }
+                    result.push({ itemCode: items[i].item_code, deliveredQty: delQty, reason: reason });
+                }
+                return result;
+            }
+        }).then(function(res){
+            if(res.isConfirmed){
+                self.saveDeliveryItems(orderCode, res.value);
+            }
+        });
+    },
+
+    calcRefused: function(index, loaded){
+        var delEl = byId ? document.getElementById('del_qty_' + index) : null;
+        var refEl = byId ? document.getElementById('ref_qty_' + index) : null;
+        if(!delEl || !refEl) return;
+        var del = parseInt(delEl.value) || 0;
+        var ref = Math.max(0, loaded - del);
+        refEl.value = ref;
+    },
+
+    saveDeliveryItems: function(orderCode, items){
+        var self = this;
+        if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
+        Swal.showLoading();
+        supabase.auth.getSession().then(function(sessionRes){
+            var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+            if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+            return fetch(SUPABASE_URL + '/functions/v1/save-delivery-item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ runsheet_code: self.session.runsheet_code, order_code: orderCode, items: items })
+            });
+        }).then(function(res){
+            if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
+        }).then(function(json){
+            Swal.close();
+            if(json && json.success){
+                toast('تم حفظ بيانات الأوردر', 'success');
+                // تحديث الجلسة المحلية
+                var idx = -1;
+                for(var i = 0; i < self.session.orders.length; i++){
+                    if(self.session.orders[i].order_code === orderCode) { idx = i; break; }
+                }
+                if(idx !== -1){
+                    self.session.orders[idx].order_status = 'Delivered'; // بافتراض أن كل الأصناف سُلّمت
+                }
+                self.renderDeliveryOrdersView();
+            } else {
+                toast((json && json.msg) || 'فشل الحفظ', 'error');
+            }
+        }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+    },
+
+    // ==================== إنهاء التوصيل ====================
+    completeDelivery: function(){
+        var self = this;
+        if(!this.session) return;
+        var deliveredCount = 0;
+        for(var i = 0; i < this.session.orders.length; i++){
+            if(this.session.orders[i].order_status === 'Delivered') deliveredCount++;
+        }
+        var totalOrders = this.session.orders.length;
+
+        Swal.fire({
+            title: 'تأكيد إنهاء التوصيل',
+            html: '<div class="text-right"><p>أنت على وشك إنهاء توصيل الرانشيت <strong>' + this.session.runsheet_code + '</strong>.</p><div class="mt-3 space-y-1"><div>✅ <strong>' + deliveredCount + '</strong> أوردر مكتمل</div><div>❌ <strong>' + (totalOrders - deliveredCount) + '</strong> أوردر لم يُسلّم بعد</div></div><p class="text-red-500 text-xs mt-3">لن تتمكن من تعديل الكميات بعد الإنهاء. متابعة؟</p></div>',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، أنهِ التوصيل', cancelButtonText: 'رجوع',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }
+        }).then(function(result){
+            if(!result.isConfirmed) return;
+            Swal.showLoading();
+            supabase.auth.getSession().then(function(sessionRes){
+                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+                return fetch(SUPABASE_URL + '/functions/v1/complete-delivery', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ runsheet_code: self.session.runsheet_code })
+                });
+            }).then(function(res){
+                if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
+            }).then(function(json){
+                Swal.close();
+                if(json && json.success){
+                    toast('تم إنهاء التوصيل', 'success');
+                    self.session = null;
+                    if(self.timerInterval) clearInterval(self.timerInterval);
+                    self.renderMap();
+                } else {
+                    toast((json && json.msg) || 'فشل إنهاء التوصيل', 'error');
+                }
+            }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+        });
+    },
+
+    // ==================== إلغاء التوصيل ====================
+    cancelDelivery: function(){
+        var self = this;
+        if(!this.session) return;
+        Swal.fire({
+            title: 'تأكيد الإلغاء',
+            text: 'سيتم إلغاء التوصيل وإعادة الرانشيت إلى حالة "محمّل". كل الكميات المسلّمة ستفقد.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ', cancelButtonText: 'رجوع',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' }
+        }).then(function(result){
+            if(!result.isConfirmed) return;
+            Swal.showLoading();
+            supabase.auth.getSession().then(function(sessionRes){
+                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+                // استدعاء cancel-delivery (تحتاجين لإنشائها لاحقًا، حاليًا نستخدم cancel-loading كبديل؟ لا، سننشئ واحدة جديدة)
+                return fetch(SUPABASE_URL + '/functions/v1/cancel-delivery', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ runsheet_code: self.session.runsheet_code })
+                });
+            }).then(function(res){
+                if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
+            }).then(function(json){
+                Swal.close();
+                if(json && json.success){
+                    toast('تم إلغاء التوصيل', 'success');
+                    self.session = null;
+                    if(self.timerInterval) clearInterval(self.timerInterval);
+                    self.renderMap();
+                } else {
+                    toast((json && json.msg) || 'فشل الإلغاء', 'error');
+                }
+            }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+        });
+    },
+
+    // ==================== شاشة القائمة ====================
+    renderList: function(){
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-24 w-full mb-3"></div></div>');
+
+        var today = new Date().toISOString().split('T')[0];
+        supabase.from('runsheets')
+            .select('runsheet_code, status, run_date, vehicle_id, delivery_start')
+            .eq('driver_id', this.currentUser.email)
+            .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning'])
+            .order('run_date', { ascending: false })
+            .limit(20)
+            .then(function(res){
+                var runsheets = res.data || [];
+                self.renderListView(runsheets);
+            }).catch(function(){
+                safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
+            });
+    },
+
+    renderListView: function(runsheets){
+        var userName = (this.currentUser && this.currentUser.user_metadata) ? (this.currentUser.user_metadata.name || this.currentUser.email.split('@')[0]) : 'زميل';
+        var hour = new Date().getHours();
+        var greeting = hour < 12 ? 'صباح الخير' : 'مساء الخير';
+        var html = '<div class="p-4">';
+        html += '<p class="text-slate-400 text-sm mb-4">' + greeting + '، <span class="font-bold text-slate-700">' + userName + '</span> 👋</p>';
+        html += '<h2 class="text-lg font-black text-slate-800 mb-4">📋 رحلاتي</h2>';
+
+        if(!runsheets.length){
+            html += '<div class="text-center py-16"><div class="text-6xl mb-4">🎉</div><p class="text-slate-400 font-bold">لا توجد رحلات معلقة اليوم.</p></div>';
+        } else {
+            for(var i = 0; i < runsheets.length; i++){
+                var rs = runsheets[i];
+                var sc = rs.status === 'Delivered' ? 'bg-green-100 text-green-700' : rs.status === 'Delivering' ? 'bg-sky-100 text-sky-700' : rs.status === 'Returning' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700';
+                var sl = rs.status === 'Delivered' ? '✅ تم التوصيل' : rs.status === 'Delivering' ? '🟢 جاري' : rs.status === 'Returning' ? '↩️ مرتجعات' : '📦 جاهز';
+                html += '<div class="card mb-3 slide-in" onclick="App.openRunsheetFromList(\'' + rs.runsheet_code + '\', \'' + rs.status + '\')">';
+                html += '<div class="flex justify-between items-center">';
+                html += '<span class="font-bold text-lg text-slate-800">' + rs.runsheet_code + '</span>';
+                html += '<span class="px-2 py-1 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span>';
+                html += '</div>';
+                html += '<p class="text-xs text-slate-400 mt-1">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + '</p>';
+                html += '</div>';
+            }
+        }
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
+    },
+
+    openRunsheetFromList: function(code, status){
+        if(status === 'Delivering'){
+            this.renderActiveDeliverySession(code);
+        } else {
+            toast('هذه الرحلة ليست قيد التوصيل', 'info');
+        }
+    },
+
+    // ==================== شاشة رصيدي ====================
     renderBalance: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        supabase.from('driver_ledger').select('*').eq('driver_email',this.currentUser.email).order('entry_date',{ascending:false}).then(function(r){var rows=r.data||[],tD=0,tC=0;
-        for(var i=0;i<rows.length;i++){tD+=Number(rows[i].debit)||0;tC+=Number(rows[i].credit)||0;}
-        var bal=tD-tC,badge=bal<=0?'bg-green-100 text-green-700':'bg-red-100 text-red-700',txt=bal<=0?'🟢 أنا ملتزم':'🔴 عليّ مستحقات';
-        var html='<div class="card text-center mb-4"><p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p><p class="text-4xl font-black '+(bal<=0?'text-green-600':'text-red-600')+'">'+fmtNum(Math.abs(bal))+' ج.م</p><div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold '+badge+'">'+txt+'</span></div></div>';
-        html+='<div class="card"><h3 class="font-bold mb-3">📊 تفاصيل رصيدي</h3><div class="space-y-2 max-h-60 overflow-y-auto">';
-        for(var j=rows.length-1;j>=0;j--){var rw=rows[j],sign=rw.debit>0?'+':'-',color=rw.debit>0?'text-red-600':'text-green-600';html+='<div class="flex justify-between p-2 bg-gray-50 rounded-lg"><span class="text-xs text-gray-400">'+rw.entry_date+'</span><span class="font-bold text-sm">'+rw.description+'</span><span class="font-bold '+color+'">'+sign+fmtNum(rw.debit||rw.credit)+'</span></div>';}
-        html+='</div><div class="flex justify-between font-black text-lg pt-3 border-t mt-3"><span>📋 الصافي:</span><span class="'+(bal<=0?'text-green-600':'text-red-600')+'">'+fmtNum(Math.abs(bal))+' ج.م</span></div></div>';
-        safeHTML(byId('mainContent'),html);});
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
+
+        var today = new Date().toISOString().split('T')[0];
+        var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
+        Promise.all([
+            supabase.from('runsheets')
+                .select('runsheet_code, status, total_amount')
+                .eq('driver_id', this.currentUser.email)
+                .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning'])
+                .gte('run_date', firstDay)
+                .lte('run_date', today),
+            supabase.from('driver_ledger')
+                .select('*')
+                .eq('driver_email', this.currentUser.email)
+                .order('entry_date', { ascending: false })
+                .limit(30)
+        ]).then(function(results){
+            var runsheets = results[0].data || [];
+            var ledger = results[1].data || [];
+            self.renderBalanceView(runsheets, ledger);
+        }).catch(function(){
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
+        });
+    },
+
+    renderBalanceView: function(runsheets, ledger){
+        var loadedTotal = 0, deliveredTotal = 0;
+        for(var i = 0; i < runsheets.length; i++){
+            loadedTotal += Number(runsheets[i].total_amount) || 0;
+            if(runsheets[i].status === 'Delivered') deliveredTotal += Number(runsheets[i].total_amount) || 0;
+        }
+        var tD = 0, tC = 0;
+        for(var j = 0; j < ledger.length; j++){
+            tD += Number(ledger[j].debit) || 0;
+            tC += Number(ledger[j].credit) || 0;
+        }
+        var bal = tD - tC;
+
+        var html = '<div class="p-4">';
+        html += '<h2 class="text-lg font-black text-slate-800 mb-4">⚖️ رصيدي</h2>';
+
+        html += '<div class="card text-center mb-4">';
+        html += '<p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p>';
+        html += '<p class="text-4xl font-black ' + (bal <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(bal)) + ' ج.م</p>';
+        html += '<div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + (bal <= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' + (bal <= 0 ? '🟢 أنا ملتزم' : '🔴 عليّ مستحقات') + '</span></div>';
+        html += '</div>';
+
+        html += '<div class="grid grid-cols-2 gap-3 mb-4">';
+        html += '<div class="card text-center"><p class="text-xs text-slate-400">المحمّل (الشهر)</p><p class="text-xl font-black text-sky-600">' + fmtNum(loadedTotal) + '</p></div>';
+        html += '<div class="card text-center"><p class="text-xs text-slate-400">تم تسليمه</p><p class="text-xl font-black text-green-600">' + fmtNum(deliveredTotal) + '</p></div>';
+        html += '</div>';
+
+        html += '<h3 class="font-bold text-slate-700 mb-3">📊 آخر الحركات</h3>';
+        html += '<div class="space-y-2 max-h-60 overflow-y-auto">';
+        if(ledger.length === 0){
+            html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد حركات</p>';
+        } else {
+            for(var k = 0; k < ledger.length; k++){
+                var rw = ledger[k];
+                var sign = rw.debit > 0 ? '+' : '-';
+                var color = rw.debit > 0 ? 'text-red-600' : 'text-green-600';
+                html += '<div class="flex justify-between p-2 bg-slate-50 rounded-lg">';
+                html += '<span class="text-xs text-slate-400">' + (rw.entry_date || '') + '</span>';
+                html += '<span class="font-bold text-sm">' + (rw.description || '') + '</span>';
+                html += '<span class="font-bold ' + color + '">' + sign + fmtNum(rw.debit || rw.credit) + '</span>';
+                html += '</div>';
+            }
+        }
+        html += '</div>';
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
+    },
+
+    // ==================== شاشة حسابي ====================
+    renderAccount: function(){
+        var html = '<div class="p-4">';
+        html += '<div class="text-center mb-8 mt-4">';
+        html += '<div class="w-20 h-20 bg-gradient-to-br from-sky-400 to-sky-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-sky-200 mb-4">';
+        html += (this.currentUser && this.currentUser.user_metadata && this.currentUser.user_metadata.name) ? this.currentUser.user_metadata.name.charAt(0) : '?';
+        html += '</div>';
+        html += '<h2 class="font-black text-xl text-slate-800">' + ((this.currentUser && this.currentUser.user_metadata) ? (this.currentUser.user_metadata.name || this.currentUser.email) : '') + '</h2>';
+        html += '<p class="text-sm text-slate-400">مندوب توصيل</p>';
+        html += '</div>';
+        html += '<div class="card mb-3">';
+        html += '<div class="flex items-center gap-3">';
+        html += '<div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-envelope"></i></div>';
+        html += '<div><p class="text-xs text-slate-400">البريد الإلكتروني</p><p class="font-bold text-slate-700 text-sm">' + (this.currentUser ? this.currentUser.email : '') + '</p></div>';
+        html += '</div></div>';
+        html += '<button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all mt-6">';
+        html += '<i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج';
+        html += '</button>';
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
     }
 };
-if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
-document.addEventListener('DOMContentLoaded',function(){App.init();});
+
+// ==================== Service Worker ====================
+if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('../sw.js').then(function(reg){
+        reg.addEventListener('updatefound', function(){
+            var newWorker = reg.installing;
+            newWorker.addEventListener('statechange', function(){
+                if(newWorker.state === 'installed' && navigator.serviceWorker.controller){
+                    Swal.fire({
+                        title: '🔄 تحديث متاح',
+                        text: 'تم تحميل نسخة أحدث من التطبيق.',
+                        icon: 'info', showCancelButton: false, confirmButtonText: 'تحديث الآن',
+                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8' }
+                    }).then(function(){
+                        newWorker.postMessage({ action: 'skipWaiting' });
+                        window.location.reload();
+                    });
+                }
+            });
+        });
+    }).catch(function(){});
+}
+
+document.addEventListener('DOMContentLoaded', function(){ App.init(); });
 </script>
 </body>
 </html>
