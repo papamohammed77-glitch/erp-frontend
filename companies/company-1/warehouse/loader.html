@@ -190,7 +190,6 @@ var App = {
     renderPendingTab: function(){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>');
-        // ✅ جلب عدد الأصناف مع الرانشيت
         var p1 = supabase.from('runsheets').select('runsheet_code, status, run_date, loader_id, run_sheet_details(count)').eq('status', 'Loading').eq('loader_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
         var p2 = supabase.from('runsheets').select('runsheet_code, status, run_date, run_sheet_details(count)').eq('status', 'Picked').order('run_date', { ascending: false }).limit(50);
         Promise.all([p1, p2]).then(function(results){
@@ -308,6 +307,7 @@ var App = {
                             item_name: items[i].item_name || '',
                             unit: items[i].unit || 'حبة',
                             description: items[i].description || '',
+                            qty_ordered: items[i].qty_ordered || 0,
                             qty_picked: items[i].qty_picked || 0,
                             qty_loaded: items[i].qty_loaded || 0,
                             notes: items[i].notes || ''
@@ -410,7 +410,7 @@ var App = {
         html += '<p class="text-sm text-slate-400 mb-4">اضغط على الصنف لإدخال الكمية المحمّلة</p>';
         for(var i = 0; i < s.items.length; i++){
             var it = s.items[i]; var isDone = it.qty_loaded > 0;
-            html += '<div class="card mb-3 cursor-pointer slide-in ' + (isDone ? 'border-r-4 border-orange-400' : '') + '" onclick="App.editLoadedItem(' + i + ')"><div class="flex items-center justify-between"><div class="flex items-center gap-4">' + self._img(it.item_code) + '<div><p class="font-bold text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400 mt-0.5">محضّر: ' + (it.qty_picked || 0) + ' | <span class="font-bold ' + (isDone ? 'text-orange-600' : 'text-slate-500') + '">محمّل: ' + (it.qty_loaded || 0) + '</span></p></div></div><i class="fa-solid fa-pen text-slate-300 text-sm"></i></div></div>';
+            html += '<div class="card mb-3 cursor-pointer slide-in ' + (isDone ? 'border-r-4 border-orange-400' : '') + '" onclick="App.editLoadedItem(' + i + ')"><div class="flex items-center justify-between"><div class="flex items-center gap-4">' + self._img(it.item_code) + '<div><p class="font-bold text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400 mt-0.5">محضّر: ' + (it.qty_picked || 0) + ' | مطلوب: ' + (it.qty_ordered || 0) + ' | <span class="font-bold ' + (isDone ? 'text-orange-600' : 'text-slate-500') + '">محمّل: ' + (it.qty_loaded || 0) + '</span></p></div></div><i class="fa-solid fa-pen text-slate-300 text-sm"></i></div></div>';
         }
         html += '<button onclick="App.completeLoading()" class="btn-primary mt-6"><i class="fa-solid fa-check ml-2"></i> إنهاء التحميل</button>';
         html += '<button onclick="App.cancelLoading(\'' + s.runsheet_code + '\')" class="btn-danger w-full mt-3"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التحميل</button>';
@@ -427,6 +427,7 @@ var App = {
         }, 1000);
     },
 
+    // ==================== تحرير الكمية (يسمح بتجاوز الكمية المحضّرة بشرط ألا يتجاوز الكمية المطلوبة) ====================
     editLoadedItem: function(index){
         var self = this; var it = this.session.items[index];
         var img = ITEMS_IMAGE_CACHE[it.item_code] || '';
@@ -434,19 +435,41 @@ var App = {
         var unitHtml = it.unit ? '<div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + it.unit + '</span></div>' : '';
         var descHtml = it.description ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + it.description + '</p>' : '';
 
+        // ✅ تم تغيير max إلى qty_ordered (الكمية المطلوبة في الرانشيت)
         Swal.fire({
             title: '<span class="text-slate-800">' + it.item_name + '</span>',
-            html: '<div class="text-center">' + imgHtml + '</div><div class="text-right text-sm space-y-2"><div class="flex justify-between"><span class="text-slate-400">الكمية المحضّرة</span><strong class="text-slate-700">' + it.qty_picked + '</strong></div>' + unitHtml + '</div>' + descHtml + '<div class="mt-4 text-right"><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المحمّلة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="' + it.qty_loaded + '" min="0" max="' + it.qty_picked + '"><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes || '') + '" placeholder="سبب النقص..."></div>',
+            html: '<div class="text-center">' + imgHtml + '</div><div class="text-right text-sm space-y-2"><div class="flex justify-between"><span class="text-slate-400">الكمية المحضّرة</span><strong class="text-slate-700">' + it.qty_picked + '</strong></div><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة</span><strong class="text-slate-700">' + it.qty_ordered + '</strong></div>' + unitHtml + '</div>' + descHtml + '<div class="mt-4 text-right"><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المحمّلة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="' + it.qty_loaded + '" min="0" max="' + it.qty_ordered + '"><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes || '') + '" placeholder="سبب النقص أو الزيادة..."></div>',
             showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
             customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-orange-600 !px-8', cancelButton: '!rounded-xl' },
-            preConfirm: function(){ return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-qty').value) || 0, it.qty_picked)), notes: document.getElementById('swal-notes').value.trim() }; }
+            preConfirm: function(){ return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-qty').value) || 0, it.qty_ordered)), notes: document.getElementById('swal-notes').value.trim() }; }
         }).then(function(r){
             if(r.isConfirmed){
-                self.session.items[index].qty_loaded = r.value.qty;
-                self.session.items[index].notes = r.value.notes;
-                supabase.from('run_sheet_details').update({ qty_loaded: r.value.qty }).eq('runsheet_id', self.session.runsheet_id || null).eq('item_code', it.item_code).then(function(){});
+                var newQty = r.value.qty;
+                var notes = r.value.notes;
+
+                // ✅ إذا زادت الكمية عن المحضّرة، يجب ذكر السبب
+                if(newQty > it.qty_picked && !notes){
+                    Swal.fire({
+                        title: 'تنبيه',
+                        text: 'الكمية المحمّلة أكبر من المحضّرة. يجب ذكر السبب.',
+                        icon: 'warning', showCancelButton: true, confirmButtonText: 'إضافة سبب', cancelButtonText: 'تخطي',
+                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl' }
+                    }).then(function(r2){ if(r2.isConfirmed){ self.editLoadedItem(index); } });
+                    return;
+                }
+
+                // ✅ إن تجاوز المحضّر، تُضاف ملاحظة تلقائية بأن التعديل من المحمّل
+                if(newQty > it.qty_picked){
+                    notes = (notes ? notes + ' | ' : '') + 'عدّلها المحمّل (تجاوز الكمية المحضّرة)';
+                }
+
+                self.session.items[index].qty_loaded = newQty;
+                self.session.items[index].notes = notes;
+                supabase.from('run_sheet_details').update({ qty_loaded: newQty }).eq('runsheet_id', self.session.runsheet_id || null).eq('item_code', it.item_code).then(function(){});
                 self.renderActiveSession();
-                if(r.value.qty < it.qty_picked && !r.value.notes){
+
+                // ✅ إذا كانت الكمية أقل من المحضّرة بدون سبب، يُطلب السبب
+                if(newQty < it.qty_picked && !notes){
                     Swal.fire({
                         title: 'تنبيه', text: 'الكمية المحمّلة أقل من المحضّرة. هل تريد إضافة سبب؟',
                         icon: 'question', showCancelButton: true, confirmButtonText: 'إضافة سبب', cancelButtonText: 'تخطي',
