@@ -115,6 +115,7 @@ function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'inf
 
 var App = {
     currentUser: null,
+    pubUserId: null,   // ✅ UUID من public.users
     currentTab: 'map',
     runsheets: [],
     activeRunsheet: null,
@@ -122,7 +123,7 @@ var App = {
     mapMarkers: [],
     mapRoute: null,
     timerInterval: null,
-    session: null,  // جلسة التوصيل النشطة { runsheet_code, runsheet_id, start_time, orders }
+    session: null,
 
     togglePass: function(){
         var p = byId('loginPass'), i = byId('passIcon');
@@ -170,8 +171,27 @@ var App = {
                     supabase.auth.signOut();
                     return;
                 }
-                safeText(byId('headerUserName'), meta.name || self.currentUser.email);
-                self.enterApp();
+                
+                // ✅ جلب UUID العام للمستخدم
+                supabase.from('users').select('id').eq('email', self.currentUser.email).maybeSingle().then(function(uRes){
+                    if(uRes.data){
+                        self.pubUserId = uRes.data.id;
+                    } else {
+                        // إذا لم يوجد، نحاول إضافته (مثل start-picking)
+                        supabase.from('users').insert({
+                            email: self.currentUser.email,
+                            name: meta.name || self.currentUser.email,
+                            role: meta.role || 'مندوب توصيل',
+                            permissions: perms,
+                            company_id: '00000000-0000-0000-0000-000000000001',
+                            status: 'Active'
+                        }).select('id').single().then(function(insertRes){
+                            if(insertRes.data) self.pubUserId = insertRes.data.id;
+                        });
+                    }
+                    safeText(byId('headerUserName'), meta.name || self.currentUser.email);
+                    self.enterApp();
+                });
             }
         });
     },
@@ -188,6 +208,7 @@ var App = {
         if(this.mapObj){ this.mapObj.remove(); this.mapObj = null; }
         supabase.auth.signOut().then(function(){
             self.currentUser = null;
+            self.pubUserId = null;
             byId('mainApp').classList.add('hidden');
             byId('loginScreen').classList.remove('hidden');
             byId('loginEmail').value = '';
@@ -214,12 +235,13 @@ var App = {
     // ==================== شاشة الخريطة ====================
     renderMap: function(){
         var self = this;
+        if(!this.pubUserId){ toast('لم يتم تحميل حسابك بعد، حاول مرة أخرى', 'warning'); return; }
         safeHTML(byId('mainContent'), '<div class="h-full flex flex-col"><div class="skeleton h-64 w-full mb-4"></div><div class="skeleton h-20 w-full"></div></div>');
 
         var today = new Date().toISOString().split('T')[0];
         supabase.from('runsheets')
             .select('runsheet_code, status, run_date, vehicle_id, delivery_start')
-            .eq('driver_id', this.currentUser.email)
+            .eq('driver_id', this.pubUserId)  // ✅ UUID
             .in('status', ['Loaded', 'Delivering'])
             .order('run_date', { ascending: false })
             .limit(5)
@@ -514,10 +536,8 @@ var App = {
                     var refEl = document.getElementById('ref_qty_' + i);
                     var reasonEl = document.getElementById('reason_' + i);
                     var delQty = parseInt(delEl ? delEl.value : 0) || 0;
-                    var refQty = parseInt(refEl ? refEl.value : 0) || 0;
-                    var reason = reasonEl ? reasonEl.value.trim() : '';
                     if(delQty < 0 || delQty > items[i].qty_loaded) { Swal.showValidationMessage('الكمية المسلّمة غير صالحة لـ ' + items[i].item_name); return false; }
-                    result.push({ itemCode: items[i].item_code, deliveredQty: delQty, reason: reason });
+                    result.push({ itemCode: items[i].item_code, deliveredQty: delQty, reason: reasonEl ? reasonEl.value.trim() : '' });
                 }
                 return result;
             }
@@ -529,8 +549,8 @@ var App = {
     },
 
     calcRefused: function(index, loaded){
-        var delEl = byId ? document.getElementById('del_qty_' + index) : null;
-        var refEl = byId ? document.getElementById('ref_qty_' + index) : null;
+        var delEl = document.getElementById('del_qty_' + index);
+        var refEl = document.getElementById('ref_qty_' + index);
         if(!delEl || !refEl) return;
         var del = parseInt(delEl.value) || 0;
         var ref = Math.max(0, loaded - del);
@@ -555,13 +575,12 @@ var App = {
             Swal.close();
             if(json && json.success){
                 toast('تم حفظ بيانات الأوردر', 'success');
-                // تحديث الجلسة المحلية
                 var idx = -1;
                 for(var i = 0; i < self.session.orders.length; i++){
                     if(self.session.orders[i].order_code === orderCode) { idx = i; break; }
                 }
                 if(idx !== -1){
-                    self.session.orders[idx].order_status = 'Delivered'; // بافتراض أن كل الأصناف سُلّمت
+                    self.session.orders[idx].order_status = 'Delivered';
                 }
                 self.renderDeliveryOrdersView();
             } else {
@@ -627,7 +646,6 @@ var App = {
             supabase.auth.getSession().then(function(sessionRes){
                 var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
                 if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                // استدعاء cancel-delivery (تحتاجين لإنشائها لاحقًا، حاليًا نستخدم cancel-loading كبديل؟ لا، سننشئ واحدة جديدة)
                 return fetch(SUPABASE_URL + '/functions/v1/cancel-delivery', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
@@ -652,12 +670,12 @@ var App = {
     // ==================== شاشة القائمة ====================
     renderList: function(){
         var self = this;
+        if(!this.pubUserId){ toast('لم يتم تحميل حسابك بعد', 'warning'); return; }
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-24 w-full mb-3"></div></div>');
 
-        var today = new Date().toISOString().split('T')[0];
         supabase.from('runsheets')
             .select('runsheet_code, status, run_date, vehicle_id, delivery_start')
-            .eq('driver_id', this.currentUser.email)
+            .eq('driver_id', this.pubUserId)  // ✅ UUID
             .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning'])
             .order('run_date', { ascending: false })
             .limit(20)
@@ -716,7 +734,7 @@ var App = {
         Promise.all([
             supabase.from('runsheets')
                 .select('runsheet_code, status, total_amount')
-                .eq('driver_id', this.currentUser.email)
+                .eq('driver_id', this.pubUserId)  // ✅ UUID
                 .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning'])
                 .gte('run_date', firstDay)
                 .lte('run_date', today),
