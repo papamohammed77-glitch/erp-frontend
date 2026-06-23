@@ -112,8 +112,8 @@ var App = {
     currentUser: null,
     currentTab: 'dashboard',
     chartInstance: null,
-    driversList: [],       // تخزين قائمة السائقين
-    loadedRunsheets: [],   // الرانشيتات الجاهزة
+    driversList: [],
+    loadedRunsheets: [],
 
     togglePass: function(){
         var p = byId('loginPass'), i = byId('passIcon');
@@ -199,7 +199,7 @@ var App = {
         else if(tab === 'account') this.renderAccount();
     },
 
-    // ==================== تبويب الأداء (KPI) ====================
+    // ==================== تبويب الأداء ====================
     renderDashboard: function(){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div><div class="skeleton h-48 w-full"></div></div>');
@@ -209,45 +209,40 @@ var App = {
 
         Promise.all([
             supabase.from('runsheets').select('status, total_amount').gte('run_date', firstDay).lte('run_date', today),
-            supabase.from('users').select('email, name').in('role', ['سائق', 'مندوب', 'Driver']).eq('status', 'Active')
+            supabase.from('users').select('email, name').filter('permissions', 'cs', '["delivery"]').eq('status', 'Active')
         ]).then(function(results){
             var allRS = results[0].data || [];
             var drivers = results[1].data || [];
-            
+
             var totalRS = allRS.length;
             var totalValue = 0;
             var deliveredCount = 0, deliveringCount = 0, loadedCount = 0;
-            
             for(var i = 0; i < allRS.length; i++){
                 totalValue += Number(allRS[i].total_amount) || 0;
                 if(allRS[i].status === 'Delivered') deliveredCount++;
                 else if(allRS[i].status === 'Delivering') deliveringCount++;
                 else if(allRS[i].status === 'Loaded') loadedCount++;
             }
-            
+
             var percentage = totalRS > 0 ? Math.round((deliveredCount / totalRS) * 100) : 0;
-            
+
             var html = '<div class="p-4">';
             html += '<p class="text-slate-400 text-sm mb-4">مرحباً، <span class="font-bold text-slate-700">' + (self.currentUser.user_metadata?.name || 'مشرف') + '</span> 👋</p>';
             html += '<h2 class="text-lg font-black text-slate-800 mb-4">📊 مؤشرات الأداء – الشهر الحالي</h2>';
-            
-            // بطاقات KPI
+
             html += '<div class="grid grid-cols-2 gap-3 mb-4">';
             html += '<div class="stat-card card bg-gradient-to-br from-teal-50 to-white border-teal-100"><p class="text-xs text-teal-400">إجمالي الرحلات</p><p class="text-2xl font-black text-teal-600">' + totalRS + '</p></div>';
             html += '<div class="stat-card card bg-gradient-to-br from-blue-50 to-white border-blue-100"><p class="text-xs text-blue-400">قيمة الرحلات</p><p class="text-2xl font-black text-blue-600">' + fmtNum(totalValue) + ' ج.م</p></div>';
             html += '<div class="stat-card card bg-gradient-to-br from-green-50 to-white border-green-100"><p class="text-xs text-green-400">تم التوصيل</p><p class="text-2xl font-black text-green-600">' + deliveredCount + '</p></div>';
             html += '<div class="stat-card card bg-gradient-to-br from-amber-50 to-white border-amber-100"><p class="text-xs text-amber-400">جاري / جاهز</p><p class="text-2xl font-black text-amber-600">' + (deliveringCount + loadedCount) + '</p></div>';
             html += '</div>';
-            
-            // الرسم البياني
+
             html += '<div class="card mb-4"><h3 class="font-bold text-slate-700 mb-3">نسبة الإنجاز</h3><div class="w-full h-48 relative"><canvas id="kpiChart"></canvas></div></div>';
-            
             html += '<div class="text-center text-sm text-slate-500">👥 عدد السائقين النشطين: <strong>' + drivers.length + '</strong></div>';
             html += '</div>';
-            
+
             safeHTML(byId('mainContent'), html);
-            
-            // رسم البيان
+
             setTimeout(function(){
                 var ctx = byId('kpiChart');
                 if(ctx){
@@ -256,19 +251,9 @@ var App = {
                         type: 'doughnut',
                         data: {
                             labels: ['تم التوصيل', 'جاري / جاهز'],
-                            datasets: [{
-                                data: [deliveredCount, totalRS - deliveredCount],
-                                backgroundColor: ['#10b981', '#f59e0b'],
-                                borderWidth: 0
-                            }]
+                            datasets: [{ data: [deliveredCount, totalRS - deliveredCount], backgroundColor: ['#10b981', '#f59e0b'], borderWidth: 0 }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } }
-                            }
-                        }
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } } } }
                     });
                 }
             }, 200);
@@ -280,18 +265,17 @@ var App = {
         var self = this;
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-24 w-full mb-3"></div></div>');
 
-        // جلب السائقين وإحصائياتهم
         var today = new Date().toISOString().split('T')[0];
         var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
         Promise.all([
-            supabase.from('users').select('email, name').in('role', ['سائق', 'مندوب', 'Driver']).eq('status', 'Active'),
+            // ✅ جلب السائقين بصلاحية delivery
+            supabase.from('users').select('email, name').eq('status', 'Active').filter('permissions', 'cs', '["delivery"]'),
             supabase.from('runsheets').select('driver_id, status, total_amount').gte('run_date', firstDay).lte('run_date', today)
         ]).then(function(results){
             var drivers = results[0].data || [];
             var runsheets = results[1].data || [];
-            
-            // تجميع الإحصائيات لكل سائق
+
             var stats = {};
             for(var i = 0; i < runsheets.length; i++){
                 var rs = runsheets[i];
@@ -301,12 +285,12 @@ var App = {
                 stats[driver].total += Number(rs.total_amount) || 0;
                 if(rs.status === 'Delivered') stats[driver].delivered++;
             }
-            
+
             self.driversList = drivers;
-            
+
             var html = '<div class="p-4">';
             html += '<h2 class="text-lg font-black text-slate-800 mb-4">👥 فريقي</h2>';
-            
+
             if(!drivers.length){
                 html += '<div class="text-center py-16"><div class="text-6xl mb-4">👥</div><p class="text-slate-400 font-bold">لا يوجد سائقين مسجلين.</p></div>';
             } else {
@@ -315,7 +299,7 @@ var App = {
                     var st = stats[driver.email] || { count: 0, total: 0, delivered: 0 };
                     var rate = st.count > 0 ? Math.round((st.delivered / st.count) * 100) : 0;
                     var has = st.count > 0;
-                    
+
                     html += '<div class="card mb-3 ' + (has ? '' : 'opacity-70') + '">';
                     html += '<div class="flex justify-between mb-2">';
                     html += '<span class="font-bold">' + (driver.name || driver.email) + '</span>';
@@ -338,14 +322,13 @@ var App = {
 
     openAssignModal: function(driverEmail, driverName){
         var self = this;
-        // جلب الرانشيتات الجاهزة التي ليس لها سائق
         supabase.from('runsheets').select('runsheet_code, run_date, total_amount').eq('status', 'Loaded').is('driver_id', null).order('run_date', { ascending: false }).then(function(res){
             var loaded = res.data || [];
-            var options = '';
             if(loaded.length === 0){
                 Swal.fire({ title: 'لا توجد رانشيتات', text: 'جميع الرانشيتات المحملة لها سائقين.', icon: 'info', customClass: { popup: '!rounded-3xl' } });
                 return;
             }
+            var options = '';
             for(var i = 0; i < loaded.length; i++){
                 options += '<option value="' + loaded[i].runsheet_code + '">' + loaded[i].runsheet_code + ' - ' + loaded[i].run_date + ' (' + fmtNum(loaded[i].total_amount) + ' ج.م)</option>';
             }
@@ -368,14 +351,22 @@ var App = {
     assignDriver: function(runsheetCode, driverEmail){
         var self = this;
         Swal.showLoading();
-        supabase.from('runsheets').update({ driver_id: driverEmail }).eq('runsheet_code', runsheetCode).then(function(res){
+        // ✅ جلب UUID السائق ثم التعيين
+        supabase.from('users').select('id').eq('email', driverEmail).maybeSingle().then(function(userRes){
+            if (!userRes.data) { Swal.close(); toast('السائق غير موجود', 'error'); return; }
+            var driverId = userRes.data.id;
+            return supabase.from('runsheets').update({ driver_id: driverId }).eq('runsheet_code', runsheetCode);
+        }).then(function(updateRes){
             Swal.close();
-            if(res.error){
-                Swal.fire({ title: 'خطأ', text: res.error.message, icon: 'error', customClass: { popup: '!rounded-3xl' } });
+            if(updateRes && updateRes.error){
+                Swal.fire({ title: 'خطأ', text: updateRes.error.message, icon: 'error', customClass: { popup: '!rounded-3xl' } });
             } else {
                 toast('تم تعيين السائق بنجاح', 'success');
-                self.renderTeam(); // إعادة تحميل
+                self.renderTeam();
             }
+        }).catch(function(err){
+            Swal.close();
+            toast(err.message, 'error');
         });
     },
 
@@ -409,14 +400,14 @@ var App = {
                 else if(rs.status === 'Delivering') statusBadge = '<span class="bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full text-xs">🟢 جاري</span>';
                 else if(rs.status === 'Delivered') statusBadge = '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">✅ تم</span>';
                 else if(rs.status === 'Returning') statusBadge = '<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs">↩️ مرتجعات</span>';
-                
+
                 html += '<div class="card mb-3 slide-in">';
                 html += '<div class="flex justify-between items-center mb-2">';
                 html += '<span class="font-bold text-lg">' + rs.runsheet_code + '</span>';
                 html += statusBadge;
                 html += '</div>';
-                html += '<p class="text-xs text-slate-400">' + rs.run_date + ' | ' + fmtNum(rs.total_amount) + ' ج.م | السائق: ' + (rs.driver_id || 'غير محدد') + '</p>';
-                
+                html += '<p class="text-xs text-slate-400">' + rs.run_date + ' | ' + fmtNum(rs.total_amount) + ' ج.م | السائق: ' + (rs.driver_id ? 'UUID معين' : 'غير محدد') + '</p>';
+
                 if(rs.status === 'Loaded'){
                     html += '<div class="mt-2 flex gap-2"><button onclick="App.changeDriver(\'' + rs.runsheet_code + '\')" class="text-xs bg-teal-100 text-teal-700 px-3 py-1 rounded-full font-bold">تعيين/تغيير السائق</button></div>';
                 }
@@ -429,11 +420,8 @@ var App = {
 
     changeDriver: function(rsCode){
         var self = this;
-        // عرض قائمة السائقين للاختيار
-        var driverOptions = '';
         if(!this.driversList.length){
-            // جلبهم إذا لم يكونوا محملين
-            supabase.from('users').select('email, name').in('role', ['سائق', 'مندوب', 'Driver']).then(function(res){
+            supabase.from('users').select('email, name').eq('status', 'Active').filter('permissions', 'cs', '["delivery"]').then(function(res){
                 self.driversList = res.data || [];
                 self.showDriverSelect(rsCode);
             });
@@ -476,11 +464,7 @@ var App = {
     }
 };
 
-// Service Worker
-if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('../sw.js').catch(function(){});
-}
-
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('../sw.js').catch(function(){}); }
 document.addEventListener('DOMContentLoaded', function(){ App.init(); });
 </script>
 </body>
