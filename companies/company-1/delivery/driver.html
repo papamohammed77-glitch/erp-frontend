@@ -294,10 +294,15 @@ var App = {
             html += '<span class="px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span>';
             html += '</div>';
             html += '<div class="text-xs text-slate-400 mb-3">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + elapsed + '</div>';
-            // الزر يبدأ الرحلة ويذهب للأوردرات مباشرة
-            html += '<button onclick="App.goToOrdersTab()" class="btn-primary text-sm py-3">';
-            html += isDelivering ? '<i class="fa-solid fa-list-check ml-2"></i> عرض الأوردرات' : '<i class="fa-solid fa-play ml-2"></i> بدء الرحلة';
-            html += '</button>';
+
+            if (isDelivering) {
+                // زر عرض الأوردرات + زر إنهاء الرحلة
+                html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary text-sm py-3 mb-2"><i class="fa-solid fa-list-check ml-2"></i> عرض الأوردرات</button>';
+                html += '<button onclick="App.showEndTripMeter()" class="btn-success text-sm py-3"><i class="fa-solid fa-flag-checkered ml-2"></i> إنهاء الرحلة</button>';
+            } else {
+                // زر بدء الرحلة
+                html += '<button onclick="App.showStartTripMeter()" class="btn-primary text-sm py-3"><i class="fa-solid fa-play ml-2"></i> بدء الرحلة</button>';
+            }
             html += '</div>';
         } else {
             this.activeRunsheet = null;
@@ -308,42 +313,142 @@ var App = {
         setTimeout(function() { self.initMap(); }, 300);
     },
 
-    goToOrdersTab: function() {
+    // ==================== عداد المسافة: بدء الرحلة ====================
+    showStartTripMeter: function() {
+        var self = this;
         var rs = this.activeRunsheet;
         if (!rs) return;
-        if (rs.status === 'Loaded') {
-            // بدء التوصيل ثم الانتقال للأوردرات
-            this.startDeliveryAndGoToOrders(rs.runsheet_code);
-        } else if (rs.status === 'Delivering') {
-            // مجرد الانتقال
-            this.switchTab('orders');
-        }
+
+        Swal.fire({
+            title: 'عداد المسافة - بدء الرحلة',
+            html: '<div class="text-right space-y-4">' +
+                '<p class="text-sm text-slate-600">أدخل قراءة عداد السيارة الحالية لبدء الرحلة <strong>' + rs.runsheet_code + '</strong></p>' +
+                '<div>' +
+                '<label class="block text-xs font-bold text-slate-500 mb-2">قراءة العداد (كم)</label>' +
+                '<input id="meterStartInput" type="number" class="swal2-input w-full text-right rounded-xl" placeholder="مثال: 125000" min="0">' +
+                '</div>' +
+                '<div>' +
+                '<label class="block text-xs font-bold text-slate-500 mb-2">صورة العداد (اختياري)</label>' +
+                '<input id="meterStartPhoto" type="file" accept="image/*" class="w-full text-xs">' +
+                '</div>' +
+                '<p class="text-xs text-amber-600 font-bold">⚠️ هذا الإجراء إلزامي ولا يمكن تخطيه.</p>' +
+                '</div>',
+            showCancelButton: true,
+            confirmButtonText: 'تأكيد وبدء الرحلة',
+            cancelButtonText: 'إلغاء',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-6', cancelButton: '!rounded-xl' },
+            preConfirm: function() {
+                var meterValue = document.getElementById('meterStartInput').value.trim();
+                if (!meterValue || isNaN(parseInt(meterValue)) || parseInt(meterValue) <= 0) {
+                    Swal.showValidationMessage('يرجى إدخال قراءة عداد صحيحة');
+                    return false;
+                }
+                return { meter_reading: parseInt(meterValue) };
+            }
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
+            self.startDeliveryWithMeter(rs.runsheet_code, result.value.meter_reading);
+        });
     },
 
-    startDeliveryAndGoToOrders: function(code) {
+    startDeliveryWithMeter: function(code, meterReading) {
+        var self = this;
+        if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
+        Swal.showLoading();
+        supabase.auth.getSession().then(function(sessionRes) {
+            var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+            if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+            return fetch(SUPABASE_URL + '/functions/v1/start-delivery', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ runsheet_code: code, meter_start: meterReading })
+            });
+        }).then(function(res) {
+            if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
+        }).then(function(json) {
+            Swal.close();
+            if (json && json.success) {
+                toast('تم بدء الرحلة بنجاح', 'success');
+                self.activeRunsheet.status = 'Delivering';
+                self.activeRunsheet.delivery_start = new Date().toISOString();
+                self.activeRunsheet.meter_start = meterReading;
+                self.switchTab('orders');
+            } else {
+                toast((json && json.msg) || 'فشل بدء الرحلة', 'error');
+            }
+        }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+    },
+
+    // ==================== عداد المسافة: إنهاء الرحلة ====================
+    showEndTripMeter: function() {
+        var self = this;
+        var rs = this.activeRunsheet;
+        if (!rs || rs.status !== 'Delivering') { toast('لا توجد رحلة نشطة', 'warning'); return; }
+
+        Swal.fire({
+            title: 'عداد المسافة - إنهاء الرحلة',
+            html: '<div class="text-right space-y-4">' +
+                '<p class="text-sm text-slate-600">أدخل قراءة عداد السيارة عند الوصول للفرع لإنهاء الرحلة <strong>' + rs.runsheet_code + '</strong></p>' +
+                '<div>' +
+                '<label class="block text-xs font-bold text-slate-500 mb-2">قراءة العداد (كم)</label>' +
+                '<input id="meterEndInput" type="number" class="swal2-input w-full text-right rounded-xl" placeholder="مثال: 125150" min="0">' +
+                '</div>' +
+                '<div>' +
+                '<label class="block text-xs font-bold text-slate-500 mb-2">صورة العداد (اختياري)</label>' +
+                '<input id="meterEndPhoto" type="file" accept="image/*" class="w-full text-xs">' +
+                '</div>' +
+                '<p class="text-xs text-amber-600 font-bold">⚠️ هذا الإجراء إلزامي ولا يمكن تخطيه.</p>' +
+                '</div>',
+            showCancelButton: true,
+            confirmButtonText: 'تأكيد وإنهاء الرحلة',
+            cancelButtonText: 'إلغاء',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-6', cancelButton: '!rounded-xl' },
+            preConfirm: function() {
+                var meterValue = document.getElementById('meterEndInput').value.trim();
+                if (!meterValue || isNaN(parseInt(meterValue)) || parseInt(meterValue) <= 0) {
+                    Swal.showValidationMessage('يرجى إدخال قراءة عداد صحيحة');
+                    return false;
+                }
+                return { meter_reading: parseInt(meterValue) };
+            }
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
+            self.completeDeliveryWithMeter(rs.runsheet_code, result.value.meter_reading);
+        });
+    },
+
+    completeDeliveryWithMeter: function(code, meterReading) {
         var self = this;
         if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
         Swal.fire({
-            title: 'بدء الرحلة', text: 'هل أنت متأكد من بدء توصيل الرانشيت ' + code + '؟',
-            icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، ابدأ', cancelButtonText: 'رجوع',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }
+            title: 'تأكيد إنهاء الرحلة',
+            text: 'سيتم إنهاء الرحلة ' + code + ' بشكل نهائي. تأكد من تسليم جميع الأوردرات.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'إنهاء الرحلة', cancelButtonText: 'رجوع',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-8', cancelButton: '!rounded-xl' }
         }).then(function(result) {
             if (!result.isConfirmed) return;
             Swal.showLoading();
             supabase.auth.getSession().then(function(sessionRes) {
                 var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
                 if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                return fetch(SUPABASE_URL + '/functions/v1/start-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: code }) });
+                return fetch(SUPABASE_URL + '/functions/v1/complete-delivery', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ runsheet_code: code, meter_end: meterReading })
+                });
             }).then(function(res) {
                 if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
             }).then(function(json) {
                 Swal.close();
                 if (json && json.success) {
-                    toast('تم بدء الرحلة', 'success');
-                    self.activeRunsheet.status = 'Delivering'; // تحديث محلي
-                    self.activeRunsheet.delivery_start = new Date().toISOString();
-                    self.switchTab('orders');
-                } else { toast((json && json.msg) || 'فشل بدء الرحلة', 'error'); }
+                    toast('تم إنهاء الرحلة بنجاح', 'success');
+                    self.session = null;
+                    self.activeRunsheet = null;
+                    if (self.timerInterval) clearInterval(self.timerInterval);
+                    self.switchTab('map');
+                } else {
+                    toast((json && json.msg) || 'فشل إنهاء الرحلة', 'error');
+                }
             }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
         });
     },
@@ -405,7 +510,7 @@ var App = {
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
         var rs = this.activeRunsheet;
         supabase.from('orders')
-            .select('order_code, customer_name, customer_phone, area, total_amount, order_status, id')
+            .select('id, order_code, customer_name, customer_phone, area, total_amount, order_status')
             .eq('runsheet_id', rs.id)
             .neq('order_status', 'Cancelled')
             .then(function(res) {
@@ -443,10 +548,10 @@ var App = {
         html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full" style="width:' + progress + '%"></div></div>';
         html += '</div></div>';
 
-        // زر إنهاء الرحلة (يظهر فقط إذا كان Delivering)
+        // أزرار إنهاء وإلغاء الرحلة
         if (rs.status === 'Delivering') {
             html += '<div class="mb-4 flex gap-2">';
-            html += '<button onclick="App.completeDelivery()" class="btn-success py-2 text-sm flex-1"><i class="fa-solid fa-check ml-1"></i> إنهاء الرحلة</button>';
+            html += '<button onclick="App.showEndTripMeter()" class="btn-success py-2 text-sm flex-1"><i class="fa-solid fa-flag-checkered ml-1"></i> إنهاء الرحلة</button>';
             html += '<button onclick="App.cancelDelivery()" class="btn-danger py-2 text-sm flex-1"><i class="fa-solid fa-xmark ml-1"></i> إلغاء الرحلة</button>';
             html += '</div>';
         }
@@ -479,7 +584,7 @@ var App = {
         }, 1000);
     },
 
-    // ==================== شاشة تفاصيل الأوردر ====================
+    // ==================== شاشة تفاصيل الأوردر (مصححة) ====================
     openOrder: function(orderCode) {
         var self = this;
         if (!this.session) { toast('لم يتم تحميل الأوردرات بعد', 'error'); return; }
@@ -487,13 +592,21 @@ var App = {
         byId('bottomNav').classList.add('hidden');
         byId('headerTitle').textContent = 'تفاصيل الأوردر';
 
+        // جلب الأوردر من الجلسة للحصول على UUID
+        var order = self.session.orders.find(function(o) { return o.order_code === orderCode; });
+        if (!order) { self.goBackToOrdersList(); return; }
+
+        // ✅ استخدام order_id (UUID) بدلاً من order_code
         supabase.from('order_details')
             .select('item_code, item_name, unit, unit_price, qty_ordered, qty_loaded, qty_delivered, reason_refused')
-            .eq('order_code', orderCode)
+            .eq('order_id', order.id)
             .then(function(res) {
                 var items = res.data || [];
-                var order = self.session.orders.find(function(o) { return o.order_code === orderCode; });
-                if (!order) { self.goBackToOrdersList(); return; }
+                if (items.length === 0) {
+                    toast('لا توجد أصناف لهذا الأوردر', 'warning');
+                    self.goBackToOrdersList();
+                    return;
+                }
                 self.orderSession = {
                     order_code: orderCode,
                     order_id: order.id,
@@ -508,8 +621,8 @@ var App = {
                     summary: {}
                 };
                 self.renderOrderView();
-            }).catch(function() {
-                safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل تفاصيل الأوردر</div>');
+            }).catch(function(err) {
+                safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل تفاصيل الأوردر: ' + err.message + '</div>');
             });
     },
 
@@ -725,41 +838,10 @@ var App = {
         }, 1000);
     },
 
-    // ==================== إنهاء الرحلة ====================
-    completeDelivery: function() {
-        var self = this;
-        if (!this.session) return;
-        Swal.fire({
-            title: 'تأكيد إنهاء الرحلة',
-            text: 'سيتم إنهاء الرحلة ' + this.session.runsheet_code + '. تأكد من تسليم جميع الأوردرات.',
-            icon: 'warning', showCancelButton: true, confirmButtonText: 'إنهاء الرحلة', cancelButtonText: 'رجوع',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-8', cancelButton: '!rounded-xl' }
-        }).then(function(result) {
-            if (!result.isConfirmed) return;
-            Swal.showLoading();
-            supabase.auth.getSession().then(function(sessionRes) {
-                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
-                if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                return fetch(SUPABASE_URL + '/functions/v1/complete-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code }) });
-            }).then(function(res) {
-                if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
-            }).then(function(json) {
-                Swal.close();
-                if (json && json.success) {
-                    toast('تم إنهاء الرحلة', 'success');
-                    self.session = null;
-                    self.activeRunsheet = null;
-                    if (self.timerInterval) clearInterval(self.timerInterval);
-                    self.switchTab('map');
-                } else {
-                    toast((json && json.msg) || 'فشل إنهاء الرحلة', 'error');
-                }
-            }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
-        });
-    },
-
+    // ==================== إلغاء الرحلة ====================
     cancelDelivery: function() {
         var self = this;
+        if (!this.session) return;
         Swal.fire({
             title: 'تأكيد إلغاء الرحلة',
             text: 'سيتم إلغاء الرحلة ' + this.session.runsheet_code + ' وإعادتها إلى حالة جاهز.',
