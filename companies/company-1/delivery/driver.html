@@ -87,11 +87,14 @@
 
     <!-- التبويبات السفلية -->
     <nav id="bottomNav" class="flex-shrink-0 bg-white border-t border-slate-100 flex">
-        <button onclick="App.switchTab('map')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-sky-600 font-bold text-xs" id="tab-map">
-            <i class="fa-solid fa-map text-lg"></i><span>الخريطة</span>
+        <button onclick="App.switchTab('dashboard')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-sky-600 font-bold text-xs" id="tab-dashboard">
+            <i class="fa-solid fa-home text-lg"></i><span>الرئيسية</span>
         </button>
         <button onclick="App.switchTab('orders')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-orders">
             <i class="fa-solid fa-truck-fast text-lg"></i><span>الأوردرات</span>
+        </button>
+        <button onclick="App.switchTab('map')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-map">
+            <i class="fa-solid fa-map text-lg"></i><span>الخريطة</span>
         </button>
         <button onclick="App.switchTab('stock')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-stock">
             <i class="fa-solid fa-boxes-stacked text-lg"></i><span>السيارة</span>
@@ -122,7 +125,7 @@ var ITEMS_IMAGE_CACHE = {};
 var App = {
     currentUser: null,
     pubUserId: null,
-    currentTab: 'map',
+    currentTab: 'dashboard',
     runsheets: [],
     activeRunsheet: null,
     mapObj: null,
@@ -217,7 +220,7 @@ var App = {
     enterApp: function() {
         byId('loginScreen').classList.add('hidden');
         byId('mainApp').classList.remove('hidden');
-        this.switchTab('map');
+        this.switchTab('dashboard');
     },
 
     doLogout: function() {
@@ -238,7 +241,7 @@ var App = {
     switchTab: function(tab) {
         if (tab === 'orderDetail') return;
         this.currentTab = tab;
-        var tabs = ['map', 'orders', 'stock', 'balance', 'account'];
+        var tabs = ['dashboard', 'orders', 'map', 'stock', 'balance', 'account'];
         for (var i = 0; i < tabs.length; i++) {
             var btn = byId('tab-' + tabs[i]);
             if (btn) { btn.classList.remove('text-sky-600'); btn.classList.add('text-slate-400'); }
@@ -246,71 +249,128 @@ var App = {
         var act = byId('tab-' + tab);
         if (act) { act.classList.add('text-sky-600'); act.classList.remove('text-slate-400'); }
 
-        if (tab === 'map') this.renderMap();
+        if (tab === 'dashboard') this.renderDashboard();
         else if (tab === 'orders') this.renderOrdersTab();
+        else if (tab === 'map') this.renderMap();
         else if (tab === 'stock') this.renderStock();
         else if (tab === 'balance') this.renderBalance();
         else if (tab === 'account') this.renderAccount();
     },
 
-    // ==================== الخريطة ====================
-    renderMap: function() {
+    // ==================== الشاشة الرئيسية (Dashboard) ====================
+    renderDashboard: function() {
         var self = this;
-        safeHTML(byId('mainContent'), '<div class="h-full flex flex-col"><div class="skeleton h-64 w-full mb-4"></div><div class="skeleton h-20 w-full"></div></div>');
+        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-48 w-full mb-4"></div></div>');
         if (!this.pubUserId) { toast('لم يتم تحميل حسابك بعد', 'warning'); return; }
+        
+        // جلب الرانشيت النشط
         supabase.from('runsheets')
             .select('runsheet_code, status, run_date, vehicle_id, delivery_start, id')
             .eq('driver_id', this.pubUserId)
             .in('status', ['Loaded', 'Delivering'])
             .order('run_date', { ascending: false })
-            .limit(5)
+            .limit(1)
+            .maybeSingle()
             .then(function(res) {
-                self.runsheets = res.data || [];
-                self.renderMapView();
+                var rs = res.data;
+                if (rs) {
+                    self.activeRunsheet = rs;
+                    self.renderDashboardView(rs);
+                } else {
+                    self.activeRunsheet = null;
+                    safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20"><div class="text-6xl mb-4">🎉</div><p class="text-slate-400 font-bold">لا توجد رحلات معلقة اليوم.</p><p class="text-slate-300 text-sm mt-1">استمتع بوقتك!</p></div>');
+                }
             }).catch(function() {
-                safeHTML(byId('mainContent'), '<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>');
+                safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
             });
     },
 
-    renderMapView: function() {
-        var self = this;
-        var html = '<div class="relative h-full flex flex-col">';
-        html += '<div id="leafletMap" class="flex-1 w-full" style="min-height:300px;"></div>';
-        if (this.runsheets.length > 0) {
-            var rs = this.runsheets[0];
-            this.activeRunsheet = rs;
-            var isDelivering = rs.status === 'Delivering';
-            var statusLabel = isDelivering ? '🟢 جاري التوصيل' : '📦 جاهز للتوصيل';
-            var statusColor = isDelivering ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700';
-            var elapsed = '';
-            if (isDelivering && rs.delivery_start) {
-                var diff = Math.floor((new Date() - new Date(rs.delivery_start)) / 1000);
-                var m = Math.floor(diff / 60), sec = diff % 60;
-                elapsed = '<span class="text-xs font-bold ml-2">⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0') + '</span>';
-            }
-            html += '<div class="absolute bottom-4 left-4 right-4 bg-white rounded-2xl shadow-lg p-4 z-[1000] slide-in">';
-            html += '<div class="flex justify-between items-center mb-2">';
-            html += '<span class="font-black text-lg text-slate-800">' + rs.runsheet_code + '</span>';
-            html += '<span class="px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span>';
-            html += '</div>';
-            html += '<div class="text-xs text-slate-400 mb-3">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + elapsed + '</div>';
+    renderDashboardView: function(rs) {
+        var isDelivering = rs.status === 'Delivering';
+        var statusLabel = isDelivering ? '🟢 جاري التوصيل' : '📦 جاهز للتوصيل';
+        var statusColor = isDelivering ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700';
+        
+        var html = '<div class="p-4">';
+        html += '<div class="bg-sky-50 rounded-3xl p-6 mb-6 slide-in">';
+        html += '<div class="text-center mb-4">';
+        html += '<div class="text-5xl mb-2">' + (isDelivering ? '🛵' : '📦') + '</div>';
+        html += '<h2 class="font-black text-2xl text-slate-800">' + rs.runsheet_code + '</h2>';
+        html += '<span class="px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span>';
+        html += '</div>';
+        html += '<div class="text-sm text-slate-600 text-center">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + '</div>';
+        html += '</div>';
 
-            if (isDelivering) {
-                // زر عرض الأوردرات + زر إنهاء الرحلة
-                html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary text-sm py-3 mb-2"><i class="fa-solid fa-list-check ml-2"></i> عرض الأوردرات</button>';
-                html += '<button onclick="App.showEndTripMeter()" class="btn-success text-sm py-3"><i class="fa-solid fa-flag-checkered ml-2"></i> إنهاء الرحلة</button>';
-            } else {
-                // زر بدء الرحلة
-                html += '<button onclick="App.showStartTripMeter()" class="btn-primary text-sm py-3"><i class="fa-solid fa-play ml-2"></i> بدء الرحلة</button>';
-            }
-            html += '</div>';
+        if (isDelivering) {
+            html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary mb-3"><i class="fa-solid fa-list-check ml-2"></i> عرض الأوردرات</button>';
+            html += '<button onclick="App.showEndTripMeter()" class="btn-success"><i class="fa-solid fa-flag-checkered ml-2"></i> إنهاء الرحلة</button>';
         } else {
-            this.activeRunsheet = null;
-            html += '<div class="absolute inset-0 flex items-center justify-center z-[500] pointer-events-none"><div class="text-center bg-white/80 backdrop-blur-sm rounded-3xl p-8"><div class="text-6xl mb-4">🎉</div><p class="text-slate-400 font-bold">لا توجد رحلات معلقة اليوم.</p><p class="text-slate-300 text-sm mt-1">استمتع بوقتك!</p></div></div>';
+            html += '<button onclick="App.showStartTripMeter()" class="btn-primary"><i class="fa-solid fa-play ml-2"></i> بدء الرحلة</button>';
         }
         html += '</div>';
         safeHTML(byId('mainContent'), html);
+    },
+
+    // ==================== تبويب الخريطة (مستقل) ====================
+    renderMap: function() {
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="h-full flex flex-col"><div class="skeleton h-64 w-full mb-4"></div></div>');
+        if (!this.pubUserId) { toast('لم يتم تحميل حسابك بعد', 'warning'); return; }
+        if (!this.activeRunsheet) {
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط لعرض الخريطة.</div>');
+            return;
+        }
+        var html = '<div class="relative h-full flex flex-col">';
+        html += '<div id="leafletMap" class="flex-1 w-full" style="min-height:300px;"></div>';
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
         setTimeout(function() { self.initMap(); }, 300);
+    },
+
+    initMap: function() {
+        var self = this;
+        var mapEl = byId('leafletMap');
+        if (!mapEl) return;
+        if (this.mapObj) { this.mapObj.remove(); this.mapObj = null; }
+        this.mapMarkers = [];
+        var defaultLat = 30.0444, defaultLng = 31.2357;
+        this.mapObj = L.map('leafletMap', { attributionControl: false, zoomControl: false }).setView([defaultLat, defaultLng], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.mapObj);
+        L.control.zoom({ position: 'bottomright' }).addTo(this.mapObj);
+        if (this.activeRunsheet) {
+            this.loadOrdersForMap(this.activeRunsheet.runsheet_code);
+        }
+        setTimeout(function() { if (self.mapObj) self.mapObj.invalidateSize(); }, 500);
+    },
+
+    loadOrdersForMap: function(rsCode) {
+        var self = this;
+        supabase.from('orders')
+            .select('order_code, customer_name, customer_phone, area, total_amount, order_status, customers(location_lat, location_lng)')
+            .eq('runsheet_id', rsCode)
+            .neq('order_status', 'Cancelled')
+            .then(function(res) {
+                var orders = res.data || [];
+                var bounds = [];
+                for (var i = 0; i < orders.length; i++) {
+                    var o = orders[i];
+                    var cust = o.customers || {};
+                    var lat = Number(cust.location_lat) || null;
+                    var lng = Number(cust.location_lng) || null;
+                    if (lat && lng) {
+                        var isDone = o.order_status === 'Delivered';
+                        var isActive = o.order_status === 'Delivering';
+                        var icon = L.divIcon({ className: '', html: '<div class="map-pin ' + (isDone ? 'done' : (isActive ? 'active' : '')) + '"></div>', iconSize: [isActive ? 16 : 12, isActive ? 16 : 12], iconAnchor: [isActive ? 8 : 6, isActive ? 8 : 6] });
+                        var marker = L.marker([lat, lng], { icon: icon }).addTo(self.mapObj);
+                        marker.bindPopup('<div class="text-right"><strong>' + o.customer_name + '</strong><br><span class="text-xs">' + o.order_code + ' | ' + fmtNum(o.total_amount) + ' ج.م</span><br><a href="tel:' + (o.customer_phone || '') + '" class="text-sky-600 text-xs">📞 اتصال</a></div>');
+                        marker.on('click', function(e) { self.mapObj.setView(e.latlng, 15); });
+                        self.mapMarkers.push(marker);
+                        bounds.push([lat, lng]);
+                    }
+                }
+                if (bounds.length > 0 && self.mapObj) {
+                    self.mapObj.fitBounds(bounds, { padding: [50, 50] });
+                }
+            });
     },
 
     // ==================== عداد المسافة: بدء الرحلة ====================
@@ -445,7 +505,7 @@ var App = {
                     self.session = null;
                     self.activeRunsheet = null;
                     if (self.timerInterval) clearInterval(self.timerInterval);
-                    self.switchTab('map');
+                    self.switchTab('dashboard');
                 } else {
                     toast((json && json.msg) || 'فشل إنهاء الرحلة', 'error');
                 }
@@ -453,58 +513,44 @@ var App = {
         });
     },
 
-    initMap: function() {
+    // ==================== إلغاء الرحلة ====================
+    cancelDelivery: function() {
         var self = this;
-        var mapEl = byId('leafletMap');
-        if (!mapEl) return;
-        if (this.mapObj) { this.mapObj.remove(); this.mapObj = null; }
-        this.mapMarkers = [];
-        var defaultLat = 30.0444, defaultLng = 31.2357;
-        this.mapObj = L.map('leafletMap', { attributionControl: false, zoomControl: false }).setView([defaultLat, defaultLng], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.mapObj);
-        L.control.zoom({ position: 'bottomright' }).addTo(this.mapObj);
-        if (this.activeRunsheet) {
-            this.loadOrdersForMap(this.activeRunsheet.runsheet_code);
-        }
-        setTimeout(function() { if (self.mapObj) self.mapObj.invalidateSize(); }, 500);
-    },
-
-    loadOrdersForMap: function(rsCode) {
-        var self = this;
-        supabase.from('orders')
-            .select('order_code, customer_name, customer_phone, area, total_amount, order_status, customers(location_lat, location_lng)')
-            .eq('runsheet_id', rsCode)
-            .neq('order_status', 'Cancelled')
-            .then(function(res) {
-                var orders = res.data || [];
-                var bounds = [];
-                for (var i = 0; i < orders.length; i++) {
-                    var o = orders[i];
-                    var cust = o.customers || {};
-                    var lat = Number(cust.location_lat) || null;
-                    var lng = Number(cust.location_lng) || null;
-                    if (lat && lng) {
-                        var isDone = o.order_status === 'Delivered';
-                        var isActive = o.order_status === 'Delivering';
-                        var icon = L.divIcon({ className: '', html: '<div class="map-pin ' + (isDone ? 'done' : (isActive ? 'active' : '')) + '"></div>', iconSize: [isActive ? 16 : 12, isActive ? 16 : 12], iconAnchor: [isActive ? 8 : 6, isActive ? 8 : 6] });
-                        var marker = L.marker([lat, lng], { icon: icon }).addTo(self.mapObj);
-                        marker.bindPopup('<div class="text-right"><strong>' + o.customer_name + '</strong><br><span class="text-xs">' + o.order_code + ' | ' + fmtNum(o.total_amount) + ' ج.م</span><br><a href="tel:' + (o.customer_phone || '') + '" class="text-sky-600 text-xs">📞 اتصال</a></div>');
-                        marker.on('click', function(e) { self.mapObj.setView(e.latlng, 15); });
-                        self.mapMarkers.push(marker);
-                        bounds.push([lat, lng]);
-                    }
+        if (!this.session) return;
+        Swal.fire({
+            title: 'تأكيد إلغاء الرحلة',
+            text: 'سيتم إلغاء الرحلة ' + this.session.runsheet_code + ' وإعادتها إلى حالة جاهز.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ الرحلة', cancelButtonText: 'رجوع',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' }
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
+            Swal.showLoading();
+            supabase.auth.getSession().then(function(sessionRes) {
+                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+                return fetch(SUPABASE_URL + '/functions/v1/cancel-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code }) });
+            }).then(function(res) {
+                if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
+            }).then(function(json) {
+                Swal.close();
+                if (json && json.success) {
+                    toast('تم إلغاء الرحلة', 'success');
+                    self.session = null;
+                    self.activeRunsheet = null;
+                    if (self.timerInterval) clearInterval(self.timerInterval);
+                    self.switchTab('dashboard');
+                } else {
+                    toast((json && json.msg) || 'فشل إلغاء الرحلة', 'error');
                 }
-                if (bounds.length > 0 && self.mapObj) {
-                    self.mapObj.fitBounds(bounds, { padding: [50, 50] });
-                }
-            });
+            }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+        });
     },
 
     // ==================== تبويب الأوردرات ====================
     renderOrdersTab: function() {
         var self = this;
         if (!this.activeRunsheet) {
-            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط. اذهب إلى الخريطة أولاً.</div>');
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط. اذهب إلى الرئيسية أولاً.</div>');
             return;
         }
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
@@ -548,7 +594,6 @@ var App = {
         html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full" style="width:' + progress + '%"></div></div>';
         html += '</div></div>';
 
-        // أزرار إنهاء وإلغاء الرحلة
         if (rs.status === 'Delivering') {
             html += '<div class="mb-4 flex gap-2">';
             html += '<button onclick="App.showEndTripMeter()" class="btn-success py-2 text-sm flex-1"><i class="fa-solid fa-flag-checkered ml-1"></i> إنهاء الرحلة</button>';
@@ -592,18 +637,19 @@ var App = {
         byId('bottomNav').classList.add('hidden');
         byId('headerTitle').textContent = 'تفاصيل الأوردر';
 
-        // جلب الأوردر من الجلسة للحصول على UUID
         var order = self.session.orders.find(function(o) { return o.order_code === orderCode; });
         if (!order) { self.goBackToOrdersList(); return; }
 
-        // ✅ استخدام order_id (UUID) بدلاً من order_code
+        console.log('🔍 فتح الأوردر:', orderCode, 'معرّف الطلب (UUID):', order.id);
+
         supabase.from('order_details')
             .select('item_code, item_name, unit, unit_price, qty_ordered, qty_loaded, qty_delivered, reason_refused')
             .eq('order_id', order.id)
             .then(function(res) {
+                console.log('📦 نتيجة استعلام order_details:', res.data, 'خطأ:', res.error);
                 var items = res.data || [];
                 if (items.length === 0) {
-                    toast('لا توجد أصناف لهذا الأوردر', 'warning');
+                    toast('لا توجد أصناف لهذا الأوردر. معرف الطلب: ' + order.id, 'warning');
                     self.goBackToOrdersList();
                     return;
                 }
@@ -836,39 +882,6 @@ var App = {
             var el = byId('orderTimer');
             if (el) safeText(el, '⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0'));
         }, 1000);
-    },
-
-    // ==================== إلغاء الرحلة ====================
-    cancelDelivery: function() {
-        var self = this;
-        if (!this.session) return;
-        Swal.fire({
-            title: 'تأكيد إلغاء الرحلة',
-            text: 'سيتم إلغاء الرحلة ' + this.session.runsheet_code + ' وإعادتها إلى حالة جاهز.',
-            icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ الرحلة', cancelButtonText: 'رجوع',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' }
-        }).then(function(result) {
-            if (!result.isConfirmed) return;
-            Swal.showLoading();
-            supabase.auth.getSession().then(function(sessionRes) {
-                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
-                if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                return fetch(SUPABASE_URL + '/functions/v1/cancel-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code }) });
-            }).then(function(res) {
-                if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
-            }).then(function(json) {
-                Swal.close();
-                if (json && json.success) {
-                    toast('تم إلغاء الرحلة', 'success');
-                    self.session = null;
-                    self.activeRunsheet = null;
-                    if (self.timerInterval) clearInterval(self.timerInterval);
-                    self.switchTab('map');
-                } else {
-                    toast((json && json.msg) || 'فشل إلغاء الرحلة', 'error');
-                }
-            }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
-        });
     },
 
     // ==================== تبويب رصيد السيارة ====================
