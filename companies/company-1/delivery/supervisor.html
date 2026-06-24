@@ -11,7 +11,6 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
@@ -20,9 +19,9 @@
         .card:active{transform:scale(0.985);background:#fafafa}
         .btn-primary{background:linear-gradient(135deg,#0d9488,#2dd4bf);color:#fff;padding:0.75rem 1.5rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;width:100%;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(13,148,136,0.2)}
         .btn-primary:active{transform:scale(0.97)}
+        .btn-danger{background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(239,68,68,0.2)}
         .tab-btn{transition:all 0.2s ease}
         .tab-btn:active{transform:scale(0.95)}
-        .progress-bar{transition:width 0.4s ease}
         .slide-in{animation:slideIn 0.3s ease}
         @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
@@ -93,12 +92,11 @@
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-var db = new Dexie('RW_DelSup'); db.version(1).stores({ meta: 'key' });
 
 function byId(id) { return document.getElementById(id); }
 function safeText(el, text) { if (el) el.textContent = text; }
 function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
+function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2 }); }
 function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000, customClass: { popup: '!rounded-2xl !shadow-xl' } }); }
 
 var App = {
@@ -192,6 +190,7 @@ var App = {
         else if(tab === 'account') this.renderAccount();
     },
 
+    // ==================== لوحة الأداء ====================
     renderDashboard: function(){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div><div class="skeleton h-48 w-full"></div></div>');
@@ -216,23 +215,17 @@ var App = {
                 else if(allRS[i].status === 'Loaded') loadedCount++;
             }
 
-            var percentage = totalRS > 0 ? Math.round((deliveredCount / totalRS) * 100) : 0;
-
             var html = '<div class="p-4">';
-            html += '<p class="text-slate-400 text-sm mb-4">مرحباً، <span class="font-bold text-slate-700">' + (self.currentUser.user_metadata?.name || 'مشرف') + '</span> 👋</p>';
             html += '<h2 class="text-lg font-black text-slate-800 mb-4">📊 مؤشرات الأداء – الشهر الحالي</h2>';
-
             html += '<div class="grid grid-cols-2 gap-3 mb-4">';
-            html += '<div class="stat-card card bg-gradient-to-br from-teal-50 to-white border-teal-100"><p class="text-xs text-teal-400">إجمالي الرحلات</p><p class="text-2xl font-black text-teal-600">' + totalRS + '</p></div>';
-            html += '<div class="stat-card card bg-gradient-to-br from-blue-50 to-white border-blue-100"><p class="text-xs text-blue-400">قيمة الرحلات</p><p class="text-2xl font-black text-blue-600">' + fmtNum(totalValue) + ' ج.م</p></div>';
-            html += '<div class="stat-card card bg-gradient-to-br from-green-50 to-white border-green-100"><p class="text-xs text-green-400">تم التوصيل</p><p class="text-2xl font-black text-green-600">' + deliveredCount + '</p></div>';
-            html += '<div class="stat-card card bg-gradient-to-br from-amber-50 to-white border-amber-100"><p class="text-xs text-amber-400">جاري / جاهز</p><p class="text-2xl font-black text-amber-600">' + (deliveringCount + loadedCount) + '</p></div>';
+            html += '<div class="stat-card card"><p class="text-xs text-teal-400">إجمالي الرحلات</p><p class="text-2xl font-black text-teal-600">' + totalRS + '</p></div>';
+            html += '<div class="stat-card card"><p class="text-xs text-blue-400">قيمة الرحلات</p><p class="text-2xl font-black text-blue-600">' + fmtNum(totalValue) + ' ج.م</p></div>';
+            html += '<div class="stat-card card"><p class="text-xs text-green-400">تم التوصيل</p><p class="text-2xl font-black text-green-600">' + deliveredCount + '</p></div>';
+            html += '<div class="stat-card card"><p class="text-xs text-amber-400">جاري / جاهز</p><p class="text-2xl font-black text-amber-600">' + (deliveringCount + loadedCount) + '</p></div>';
             html += '</div>';
-
             html += '<div class="card mb-4"><h3 class="font-bold text-slate-700 mb-3">نسبة الإنجاز</h3><div class="w-full h-48 relative"><canvas id="kpiChart"></canvas></div></div>';
             html += '<div class="text-center text-sm text-slate-500">👥 عدد السائقين النشطين: <strong>' + drivers.length + '</strong></div>';
             html += '</div>';
-
             safeHTML(byId('mainContent'), html);
 
             setTimeout(function(){
@@ -241,10 +234,7 @@ var App = {
                     if(self.chartInstance) self.chartInstance.destroy();
                     self.chartInstance = new Chart(ctx, {
                         type: 'doughnut',
-                        data: {
-                            labels: ['تم التوصيل', 'جاري / جاهز'],
-                            datasets: [{ data: [deliveredCount, totalRS - deliveredCount], backgroundColor: ['#10b981', '#f59e0b'], borderWidth: 0 }]
-                        },
+                        data: { labels: ['تم التوصيل', 'جاري / جاهز'], datasets: [{ data: [deliveredCount, totalRS - deliveredCount], backgroundColor: ['#10b981', '#f59e0b'], borderWidth: 0 }] },
                         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } } } }
                     });
                 }
@@ -252,6 +242,7 @@ var App = {
         });
     },
 
+    // ==================== تبويب السائقين ====================
     renderTeam: function(){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-24 w-full mb-3"></div></div>');
@@ -260,7 +251,7 @@ var App = {
         var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
         Promise.all([
-            supabase.from('users').select('email, name').eq('status', 'Active').filter('permissions', 'cs', '["delivery"]'),
+            supabase.from('users').select('id, email, name').filter('permissions', 'cs', '["delivery"]').eq('status', 'Active'),
             supabase.from('runsheets').select('driver_id, status, total_amount').gte('run_date', firstDay).lte('run_date', today)
         ]).then(function(results){
             var drivers = results[0].data || [];
@@ -286,7 +277,7 @@ var App = {
             } else {
                 for(var j = 0; j < drivers.length; j++){
                     var driver = drivers[j];
-                    var st = stats[driver.email] || { count: 0, total: 0, delivered: 0 };
+                    var st = stats[driver.id] || { count: 0, total: 0, delivered: 0 };
                     var rate = st.count > 0 ? Math.round((st.delivered / st.count) * 100) : 0;
                     var has = st.count > 0;
 
@@ -301,7 +292,7 @@ var App = {
                     html += '<div><p class="text-xs text-gray-400">توصيل</p><p class="font-black text-green-600">' + rate + '%</p></div>';
                     html += '</div>';
                     html += '<div class="w-full h-1.5 bg-gray-100 rounded-full mt-2"><div class="h-full bg-teal-500 rounded-full" style="width:' + rate + '%"></div></div>';
-                    html += '<div class="mt-2 text-left"><button onclick="App.openAssignModal(\'' + driver.email + '\', \'' + (driver.name || '').replace(/'/g, "\\'") + '\')" class="text-xs bg-teal-100 text-teal-700 px-3 py-1 rounded-full font-bold">تخصيص رانشيت</button></div>';
+                    html += '<div class="mt-2 flex gap-2"><button onclick="App.openAssignModal(\'' + driver.email + '\', \'' + (driver.name || '').replace(/'/g, "\\'") + '\')" class="text-xs bg-teal-100 text-teal-700 px-3 py-1 rounded-full font-bold">تخصيص رانشيت</button></div>';
                     html += '</div>';
                 }
             }
@@ -353,12 +344,33 @@ var App = {
                 toast('تم تعيين السائق بنجاح', 'success');
                 self.renderTeam();
             }
-        }).catch(function(err){
-            Swal.close();
-            toast(err.message, 'error');
+        }).catch(function(err){ Swal.close(); toast(err.message, 'error'); });
+    },
+
+    // ==================== سحب التكليف ====================
+    unassignDriver: function(runsheetCode){
+        var self = this;
+        Swal.fire({
+            title: 'تأكيد سحب التكليف',
+            text: 'سيتم إعادة الرانشيت ' + runsheetCode + ' إلى حالة "جاهز" بدون سائق.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، اسحب', cancelButtonText: 'رجوع',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' }
+        }).then(function(result){
+            if(!result.isConfirmed) return;
+            Swal.showLoading();
+            supabase.from('runsheets').update({ driver_id: null, status: 'Loaded' }).eq('runsheet_code', runsheetCode).then(function(res){
+                Swal.close();
+                if(res.error){
+                    Swal.fire({ title: 'خطأ', text: res.error.message, icon: 'error', customClass: { popup: '!rounded-3xl' } });
+                } else {
+                    toast('تم سحب التكليف بنجاح', 'success');
+                    self.renderRunsheets();
+                }
+            });
         });
     },
 
+    // ==================== تبويب الرانشيتات ====================
     renderRunsheets: function(){
         var self = this;
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>');
@@ -394,49 +406,16 @@ var App = {
                 html += '<span class="font-bold text-lg">' + rs.runsheet_code + '</span>';
                 html += statusBadge;
                 html += '</div>';
-                html += '<p class="text-xs text-slate-400">' + rs.run_date + ' | ' + fmtNum(rs.total_amount) + ' ج.م | السائق: ' + (rs.driver_id ? 'UUID معين' : 'غير محدد') + '</p>';
+                html += '<p class="text-xs text-slate-400">' + rs.run_date + ' | ' + fmtNum(rs.total_amount) + ' ج.م | السائق: ' + (rs.driver_id || 'غير محدد') + '</p>';
 
                 if(rs.status === 'Loaded'){
-                    html += '<div class="mt-2 flex gap-2"><button onclick="App.changeDriver(\'' + rs.runsheet_code + '\')" class="text-xs bg-teal-100 text-teal-700 px-3 py-1 rounded-full font-bold">تعيين/تغيير السائق</button></div>';
+                    html += '<div class="mt-2 flex gap-2"><button onclick="App.unassignDriver(\'' + rs.runsheet_code + '\')" class="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold">سحب التكليف</button></div>';
                 }
                 html += '</div>';
             }
         }
         html += '</div>';
         safeHTML(byId('mainContent'), html);
-    },
-
-    changeDriver: function(rsCode){
-        var self = this;
-        if(!this.driversList.length){
-            supabase.from('users').select('email, name').eq('status', 'Active').filter('permissions', 'cs', '["delivery"]').then(function(res){
-                self.driversList = res.data || [];
-                self.showDriverSelect(rsCode);
-            });
-        } else {
-            this.showDriverSelect(rsCode);
-        }
-    },
-
-    showDriverSelect: function(rsCode){
-        var options = '';
-        for(var i = 0; i < this.driversList.length; i++){
-            var d = this.driversList[i];
-            options += '<option value="' + d.email + '">' + (d.name || d.email) + '</option>';
-        }
-        Swal.fire({
-            title: 'اختيار السائق',
-            html: '<select id="swal-driver-select" class="swal2-input w-full text-right rounded-xl">' + options + '</select>',
-            showCancelButton: true,
-            confirmButtonText: 'حفظ',
-            cancelButtonText: 'إلغاء',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-teal-600 !px-8' },
-            preConfirm: function(){ return document.getElementById('swal-driver-select').value; }
-        }).then(function(result){
-            if(result.isConfirmed && result.value){
-                App.assignDriver(rsCode, result.value);
-            }
-        });
     },
 
     renderAccount: function(){
