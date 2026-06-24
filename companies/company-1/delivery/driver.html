@@ -709,13 +709,124 @@ var App = {
         }, 1000);
     },
 
-    // ==================== باقي التبويبات (هياكل مؤقتة) ====================
+    // ==================== تبويب رصيد السيارة ====================
     renderStock: function() {
-        safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400"><i class="fa-solid fa-boxes-stacked text-4xl mb-3"></i><p>رصيد السيارة - قيد التطوير</p></div>');
+        var self = this;
+        if (!this.activeRunsheet || !this.session) {
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط</div>');
+            return;
+        }
+        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
+        supabase.from('run_sheet_details')
+            .select('item_code, item_name, unit, qty_loaded, qty_delivered')
+            .eq('runsheet_id', this.session.runsheet_id)
+            .then(function(res) {
+                var items = res.data || [];
+                self.renderStockView(items);
+            }).catch(function() {
+                safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل رصيد السيارة</div>');
+            });
     },
+
+    renderStockView: function(items) {
+        var html = '<div class="p-4">';
+        html += '<h2 class="font-black text-lg text-slate-800 mb-4">📦 رصيد السيارة الحالي</h2>';
+        if (!items.length) {
+            html += '<div class="text-center py-10 text-slate-400">لا توجد أصناف محملة</div>';
+        } else {
+            html += '<div class="bg-white rounded-2xl shadow-sm overflow-hidden"><table class="w-full text-sm"><thead><tr class="bg-slate-50 text-xs text-slate-400"><th class="p-3 text-right">الصنف</th><th class="p-3 text-center">الوحدة</th><th class="p-3 text-center">المحمّلة</th><th class="p-3 text-center">المسلّمة</th><th class="p-3 text-center">المتبقية</th></tr></thead><tbody>';
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                var loaded = Number(it.qty_loaded) || 0;
+                var delivered = Number(it.qty_delivered) || 0;
+                var remaining = loaded - delivered;
+                var colorClass = remaining === 0 ? 'text-green-600' : (remaining > 0 ? 'text-amber-600' : 'text-red-600');
+                html += '<tr class="border-b"><td class="p-3 font-bold">' + it.item_name + '</td><td class="p-3 text-center">' + it.unit + '</td><td class="p-3 text-center">' + loaded + '</td><td class="p-3 text-center">' + delivered + '</td><td class="p-3 text-center font-black ' + colorClass + '">' + remaining + '</td></tr>';
+            }
+            html += '</tbody></table></div>';
+        }
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
+    },
+
+    // ==================== تبويب رصيدي ====================
     renderBalance: function() {
-        safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400"><i class="fa-solid fa-scale-balanced text-4xl mb-3"></i><p>رصيدي - قيد التطوير</p></div>');
+        var self = this;
+        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
+
+        var today = new Date().toISOString().split('T')[0];
+        var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+
+        Promise.all([
+            supabase.from('runsheets')
+                .select('runsheet_code, status, total_amount')
+                .eq('driver_id', this.pubUserId)
+                .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning'])
+                .gte('run_date', firstDay)
+                .lte('run_date', today),
+            supabase.from('driver_ledger')
+                .select('*')
+                .eq('driver_email', this.currentUser.email)
+                .order('entry_date', { ascending: false })
+                .limit(30)
+        ]).then(function(results) {
+            var runsheets = results[0].data || [];
+            var ledger = results[1].data || [];
+            self.renderBalanceView(runsheets, ledger);
+        }).catch(function() {
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
+        });
     },
+
+    renderBalanceView: function(runsheets, ledger) {
+        var loadedTotal = 0, deliveredTotal = 0;
+        for (var i = 0; i < runsheets.length; i++) {
+            loadedTotal += Number(runsheets[i].total_amount) || 0;
+            if (runsheets[i].status === 'Delivered') deliveredTotal += Number(runsheets[i].total_amount) || 0;
+        }
+        var tD = 0, tC = 0;
+        for (var j = 0; j < ledger.length; j++) {
+            tD += Number(ledger[j].debit) || 0;
+            tC += Number(ledger[j].credit) || 0;
+        }
+        var bal = tD - tC;
+
+        var html = '<div class="p-4">';
+        html += '<h2 class="text-lg font-black text-slate-800 mb-4">⚖️ رصيدي</h2>';
+
+        html += '<div class="card text-center mb-4">';
+        html += '<p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p>';
+        html += '<p class="text-4xl font-black ' + (bal <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(bal)) + ' ج.م</p>';
+        html += '<div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + (bal <= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' + (bal <= 0 ? '🟢 أنا ملتزم' : '🔴 عليّ مستحقات') + '</span></div>';
+        html += '</div>';
+
+        html += '<div class="grid grid-cols-2 gap-3 mb-4">';
+        html += '<div class="card text-center"><p class="text-xs text-slate-400">المحمّل (الشهر)</p><p class="text-xl font-black text-sky-600">' + fmtNum(loadedTotal) + '</p></div>';
+        html += '<div class="card text-center"><p class="text-xs text-slate-400">تم تسليمه</p><p class="text-xl font-black text-green-600">' + fmtNum(deliveredTotal) + '</p></div>';
+        html += '</div>';
+
+        html += '<h3 class="font-bold text-slate-700 mb-3">📊 آخر الحركات</h3>';
+        html += '<div class="space-y-2 max-h-60 overflow-y-auto">';
+        if (ledger.length === 0) {
+            html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد حركات</p>';
+        } else {
+            for (var k = 0; k < ledger.length; k++) {
+                var rw = ledger[k];
+                var sign = rw.debit > 0 ? '+' : '-';
+                var color = rw.debit > 0 ? 'text-red-600' : 'text-green-600';
+                html += '<div class="flex justify-between p-2 bg-slate-50 rounded-lg">';
+                html += '<span class="text-xs text-slate-400">' + (rw.entry_date || '') + '</span>';
+                html += '<span class="font-bold text-sm">' + (rw.description || '') + '</span>';
+                html += '<span class="font-bold ' + color + '">' + sign + fmtNum(rw.debit || rw.credit) + '</span>';
+                html += '</div>';
+            }
+        }
+        html += '</div>';
+        html += '</div>';
+        safeHTML(byId('mainContent'), html);
+    },
+
+    // ==================== حسابي ====================
     renderAccount: function() {
         var html = '<div class="p-4 text-center">';
         html += '<div class="w-20 h-20 bg-gradient-to-br from-sky-400 to-sky-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-sky-200 mb-4 mt-8">' + ((this.currentUser && this.currentUser.user_metadata && this.currentUser.user_metadata.name) ? this.currentUser.user_metadata.name.charAt(0) : '?') + '</div>';
