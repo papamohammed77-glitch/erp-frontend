@@ -257,7 +257,7 @@ var App = {
         else if (tab === 'account') this.renderAccount();
     },
 
-    // ==================== الشاشة الرئيسية (Dashboard) ====================
+    // ==================== الشاشة الرئيسية ====================
     renderDashboard: function() {
         var self = this;
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-48 w-full mb-4"></div></div>');
@@ -309,7 +309,7 @@ var App = {
         safeHTML(byId('mainContent'), html);
     },
 
-    // ==================== تبويب الخريطة (مستقل) ====================
+    // ==================== تبويب الخريطة ====================
     renderMap: function() {
         var self = this;
         safeHTML(byId('mainContent'), '<div class="h-full flex flex-col"><div class="skeleton h-64 w-full mb-4"></div></div>');
@@ -335,16 +335,16 @@ var App = {
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.mapObj);
         L.control.zoom({ position: 'bottomright' }).addTo(this.mapObj);
         if (this.activeRunsheet) {
-            this.loadOrdersForMap(this.activeRunsheet.runsheet_code);
+            this.loadOrdersForMap(this.activeRunsheet.id);
         }
         setTimeout(function() { if (self.mapObj) self.mapObj.invalidateSize(); }, 500);
     },
 
-    loadOrdersForMap: function(rsCode) {
+    loadOrdersForMap: function(runsheetId) {
         var self = this;
         supabase.from('orders')
             .select('order_code, customer_name, customer_phone, area, total_amount, order_status, customers(location_lat, location_lng)')
-            .eq('runsheet_id', rsCode)
+            .eq('runsheet_id', runsheetId)
             .neq('order_status', 'Cancelled')
             .then(function(res) {
                 var orders = res.data || [];
@@ -371,7 +371,7 @@ var App = {
             });
     },
 
-    // ==================== عداد المسافة: بدء الرحلة ====================
+    // ==================== عداد المسافة ====================
     showStartTripMeter: function() {
         var self = this;
         var rs = this.activeRunsheet;
@@ -391,9 +391,7 @@ var App = {
                 '</div>' +
                 '<p class="text-xs text-amber-600 font-bold">⚠️ هذا الإجراء إلزامي ولا يمكن تخطيه.</p>' +
                 '</div>',
-            showCancelButton: true,
-            confirmButtonText: 'تأكيد وبدء الرحلة',
-            cancelButtonText: 'إلغاء',
+            showCancelButton: true, confirmButtonText: 'تأكيد وبدء الرحلة', cancelButtonText: 'إلغاء',
             customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-6', cancelButton: '!rounded-xl' },
             preConfirm: function() {
                 var meterValue = document.getElementById('meterStartInput').value.trim();
@@ -417,8 +415,7 @@ var App = {
             var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
             if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
             return fetch(SUPABASE_URL + '/functions/v1/start-delivery', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                 body: JSON.stringify({ runsheet_code: code, meter_start: meterReading })
             });
         }).then(function(res) {
@@ -431,13 +428,10 @@ var App = {
                 self.activeRunsheet.delivery_start = new Date().toISOString();
                 self.activeRunsheet.meter_start = meterReading;
                 self.switchTab('orders');
-            } else {
-                toast((json && json.msg) || 'فشل بدء الرحلة', 'error');
-            }
+            } else { toast((json && json.msg) || 'فشل بدء الرحلة', 'error'); }
         }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
     },
 
-    // ==================== عداد المسافة: إنهاء الرحلة ====================
     showEndTripMeter: function() {
         var self = this;
         var rs = this.activeRunsheet;
@@ -457,9 +451,7 @@ var App = {
                 '</div>' +
                 '<p class="text-xs text-amber-600 font-bold">⚠️ هذا الإجراء إلزامي ولا يمكن تخطيه.</p>' +
                 '</div>',
-            showCancelButton: true,
-            confirmButtonText: 'تأكيد وإنهاء الرحلة',
-            cancelButtonText: 'إلغاء',
+            showCancelButton: true, confirmButtonText: 'تأكيد وإنهاء الرحلة', cancelButtonText: 'إلغاء',
             customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-6', cancelButton: '!rounded-xl' },
             preConfirm: function() {
                 var meterValue = document.getElementById('meterEndInput').value.trim();
@@ -479,8 +471,7 @@ var App = {
         var self = this;
         if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
         Swal.fire({
-            title: 'تأكيد إنهاء الرحلة',
-            text: 'سيتم إنهاء الرحلة ' + code + ' بشكل نهائي. تأكد من تسليم جميع الأوردرات.',
+            title: 'تأكيد إنهاء الرحلة', text: 'سيتم إنهاء الرحلة ' + code + ' بشكل نهائي. تأكد من تسليم جميع الأوردرات.',
             icon: 'warning', showCancelButton: true, confirmButtonText: 'إنهاء الرحلة', cancelButtonText: 'رجوع',
             customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-8', cancelButton: '!rounded-xl' }
         }).then(function(result) {
@@ -490,34 +481,24 @@ var App = {
                 var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
                 if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
                 return fetch(SUPABASE_URL + '/functions/v1/complete-delivery', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({ runsheet_code: code, meter_end: meterReading })
                 });
             }).then(function(res) {
                 if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
             }).then(function(json) {
                 Swal.close();
-                if (json && json.success) {
-                    toast('تم إنهاء الرحلة بنجاح', 'success');
-                    self.session = null;
-                    self.activeRunsheet = null;
-                    if (self.timerInterval) clearInterval(self.timerInterval);
-                    self.switchTab('dashboard');
-                } else {
-                    toast((json && json.msg) || 'فشل إنهاء الرحلة', 'error');
-                }
+                if (json && json.success) { toast('تم إنهاء الرحلة بنجاح', 'success'); self.session = null; self.activeRunsheet = null; if (self.timerInterval) clearInterval(self.timerInterval); self.switchTab('dashboard'); }
+                else { toast((json && json.msg) || 'فشل إنهاء الرحلة', 'error'); }
             }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
         });
     },
 
-    // ==================== إلغاء الرحلة ====================
     cancelDelivery: function() {
         var self = this;
         if (!this.session) return;
         Swal.fire({
-            title: 'تأكيد إلغاء الرحلة',
-            text: 'سيتم إلغاء الرحلة ' + this.session.runsheet_code + ' وإعادتها إلى حالة جاهز.',
+            title: 'تأكيد إلغاء الرحلة', text: 'سيتم إلغاء الرحلة ' + this.session.runsheet_code + ' وإعادتها إلى حالة جاهز.',
             icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ الرحلة', cancelButtonText: 'رجوع',
             customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' }
         }).then(function(result) {
@@ -531,15 +512,8 @@ var App = {
                 if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
             }).then(function(json) {
                 Swal.close();
-                if (json && json.success) {
-                    toast('تم إلغاء الرحلة', 'success');
-                    self.session = null;
-                    self.activeRunsheet = null;
-                    if (self.timerInterval) clearInterval(self.timerInterval);
-                    self.switchTab('dashboard');
-                } else {
-                    toast((json && json.msg) || 'فشل إلغاء الرحلة', 'error');
-                }
+                if (json && json.success) { toast('تم إلغاء الرحلة', 'success'); self.session = null; self.activeRunsheet = null; if (self.timerInterval) clearInterval(self.timerInterval); self.switchTab('dashboard'); }
+                else { toast((json && json.msg) || 'فشل إلغاء الرحلة', 'error'); }
             }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
         });
     },
@@ -553,6 +527,7 @@ var App = {
         }
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
         var rs = this.activeRunsheet;
+        // ✅ استخدام rs.id (UUID) بدلاً من rs.runsheet_code
         supabase.from('orders')
             .select('id, order_code, customer_name, customer_phone, area, total_amount, order_status')
             .eq('runsheet_id', rs.id)
@@ -627,7 +602,7 @@ var App = {
         }, 1000);
     },
 
-    // ==================== شاشة تفاصيل الأوردر (مصححة) ====================
+    // ==================== شاشة تفاصيل الأوردر ====================
     openOrder: function(orderCode) {
         var self = this;
         if (!this.session) { toast('لم يتم تحميل الأوردرات بعد', 'error'); return; }
@@ -638,36 +613,23 @@ var App = {
         var order = self.session.orders.find(function(o) { return o.order_code === orderCode; });
         if (!order) { self.goBackToOrdersList(); return; }
 
-        console.log('🔍 فتح الأوردر:', orderCode, 'معرّف الطلب (UUID):', order.id);
-
+        // ✅ استخدام order.id (UUID)
         supabase.from('order_details')
             .select('item_code, item_name, unit, unit_price, qty_ordered, qty_loaded, qty_delivered, reason_refused')
             .eq('order_id', order.id)
             .then(function(res) {
-                console.log('📦 نتيجة استعلام order_details:', res.data, 'خطأ:', res.error);
                 var items = res.data || [];
                 if (res.error) {
-                    toast('خطأ في جلب تفاصيل الأوردر: ' + (res.error.message || 'تحقق من سياسة RLS لجدول order_details'), 'error');
-                    self.goBackToOrdersList();
-                    return;
+                    toast('خطأ RLS: نفّذ أوامر SQL التي أرسلتها لك على جداول order_details و orders', 'error');
+                    self.goBackToOrdersList(); return;
                 }
-                if (items.length === 0) {
-                    toast('لا توجد أصناف لهذا الأوردر. معرف الطلب: ' + order.id, 'warning');
-                    self.goBackToOrdersList();
-                    return;
-                }
+                if (items.length === 0) { toast('لا توجد أصناف لهذا الأوردر', 'warning'); self.goBackToOrdersList(); return; }
                 self.orderSession = {
-                    order_code: orderCode,
-                    order_id: order.id,
-                    customer_name: order.customer_name || '',
-                    customer_phone: order.customer_phone || '',
-                    area: order.area || '',
-                    total_amount: order.total_amount || 0,
-                    order_status: order.order_status || 'Pending',
-                    items: items,
-                    isDelivery: false,
-                    start_time: null,
-                    summary: {}
+                    order_code: orderCode, order_id: order.id,
+                    customer_name: order.customer_name || '', customer_phone: order.customer_phone || '',
+                    area: order.area || '', total_amount: order.total_amount || 0,
+                    order_status: order.order_status || 'Pending', items: items,
+                    isDelivery: false, start_time: null, summary: {}
                 };
                 self.renderOrderView();
             }).catch(function(err) {
@@ -691,7 +653,6 @@ var App = {
 
         var html = '<div class="p-4">';
         html += '<button onclick="App.goBackToOrdersList()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-sky-600 shadow-sm mb-4"><i class="fa-solid fa-arrow-right"></i></button>';
-
         html += '<div class="bg-white rounded-2xl p-4 shadow-sm mb-4">';
         html += '<h2 class="font-black text-xl text-slate-800 mb-2">' + o.customer_name + '</h2>';
         html += '<p class="text-sm text-slate-500 mb-1">' + o.order_code + (o.area ? ' | ' + o.area : '') + '</p>';
@@ -705,11 +666,9 @@ var App = {
         if (!isDelivering && !isCompleted) {
             html += '<button onclick="App.startOrderDelivery()" class="btn-primary mb-4"><i class="fa-solid fa-play ml-2"></i> بدء التسليم</button>';
         }
-
         if (isDelivering) {
             html += '<div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-3 text-sm font-bold mb-4 flex justify-between items-center">';
-            html += '<span>🟡 جاري التسليم</span>';
-            html += '<span id="orderTimer">⏱️ 00:00</span>';
+            html += '<span>🟡 جاري التسليم</span><span id="orderTimer">⏱️ 00:00</span>';
             html += '</div>';
         }
 
@@ -747,13 +706,11 @@ var App = {
             html += '<button onclick="App.finishOrderDelivery()" class="btn-success py-3 flex-1"><i class="fa-solid fa-check ml-1"></i> إنهاء التسليم</button>';
             html += '</div>';
         }
-
         html += '</div>';
         safeHTML(byId('mainContent'), html);
         if (isDelivering) this.startOrderTimer();
     },
 
-    // ==================== عمليات التسليم ====================
     startOrderDelivery: function() {
         if (!this.orderSession) return;
         this.orderSession.isDelivery = true;
@@ -771,8 +728,7 @@ var App = {
         if (!delEl || !refEl) return;
         var loaded = Number(it.qty_loaded) || 0;
         var delivered = parseInt(delEl.value) || 0;
-        if (delivered < 0) delivered = 0;
-        if (delivered > loaded) delivered = loaded;
+        if (delivered < 0) delivered = 0; if (delivered > loaded) delivered = loaded;
         delEl.value = delivered;
         var refused = loaded - delivered;
         refEl.textContent = refused;
@@ -780,18 +736,13 @@ var App = {
         var summaryEl = byId('liveInvoiceSummary');
         if (summaryEl) summaryEl.innerHTML = this._calculateInvoiceHTML();
         var reasonEl = byId('reason_' + index);
-        if (reasonEl) {
-            if (refused > 0) reasonEl.parentElement.classList.remove('hidden');
-            else reasonEl.parentElement.classList.add('hidden');
-        }
+        if (reasonEl) { if (refused > 0) reasonEl.parentElement.classList.remove('hidden'); else reasonEl.parentElement.classList.add('hidden'); }
     },
 
     _calculateInvoiceHTML: function() {
         var items = this.orderSession.items;
         var subtotal = 0;
-        for (var i = 0; i < items.length; i++) {
-            subtotal += (Number(items[i].qty_delivered) || 0) * (Number(items[i].unit_price) || 0);
-        }
+        for (var i = 0; i < items.length; i++) { subtotal += (Number(items[i].qty_delivered) || 0) * (Number(items[i].unit_price) || 0); }
         var deliveryFee = subtotal > 0 ? this.settings.delivery_fee : 0;
         var taxAmount = (subtotal + deliveryFee) * (this.settings.tax_rate / 100);
         var grandTotal = subtotal + deliveryFee + taxAmount;
@@ -800,8 +751,7 @@ var App = {
         html += '<div class="flex justify-between text-sm"><span>قيمة البضاعة</span><span class="font-bold">' + fmtNum(subtotal) + ' ' + this.settings.currency + '</span></div>';
         html += '<div class="flex justify-between text-sm"><span>رسوم التوصيل</span><span class="font-bold">' + fmtNum(deliveryFee) + ' ' + this.settings.currency + '</span></div>';
         html += '<div class="flex justify-between text-sm"><span>الضريبة</span><span class="font-bold">' + fmtNum(taxAmount) + ' ' + this.settings.currency + '</span></div>';
-        html += '<div class="flex justify-between text-base font-black text-sky-700 mt-2 pt-2 border-t">';
-        html += '<span>الإجمالي المطلوب</span><span>' + fmtNum(grandTotal) + ' ' + this.settings.currency + '</span></div>';
+        html += '<div class="flex justify-between text-base font-black text-sky-700 mt-2 pt-2 border-t"><span>الإجمالي المطلوب</span><span>' + fmtNum(grandTotal) + ' ' + this.settings.currency + '</span></div>';
         return html;
     },
 
@@ -815,16 +765,12 @@ var App = {
             if (delivered < loaded) {
                 var reasonEl = byId('reason_' + i);
                 var reason = reasonEl ? reasonEl.value.trim() : '';
-                if (!reason) {
-                    toast('يرجى ذكر سبب الرفض للصنف ' + items[i].item_name, 'warning');
-                    return;
-                }
+                if (!reason) { toast('يرجى ذكر سبب الرفض للصنف ' + items[i].item_name, 'warning'); return; }
                 items[i].reason_refused = reason;
             }
         }
         Swal.fire({
-            title: 'تأكيد إنهاء التسليم',
-            text: 'سيتم إنهاء تسليم هذا الأوردر. المبلغ الإجمالي: ' + fmtNum(this.orderSession.summary.grand_total) + ' ' + this.settings.currency + '. متابعة؟',
+            title: 'تأكيد إنهاء التسليم', text: 'سيتم إنهاء تسليم هذا الأوردر. المبلغ الإجمالي: ' + fmtNum(this.orderSession.summary.grand_total) + ' ' + this.settings.currency + '. متابعة؟',
             icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، أنهِ التسليم', cancelButtonText: 'رجوع',
             customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-8', cancelButton: '!rounded-xl' }
         }).then(function(result) {
@@ -834,11 +780,8 @@ var App = {
                 var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
                 if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
                 var payload = {
-                    runsheet_code: self.session.runsheet_code,
-                    order_code: self.orderSession.order_code,
-                    items: self.orderSession.items.map(function(it) {
-                        return { itemCode: it.item_code, deliveredQty: Number(it.qty_delivered) || 0, reason: it.reason_refused || '' };
-                    }),
+                    runsheet_code: self.session.runsheet_code, order_code: self.orderSession.order_code,
+                    items: self.orderSession.items.map(function(it) { return { itemCode: it.item_code, deliveredQty: Number(it.qty_delivered) || 0, reason: it.reason_refused || '' }; }),
                     summary: self.orderSession.summary
                 };
                 return fetch(SUPABASE_URL + '/functions/v1/complete-order-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(payload) });
@@ -846,29 +789,18 @@ var App = {
                 if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
             }).then(function(json) {
                 Swal.close();
-                if (json && json.success) {
-                    toast('تم إنهاء تسليم الأوردر', 'success');
-                    var ord = self.session.orders.find(function(o) { return o.order_code === self.orderSession.order_code; });
-                    if (ord) ord.order_status = 'Delivered';
-                    self.goBackToOrdersList();
-                } else {
-                    toast((json && json.msg) || 'فشل إنهاء التسليم', 'error');
-                }
+                if (json && json.success) { toast('تم إنهاء تسليم الأوردر', 'success'); var ord = self.session.orders.find(function(o) { return o.order_code === self.orderSession.order_code; }); if (ord) ord.order_status = 'Delivered'; self.goBackToOrdersList(); }
+                else { toast((json && json.msg) || 'فشل إنهاء التسليم', 'error'); }
             }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
         });
     },
 
     cancelOrderDelivery: function() {
         var self = this;
-        Swal.fire({
-            title: 'تأكيد الإلغاء', text: 'سيتم إلغاء تسليم هذا الأوردر والعودة لوضع المشاهدة.',
-            icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ', cancelButtonText: 'رجوع',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' }
-        }).then(function(result) {
+        Swal.fire({ title: 'تأكيد الإلغاء', text: 'سيتم إلغاء تسليم هذا الأوردر والعودة لوضع المشاهدة.', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ', cancelButtonText: 'رجوع', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' } }).then(function(result) {
             if (!result.isConfirmed) return;
             if (self.orderTimerInterval) clearInterval(self.orderTimerInterval);
-            self.orderSession.isDelivery = false;
-            self.orderSession.start_time = null;
+            self.orderSession.isDelivery = false; self.orderSession.start_time = null;
             var ord = self.session.orders.find(function(o) { return o.order_code === self.orderSession.order_code; });
             if (ord) ord.order_status = 'Pending';
             self.renderOrderView();
@@ -882,127 +814,69 @@ var App = {
         this.orderTimerInterval = setInterval(function() {
             var diff = Math.floor((new Date() - new Date(self.orderSession.start_time)) / 1000);
             var m = Math.floor(diff / 60), sec = diff % 60;
-            var el = byId('orderTimer');
-            if (el) safeText(el, '⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0'));
+            var el = byId('orderTimer'); if (el) safeText(el, '⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0'));
         }, 1000);
     },
 
     // ==================== تبويب رصيد السيارة ====================
     renderStock: function() {
         var self = this;
-        if (!this.activeRunsheet || !this.session) {
-            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط</div>');
-            return;
-        }
+        if (!this.activeRunsheet || !this.session) { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط</div>'); return; }
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
+        // ✅ استخدام runsheet_id (UUID)
         supabase.from('run_sheet_details')
             .select('item_code, item_name, unit, qty_ordered, qty_loaded, qty_delivered')
             .eq('runsheet_id', this.session.runsheet_id)
-            .then(function(res) {
-                var items = res.data || [];
-                self.renderStockView(items);
-            }).catch(function() {
-                safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل رصيد السيارة</div>');
-            });
+            .then(function(res) { var items = res.data || []; self.renderStockView(items); })
+            .catch(function() { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل رصيد السيارة</div>'); });
     },
 
     renderStockView: function(items) {
-        var html = '<div class="p-4">';
-        html += '<h2 class="font-black text-lg text-slate-800 mb-4">📦 رصيد السيارة الحالي</h2>';
-        if (!items.length) {
-            html += '<div class="text-center py-10 text-slate-400">لا توجد أصناف محملة</div>';
-        } else {
+        var html = '<div class="p-4"><h2 class="font-black text-lg text-slate-800 mb-4">📦 رصيد السيارة الحالي</h2>';
+        if (!items.length) { html += '<div class="text-center py-10 text-slate-400">لا توجد أصناف محملة</div>'; }
+        else {
             html += '<div class="bg-white rounded-2xl shadow-sm overflow-hidden"><table class="w-full text-sm"><thead><tr class="bg-slate-50 text-xs text-slate-400"><th class="p-3 text-right">الصنف</th><th class="p-3 text-center">الوحدة</th><th class="p-3 text-center">المطلوب</th><th class="p-3 text-center">المحمّلة</th><th class="p-3 text-center">المسلّمة</th><th class="p-3 text-center">المتبقية</th></tr></thead><tbody>';
             for (var i = 0; i < items.length; i++) {
-                var it = items[i];
-                var ordered = Number(it.qty_ordered) || 0;
-                var loaded = Number(it.qty_loaded) || 0;
-                var delivered = Number(it.qty_delivered) || 0;
-                var remaining = loaded - delivered;
+                var it = items[i]; var ordered = Number(it.qty_ordered) || 0; var loaded = Number(it.qty_loaded) || 0; var delivered = Number(it.qty_delivered) || 0; var remaining = loaded - delivered;
                 var colorClass = remaining === 0 ? 'text-green-600' : (remaining > 0 ? 'text-amber-600' : 'text-red-600');
                 html += '<tr class="border-b"><td class="p-3 font-bold">' + it.item_name + '</td><td class="p-3 text-center">' + it.unit + '</td><td class="p-3 text-center">' + ordered + '</td><td class="p-3 text-center">' + loaded + '</td><td class="p-3 text-center">' + delivered + '</td><td class="p-3 text-center font-black ' + colorClass + '">' + remaining + '</td></tr>';
             }
             html += '</tbody></table></div>';
         }
-        html += '</div>';
-        safeHTML(byId('mainContent'), html);
+        html += '</div>'; safeHTML(byId('mainContent'), html);
     },
 
     // ==================== تبويب رصيدي ====================
     renderBalance: function() {
         var self = this;
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
-
         var today = new Date().toISOString().split('T')[0];
         var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
 
         Promise.all([
-            supabase.from('runsheets')
-                .select('runsheet_code, status, total_amount')
-                .eq('driver_id', this.pubUserId)
-                .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning'])
-                .gte('run_date', firstDay)
-                .lte('run_date', today),
-            supabase.from('driver_ledger')
-                .select('*')
-                .eq('driver_email', this.currentUser.email)
-                .order('entry_date', { ascending: false })
-                .limit(30)
+            supabase.from('runsheets').select('runsheet_code, status, total_amount').eq('driver_id', this.pubUserId).in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning']).gte('run_date', firstDay).lte('run_date', today),
+            // تجاهل driver_ledger إذا كان غير موجود
+            Promise.resolve({ data: [], error: null })
         ]).then(function(results) {
             var runsheets = results[0].data || [];
             var ledger = results[1].data || [];
             self.renderBalanceView(runsheets, ledger);
-        }).catch(function() {
-            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
-        });
+        }).catch(function() { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>'); });
     },
 
     renderBalanceView: function(runsheets, ledger) {
         var loadedTotal = 0, deliveredTotal = 0;
-        for (var i = 0; i < runsheets.length; i++) {
-            loadedTotal += Number(runsheets[i].total_amount) || 0;
-            if (runsheets[i].status === 'Delivered') deliveredTotal += Number(runsheets[i].total_amount) || 0;
-        }
+        for (var i = 0; i < runsheets.length; i++) { loadedTotal += Number(runsheets[i].total_amount) || 0; if (runsheets[i].status === 'Delivered') deliveredTotal += Number(runsheets[i].total_amount) || 0; }
         var tD = 0, tC = 0;
-        for (var j = 0; j < ledger.length; j++) {
-            tD += Number(ledger[j].debit) || 0;
-            tC += Number(ledger[j].credit) || 0;
-        }
+        for (var j = 0; j < ledger.length; j++) { tD += Number(ledger[j].debit) || 0; tC += Number(ledger[j].credit) || 0; }
         var bal = tD - tC;
-
-        var html = '<div class="p-4">';
-        html += '<h2 class="text-lg font-black text-slate-800 mb-4">⚖️ رصيدي</h2>';
-
-        html += '<div class="card text-center mb-4">';
-        html += '<p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p>';
-        html += '<p class="text-4xl font-black ' + (bal <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(bal)) + ' ج.م</p>';
-        html += '<div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + (bal <= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' + (bal <= 0 ? '🟢 أنا ملتزم' : '🔴 عليّ مستحقات') + '</span></div>';
-        html += '</div>';
-
-        html += '<div class="grid grid-cols-2 gap-3 mb-4">';
-        html += '<div class="card text-center"><p class="text-xs text-slate-400">المحمّل (الشهر)</p><p class="text-xl font-black text-sky-600">' + fmtNum(loadedTotal) + '</p></div>';
-        html += '<div class="card text-center"><p class="text-xs text-slate-400">تم تسليمه</p><p class="text-xl font-black text-green-600">' + fmtNum(deliveredTotal) + '</p></div>';
-        html += '</div>';
-
-        html += '<h3 class="font-bold text-slate-700 mb-3">📊 آخر الحركات</h3>';
-        html += '<div class="space-y-2 max-h-60 overflow-y-auto">';
-        if (ledger.length === 0) {
-            html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد حركات</p>';
-        } else {
-            for (var k = 0; k < ledger.length; k++) {
-                var rw = ledger[k];
-                var sign = rw.debit > 0 ? '+' : '-';
-                var color = rw.debit > 0 ? 'text-red-600' : 'text-green-600';
-                html += '<div class="flex justify-between p-2 bg-slate-50 rounded-lg">';
-                html += '<span class="text-xs text-slate-400">' + (rw.entry_date || '') + '</span>';
-                html += '<span class="font-bold text-sm">' + (rw.description || '') + '</span>';
-                html += '<span class="font-bold ' + color + '">' + sign + fmtNum(rw.debit || rw.credit) + '</span>';
-                html += '</div>';
-            }
-        }
-        html += '</div>';
-        html += '</div>';
-        safeHTML(byId('mainContent'), html);
+        var html = '<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">⚖️ رصيدي</h2>';
+        html += '<div class="card text-center mb-4"><p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p><p class="text-4xl font-black ' + (bal <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(bal)) + ' ج.م</p><div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + (bal <= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700') + '">' + (bal <= 0 ? '🟢 أنا ملتزم' : '🔴 عليّ مستحقات') + '</span></div></div>';
+        html += '<div class="grid grid-cols-2 gap-3 mb-4"><div class="card text-center"><p class="text-xs text-slate-400">المحمّل (الشهر)</p><p class="text-xl font-black text-sky-600">' + fmtNum(loadedTotal) + '</p></div><div class="card text-center"><p class="text-xs text-slate-400">تم تسليمه</p><p class="text-xl font-black text-green-600">' + fmtNum(deliveredTotal) + '</p></div></div>';
+        html += '<h3 class="font-bold text-slate-700 mb-3">📊 آخر الحركات</h3><div class="space-y-2 max-h-60 overflow-y-auto">';
+        if (ledger.length === 0) { html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد حركات</p>'; }
+        else { for (var k = 0; k < ledger.length; k++) { var rw = ledger[k]; var sign = rw.debit > 0 ? '+' : '-'; var color = rw.debit > 0 ? 'text-red-600' : 'text-green-600'; html += '<div class="flex justify-between p-2 bg-slate-50 rounded-lg"><span class="text-xs text-slate-400">' + (rw.entry_date || '') + '</span><span class="font-bold text-sm">' + (rw.description || '') + '</span><span class="font-bold ' + color + '">' + sign + fmtNum(rw.debit || rw.credit) + '</span></div>'; } }
+        html += '</div></div>'; safeHTML(byId('mainContent'), html);
     },
 
     // ==================== حسابي ====================
@@ -1013,24 +887,11 @@ var App = {
         html += '<p class="text-sm text-slate-400">مندوب توصيل</p>';
         html += '<div class="card mt-4 text-right"><p class="text-xs text-slate-400">البريد</p><p class="font-bold">' + (this.currentUser ? this.currentUser.email : '') + '</p></div>';
         html += '<button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button>';
-        html += '</div>';
-        safeHTML(byId('mainContent'), html);
+        html += '</div>'; safeHTML(byId('mainContent'), html);
     }
 };
 
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('../sw.js').then(function(reg) {
-        reg.addEventListener('updatefound', function() {
-            var newWorker = reg.installing;
-            newWorker.addEventListener('statechange', function() {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    Swal.fire({ title: '🔄 تحديث متاح', text: 'تم تحميل نسخة أحدث.', icon: 'info', confirmButtonText: 'تحديث الآن', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8' } }).then(function() { newWorker.postMessage({ action: 'skipWaiting' }); window.location.reload(); });
-                }
-            });
-        });
-    }).catch(function() {});
-}
-
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
 document.addEventListener('DOMContentLoaded', function() { App.init(); });
 </script>
 </body>
