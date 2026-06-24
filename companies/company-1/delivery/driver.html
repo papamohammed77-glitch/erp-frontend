@@ -90,8 +90,8 @@
         <button onclick="App.switchTab('map')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-sky-600 font-bold text-xs" id="tab-map">
             <i class="fa-solid fa-map text-lg"></i><span>الخريطة</span>
         </button>
-        <button onclick="App.switchTab('runsheet')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-runsheet">
-            <i class="fa-solid fa-truck-fast text-lg"></i><span>الرانشيت</span>
+        <button onclick="App.switchTab('orders')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-orders">
+            <i class="fa-solid fa-truck-fast text-lg"></i><span>الأوردرات</span>
         </button>
         <button onclick="App.switchTab('stock')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-stock">
             <i class="fa-solid fa-boxes-stacked text-lg"></i><span>السيارة</span>
@@ -238,7 +238,7 @@ var App = {
     switchTab: function(tab) {
         if (tab === 'orderDetail') return;
         this.currentTab = tab;
-        var tabs = ['map', 'runsheet', 'stock', 'balance', 'account'];
+        var tabs = ['map', 'orders', 'stock', 'balance', 'account'];
         for (var i = 0; i < tabs.length; i++) {
             var btn = byId('tab-' + tabs[i]);
             if (btn) { btn.classList.remove('text-sky-600'); btn.classList.add('text-slate-400'); }
@@ -247,7 +247,7 @@ var App = {
         if (act) { act.classList.add('text-sky-600'); act.classList.remove('text-slate-400'); }
 
         if (tab === 'map') this.renderMap();
-        else if (tab === 'runsheet') this.renderRunsheetTab();
+        else if (tab === 'orders') this.renderOrdersTab();
         else if (tab === 'stock') this.renderStock();
         else if (tab === 'balance') this.renderBalance();
         else if (tab === 'account') this.renderAccount();
@@ -294,8 +294,9 @@ var App = {
             html += '<span class="px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span>';
             html += '</div>';
             html += '<div class="text-xs text-slate-400 mb-3">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + elapsed + '</div>';
-            html += '<button onclick="App.openActiveRunsheet(\'' + rs.runsheet_code + '\')" class="btn-primary text-sm py-3">';
-            html += isDelivering ? '<i class="fa-solid fa-truck-fast ml-2"></i> متابعة التوصيل' : '<i class="fa-solid fa-play ml-2"></i> بدء التوصيل';
+            // الزر يبدأ الرحلة ويذهب للأوردرات مباشرة
+            html += '<button onclick="App.goToOrdersTab()" class="btn-primary text-sm py-3">';
+            html += isDelivering ? '<i class="fa-solid fa-list-check ml-2"></i> عرض الأوردرات' : '<i class="fa-solid fa-play ml-2"></i> بدء الرحلة';
             html += '</button>';
             html += '</div>';
         } else {
@@ -305,6 +306,46 @@ var App = {
         html += '</div>';
         safeHTML(byId('mainContent'), html);
         setTimeout(function() { self.initMap(); }, 300);
+    },
+
+    goToOrdersTab: function() {
+        var rs = this.activeRunsheet;
+        if (!rs) return;
+        if (rs.status === 'Loaded') {
+            // بدء التوصيل ثم الانتقال للأوردرات
+            this.startDeliveryAndGoToOrders(rs.runsheet_code);
+        } else if (rs.status === 'Delivering') {
+            // مجرد الانتقال
+            this.switchTab('orders');
+        }
+    },
+
+    startDeliveryAndGoToOrders: function(code) {
+        var self = this;
+        if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
+        Swal.fire({
+            title: 'بدء الرحلة', text: 'هل أنت متأكد من بدء توصيل الرانشيت ' + code + '؟',
+            icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، ابدأ', cancelButtonText: 'رجوع',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
+            Swal.showLoading();
+            supabase.auth.getSession().then(function(sessionRes) {
+                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+                return fetch(SUPABASE_URL + '/functions/v1/start-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: code }) });
+            }).then(function(res) {
+                if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
+            }).then(function(json) {
+                Swal.close();
+                if (json && json.success) {
+                    toast('تم بدء الرحلة', 'success');
+                    self.activeRunsheet.status = 'Delivering'; // تحديث محلي
+                    self.activeRunsheet.delivery_start = new Date().toISOString();
+                    self.switchTab('orders');
+                } else { toast((json && json.msg) || 'فشل بدء الرحلة', 'error'); }
+            }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+        });
     },
 
     initMap: function() {
@@ -354,42 +395,8 @@ var App = {
             });
     },
 
-    openActiveRunsheet: function(code) {
-        var rs = this.activeRunsheet;
-        if (!rs) return;
-        if (rs.status === 'Loaded') {
-            this.startDelivery(code);
-        } else if (rs.status === 'Delivering') {
-            this.switchTab('runsheet');
-        }
-    },
-
-    startDelivery: function(code) {
-        var self = this;
-        if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
-        Swal.fire({
-            title: 'بدء التوصيل', text: 'هل أنت متأكد من بدء توصيل الرانشيت ' + code + '؟',
-            icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، ابدأ', cancelButtonText: 'رجوع',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }
-        }).then(function(result) {
-            if (!result.isConfirmed) return;
-            Swal.showLoading();
-            supabase.auth.getSession().then(function(sessionRes) {
-                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
-                if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                return fetch(SUPABASE_URL + '/functions/v1/start-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: code }) });
-            }).then(function(res) {
-                if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
-            }).then(function(json) {
-                Swal.close();
-                if (json && json.success) { toast('تم بدء التوصيل', 'success'); self.runsheets = []; self.activeRunsheet = null; self.renderMap(); }
-                else { toast((json && json.msg) || 'فشل بدء التوصيل', 'error'); }
-            }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
-        });
-    },
-
-    // ==================== تبويب الرانشيت (قائمة الأوردرات) ====================
-    renderRunsheetTab: function() {
+    // ==================== تبويب الأوردرات ====================
+    renderOrdersTab: function() {
         var self = this;
         if (!this.activeRunsheet) {
             safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط. اذهب إلى الخريطة أولاً.</div>');
@@ -409,13 +416,13 @@ var App = {
                     start_time: rs.delivery_start || new Date().toISOString(),
                     orders: orders
                 };
-                self.renderOrdersList(rs, orders);
+                self.renderOrdersListView(rs, orders);
             }).catch(function() {
                 safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل الأوردرات</div>');
             });
     },
 
-    renderOrdersList: function(rs, orders) {
+    renderOrdersListView: function(rs, orders) {
         var deliveredCount = 0;
         for (var i = 0; i < orders.length; i++) { if (orders[i].order_status === 'Delivered') deliveredCount++; }
         var progress = orders.length ? Math.round((deliveredCount / orders.length) * 100) : 0;
@@ -425,6 +432,7 @@ var App = {
             var m = Math.floor(diff / 60), sec = diff % 60;
             elapsed = '<span class="text-sm">⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0') + '</span>';
         }
+
         var html = '<div class="p-4">';
         html += '<div class="bg-sky-50 rounded-3xl p-5 mb-6 slide-in">';
         html += '<div class="flex items-center justify-between mb-4">';
@@ -434,6 +442,14 @@ var App = {
         html += '<div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>تقدم التوصيل</span><span>' + deliveredCount + ' / ' + orders.length + ' أوردر</span></div>';
         html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full" style="width:' + progress + '%"></div></div>';
         html += '</div></div>';
+
+        // زر إنهاء الرحلة (يظهر فقط إذا كان Delivering)
+        if (rs.status === 'Delivering') {
+            html += '<div class="mb-4 flex gap-2">';
+            html += '<button onclick="App.completeDelivery()" class="btn-success py-2 text-sm flex-1"><i class="fa-solid fa-check ml-1"></i> إنهاء الرحلة</button>';
+            html += '<button onclick="App.cancelDelivery()" class="btn-danger py-2 text-sm flex-1"><i class="fa-solid fa-xmark ml-1"></i> إلغاء الرحلة</button>';
+            html += '</div>';
+        }
 
         html += '<p class="text-sm text-slate-400 mb-4">اضغط على الأوردر لفتح التفاصيل</p>';
         for (var j = 0; j < orders.length; j++) {
@@ -466,7 +482,7 @@ var App = {
     // ==================== شاشة تفاصيل الأوردر ====================
     openOrder: function(orderCode) {
         var self = this;
-        if (!this.session) { toast('لم يتم تحميل الرانشيت بعد', 'error'); return; }
+        if (!this.session) { toast('لم يتم تحميل الأوردرات بعد', 'error'); return; }
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-48 w-full mb-4"></div></div>');
         byId('bottomNav').classList.add('hidden');
         byId('headerTitle').textContent = 'تفاصيل الأوردر';
@@ -477,7 +493,7 @@ var App = {
             .then(function(res) {
                 var items = res.data || [];
                 var order = self.session.orders.find(function(o) { return o.order_code === orderCode; });
-                if (!order) { self.goBackToRunsheet(); return; }
+                if (!order) { self.goBackToOrdersList(); return; }
                 self.orderSession = {
                     order_code: orderCode,
                     order_id: order.id,
@@ -497,22 +513,22 @@ var App = {
             });
     },
 
-    goBackToRunsheet: function() {
+    goBackToOrdersList: function() {
         if (this.orderTimerInterval) clearInterval(this.orderTimerInterval);
         this.orderSession = null;
         byId('bottomNav').classList.remove('hidden');
         byId('headerTitle').textContent = '🛵 مندوب التوصيل';
-        this.switchTab('runsheet');
+        this.renderOrdersTab();
     },
 
     renderOrderView: function() {
         var o = this.orderSession;
-        if (!o) { this.goBackToRunsheet(); return; }
+        if (!o) { this.goBackToOrdersList(); return; }
         var isDelivering = o.isDelivery;
         var isCompleted = o.order_status === 'Delivered';
 
         var html = '<div class="p-4">';
-        html += '<button onclick="App.goBackToRunsheet()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-sky-600 shadow-sm mb-4"><i class="fa-solid fa-arrow-right"></i></button>';
+        html += '<button onclick="App.goBackToOrdersList()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-sky-600 shadow-sm mb-4"><i class="fa-solid fa-arrow-right"></i></button>';
 
         html += '<div class="bg-white rounded-2xl p-4 shadow-sm mb-4">';
         html += '<h2 class="font-black text-xl text-slate-800 mb-2">' + o.customer_name + '</h2>';
@@ -672,7 +688,7 @@ var App = {
                     toast('تم إنهاء تسليم الأوردر', 'success');
                     var ord = self.session.orders.find(function(o) { return o.order_code === self.orderSession.order_code; });
                     if (ord) ord.order_status = 'Delivered';
-                    self.goBackToRunsheet();
+                    self.goBackToOrdersList();
                 } else {
                     toast((json && json.msg) || 'فشل إنهاء التسليم', 'error');
                 }
@@ -709,6 +725,70 @@ var App = {
         }, 1000);
     },
 
+    // ==================== إنهاء الرحلة ====================
+    completeDelivery: function() {
+        var self = this;
+        if (!this.session) return;
+        Swal.fire({
+            title: 'تأكيد إنهاء الرحلة',
+            text: 'سيتم إنهاء الرحلة ' + this.session.runsheet_code + '. تأكد من تسليم جميع الأوردرات.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'إنهاء الرحلة', cancelButtonText: 'رجوع',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-8', cancelButton: '!rounded-xl' }
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
+            Swal.showLoading();
+            supabase.auth.getSession().then(function(sessionRes) {
+                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+                return fetch(SUPABASE_URL + '/functions/v1/complete-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code }) });
+            }).then(function(res) {
+                if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
+            }).then(function(json) {
+                Swal.close();
+                if (json && json.success) {
+                    toast('تم إنهاء الرحلة', 'success');
+                    self.session = null;
+                    self.activeRunsheet = null;
+                    if (self.timerInterval) clearInterval(self.timerInterval);
+                    self.switchTab('map');
+                } else {
+                    toast((json && json.msg) || 'فشل إنهاء الرحلة', 'error');
+                }
+            }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+        });
+    },
+
+    cancelDelivery: function() {
+        var self = this;
+        Swal.fire({
+            title: 'تأكيد إلغاء الرحلة',
+            text: 'سيتم إلغاء الرحلة ' + this.session.runsheet_code + ' وإعادتها إلى حالة جاهز.',
+            icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ الرحلة', cancelButtonText: 'رجوع',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' }
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
+            Swal.showLoading();
+            supabase.auth.getSession().then(function(sessionRes) {
+                var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+                return fetch(SUPABASE_URL + '/functions/v1/cancel-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code }) });
+            }).then(function(res) {
+                if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json();
+            }).then(function(json) {
+                Swal.close();
+                if (json && json.success) {
+                    toast('تم إلغاء الرحلة', 'success');
+                    self.session = null;
+                    self.activeRunsheet = null;
+                    if (self.timerInterval) clearInterval(self.timerInterval);
+                    self.switchTab('map');
+                } else {
+                    toast((json && json.msg) || 'فشل إلغاء الرحلة', 'error');
+                }
+            }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+        });
+    },
+
     // ==================== تبويب رصيد السيارة ====================
     renderStock: function() {
         var self = this;
@@ -718,7 +798,7 @@ var App = {
         }
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
         supabase.from('run_sheet_details')
-            .select('item_code, item_name, unit, qty_loaded, qty_delivered')
+            .select('item_code, item_name, unit, qty_ordered, qty_loaded, qty_delivered')
             .eq('runsheet_id', this.session.runsheet_id)
             .then(function(res) {
                 var items = res.data || [];
@@ -734,14 +814,15 @@ var App = {
         if (!items.length) {
             html += '<div class="text-center py-10 text-slate-400">لا توجد أصناف محملة</div>';
         } else {
-            html += '<div class="bg-white rounded-2xl shadow-sm overflow-hidden"><table class="w-full text-sm"><thead><tr class="bg-slate-50 text-xs text-slate-400"><th class="p-3 text-right">الصنف</th><th class="p-3 text-center">الوحدة</th><th class="p-3 text-center">المحمّلة</th><th class="p-3 text-center">المسلّمة</th><th class="p-3 text-center">المتبقية</th></tr></thead><tbody>';
+            html += '<div class="bg-white rounded-2xl shadow-sm overflow-hidden"><table class="w-full text-sm"><thead><tr class="bg-slate-50 text-xs text-slate-400"><th class="p-3 text-right">الصنف</th><th class="p-3 text-center">الوحدة</th><th class="p-3 text-center">المطلوب</th><th class="p-3 text-center">المحمّلة</th><th class="p-3 text-center">المسلّمة</th><th class="p-3 text-center">المتبقية</th></tr></thead><tbody>';
             for (var i = 0; i < items.length; i++) {
                 var it = items[i];
+                var ordered = Number(it.qty_ordered) || 0;
                 var loaded = Number(it.qty_loaded) || 0;
                 var delivered = Number(it.qty_delivered) || 0;
                 var remaining = loaded - delivered;
                 var colorClass = remaining === 0 ? 'text-green-600' : (remaining > 0 ? 'text-amber-600' : 'text-red-600');
-                html += '<tr class="border-b"><td class="p-3 font-bold">' + it.item_name + '</td><td class="p-3 text-center">' + it.unit + '</td><td class="p-3 text-center">' + loaded + '</td><td class="p-3 text-center">' + delivered + '</td><td class="p-3 text-center font-black ' + colorClass + '">' + remaining + '</td></tr>';
+                html += '<tr class="border-b"><td class="p-3 font-bold">' + it.item_name + '</td><td class="p-3 text-center">' + it.unit + '</td><td class="p-3 text-center">' + ordered + '</td><td class="p-3 text-center">' + loaded + '</td><td class="p-3 text-center">' + delivered + '</td><td class="p-3 text-center font-black ' + colorClass + '">' + remaining + '</td></tr>';
             }
             html += '</tbody></table></div>';
         }
