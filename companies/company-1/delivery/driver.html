@@ -418,7 +418,19 @@ renderStockView: function(items) {
     renderAccount: function() { var html = '<div class="p-4 text-center"><div class="w-20 h-20 bg-gradient-to-br from-sky-400 to-sky-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-sky-200 mb-4 mt-8">' + ((this.currentUser && this.currentUser.user_metadata && this.currentUser.user_metadata.name) ? this.currentUser.user_metadata.name.charAt(0) : '?') + '</div><h2 class="font-black text-xl text-slate-800">' + ((this.currentUser && this.currentUser.user_metadata) ? (this.currentUser.user_metadata.name || this.currentUser.email) : '') + '</h2><p class="text-sm text-slate-400">مندوب توصيل</p><div class="card mt-4 text-right"><p class="text-xs text-slate-400">البريد</p><p class="font-bold">' + (this.currentUser ? this.currentUser.email : '') + '</p></div><button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button></div>'; safeHTML(byId('mainContent'), html); }
 };
 
-if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('../sw.js').then(function(reg) {
+        reg.addEventListener('updatefound', function() {
+            var newWorker = reg.installing;
+            newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    newWorker.postMessage({ action: 'skipWaiting' });
+                    window.location.reload();
+                }
+            });
+        });
+    }).catch(function() {});
+}
 document.addEventListener('DOMContentLoaded', function() { App.init(); });
 </script>
 </body>
