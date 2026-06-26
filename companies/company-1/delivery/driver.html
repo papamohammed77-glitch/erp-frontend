@@ -132,10 +132,26 @@ var App = {
 
     enterApp: function() { byId('loginScreen').classList.add('hidden'); byId('mainApp').classList.remove('hidden'); this.switchTab('dashboard'); },
 
-    doLogout: function() {
-        var self = this; if (this.timerInterval) clearInterval(this.timerInterval); if (this.orderTimerInterval) clearInterval(this.orderTimerInterval); if (this.mapObj) { this.mapObj.remove(); this.mapObj = null; }
-        supabase.auth.signOut().then(function() { self.currentUser = null; self.pubUserId = null; byId('mainApp').classList.add('hidden'); byId('loginScreen').classList.remove('hidden'); byId('loginEmail').value = ''; byId('loginPass').value = ''; });
-    },
+doLogout: function() {
+    var self = this;
+    
+    // ✅ إيقاف جميع العدادت
+    if (this.timerInterval) clearInterval(this.timerInterval);
+    if (this.orderTimerInterval) clearInterval(this.orderTimerInterval);
+    
+    // ⚠️ لا تمسح localStorage – ليستأنف التايمر عند تسجيل الدخول مرة أخرى
+    
+    if (this.mapObj) { this.mapObj.remove(); this.mapObj = null; }
+    
+    supabase.auth.signOut().then(function() {
+        self.currentUser = null;
+        self.pubUserId = null;
+        byId('mainApp').classList.add('hidden');
+        byId('loginScreen').classList.remove('hidden');
+        byId('loginEmail').value = '';
+        byId('loginPass').value = '';
+    });
+},
 
     switchTab: function(tab) {
         if (tab === 'orderDetail') return;
@@ -408,33 +424,81 @@ renderOrdersListView: function(rs, orders) {
     startTimer: function(startTime) { var self = this; if (this.timerInterval) clearInterval(this.timerInterval); if (!startTime) return; this.timerInterval = setInterval(function() { var diff = Math.floor((new Date() - new Date(startTime)) / 1000); var m = Math.floor(diff / 60), sec = diff % 60; var el = document.querySelector('.bg-sky-50 .bg-white span'); if (el) safeText(el, '⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0')); }, 1000); },
 
     // ==================== تفاصيل الأوردر (مصححة) ====================
-    openOrder: function(orderCode) {
-        var self = this;
-        if (!this.session || !this.session.orders) { toast('لم يتم تحميل الأوردرات بعد', 'error'); return; }
-        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-48 w-full mb-4"></div></div>');
-        byId('bottomNav').classList.add('hidden');
-        byId('headerTitle').textContent = 'تفاصيل الأوردر';
+openOrder: function(orderCode) {
+    var self = this;
+    if (!this.session || !this.session.orders) { toast('لم يتم تحميل الأوردرات بعد', 'error'); return; }
+    safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-48 w-full mb-4"></div></div>');
+    byId('bottomNav').classList.add('hidden');
+    byId('headerTitle').textContent = 'تفاصيل الأوردر';
 
-        var order = null;
-        for (var i = 0; i < self.session.orders.length; i++) { if (self.session.orders[i].order_code === orderCode) { order = self.session.orders[i]; break; } }
-        if (!order) { self.goBackToOrdersList(); return; }
+    var order = null;
+    for (var i = 0; i < self.session.orders.length; i++) {
+        if (self.session.orders[i].order_code === orderCode) {
+            order = self.session.orders[i];
+            break;
+        }
+    }
+    if (!order) { self.goBackToOrdersList(); return; }
 
-        supabase.from('order_details')
-            .select('item_code, item_name, unit, unit_price, qty, qty_loaded, qty_delivered, qty_refused, notes')
-            .eq('order_id', order.id)
-            .then(function(res) {
-                if (res.error) {
-                    self.handleError('order_details', res.error);
-                    self.goBackToOrdersList(); return;
-                }
-                var items = res.data || [];
-                if (items.length === 0) { toast('لا توجد أصناف لهذا الأوردر', 'warning'); self.goBackToOrdersList(); return; }
-                self.orderSession = { order_code: orderCode, order_id: order.id, customer_name: order.customer_name || '', customer_phone: order.customer_phone || '', area: order.area || '', total_amount: order.total_amount || 0, order_status: order.order_status || 'Pending', items: items, isDelivery: false, start_time: null, summary: {} };
-                self.renderOrderView();
-            }).catch(function(err) { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل تفاصيل الأوردر: ' + (err.message || 'خطأ غير معروف') + '</div>'); });
-    },
+    supabase.from('order_details')
+        .select('item_code, item_name, unit, unit_price, qty, qty_loaded, qty_delivered, qty_refused, notes')
+        .eq('order_id', order.id)
+        .then(function(res) {
+            if (res.error) {
+                self.handleError('order_details', res.error);
+                self.goBackToOrdersList();
+                return;
+            }
+            var items = res.data || [];
+            if (items.length === 0) { toast('لا توجد أصناف لهذا الأوردر', 'warning'); self.goBackToOrdersList(); return; }
+            
+            self.orderSession = {
+                order_code: orderCode,
+                order_id: order.id,
+                customer_name: order.customer_name || '',
+                customer_phone: order.customer_phone || '',
+                area: order.area || '',
+                total_amount: order.total_amount || 0,
+                order_status: order.order_status || 'Pending',
+                items: items,
+                isDelivery: false,
+                start_time: null,
+                summary: {}
+            };
+            
+            // ✅ التحقق من localStorage – هل كان الأوردر قيد التسليم قبل الخروج؟
+            var key = 'order_timer_' + orderCode;
+            var savedTime = localStorage.getItem(key);
+            if (savedTime) {
+                self.orderSession.start_time = savedTime;
+                self.orderSession.isDelivery = true;
+            }
+            
+            self.renderOrderView();
+            
+            // ✅ إذا كان isDelivery = true، ابدأ التايمر تلقائياً
+            if (self.orderSession.isDelivery) {
+                self.startOrderTimer();
+            }
+        }).catch(function(err) {
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل تفاصيل الأوردر: ' + (err.message || 'خطأ غير معروف') + '</div>');
+        });
+},
 
-    goBackToOrdersList: function() { if (this.orderTimerInterval) clearInterval(this.orderTimerInterval); this.orderSession = null; byId('bottomNav').classList.remove('hidden'); byId('headerTitle').textContent = '🛵 مندوب التوصيل'; this.renderOrdersTab(); },
+goBackToOrdersList: function() {
+    // ✅ إيقاف عداد الوقت مؤقتاً (لكن نحتفظ بـ localStorage للعودة)
+    if (this.orderTimerInterval) {
+        clearInterval(this.orderTimerInterval);
+        this.orderTimerInterval = null;
+    }
+    
+    // ⚠️ لا تمسح localStorage هنا – حتى يستأنف التايمر عند العودة
+    
+    this.orderSession = null;
+    byId('bottomNav').classList.remove('hidden');
+    byId('headerTitle').textContent = '🛵 مندوب التوصيل';
+    this.renderOrdersTab();
+},
 
 renderOrderView: function() {
     var o = this.orderSession;
@@ -578,31 +642,187 @@ editDeliveryItem: function(index) {
     var imgHtml = img ? '<img src="' + img + '" class="w-20 h-20 rounded-2xl object-cover mx-auto shadow-sm mb-3" onerror="this.style.display=\'none\'">' : '<div class="w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl mx-auto flex items-center justify-center text-slate-400 mb-3"><i class="fa-solid fa-box text-2xl"></i></div>';
     Swal.fire({ title: '<span class="text-slate-800">' + it.item_name + '</span>', html: '<div class="text-center">' + imgHtml + '</div><div class="text-right text-sm space-y-2"><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة في الأوردر</span><strong class="text-slate-700">' + (Number(it.qty) || 0) + '</strong></div><div class="flex justify-between"><span class="text-slate-400">الكمية المحمّلة للصنف</span><strong class="text-slate-700">' + loaded + '</strong></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + (it.unit || '') + '</span></div></div><div class="mt-4 text-right"><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المسلّمة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="' + delivered + '" min="0" max="' + loaded + '"><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes || '') + '" placeholder="سبب النقص..."></div>', showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }, preConfirm: function() { return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-qty').value) || 0, loaded)), notes: document.getElementById('swal-notes').value.trim() }; } }).then(function(r) { if (r.isConfirmed) { self.orderSession.items[index].qty_delivered = r.value.qty; self.orderSession.items[index].notes = r.value.notes; self.renderOrderView(); if (r.value.qty < (Number(it.qty) || 0) && !r.value.notes) { Swal.fire({ title: 'تنبيه', text: 'الكمية المسلّمة أقل من المطلوبة في الأوردر. هل تريد إضافة سبب النقص؟', icon: 'question', showCancelButton: true, confirmButtonText: 'إضافة سبب', cancelButtonText: 'تخطي', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl' } }).then(function(r2) { if (r2.isConfirmed) { self.editDeliveryItem(index); } }); } } });
 },
-    startOrderDelivery: function() {
-        if (!this.orderSession) return;
-        this.orderSession.isDelivery = true;
-        this.orderSession.start_time = new Date().toISOString();
-        var self = this;
-        var ord = null;
-        for (var j = 0; j < self.session.orders.length; j++) {
-            if (self.session.orders[j].order_code === self.orderSession.order_code) {
-                ord = self.session.orders[j];
-                break;
-            }
+startOrderDelivery: function() {
+    if (!this.orderSession) return;
+    this.orderSession.isDelivery = true;
+    
+    // ✅ حفظ وقت البدء في localStorage
+    var startTime = new Date().toISOString();
+    this.orderSession.start_time = startTime;
+    
+    var key = 'order_timer_' + this.orderSession.order_code;
+    localStorage.setItem(key, startTime);
+    
+    var self = this;
+    var ord = null;
+    for (var j = 0; j < self.session.orders.length; j++) {
+        if (self.session.orders[j].order_code === self.orderSession.order_code) {
+            ord = self.session.orders[j];
+            break;
         }
-        if (ord) ord.order_status = 'Delivering';
-        this.renderOrderView();
-    },
+    }
+    if (ord) ord.order_status = 'Delivering';
+    this.renderOrderView();
+},
 
     onDeliveryInput: function(index) { var it = this.orderSession.items[index]; var delEl = byId('del_qty_' + index), refEl = byId('ref_qty_' + index); if (!delEl || !refEl) return; var loaded = Number(it.qty_loaded) || 0; var delivered = parseInt(delEl.value) || 0; if (delivered < 0) delivered = 0; if (delivered > loaded) delivered = loaded; delEl.value = delivered; var refused = loaded - delivered; refEl.textContent = refused; it.qty_delivered = delivered; var summaryEl = byId('liveInvoiceSummary'); if (summaryEl) summaryEl.innerHTML = this._calculateInvoiceHTML(); var reasonEl = byId('reason_' + index); if (reasonEl) { if (refused > 0) reasonEl.parentElement.classList.remove('hidden'); else reasonEl.parentElement.classList.add('hidden'); } },
 
     _calculateInvoiceHTML: function() { var items = this.orderSession.items, subtotal = 0; for (var i = 0; i < items.length; i++) { subtotal += (Number(items[i].qty_delivered) || 0) * (Number(items[i].unit_price) || 0); } var deliveryFee = subtotal > 0 ? this.settings.delivery_fee : 0; var taxAmount = (subtotal + deliveryFee) * (this.settings.tax_rate / 100); var grandTotal = subtotal + deliveryFee + taxAmount; this.orderSession.summary = { subtotal: subtotal, delivery_fee: deliveryFee, tax_amount: taxAmount, grand_total: grandTotal }; var html = '<h3 class="font-bold text-slate-700 mb-3">💰 المبلغ الحي</h3>'; html += '<div class="flex justify-between text-sm"><span>قيمة البضاعة</span><span class="font-bold">' + fmtNum(subtotal) + ' ' + this.settings.currency + '</span></div>'; html += '<div class="flex justify-between text-sm"><span>رسوم التوصيل</span><span class="font-bold">' + fmtNum(deliveryFee) + ' ' + this.settings.currency + '</span></div>'; html += '<div class="flex justify-between text-sm"><span>الضريبة</span><span class="font-bold">' + fmtNum(taxAmount) + ' ' + this.settings.currency + '</span></div>'; html += '<div class="flex justify-between text-base font-black text-sky-700 mt-2 pt-2 border-t"><span>الإجمالي المطلوب</span><span>' + fmtNum(grandTotal) + ' ' + this.settings.currency + '</span></div>'; return html; },
 
-finishOrderDelivery: function() { var self = this; if (!this.orderSession) return; var items = this.orderSession.items; for (var i = 0; i < items.length; i++) { var ordered = Number(items[i].qty) || 0, delivered = Number(items[i].qty_delivered) || 0; if (delivered < ordered) { if (!items[i].notes || items[i].notes.trim() === '') { toast('يرجى ذكر سبب النقص للصنف ' + items[i].item_name, 'warning'); return; } } } Swal.fire({ title: 'تأكيد إنهاء التسليم', text: 'سيتم إنهاء تسليم هذا الأوردر. المبلغ الإجمالي: ' + fmtNum(this.orderSession.summary.grand_total) + ' ' + this.settings.currency, icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، أنهِ التسليم', cancelButtonText: 'رجوع', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-8', cancelButton: '!rounded-xl' } }).then(function(result) { if (!result.isConfirmed) return; Swal.showLoading(); supabase.auth.getSession().then(function(sessionRes) { var token = sessionRes.data.session ? sessionRes.data.session.access_token : null; if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; } return fetch(SUPABASE_URL + '/functions/v1/complete-order-delivery', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code, order_code: self.orderSession.order_code, items: self.orderSession.items.map(function(it) { return { itemCode: it.item_code, deliveredQty: Number(it.qty_delivered) || 0, reason: it.notes || '' }; }), summary: self.orderSession.summary }) }); }).then(function(res) { if (!res) return; if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); return res.json(); }).then(function(json) { Swal.close(); if (json && json.success) { toast('تم إنهاء تسليم الأوردر', 'success'); var ord = null; for (var k = 0; k < self.session.orders.length; k++) { if (self.session.orders[k].order_code === self.orderSession.order_code) { ord = self.session.orders[k]; break; } } if (ord) ord.order_status = 'Delivered'; self.goBackToOrdersList(); } else { toast((json && json.msg) || 'فشل', 'error'); } }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); }); }); },
+finishOrderDelivery: function() {
+    var self = this;
+    if (!this.orderSession) return;
+    
+    var items = this.orderSession.items;
+    for (var i = 0; i < items.length; i++) {
+        var ordered = Number(items[i].qty) || 0;
+        var delivered = Number(items[i].qty_delivered) || 0;
+        if (delivered < ordered) {
+            if (!items[i].notes || items[i].notes.trim() === '') {
+                toast('يرجى ذكر سبب النقص للصنف ' + items[i].item_name, 'warning');
+                return;
+            }
+        }
+    }
+    
+    Swal.fire({
+        title: 'تأكيد إنهاء التسليم',
+        text: 'سيتم إنهاء تسليم هذا الأوردر. المبلغ الإجمالي: ' + fmtNum(this.orderSession.summary.grand_total) + ' ' + this.settings.currency,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، أنهِ التسليم',
+        cancelButtonText: 'رجوع',
+        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-8', cancelButton: '!rounded-xl' }
+    }).then(function(result) {
+        if (!result.isConfirmed) return;
+        Swal.showLoading();
+        
+        supabase.auth.getSession().then(function(sessionRes) {
+            var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
+            if (!token) { Swal.close(); toast('انتهت الجلسة', 'error'); return; }
+            return fetch(SUPABASE_URL + '/functions/v1/complete-order-delivery', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({
+                    runsheet_code: self.session.runsheet_code,
+                    order_code: self.orderSession.order_code,
+                    items: self.orderSession.items.map(function(it) {
+                        return { itemCode: it.item_code, deliveredQty: Number(it.qty_delivered) || 0, reason: it.notes || '' };
+                    }),
+                    summary: self.orderSession.summary
+                })
+            });
+        }).then(function(res) {
+            if (!res) return;
+            if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); });
+            return res.json();
+        }).then(function(json) {
+            Swal.close();
+            if (json && json.success) {
+                toast('تم إنهاء تسليم الأوردر', 'success');
+                
+                // ✅ إيقاف عداد وقت الأوردر
+                if (self.orderTimerInterval) {
+                    clearInterval(self.orderTimerInterval);
+                    self.orderTimerInterval = null;
+                }
+                
+                // ✅ مسح localStorage
+                var key = 'order_timer_' + self.orderSession.order_code;
+                localStorage.removeItem(key);
+                
+                // ✅ مسح start_time من الجلسة
+                self.orderSession.start_time = null;
+                self.orderSession.isDelivery = false;
+                
+                var ord = null;
+                for (var k = 0; k < self.session.orders.length; k++) {
+                    if (self.session.orders[k].order_code === self.orderSession.order_code) {
+                        ord = self.session.orders[k];
+                        break;
+                    }
+                }
+                if (ord) ord.order_status = 'Delivered';
+                self.goBackToOrdersList();
+            } else {
+                toast((json && json.msg) || 'فشل', 'error');
+            }
+        }).catch(function(err) {
+            Swal.close();
+            toast(err.message || 'فشل الاتصال', 'error');
+        });
+    });
+},
 
-    cancelOrderDelivery: function() { var self = this; Swal.fire({ title: 'تأكيد الإلغاء', text: 'سيتم إلغاء تسليم هذا الأوردر والعودة لوضع المشاهدة.', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ', cancelButtonText: 'رجوع', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' } }).then(function(result) { if (!result.isConfirmed) return; if (self.orderTimerInterval) clearInterval(self.orderTimerInterval); self.orderSession.isDelivery = false; self.orderSession.start_time = null; for (var m = 0; m < self.orderSession.items.length; m++) { self.orderSession.items[m].qty_delivered = 0; self.orderSession.items[m].notes = ''; } var ord = null; for (var k = 0; k < self.session.orders.length; k++) { if (self.session.orders[k].order_code === self.orderSession.order_code) { ord = self.session.orders[k]; break; } } if (ord) ord.order_status = 'Pending'; self.renderOrderView(); }); },
+cancelOrderDelivery: function() {
+    var self = this;
+    Swal.fire({
+        title: 'تأكيد الإلغاء',
+        text: 'سيتم إلغاء تسليم هذا الأوردر والعودة لوضع المشاهدة.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، ألغِ',
+        cancelButtonText: 'رجوع',
+        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl' }
+    }).then(function(result) {
+        if (!result.isConfirmed) return;
+        
+        // ✅ إيقاف عداد الوقت
+        if (self.orderTimerInterval) {
+            clearInterval(self.orderTimerInterval);
+            self.orderTimerInterval = null;
+        }
+        
+        // ✅ مسح localStorage
+        var key = 'order_timer_' + self.orderSession.order_code;
+        localStorage.removeItem(key);
+        
+        // ✅ إعادة تعيين حالة الأوردر
+        self.orderSession.isDelivery = false;
+        self.orderSession.start_time = null;
+        
+        for (var m = 0; m < self.orderSession.items.length; m++) {
+            self.orderSession.items[m].qty_delivered = 0;
+            self.orderSession.items[m].notes = '';
+        }
+        
+        var ord = null;
+        for (var k = 0; k < self.session.orders.length; k++) {
+            if (self.session.orders[k].order_code === self.orderSession.order_code) {
+                ord = self.session.orders[k];
+                break;
+            }
+        }
+        if (ord) ord.order_status = 'Pending';
+        self.renderOrderView();
+    });
+},
 
-    startOrderTimer: function() { var self = this; if (this.orderTimerInterval) clearInterval(this.orderTimerInterval); if (!this.orderSession || !this.orderSession.start_time) return; this.orderTimerInterval = setInterval(function() { var diff = Math.floor((new Date() - new Date(self.orderSession.start_time)) / 1000); var m = Math.floor(diff / 60), sec = diff % 60; var el = byId('orderTimer'); if (el) safeText(el, '⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0')); }, 1000); },
+startOrderTimer: function() {
+    var self = this;
+    if (this.orderTimerInterval) clearInterval(this.orderTimerInterval);
+    if (!this.orderSession) return;
+    
+    // ✅ إذا كان start_time غير موجود، نحاول قراءته من localStorage
+    if (!this.orderSession.start_time) {
+        var key = 'order_timer_' + this.orderSession.order_code;
+        var savedTime = localStorage.getItem(key);
+        if (savedTime) {
+            this.orderSession.start_time = savedTime;
+        } else {
+            this.orderSession.start_time = new Date().toISOString();
+            localStorage.setItem(key, this.orderSession.start_time);
+        }
+    }
+    
+    this.orderTimerInterval = setInterval(function() {
+        var diff = Math.floor((new Date() - new Date(self.orderSession.start_time)) / 1000);
+        var m = Math.floor(diff / 60);
+        var sec = diff % 60;
+        var el = byId('orderTimer');
+        if (el) safeText(el, '⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0'));
+    }, 1000);
+},
 
     // ==================== تبويب رصيد السيارة ====================
     renderStock: function() { var self = this; if (!this.activeRunsheet) { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط</div>'); return; } safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>'); if (!this.session || !this.session.runsheet_id) { supabase.from('runsheets').select('id').eq('runsheet_code', this.activeRunsheet.runsheet_code).maybeSingle().then(function(rsRes) { var runsheetId = rsRes.data ? rsRes.data.id : null; if (!runsheetId) { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">تعذر تحميل رصيد السيارة</div>'); return; } self.session = self.session || {}; self.session.runsheet_id = runsheetId; supabase.from('run_sheet_details').select('item_code, item_name, unit, qty_ordered, qty_loaded, qty_delivered').eq('runsheet_id', runsheetId).then(function(res) { var items = res.data || []; self.renderStockView(items); }).catch(function() { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل رصيد السيارة</div>'); }); }).catch(function() { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل بيانات الرانشيت</div>'); }); return; } supabase.from('run_sheet_details').select('item_code, item_name, unit, qty_ordered, qty_loaded, qty_delivered').eq('runsheet_id', this.session.runsheet_id).then(function(res) { var items = res.data || []; self.renderStockView(items); }).catch(function() { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل رصيد السيارة</div>'); }); },
@@ -690,7 +910,7 @@ renderBalance: function() {
     if (runsheetId) {
         promises.push(
             supabase.from('orders')
-                .select('order_code, customer_name, total_amount, order_status, order_date')
+                .select('order_code, customer_name, total_amount, original_total_amount, order_status, order_date')
                 .eq('runsheet_id', runsheetId)
                 .neq('order_status', 'Cancelled')
         );
@@ -703,11 +923,14 @@ renderBalance: function() {
         var stockItems = results[1].data || [];
         var allOrders = results[2].data || [];
         
+        // ✅ إجمالي الرانشيت قبل التسليم = مجموع original_total_amount
         var totalRunsheetValue = 0;
         for (var i = 0; i < allOrders.length; i++) {
-            totalRunsheetValue += Number(allOrders[i].total_amount) || 0;
+            var originalVal = Number(allOrders[i].original_total_amount) || Number(allOrders[i].total_amount) || 0;
+            totalRunsheetValue += originalVal;
         }
         
+        // ✅ تم تحصيله = مجموع total_amount للمسلّمة فقط
         var totalDeliveredValue = 0;
         var deliveredOrders = [];
         for (var j = 0; j < allOrders.length; j++) {
