@@ -659,7 +659,6 @@ renderBalance: function() {
     var today = new Date().toISOString().split('T')[0];
     var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
     
-    // ✅ تحديد runsheetId بأمان
     var runsheetId = null;
     if (self.session && self.session.runsheet_id) {
         runsheetId = self.session.runsheet_id;
@@ -667,10 +666,8 @@ renderBalance: function() {
         runsheetId = self.activeRunsheet.id;
     }
     
-    // ✅ بناء جميع الوعود في Promise.all واحد – لا استعلامات منفصلة
     var promises = [];
     
-    // 1. الرانشيتات الخاصة بالمندوب
     promises.push(
         supabase.from('runsheets')
             .select('runsheet_code, total_amount, status')
@@ -680,16 +677,6 @@ renderBalance: function() {
             .lte('run_date', today)
     );
     
-    // 2. الأوردرات المسلّمة
-    promises.push(
-        supabase.from('orders')
-            .select('order_code, customer_name, total_amount, delivery_fee, order_status, order_date')
-            .eq('order_status', 'Delivered')
-            .gte('order_date', firstDay)
-            .lte('order_date', today)
-    );
-    
-    // 3. run_sheet_details (إذا كان runsheetId موجوداً)
     if (runsheetId) {
         promises.push(
             supabase.from('run_sheet_details')
@@ -700,13 +687,12 @@ renderBalance: function() {
         promises.push(Promise.resolve({ data: [] }));
     }
     
-    // 4. order_details للأوردرات المسلّمة في هذا الرانشيت (إذا كان runsheetId موجوداً)
     if (runsheetId) {
         promises.push(
             supabase.from('orders')
-                .select('id')
+                .select('order_code, customer_name, total_amount, order_status, order_date')
                 .eq('runsheet_id', runsheetId)
-                .eq('order_status', 'Delivered')
+                .neq('order_status', 'Cancelled')
         );
     } else {
         promises.push(Promise.resolve({ data: [] }));
@@ -714,18 +700,26 @@ renderBalance: function() {
     
     Promise.all(promises).then(function(results) {
         var runsheets = results[0].data || [];
-        var deliveredOrders = results[1].data || [];
-        var stockItems = results[2].data || [];
-        var deliveredOrdersForDetails = results[3].data || [];
+        var stockItems = results[1].data || [];
+        var allOrders = results[2].data || [];
         
-        // ✅ استخراج order_ids للأوردرات المسلّمة في هذا الرانشيت
-        var deliveredOrderIds = [];
-        for (var oi = 0; oi < deliveredOrdersForDetails.length; oi++) {
-            deliveredOrderIds.push(deliveredOrdersForDetails[oi].id);
+        // إجمالي قيمة الرانشيت قبل التسليم = مجموع orders.total_amount لجميع الأوردرات
+        var totalRunsheetValue = 0;
+        for (var i = 0; i < allOrders.length; i++) {
+            totalRunsheetValue += Number(allOrders[i].total_amount) || 0;
         }
         
-        // ✅ حساب قيمة التحميل والمرتجع والمتبقي من run_sheet_details
-        var totalLoadedValue = 0;
+        // تم تحصيله = مجموع orders.total_amount للأوردرات المسلّمة فقط
+        var totalDeliveredValue = 0;
+        var deliveredOrders = [];
+        for (var j = 0; j < allOrders.length; j++) {
+            if (allOrders[j].order_status === 'Delivered') {
+                totalDeliveredValue += Number(allOrders[j].total_amount) || 0;
+                deliveredOrders.push(allOrders[j]);
+            }
+        }
+        
+        // قيمة المرتجع والمتبقي من run_sheet_details
         var totalReturnedValue = 0;
         var totalRemainingValue = 0;
         
@@ -736,7 +730,6 @@ renderBalance: function() {
             var returned = Number(it.qty_returned) || 0;
             var price = Number(it.unit_price) || 0;
             
-            totalLoadedValue += loaded * price;
             totalReturnedValue += returned * price;
             
             var remaining = loaded - delivered - returned;
@@ -745,126 +738,51 @@ renderBalance: function() {
             }
         }
         
-        // ✅ دالة داخلية لعرض النتيجة بعد حساب قيمة البضاعة المسلّمة
-        function showBalance(goodsValue, taxAmount) {
-            self.renderBalanceView(
-                totalLoadedValue,
-                goodsValue,
-                totalReturnedValue,
-                totalRemainingValue,
-                deliveredOrders,
-                taxAmount
-            );
-        }
-        
-        // ✅ حساب قيمة البضاعة المسلّمة من order_details
-        if (deliveredOrderIds.length > 0) {
-            supabase.from('order_details')
-                .select('qty_delivered, unit_price')
-                .in('order_id', deliveredOrderIds)
-                .then(function(odRes) {
-                    var odItems = odRes.data || [];
-                    var goodsValue = 0;
-                    for (var odi = 0; odi < odItems.length; odi++) {
-                        goodsValue += (Number(odItems[odi].qty_delivered) || 0) * (Number(odItems[odi].unit_price) || 0);
-                    }
-                    
-                    // ✅ استخدام tax_amount من orders مباشرة إن وجد، وإلا حسابه
-                    var totalTax = 0;
-                    var hasTaxColumn = false;
-                    for (var tj = 0; tj < deliveredOrders.length; tj++) {
-                        if (deliveredOrders[tj].tax_amount !== undefined && deliveredOrders[tj].tax_amount !== null) {
-                            totalTax += Number(deliveredOrders[tj].tax_amount) || 0;
-                            hasTaxColumn = true;
-                        }
-                    }
-                    
-                    if (!hasTaxColumn) {
-                        // حساب تقريبي للضريبة إذا لم يكن العمود موجوداً
-                        var taxRate = self.settings.tax_rate || 0;
-                        for (var tk = 0; tk < deliveredOrders.length; tk++) {
-                            var tOrd = deliveredOrders[tk];
-                            var tTotal = Number(tOrd.total_amount) || 0;
-                            var tFee = Number(tOrd.delivery_fee) || 0;
-                            if (taxRate > 0) {
-                                var tGoods = Math.round((tTotal - tFee) / (1 + taxRate / 100) * 100) / 100;
-                                totalTax += tTotal - tFee - tGoods;
-                            }
-                        }
-                    }
-                    
-                    showBalance(goodsValue, totalTax);
-                })
-                .catch(function() {
-                    // في حالة الفشل، نعرض القيم المحسوبة تقريبياً
-                    var fallbackGoods = 0;
-                    var taxRate = self.settings.tax_rate || 0;
-                    var fallbackTax = 0;
-                    for (var fj = 0; fj < deliveredOrders.length; fj++) {
-                        var fOrd = deliveredOrders[fj];
-                        var fTotal = Number(fOrd.total_amount) || 0;
-                        var fFee = Number(fOrd.delivery_fee) || 0;
-                        if (taxRate > 0) {
-                            var fGoods = Math.round((fTotal - fFee) / (1 + taxRate / 100) * 100) / 100;
-                            fallbackGoods += fGoods;
-                            fallbackTax += fTotal - fFee - fGoods;
-                        } else {
-                            fallbackGoods += fTotal - fFee;
-                        }
-                    }
-                    showBalance(fallbackGoods, fallbackTax);
-                });
-        } else {
-            // لا توجد أوردرات مسلّمة في هذا الرانشيت
-            showBalance(0, 0);
-        }
+        self.renderBalanceView(
+            totalRunsheetValue,
+            totalDeliveredValue,
+            totalReturnedValue,
+            totalRemainingValue,
+            deliveredOrders
+        );
         
     }).catch(function() {
         safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
     });
 },
 
-renderBalanceView: function(totalLoadedValue, totalDeliveredGoodsValue, totalReturnedValue, totalRemainingValue, deliveredOrders, totalTaxAmount) {
-    // ✅ حساب إجمالي رسوم التوصيل المحصّلة
-    var totalDeliveryFees = 0;
-    for (var i = 0; i < deliveredOrders.length; i++) {
-        totalDeliveryFees += Number(deliveredOrders[i].delivery_fee) || 0;
-    }
-    
-    // ✅ المعادلة الصحيحة: المطلوب = قيمة البضاعة المحمّلة - قيمة البضاعة المسلّمة - قيمة المرتجع
-    var requiredFromDriver = totalLoadedValue - totalDeliveredGoodsValue - totalReturnedValue;
+renderBalanceView: function(totalRunsheetValue, totalDeliveredValue, totalReturnedValue, totalRemainingValue, deliveredOrders) {
+    var requiredFromDriver = totalRunsheetValue - totalDeliveredValue - totalReturnedValue;
     if (requiredFromDriver < 0) requiredFromDriver = 0;
     
-    // العجز = المطلوب - المتبقي في السيارة
     var shortage = requiredFromDriver - totalRemainingValue;
     if (shortage < 0) shortage = 0;
     
     var html = '<div class="p-4">';
     html += '<h2 class="text-lg font-black text-slate-800 mb-4">⚖️ رصيدي ومسؤوليتي المالية</h2>';
     
-    // ✅ البطاقة الرئيسية: قيمة التحميل (بضاعة فقط)
+    // ① إجمالي قيمة الرانشيت قبل التسليم
     html += '<div class="card text-center mb-4 bg-sky-50 border-sky-200">';
-    html += '<p class="text-xs text-sky-500 font-bold mb-1">💰 قيمة التحميل (البضاعة التي خرجت معي)</p>';
-    html += '<p class="text-4xl font-black text-sky-600">' + fmtNum(totalLoadedValue) + ' ج.م</p>';
-    html += '<p class="text-xs text-sky-400 mt-1">🟡 في عهدتك ومسؤوليتك الكاملة (بضاعة فقط)</p>';
+    html += '<p class="text-xs text-sky-500 font-bold mb-1">💰 إجمالي قيمة الرانشيت قبل التسليم</p>';
+    html += '<p class="text-4xl font-black text-sky-600">' + fmtNum(totalRunsheetValue) + ' ج.م</p>';
     html += '</div>';
     
-    // ✅ البطاقة الرئيسية: المطلوب مني
+    // ② المطلوب مني الآن
     var requiredColor = requiredFromDriver > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200';
     var requiredTextColor = requiredFromDriver > 0 ? 'text-red-600' : 'text-green-600';
     var requiredLabel = requiredFromDriver > 0 ? '🔴 متبقي عليّ' : '🟢 تمت التسوية';
     html += '<div class="card text-center mb-4 ' + requiredColor + '">';
     html += '<p class="text-xs font-bold mb-1 ' + (requiredFromDriver > 0 ? 'text-red-500' : 'text-green-600') + '">🔴 المطلوب مني الآن</p>';
     html += '<p class="text-4xl font-black ' + requiredTextColor + '">' + fmtNum(requiredFromDriver) + ' ج.م</p>';
-    html += '<p class="text-xs mt-1 ' + (requiredFromDriver > 0 ? 'text-red-400' : 'text-green-500') + '">' + requiredLabel + ' (قيمة البضاعة غير المسلّمة)</p>';
+    html += '<p class="text-xs mt-1 ' + (requiredFromDriver > 0 ? 'text-red-400' : 'text-green-500') + '">' + requiredLabel + '</p>';
     html += '</div>';
     
-    // ✅ بطاقات التفاصيل - الصف الأول: البضاعة
+    // بطاقات التفاصيل
     html += '<div class="grid grid-cols-2 gap-3 mb-3">';
     html += '<div class="card text-center bg-green-50">';
-    html += '<p class="text-xs text-green-500 font-bold mb-1">💵 تم تحصيله (بضاعة فقط)</p>';
-    html += '<p class="text-2xl font-black text-green-600">' + fmtNum(totalDeliveredGoodsValue) + ' ج.م</p>';
-    html += '<p class="text-xs text-green-400 mt-1">' + deliveredOrders.length + ' فاتورة</p>';
+    html += '<p class="text-xs text-green-500 font-bold mb-1">💵 تم تحصيله</p>';
+    html += '<p class="text-2xl font-black text-green-600">' + fmtNum(totalDeliveredValue) + ' ج.م</p>';
+    html += '<p class="text-xs text-green-400 mt-1">' + deliveredOrders.length + ' أوردر مسلّم</p>';
     html += '</div>';
     html += '<div class="card text-center bg-purple-50">';
     html += '<p class="text-xs text-purple-500 font-bold mb-1">📦 مرتجع للمخزن</p>';
@@ -873,21 +791,7 @@ renderBalanceView: function(totalLoadedValue, totalDeliveredGoodsValue, totalRet
     html += '</div>';
     html += '</div>';
     
-    // ✅ بطاقات التفاصيل - الصف الثاني: رسوم توصيل وضريبة (معلومة فقط)
-    html += '<div class="grid grid-cols-2 gap-3 mb-3">';
-    html += '<div class="card text-center bg-amber-50">';
-    html += '<p class="text-xs text-amber-500 font-bold mb-1">🚚 رسوم توصيل محصّلة</p>';
-    html += '<p class="text-2xl font-black text-amber-600">' + fmtNum(totalDeliveryFees) + ' ج.م</p>';
-    html += '<p class="text-xs text-amber-400 mt-1">📋 معلومة فقط - لا تدخل في مسؤوليتك</p>';
-    html += '</div>';
-    html += '<div class="card text-center bg-blue-50">';
-    html += '<p class="text-xs text-blue-500 font-bold mb-1">📊 ضريبة محصّلة</p>';
-    html += '<p class="text-2xl font-black text-blue-600">' + fmtNum(totalTaxAmount) + ' ج.م</p>';
-    html += '<p class="text-xs text-blue-400 mt-1">📋 معلومة فقط - لا تدخل في مسؤوليتك</p>';
-    html += '</div>';
-    html += '</div>';
-    
-    // ✅ المتبقي في السيارة والعجز
+    // المتبقي في السيارة والعجز
     html += '<div class="grid grid-cols-2 gap-3 mb-4">';
     html += '<div class="card text-center bg-cyan-50">';
     html += '<p class="text-xs text-cyan-500 font-bold mb-1">🚚 المتبقي في سيارتي</p>';
@@ -905,11 +809,11 @@ renderBalanceView: function(totalLoadedValue, totalDeliveredGoodsValue, totalRet
     html += '</div>';
     html += '</div>';
     
-    // ✅ آخر الفواتير المسلّمة
-    html += '<h3 class="font-bold text-slate-700 mb-3">📊 آخر الفواتير المسلّمة</h3>';
+    // آخر الأوردرات المسلّمة
+    html += '<h3 class="font-bold text-slate-700 mb-3">📊 آخر الأوردرات المسلّمة</h3>';
     html += '<div class="space-y-2 max-h-60 overflow-y-auto">';
     if (deliveredOrders.length === 0) {
-        html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد فواتير مسلّمة بعد</p>';
+        html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد أوردرات مسلّمة بعد</p>';
     } else {
         for (var m = 0; m < Math.min(deliveredOrders.length, 10); m++) {
             var ord = deliveredOrders[m];
