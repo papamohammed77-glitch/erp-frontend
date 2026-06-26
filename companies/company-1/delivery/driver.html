@@ -160,24 +160,103 @@ var App = {
             : '<div class="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></div>';
     },
     // ==================== الشاشة الرئيسية ====================
-    renderDashboard: function() {
-        var self = this;
-        safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-48 w-full mb-4"></div></div>');
-        if (!this.pubUserId) { toast('لم يتم تحميل حسابك بعد', 'warning'); return; }
-        supabase.from('runsheets').select('runsheet_code, status, run_date, vehicle_id, delivery_start, id').eq('driver_id', this.pubUserId).in('status', ['Loaded', 'Delivering']).order('run_date', { ascending: false }).limit(1).maybeSingle().then(function(res) {
+renderDashboard: function() {
+    var self = this;
+    safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-48 w-full mb-4"></div></div>');
+    if (!this.pubUserId) { toast('لم يتم تحميل حسابك بعد', 'warning'); return; }
+    
+    // ✅ إضافة جميع الحالات النشطة: Delivered, Returning, Returned
+    supabase.from('runsheets')
+        .select('runsheet_code, status, run_date, vehicle_id, delivery_start, id')
+        .eq('driver_id', this.pubUserId)
+        .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning', 'Returned'])
+        .order('run_date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(function(res) {
             var rs = res.data;
-            if (rs) { self.activeRunsheet = rs; self.renderDashboardView(rs); }
-            else { self.activeRunsheet = null; safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20"><div class="text-6xl mb-4">🎉</div><p class="text-slate-400 font-bold">لا توجد رحلات معلقة اليوم.</p></div>'); }
-        }).catch(function() { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>'); });
-    },
+            if (rs) {
+                self.activeRunsheet = rs;
+                self.renderDashboardView(rs);
+            } else {
+                self.activeRunsheet = null;
+                safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20"><div class="text-6xl mb-4">🎉</div><p class="text-slate-400 font-bold">لا توجد رحلات معلقة اليوم.</p><p class="text-slate-300 text-sm mt-1">تفقد تطبيقك غداً لمهام جديدة!</p></div>');
+            }
+        })
+        .catch(function() {
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
+        });
+},
 
-    renderDashboardView: function(rs) {
-        var isDelivering = rs.status === 'Delivering', statusLabel = isDelivering ? '🟢 جاري التوصيل' : '📦 جاهز للتوصيل', statusColor = isDelivering ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700';
-        var html = '<div class="p-4"><div class="bg-sky-50 rounded-3xl p-6 mb-6 slide-in"><div class="text-center mb-4"><div class="text-5xl mb-2">' + (isDelivering ? '🛵' : '📦') + '</div><h2 class="font-black text-2xl text-slate-800">' + rs.runsheet_code + '</h2><span class="px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span></div><div class="text-sm text-slate-600 text-center">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + '</div></div>';
-        if (isDelivering) { html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary mb-3"><i class="fa-solid fa-list-check ml-2"></i> عرض الأوردرات</button><button onclick="App.showEndTripMeter()" class="btn-success"><i class="fa-solid fa-flag-checkered ml-2"></i> إنهاء الرحلة</button>'; }
-        else { html += '<button onclick="App.showStartTripMeter()" class="btn-primary"><i class="fa-solid fa-play ml-2"></i> بدء الرحلة</button>'; }
-        html += '</div>'; safeHTML(byId('mainContent'), html);
-    },
+renderDashboardView: function(rs) {
+    var status = rs.status;
+    var isLoaded = status === 'Loaded';
+    var isDelivering = status === 'Delivering';
+    var isDelivered = status === 'Delivered';
+    var isReturning = status === 'Returning';
+    var isReturned = status === 'Returned';
+    
+    // ✅ تحديد الأيقونة والتسمية واللون حسب الحالة
+    var icon, label, colorClass;
+    if (isLoaded) {
+        icon = '📦';
+        label = 'جاهز للتوصيل';
+        colorClass = 'bg-amber-100 text-amber-700';
+    } else if (isDelivering) {
+        icon = '🛵';
+        label = 'جاري التوصيل';
+        colorClass = 'bg-sky-100 text-sky-700';
+    } else if (isDelivered) {
+        icon = '✅';
+        label = 'تم التوصيل';
+        colorClass = 'bg-green-100 text-green-700';
+    } else if (isReturning) {
+        icon = '↩️';
+        label = 'جاري المرتجعات';
+        colorClass = 'bg-red-100 text-red-700';
+    } else if (isReturned) {
+        icon = '🏁';
+        label = 'مكتملة';
+        colorClass = 'bg-purple-100 text-purple-700';
+    }
+    
+    var html = '<div class="p-4">';
+    
+    // ✅ بطاقة الرانشيت الرئيسية
+    html += '<div class="bg-sky-50 rounded-3xl p-6 mb-6 slide-in">';
+    html += '<div class="text-center mb-4">';
+    html += '<div class="text-5xl mb-2">' + icon + '</div>';
+    html += '<h2 class="font-black text-2xl text-slate-800">' + rs.runsheet_code + '</h2>';
+    html += '<span class="px-3 py-1 rounded-full text-xs font-bold ' + colorClass + '">' + label + '</span>';
+    html += '</div>';
+    html += '<div class="text-sm text-slate-600 text-center">' + rs.run_date + ' | ' + (rs.vehicle_id || 'بدون مركبة') + '</div>';
+    html += '</div>';
+    
+    // ✅ الأزرار حسب الحالة
+    if (isLoaded) {
+        // جاهز – زر بدء الرحلة فقط
+        html += '<button onclick="App.showStartTripMeter()" class="btn-primary"><i class="fa-solid fa-play ml-2"></i> بدء الرحلة</button>';
+    } else if (isDelivering) {
+        // جاري التوصيل – عرض الأوردرات + إنهاء الرحلة
+        html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary mb-3"><i class="fa-solid fa-list-check ml-2"></i> عرض الأوردرات</button>';
+        html += '<button onclick="App.showEndTripMeter()" class="btn-success"><i class="fa-solid fa-flag-checkered ml-2"></i> إنهاء الرحلة</button>';
+    } else if (isDelivered || isReturning) {
+        // تم التوصيل أو جاري المرتجعات – عرض الأوردرات للمراجعة فقط
+        html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary"><i class="fa-solid fa-list-check ml-2"></i> عرض الأوردرات</button>';
+        if (isDelivered) {
+            html += '<p class="text-center text-sm text-slate-400 mt-4">✅ تم إنهاء الرحلة. الأوردرات للأرشيف فقط.</p>';
+        } else if (isReturning) {
+            html += '<p class="text-center text-sm text-amber-500 mt-4">↩️ المرتجعات قيد المعالجة في المخزن.</p>';
+        }
+    } else if (isReturned) {
+        // مكتملة – عرض الأوردرات للأرشيف
+        html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary"><i class="fa-solid fa-list-check ml-2"></i> عرض الأوردرات</button>';
+        html += '<p class="text-center text-sm text-slate-400 mt-4">🏁 تمت المرتجعات. الأوردرات للأرشيف فقط.</p>';
+    }
+    
+    html += '</div>';
+    safeHTML(byId('mainContent'), html);
+},
 
     // ==================== الخريطة ====================
     renderMap: function() {
@@ -259,16 +338,72 @@ completeDeliveryWithMeter: function(code, meterReading) {
         }).catch(function() { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل الأوردرات</div>'); });
     },
 
-    renderOrdersListView: function(rs, orders) {
-        var deliveredCount = 0; for (var i = 0; i < orders.length; i++) { if (orders[i].order_status === 'Delivered') deliveredCount++; }
-        var progress = orders.length ? Math.round((deliveredCount / orders.length) * 100) : 0;
-        var elapsed = ''; if (rs.delivery_start) { var diff = Math.floor((new Date() - new Date(rs.delivery_start)) / 1000); var m = Math.floor(diff / 60), sec = diff % 60; elapsed = '<span class="text-sm">⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0') + '</span>'; }
-        var html = '<div class="p-4"><div class="bg-sky-50 rounded-3xl p-5 mb-6 slide-in"><div class="flex items-center justify-between mb-4"><span class="font-black text-2xl text-slate-800">' + rs.runsheet_code + '</span>' + elapsed + '</div><div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>تقدم التوصيل</span><span>' + deliveredCount + ' / ' + orders.length + ' أوردر</span></div><div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full" style="width:' + progress + '%"></div></div></div></div>';
-        if (rs.status === 'Delivering') { html += '<div class="mb-4 flex gap-2"><button onclick="App.showEndTripMeter()" class="btn-success py-2 text-sm flex-1"><i class="fa-solid fa-flag-checkered ml-1"></i> إنهاء الرحلة</button><button onclick="App.cancelDelivery()" class="btn-danger py-2 text-sm flex-1"><i class="fa-solid fa-xmark ml-1"></i> إلغاء الرحلة</button></div>'; }
-        html += '<p class="text-sm text-slate-400 mb-4">اضغط على الأوردر لفتح التفاصيل</p>';
-        for (var j = 0; j < orders.length; j++) { var o = orders[j], isDone = o.order_status === 'Delivered'; html += '<div class="card mb-3 cursor-pointer slide-in ' + (isDone ? 'border-r-4 border-sky-400' : '') + '" onclick="App.openOrder(\'' + o.order_code + '\')"><div class="flex justify-between items-center"><div><p class="font-bold text-slate-700">' + o.customer_name + '</p><p class="text-xs text-slate-400">' + o.order_code + ' | ' + (o.area || '') + ' | ' + fmtNum(o.total_amount) + ' ج.م</p></div><span class="px-2 py-1 rounded-full text-xs font-bold ' + (isDone ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700') + '">' + (isDone ? '✅ تم' : '🟡 جاري') + '</span></div><div class="flex gap-2 mt-2"><a href="tel:' + (o.customer_phone || '') + '" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i></a><a href="https://wa.me/' + (o.customer_phone || '').replace(/\\D/g, '') + '" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i></a><a href="https://www.google.com/maps?q=' + encodeURIComponent(o.customer_name || '') + '" target="_blank" class="bg-sky-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-map-location-dot ml-1"></i></a></div></div>'; }
-        html += '</div>'; safeHTML(byId('mainContent'), html); this.startTimer(rs.delivery_start);
-    },
+renderOrdersListView: function(rs, orders) {
+    var deliveredCount = 0;
+    for (var i = 0; i < orders.length; i++) {
+        if (orders[i].order_status === 'Delivered') deliveredCount++;
+    }
+    var progress = orders.length ? Math.round((deliveredCount / orders.length) * 100) : 0;
+    var elapsed = '';
+    if (rs.delivery_start) {
+        var diff = Math.floor((new Date() - new Date(rs.delivery_start)) / 1000);
+        var m = Math.floor(diff / 60);
+        var sec = diff % 60;
+        elapsed = '<span class="text-sm">⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0') + '</span>';
+    }
+    
+    var html = '<div class="p-4">';
+    
+    // بطاقة تقدم التوصيل
+    html += '<div class="bg-sky-50 rounded-3xl p-5 mb-6 slide-in">';
+    html += '<div class="flex items-center justify-between mb-4">';
+    html += '<span class="font-black text-2xl text-slate-800">' + rs.runsheet_code + '</span>' + elapsed;
+    html += '</div>';
+    html += '<div class="bg-white rounded-2xl p-4 shadow-sm">';
+    html += '<div class="flex justify-between text-xs font-bold text-slate-400 mb-2">';
+    html += '<span>تقدم التوصيل</span><span>' + deliveredCount + ' / ' + orders.length + ' أوردر</span>';
+    html += '</div>';
+    html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden">';
+    html += '<div class="progress-bar h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full" style="width:' + progress + '%"></div>';
+    html += '</div></div></div>';
+    
+    // ✅ الأزرار والتنبيهات حسب حالة الرانشيت
+    if (rs.status === 'Delivering') {
+        html += '<div class="mb-4 flex gap-2">';
+        html += '<button onclick="App.showEndTripMeter()" class="btn-success py-2 text-sm flex-1"><i class="fa-solid fa-flag-checkered ml-1"></i> إنهاء الرحلة</button>';
+        html += '<button onclick="App.cancelDelivery()" class="btn-danger py-2 text-sm flex-1"><i class="fa-solid fa-xmark ml-1"></i> إلغاء الرحلة</button>';
+        html += '</div>';
+    } else if (rs.status === 'Delivered') {
+        html += '<div class="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl text-center text-sm text-green-700 font-bold">✅ تم إنهاء الرحلة. الأوردرات للعرض فقط.</div>';
+    } else if (rs.status === 'Returning') {
+        html += '<div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-center text-sm text-red-600 font-bold">↩️ المرتجعات قيد المعالجة في المخزن.</div>';
+    } else if (rs.status === 'Returned') {
+        html += '<div class="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-xl text-center text-sm text-purple-700 font-bold">🏁 تمت المرتجعات. الأوردرات للأرشيف.</div>';
+    }
+    
+    // قائمة الأوردرات
+    html += '<p class="text-sm text-slate-400 mb-4">اضغط على الأوردر لفتح التفاصيل</p>';
+    for (var j = 0; j < orders.length; j++) {
+        var o = orders[j];
+        var isDone = o.order_status === 'Delivered';
+        html += '<div class="card mb-3 cursor-pointer slide-in ' + (isDone ? 'border-r-4 border-sky-400' : '') + '" onclick="App.openOrder(\'' + o.order_code + '\')">';
+        html += '<div class="flex justify-between items-center">';
+        html += '<div>';
+        html += '<p class="font-bold text-slate-700">' + o.customer_name + '</p>';
+        html += '<p class="text-xs text-slate-400">' + o.order_code + ' | ' + (o.area || '') + ' | ' + fmtNum(o.total_amount) + ' ج.م</p>';
+        html += '</div>';
+        html += '<span class="px-2 py-1 rounded-full text-xs font-bold ' + (isDone ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700') + '">' + (isDone ? '✅ تم' : '🟡 جاري') + '</span>';
+        html += '</div>';
+        html += '<div class="flex gap-2 mt-2">';
+        html += '<a href="tel:' + (o.customer_phone || '') + '" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i></a>';
+        html += '<a href="https://wa.me/' + (o.customer_phone || '').replace(/\\D/g, '') + '" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i></a>';
+        html += '<a href="https://www.google.com/maps?q=' + encodeURIComponent(o.customer_name || '') + '" target="_blank" class="bg-sky-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-map-location-dot ml-1"></i></a>';
+        html += '</div></div>';
+    }
+    html += '</div>';
+    safeHTML(byId('mainContent'), html);
+    this.startTimer(rs.delivery_start);
+},
 
     startTimer: function(startTime) { var self = this; if (this.timerInterval) clearInterval(this.timerInterval); if (!startTime) return; this.timerInterval = setInterval(function() { var diff = Math.floor((new Date() - new Date(startTime)) / 1000); var m = Math.floor(diff / 60), sec = diff % 60; var el = document.querySelector('.bg-sky-50 .bg-white span'); if (el) safeText(el, '⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0')); }, 1000); },
 
@@ -302,12 +437,41 @@ completeDeliveryWithMeter: function(code, meterReading) {
     goBackToOrdersList: function() { if (this.orderTimerInterval) clearInterval(this.orderTimerInterval); this.orderSession = null; byId('bottomNav').classList.remove('hidden'); byId('headerTitle').textContent = '🛵 مندوب التوصيل'; this.renderOrdersTab(); },
 
 renderOrderView: function() {
-    var o = this.orderSession; if (!o) { this.goBackToOrdersList(); return; }
-    var isDelivering = o.isDelivery, isCompleted = o.order_status === 'Delivered';
-    var html = '<div class="p-4"><button onclick="App.goBackToOrdersList()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-sky-600 shadow-sm mb-4"><i class="fa-solid fa-arrow-right"></i></button>';
-    html += '<div class="bg-white rounded-2xl p-4 shadow-sm mb-4"><h2 class="font-black text-xl text-slate-800 mb-2">' + o.customer_name + '</h2><p class="text-sm text-slate-500 mb-1">' + o.order_code + (o.area ? ' | ' + o.area : '') + '</p><p class="text-sm text-slate-500 mb-3">' + fmtNum(o.total_amount) + ' ج.م</p><div class="flex gap-2"><a href="tel:' + (o.customer_phone || '') + '" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i></a><a href="https://wa.me/' + (o.customer_phone || '').replace(/\\D/g, '') + '" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i></a><a href="https://www.google.com/maps?q=' + encodeURIComponent(o.customer_name || '') + '" target="_blank" class="bg-sky-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-map-location-dot ml-1"></i></a></div></div>';
-    if (!isDelivering && !isCompleted) { html += '<button onclick="App.startOrderDelivery()" class="btn-primary mb-4"><i class="fa-solid fa-play ml-2"></i> بدء التسليم</button>'; }
-    if (isDelivering) { html += '<div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-3 text-sm font-bold mb-4 flex justify-between items-center"><span>🟡 جاري التسليم</span><span id="orderTimer">⏱️ 00:00</span></div>'; }
+    var o = this.orderSession;
+    if (!o) { this.goBackToOrdersList(); return; }
+    
+    var isDelivering = o.isDelivery;
+    var isCompleted = o.order_status === 'Delivered';
+    
+    var html = '<div class="p-4">';
+    
+    // زر العودة
+    html += '<button onclick="App.goBackToOrdersList()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-sky-600 shadow-sm mb-4"><i class="fa-solid fa-arrow-right"></i></button>';
+    
+    // بطاقة العميل
+    html += '<div class="bg-white rounded-2xl p-4 shadow-sm mb-4">';
+    html += '<h2 class="font-black text-xl text-slate-800 mb-2">' + o.customer_name + '</h2>';
+    html += '<p class="text-sm text-slate-500 mb-1">' + o.order_code + (o.area ? ' | ' + o.area : '') + '</p>';
+    html += '<p class="text-sm text-slate-500 mb-3">' + fmtNum(o.total_amount) + ' ج.م</p>';
+    html += '<div class="flex gap-2">';
+    html += '<a href="tel:' + (o.customer_phone || '') + '" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i></a>';
+    html += '<a href="https://wa.me/' + (o.customer_phone || '').replace(/\\D/g, '') + '" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i></a>';
+    html += '<a href="https://www.google.com/maps?q=' + encodeURIComponent(o.customer_name || '') + '" target="_blank" class="bg-sky-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-map-location-dot ml-1"></i></a>';
+    html += '</div></div>';
+    
+    // ✅ زر بدء التسليم – يظهر فقط إذا كان الرانشيت في حالة Delivering
+    if (App.activeRunsheet && App.activeRunsheet.status === 'Delivering' && !isDelivering && !isCompleted) {
+        html += '<button onclick="App.startOrderDelivery()" class="btn-primary mb-4"><i class="fa-solid fa-play ml-2"></i> بدء التسليم</button>';
+    }
+    
+    // مؤقت التسليم
+    if (isDelivering) {
+        html += '<div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-3 text-sm font-bold mb-4 flex justify-between items-center">';
+        html += '<span>🟡 جاري التسليم</span><span id="orderTimer">⏱️ 00:00</span>';
+        html += '</div>';
+    }
+    
+    // بطاقات الأصناف
     html += '<div class="space-y-3">';
     for (var i = 0; i < o.items.length; i++) {
         var it = o.items[i];
@@ -315,25 +479,53 @@ renderOrderView: function() {
         var loaded = Number(it.qty_loaded) || 0;
         var delivered = Number(it.qty_delivered) || 0;
         var refused = Math.max(0, ordered - delivered);
+        
         var cardClass = 'item-card pending';
-        if (isCompleted || delivered >= ordered) cardClass = 'item-card delivered';
-        else if (delivered > 0) cardClass = 'item-card partial';
-        html += '<div class="card ' + cardClass + ' cursor-pointer" onclick="App.editDeliveryItem(' + i + ')"><div class="flex items-center justify-between"><div class="flex items-center gap-4">' + App._img(it.item_code) + '<div><p class="font-bold text-slate-700">' + it.item_name + '</p>';
+        if (isCompleted || delivered >= ordered) {
+            cardClass = 'item-card delivered';
+        } else if (delivered > 0) {
+            cardClass = 'item-card partial';
+        }
+        
+        html += '<div class="card ' + cardClass + ' cursor-pointer" onclick="App.editDeliveryItem(' + i + ')">';
+        html += '<div class="flex items-center justify-between">';
+        html += '<div class="flex items-center gap-4">' + App._img(it.item_code) + '<div>';
+        html += '<p class="font-bold text-slate-700">' + it.item_name + '</p>';
         html += '<p class="text-xs text-slate-400 mt-0.5">' + it.unit + '</p>';
+        
         var cacheEntry = ITEMS_IMAGE_CACHE[it.item_code];
         var description = cacheEntry ? (cacheEntry.description || '') : '';
         if (description) {
             html += '<p class="text-xs text-slate-500 mt-0.5">📝 ' + description + '</p>';
         }
-        html += '<p class="text-xs text-slate-500 mt-0.5"><span class="font-bold">مطلوب: ' + ordered + '</span> | محمّل: ' + loaded + ' | <span class="font-bold ' + (delivered >= ordered ? 'text-green-600' : (delivered > 0 ? 'text-amber-600' : 'text-slate-500')) + '">مسلّم: ' + delivered + '</span> | مرفوض: ' + refused + '</p>';
+        
+        html += '<p class="text-xs text-slate-500 mt-0.5">';
+        html += '<span class="font-bold">مطلوب: ' + ordered + '</span> | ';
+        html += 'محمّل: ' + loaded + ' | ';
+        html += '<span class="font-bold ' + (delivered >= ordered ? 'text-green-600' : (delivered > 0 ? 'text-amber-600' : 'text-slate-500')) + '">مسلّم: ' + delivered + '</span> | ';
+        html += 'مرفوض: ' + refused;
+        html += '</p>';
+        
         if (refused > 0) {
             html += '<p class="text-xs text-red-500 mt-1">📝 مرفوض: ' + refused + (it.notes ? ' – ' + it.notes : '') + '</p>';
         }
+        
         html += '</div></div><i class="fa-solid fa-pen text-slate-300 text-sm"></i></div></div>';
     }
     html += '</div>';
-    if (isDelivering) { html += '<div class="bg-white rounded-2xl p-4 shadow-sm mb-4 mt-4" id="liveInvoiceSummary">' + this._calculateInvoiceHTML() + '</div>'; html += '<div class="flex gap-3"><button onclick="App.cancelOrderDelivery()" class="btn-danger py-3 flex-1"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التسليم</button><button onclick="App.finishOrderDelivery()" class="btn-success py-3 flex-1"><i class="fa-solid fa-check ml-1"></i> إنهاء التسليم</button></div>'; }
-    html += '</div>'; safeHTML(byId('mainContent'), html);
+    
+    // ملخص الفاتورة وأزرار إنهاء/إلغاء التسليم
+    if (isDelivering) {
+        html += '<div class="bg-white rounded-2xl p-4 shadow-sm mb-4 mt-4" id="liveInvoiceSummary">' + this._calculateInvoiceHTML() + '</div>';
+        html += '<div class="flex gap-3">';
+        html += '<button onclick="App.cancelOrderDelivery()" class="btn-danger py-3 flex-1"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التسليم</button>';
+        html += '<button onclick="App.finishOrderDelivery()" class="btn-success py-3 flex-1"><i class="fa-solid fa-check ml-1"></i> إنهاء التسليم</button>';
+        html += '</div>';
+    }
+    
+    html += '</div>';
+    safeHTML(byId('mainContent'), html);
+    
     if (isDelivering) this.startOrderTimer();
 },
 
