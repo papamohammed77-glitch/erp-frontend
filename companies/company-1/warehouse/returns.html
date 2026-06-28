@@ -211,32 +211,58 @@ var App = {
         var p1 = supabase.from('runsheets').select('runsheet_code,run_date,status,driver_id,return_handler_id, run_sheet_details(count)').eq('status','Returning').eq('return_handler_id',this.pubUserId||this.currentUser.email).order('run_date',{ascending:false}).limit(20);
         var p2 = supabase.from('runsheets').select('runsheet_code,run_date,status,driver_id, run_sheet_details(count)').eq('status','Delivered').order('run_date',{ascending:false}).limit(50);
         
-        Promise.all([p1,p2]).then(function(r){
-            var myActive = r[0].data || [];
-            var available = r[1].data || [];
-            s.allRunsheets = myActive.concat(available);
-            
-            var driverIds = [];
-            for(var i = 0; i < s.allRunsheets.length; i++) {
-                if(s.allRunsheets[i].driver_id && driverIds.indexOf(s.allRunsheets[i].driver_id) === -1) {
-                    driverIds.push(s.allRunsheets[i].driver_id);
-                }
+Promise.all([p1,p2]).then(function(r){
+    var myActive = r[0].data || [];
+    var available = r[1].data || [];
+    s.allRunsheets = myActive.concat(available);
+    
+    var driverIds = [];
+    var runsheetIds = [];
+    for(var i = 0; i < s.allRunsheets.length; i++) {
+        if(s.allRunsheets[i].driver_id && driverIds.indexOf(s.allRunsheets[i].driver_id) === -1) {
+            driverIds.push(s.allRunsheets[i].driver_id);
+        }
+        if(s.allRunsheets[i].id) {
+            runsheetIds.push(s.allRunsheets[i].id);
+        }
+    }
+    
+    // جلب أسماء السائقين
+    var driverPromise = driverIds.length > 0 
+        ? supabase.from('users').select('id, name').in('id', driverIds)
+        : Promise.resolve({ data: [] });
+    
+    // جلب عدد الأصناف المتبقية لكل رانشيت
+    var remainingPromise = runsheetIds.length > 0
+        ? supabase.from('run_sheet_details')
+            .select('runsheet_id, qty_loaded, qty_delivered')
+            .in('runsheet_id', runsheetIds)
+        : Promise.resolve({ data: [] });
+    
+    Promise.all([driverPromise, remainingPromise]).then(function(results) {
+        // أسماء السائقين
+        var userMap = {};
+        var users = results[0].data || [];
+        for(var ui = 0; ui < users.length; ui++) { userMap[users[ui].id] = users[ui].name; }
+        s._driverMap = userMap;
+        
+        // عدد الأصناف المتبقية لكل رانشيت
+        var remainingMap = {};
+        var details = results[1].data || [];
+        for(var di = 0; di < details.length; di++) {
+            var det = details[di];
+            var remaining = (Number(det.qty_loaded) || 0) - (Number(det.qty_delivered) || 0);
+            if(remaining > 0) {
+                remainingMap[det.runsheet_id] = (remainingMap[det.runsheet_id] || 0) + 1;
             }
-            if(driverIds.length > 0) {
-                supabase.from('users').select('id, name').in('id', driverIds).then(function(uRes) {
-                    var userMap = {};
-                    var users = uRes.data || [];
-                    for(var ui = 0; ui < users.length; ui++) { userMap[users[ui].id] = users[ui].name; }
-                    s._driverMap = userMap;
-                    s.renderList(myActive, available);
-                });
-            } else {
-                s._driverMap = {};
-                s.renderList(myActive, available);
-            }
-        }).catch(function(){ 
-            safeHTML(byId('mainContent'),'<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>'); 
-        });
+        }
+        s._remainingMap = remainingMap;
+        
+        s.renderList(myActive, available);
+    });
+}).catch(function(){ 
+    safeHTML(byId('mainContent'),'<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>'); 
+});
     },
 
     renderList: function(myActive, available){
@@ -265,22 +291,37 @@ var App = {
             for(var j = 0; j < available.length; j++){ html += self._buildCard(available[j], false); }
         }
         safeHTML(byId('mainContent'), html);
+
+// تحديث أعداد الأصناف المتبقية
+var self = this;
+setTimeout(function() {
+    if(self._remainingMap) {
+        for(var i = 0; i < self.allRunsheets.length; i++) {
+            var rs = self.allRunsheets[i];
+            var count = self._remainingMap[rs.id] || 0;
+            var el = byId('remaining-count-' + rs.runsheet_code);
+            if(el) safeText(el, count);
+        }
+    }
+}, 100);
     },
 
 _buildCard: function(rs, isActive){
     var code = rs.runsheet_code || '';
-    var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
     var driverName = (this._driverMap && rs.driver_id) ? (this._driverMap[rs.driver_id] || rs.driver_id) : (rs.driver_id || 'غير محدد');
     var icon = isActive ? '🔄' : '📦';
     var label = isActive ? 'قيد المرتجعات' : 'جاهز';
     var color = isActive ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600';
+    
+    var infoLine = rs.run_date + ' | السائق: ' + driverName + ' | الأصناف المتبقية: <span id="remaining-count-' + code + '" class="font-bold text-amber-600">...</span>';
+    
     var btn = '';
     if(isActive){
         btn = '<button onclick="event.stopPropagation();App.cancelReturn(\'' + code + '\')" class="btn-danger mt-3 text-xs px-3 py-1.5"><i class="fa-solid fa-xmark ml-1"></i> إلغاء المرتجعات</button>';
     }
-    return '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openReturn(\'' + code + '\')"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">' + icon + '</span><div><span class="font-black text-slate-800">' + code + '</span><p class="text-xs text-slate-400 mt-0.5">' + rs.run_date + ' | السائق: ' + driverName + ' | إجمالي الأصناف: <span class="font-bold text-slate-600">' + itemCount + '</span></p></div></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + color + '">' + label + '</span><i class="fa-solid fa-chevron-left text-slate-300 text-xs"></i></div></div>' + btn + '</div>';
+    
+    return '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openReturn(\'' + code + '\')"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">' + icon + '</span><div><span class="font-black text-slate-800">' + code + '</span><p class="text-xs text-slate-400 mt-0.5">' + infoLine + '</p></div></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + color + '">' + label + '</span><i class="fa-solid fa-chevron-left text-slate-300 text-xs"></i></div></div>' + btn + '</div>';
 },
-
     onSearchInput: function(query){
         var s = this;
         if(this.searchTimer) clearTimeout(this.searchTimer);
