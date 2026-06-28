@@ -267,19 +267,19 @@ var App = {
         safeHTML(byId('mainContent'), html);
     },
 
-    _buildCard: function(rs, isActive){
-        var code = rs.runsheet_code || '';
-        var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
-        var driverName = (this._driverMap && rs.driver_id) ? (this._driverMap[rs.driver_id] || rs.driver_id) : (rs.driver_id || 'غير محدد');
-        var icon = isActive ? '🔄' : '📦';
-        var label = isActive ? 'قيد المرتجعات' : 'جاهز';
-        var color = isActive ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600';
-        var btn = '';
-        if(isActive){
-            btn = '<button onclick="event.stopPropagation();App.cancelReturn(\'' + code + '\')" class="btn-danger mt-3 text-xs px-3 py-1.5"><i class="fa-solid fa-xmark ml-1"></i> إلغاء المرتجعات</button>';
-        }
-        return '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openReturn(\'' + code + '\')"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">' + icon + '</span><div><span class="font-black text-slate-800">' + code + '</span><p class="text-xs text-slate-400 mt-0.5">' + rs.run_date + ' | السائق: ' + driverName + ' | الأصناف: <span class="font-bold text-slate-600">' + itemCount + '</span></p></div></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + color + '">' + label + '</span><i class="fa-solid fa-chevron-left text-slate-300 text-xs"></i></div></div>' + btn + '</div>';
-    },
+_buildCard: function(rs, isActive){
+    var code = rs.runsheet_code || '';
+    var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
+    var driverName = (this._driverMap && rs.driver_id) ? (this._driverMap[rs.driver_id] || rs.driver_id) : (rs.driver_id || 'غير محدد');
+    var icon = isActive ? '🔄' : '📦';
+    var label = isActive ? 'قيد المرتجعات' : 'جاهز';
+    var color = isActive ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600';
+    var btn = '';
+    if(isActive){
+        btn = '<button onclick="event.stopPropagation();App.cancelReturn(\'' + code + '\')" class="btn-danger mt-3 text-xs px-3 py-1.5"><i class="fa-solid fa-xmark ml-1"></i> إلغاء المرتجعات</button>';
+    }
+    return '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openReturn(\'' + code + '\')"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">' + icon + '</span><div><span class="font-black text-slate-800">' + code + '</span><p class="text-xs text-slate-400 mt-0.5">' + rs.run_date + ' | السائق: ' + driverName + ' | إجمالي الأصناف: <span class="font-bold text-slate-600">' + itemCount + '</span></p></div></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + color + '">' + label + '</span><i class="fa-solid fa-chevron-left text-slate-300 text-xs"></i></div></div>' + btn + '</div>';
+},
 
     onSearchInput: function(query){
         var s = this;
@@ -304,60 +304,77 @@ var App = {
         safeHTML(dd,html); dd.classList.remove('hidden');
     },
 
-    openReturn: function(code){
-        var s = this;
-        var dd = byId('searchDropdown'); if(dd)dd.classList.add('hidden');
-        safeHTML(byId('mainContent'),'<div class="text-center py-20"><div class="skeleton h-48 w-full mb-4"></div></div>');
+openReturn: function(code){
+    var s = this;
+    var dd = byId('searchDropdown'); if(dd)dd.classList.add('hidden');
+    safeHTML(byId('mainContent'),'<div class="text-center py-20"><div class="skeleton h-48 w-full mb-4"></div></div>');
+    
+    supabase.from('runsheets').select('*').eq('runsheet_code',code).maybeSingle().then(function(rsR){
+        if(!rsR.data){ toast('الرانشيت غير موجود','error'); s.loadRunsheets(); return; }
+        var rs = rsR.data;
         
-        supabase.from('runsheets').select('*').eq('runsheet_code',code).maybeSingle().then(function(rsR){
-            if(!rsR.data){ toast('الرانشيت غير موجود','error'); s.loadRunsheets(); return; }
-            var rs = rsR.data;
+        supabase.from('run_sheet_details').select('*').eq('runsheet_id',rs.id).then(function(dR){
+            var items = dR.data || [];
+            var itemCount = items.length;
+            var driverName = (s._driverMap && rs.driver_id) ? (s._driverMap[rs.driver_id] || rs.driver_id) : (rs.driver_id || 'غير محدد');
             
-            supabase.from('run_sheet_details').select('*').eq('runsheet_id',rs.id).then(function(dR){
-                var items = dR.data || [];
-                var itemCount = items.length;
-                var driverName = (s._driverMap && rs.driver_id) ? (s._driverMap[rs.driver_id] || rs.driver_id) : (rs.driver_id || 'غير محدد');
-                
-                var isActive = (rs.status === 'Returning' && (rs.return_handler_id === s.pubUserId || rs.return_handler_id === s.currentUser.email));
-                
-                if(isActive){
-                    s.session = { 
-                        runsheet_code: code, runsheet_id: rs.id, 
-                        start_time: rs.return_start || new Date().toISOString(), 
-                        driver_name: driverName,
-                        items: [] 
-                    };
-                    for(var i = 0; i < items.length; i++){
-                        var it = items[i];
-                        s.session.items.push({
-                            item_code: it.item_code, item_name: it.item_name || '', unit: it.unit || 'حبة',
-                            qty_ordered: Number(it.qty_ordered) || 0, qty_loaded: Number(it.qty_loaded) || 0,
-                            qty_delivered: Number(it.qty_delivered) || 0, qty_returned: Number(it.qty_returned) || 0,
-                            return_condition: it.return_condition || 'good', notes: it.notes || '',
-                            unit_price: Number(it.unit_price) || 0
-                        });
-                    }
-                    s._loadLocalChanges();
-                    return;
+            var isActive = (rs.status === 'Returning' && (rs.return_handler_id === s.pubUserId || rs.return_handler_id === s.currentUser.email));
+            
+            if(isActive){
+                s.session = { 
+                    runsheet_code: code, runsheet_id: rs.id, 
+                    start_time: rs.return_start || new Date().toISOString(), 
+                    driver_name: driverName,
+                    items: [] 
+                };
+                for(var i = 0; i < items.length; i++){
+                    var it = items[i];
+                    s.session.items.push({
+                        item_code: it.item_code, item_name: it.item_name || '', unit: it.unit || 'حبة',
+                        qty_ordered: Number(it.qty_ordered) || 0, qty_loaded: Number(it.qty_loaded) || 0,
+                        qty_delivered: Number(it.qty_delivered) || 0, qty_returned: Number(it.qty_returned) || 0,
+                        return_condition: it.return_condition || 'good', notes: it.notes || '',
+                        unit_price: Number(it.unit_price) || 0
+                    });
                 }
+                s._loadLocalChanges();
+                return;
+            }
+            
+            var html = '<div class="flex items-center gap-3 mb-6"><button onclick="App.switchTab(\'pending\')" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-teal-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + ' | ' + driverName + '</span></div>';
+            
+            if(rs.status === 'Delivered'){
+                html += '<button onclick="App.startReturn(\'' + code + '\')" class="btn-primary mb-6"><i class="fa-solid fa-play ml-2"></i> بدء المرتجعات</button>';
+            }
+            
+            var remainingCount = 0;
+            html += '<div class="text-sm text-slate-400 mb-3">الأصناف في الرانشيت:</div>';
+            html += '<div class="space-y-2 mb-6">';
+            for(var k = 0; k < items.length; k++){
+                var it = items[k];
+                var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
+                if(remaining > 0) remainingCount++;
+                var badgeColor = remaining > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700';
+                var badgeText = remaining > 0 ? 'متبقي: ' + remaining : '✅ تم التسليم';
                 
-                var html = '<div class="flex items-center gap-3 mb-6"><button onclick="App.switchTab(\'pending\')" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-teal-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + ' | ' + driverName + '</span></div>';
-                
-                if(rs.status === 'Delivered'){
-                    html += '<button onclick="App.startReturn(\'' + code + '\')" class="btn-primary mb-6"><i class="fa-solid fa-play ml-2"></i> بدء المرتجعات</button>';
-                }
-                
-                var remainingCount = 0;
-                for(var k = 0; k < items.length; k++){
-                    var rem = (Number(items[k].qty_loaded) || 0) - (Number(items[k].qty_delivered) || 0);
-                    if(rem > 0) remainingCount++;
-                }
-                html += '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 text-sm text-amber-700 font-bold">📦 عدد الأصناف المتبقية في السيارة: <span class="text-amber-800">' + remainingCount + '</span> من أصل ' + itemCount + '</div>';
-                
-                safeHTML(byId('mainContent'), html);
-            });
+                html += '<div class="card ' + (remaining > 0 ? '' : 'opacity-60') + '">';
+                html += '<div class="flex items-center gap-4">' + s._img(it.item_code);
+                html += '<div class="flex-1">';
+                html += '<p class="font-bold text-slate-700 text-sm">' + (it.item_name || '') + '</p>';
+                html += '<p class="text-xs text-slate-400">' + (it.unit || 'حبة') + '</p>';
+                html += '<p class="text-xs text-slate-500 mt-0.5">محمّل: <span class="font-bold">' + (it.qty_loaded || 0) + '</span> | مسلّم: <span class="font-bold">' + (it.qty_delivered || 0) + '</span></p>';
+                html += '</div>';
+                html += '<span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + badgeColor + '">' + badgeText + '</span>';
+                html += '</div>';
+            }
+            html += '</div>';
+            
+            html += '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 text-sm text-amber-700 font-bold">📦 عدد الأصناف المتبقية في السيارة: <span class="text-amber-800">' + remainingCount + '</span> من أصل ' + itemCount + '</div>';
+            
+            safeHTML(byId('mainContent'), html);
         });
-    },
+    });
+},
 
     startReturn: function(code){
         var s = this;
