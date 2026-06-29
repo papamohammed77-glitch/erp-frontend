@@ -50,7 +50,6 @@
         .scrollable::-webkit-scrollbar{width:4px}
         .scrollable::-webkit-scrollbar-track{background:#f1f5f9}
         .scrollable::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
-        /* حقول إضافية مخفية في نافذة الإبلاغ */
         .discrepancy-extra-fields{display:none;margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0}
         .discrepancy-extra-fields.visible{display:block}
     </style>
@@ -241,7 +240,6 @@ var App = {
                     return;
                 }
 
-                // جلب جميع الأصناف للاستخدام في "صنف مختلف"
                 supabase.from('items').select('item_code, name, unit, image_url, description')
                     .then(function(itemsRes) {
                         var items = itemsRes.data || [];
@@ -628,7 +626,7 @@ var App = {
         html += '<p class="text-xs text-slate-400 mt-2"><i class="fa-solid fa-box ml-1"></i> ' + remainingCount + ' صنف متبقي من ' + items.length + '</p>';
         html += '</div>';
 
-        // البحث في المعاينة - قائمة منسدلة
+        // البحث في المعاينة
         html += '<div class="relative mb-4">';
         html += '<div class="flex items-center gap-2">';
         html += '<div class="flex-1 relative">';
@@ -1083,26 +1081,22 @@ var App = {
             html += '<span class="text-xs text-slate-400 font-bold mt-1">⏳ لم يبدأ</span>';
         }
 
-        // زر إبلاغ عن اختلاف (يظهر عند وجود زيادة، أو نقص مع سبب، أو أي اختلاف)
-        if (it.qty_returned > remaining || (it.qty_returned < remaining && it.notes) || it.qty_returned !== remaining) {
-            html += '<button onclick="event.stopPropagation();App.reportDiscrepancyFromCard(' + index + ', ' + remaining + ')" class="btn-warning text-[10px] py-1 px-2 mt-1 w-full"><i class="fa-solid fa-triangle-exclamation ml-1"></i> إبلاغ عن اختلاف</button>';
-        }
+        // زر إبلاغ عن اختلاف - يظهر دائماً (لأنه قد يكون صنف مختلف حتى لو الكميات متطابقة)
+        html += '<button onclick="event.stopPropagation();App.reportDiscrepancyFromCard(' + index + ', ' + remaining + ')" class="btn-warning text-[10px] py-1 px-2 mt-1 w-full"><i class="fa-solid fa-triangle-exclamation ml-1"></i> إبلاغ عن اختلاف</button>';
 
         html += '</div></div>';
         return html;
     },
 
-    // ===== دالة للإبلاغ عن اختلاف من البطاقة =====
+    // ===== دالة للإبلاغ عن اختلاف من البطاقة (معدلة) =====
     reportDiscrepancyFromCard: function(index, remaining) {
         var self = this;
         var it = this.session.items[index];
         var actualQty = it.qty_returned || 0;
         var diff = actualQty - remaining;
 
-        if (diff === 0) {
-            toast('الكمية مطابقة. لا يوجد اختلاف.', 'info');
-            return;
-        }
+        // ✅ تم إزالة الشرط الذي يمنع الإبلاغ عند diff === 0
+        // لأن المستخدم قد يحتاج للإبلاغ عن "صنف مختلف" حتى لو الكميات متطابقة
 
         if (diff < 0 && !it.notes) {
             toast('الكمية أقل من المتبقي. أضف سبباً في النافذة أولاً.', 'warning');
@@ -1379,7 +1373,12 @@ var App = {
                     reportBtn.addEventListener('click', function() {
                         var qty = parseInt(document.getElementById('swal-ret-qty').value) || 0;
                         if (qty === remaining) {
-                            toast('لا يوجد اختلاف. الكمية مطابقة.', 'info');
+                            toast('لا يوجد اختلاف في الكمية. يمكنك الإبلاغ عن "صنف مختلف" إذا لزم الأمر.', 'info');
+                            // نفتح نافذة الإبلاغ مع diff = 0 للسماح باختيار "صنف مختلف"
+                            var diff = 0;
+                            var notes = document.getElementById('swal-ret-notes').value.trim() || '';
+                            self.reportDiscrepancy(index, remaining, qty, diff, notes);
+                            Swal.close();
                             return;
                         }
                         var diff = qty - remaining;
@@ -1555,7 +1554,7 @@ var App = {
             diff = actualQty - remaining;
         }
 
-        // بناء قائمة الأصناف من ALL_ITEMS_LIST للاختيار في "صنف مختلف"
+        // بناء قائمة الأصناف من ALL_ITEMS_LIST
         var itemsOptionsHtml = '';
         for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
             var item = ALL_ITEMS_LIST[i];
@@ -1567,7 +1566,7 @@ var App = {
         html += '<p style="font-size:14px;color:#334155">الصنف الحالي: <strong>' + (it.item_name || '') + '</strong></p>';
         html += '<p style="font-size:13px;color:#64748b">المتوقع: <strong>' + remaining + '</strong></p>';
         html += '<p style="font-size:13px;color:#ea580c">الموجود: <strong>' + actualQty + '</strong></p>';
-        html += '<p style="font-size:13px;color:' + (diff > 0 ? '#16a34a' : '#dc2626') + '">الفرق: <strong>' + (diff > 0 ? '+' : '') + diff + '</strong></p>';
+        html += '<p style="font-size:13px;color:' + (diff > 0 ? '#16a34a' : (diff < 0 ? '#dc2626' : '#64748b')) + '">الفرق: <strong>' + (diff > 0 ? '+' : '') + diff + '</strong></p>';
 
         // نوع الاختلاف
         html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع الاختلاف</label>';
@@ -1610,7 +1609,6 @@ var App = {
                 cancelButton: '!rounded-xl !px-8'
             },
             didOpen: function() {
-                // تفعيل/إخفاء الحقول الإضافية بناءً على النوع المختار
                 App._toggleDiscrepancyFields();
             }
         }).then(function(result) {
@@ -1621,7 +1619,6 @@ var App = {
             var expectedItemCode = document.getElementById('expectedItemCode') ? document.getElementById('expectedItemCode').value : null;
             var notesText = document.getElementById('discNotes').value || notes || '';
 
-            // التحقق: إذا كان نوع "صنف مختلف"، يجب اختيار الصنفين
             if (discType === 'wrong_item') {
                 if (!actualItemCode || !expectedItemCode) {
                     toast('يرجى اختيار الصنف الموجود والمتوقع', 'warning');
@@ -1646,11 +1643,9 @@ var App = {
                 notes: notesText
             };
 
-            // إضافة حقول إضافية لـ "صنف مختلف"
             if (discType === 'wrong_item') {
                 payload.actual_item_code = actualItemCode;
                 payload.expected_item_code = expectedItemCode;
-                // الحصول على أسماء الأصناف للتوثيق
                 for (var k = 0; k < ALL_ITEMS_LIST.length; k++) {
                     if (ALL_ITEMS_LIST[k].item_code === actualItemCode) {
                         payload.actual_item_name = ALL_ITEMS_LIST[k].name || actualItemCode;
@@ -1679,7 +1674,6 @@ var App = {
                             msg += ' (صنف مختلف: ' + (payload.actual_item_name || actualItemCode) + ' بدلاً من ' + (payload.expected_item_name || expectedItemCode) + ')';
                         }
                         toast(msg, 'success');
-                        // إعادة تعيين الكمية إلى المتوقع (لإلغاء تأثير التعديل الخاطئ)
                         self.session.items[index].qty_returned = remaining;
                         self.session.items[index].notes = 'اختلاف - تم الإبلاغ (' + discType + ')';
                         self.saveReturnItem(index);
@@ -1695,7 +1689,6 @@ var App = {
         });
     },
 
-    // دالة لإظهار/إخفاء الحقول الإضافية في نافذة الإبلاغ
     _toggleDiscrepancyFields: function() {
         var discType = document.getElementById('discType');
         var extraFields = document.getElementById('discrepancyExtraFields');
