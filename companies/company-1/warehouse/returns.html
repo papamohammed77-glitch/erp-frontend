@@ -1570,7 +1570,7 @@ var App = {
 
         // نوع الاختلاف
         html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع الاختلاف</label>';
-        html += '<select id="discType" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white" onchange="App._toggleDiscrepancyFields()">';
+        html += '<select id="discType" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
         html += '<option value="surplus">زيادة - كمية أكثر من المتوقع</option>';
         html += '<option value="shortage">نقص - كمية أقل من المتوقع</option>';
         html += '<option value="wrong_item">صنف مختلف</option>';
@@ -1609,28 +1609,52 @@ var App = {
                 cancelButton: '!rounded-xl !px-8'
             },
             didOpen: function() {
+                // تفعيل/إخفاء الحقول الإضافية
                 App._toggleDiscrepancyFields();
+                // إضافة مستمع لتغيير النوع
+                var discTypeEl = document.getElementById('discType');
+                if (discTypeEl) {
+                    discTypeEl.addEventListener('change', function() {
+                        App._toggleDiscrepancyFields();
+                    });
+                }
+            },
+            preConfirm: function() {
+                var discTypeEl = document.getElementById('discType');
+                var actualItemCodeEl = document.getElementById('actualItemCode');
+                var expectedItemCodeEl = document.getElementById('expectedItemCode');
+                var discNotesEl = document.getElementById('discNotes');
+
+                var discType = discTypeEl ? discTypeEl.value : 'other';
+                var actualItemCode = actualItemCodeEl ? actualItemCodeEl.value : null;
+                var expectedItemCode = expectedItemCodeEl ? expectedItemCodeEl.value : null;
+                var notesText = discNotesEl ? discNotesEl.value : '';
+
+                if (discType === 'wrong_item') {
+                    if (!actualItemCode || !expectedItemCode) {
+                        Swal.showValidationMessage('يرجى اختيار الصنف الموجود والمتوقع');
+                        return false;
+                    }
+                    if (actualItemCode === expectedItemCode) {
+                        Swal.showValidationMessage('الصنف الموجود والمتوقع متماثلان. يرجى اختيار صنفين مختلفين.');
+                        return false;
+                    }
+                }
+
+                return {
+                    discType: discType,
+                    actualItemCode: actualItemCode,
+                    expectedItemCode: expectedItemCode,
+                    notesText: notesText
+                };
             }
         }).then(function(result) {
             if (!result.isConfirmed) { return; }
 
-            var discType = document.getElementById('discType').value;
-            var actualItemCode = document.getElementById('actualItemCode') ? document.getElementById('actualItemCode').value : null;
-            var expectedItemCode = document.getElementById('expectedItemCode') ? document.getElementById('expectedItemCode').value : null;
-            var notesText = document.getElementById('discNotes').value || notes || '';
-
-            if (discType === 'wrong_item') {
-                if (!actualItemCode || !expectedItemCode) {
-                    toast('يرجى اختيار الصنف الموجود والمتوقع', 'warning');
-                    return;
-                }
-                if (actualItemCode === expectedItemCode) {
-                    toast('الصنف الموجود والمتوقع متماثلان. يرجى اختيار صنفين مختلفين.', 'warning');
-                    return;
-                }
-            }
-
-            Swal.fire({ title: 'جاري الإبلاغ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+            var discType = result.value.discType;
+            var actualItemCode = result.value.actualItemCode;
+            var expectedItemCode = result.value.expectedItemCode;
+            var notesText = result.value.notesText;
 
             var payload = {
                 runsheet_id: self.session.runsheet_id,
@@ -1655,6 +1679,8 @@ var App = {
                     }
                 }
             }
+
+            Swal.fire({ title: 'جاري الإبلاغ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
 
             supabase.auth.getSession()
                 .then(function(ses) {
@@ -1845,7 +1871,6 @@ var App = {
             }
         }, 1000);
     },
-
     // ============================================================
     // تبويب مكتملة
     // ============================================================
