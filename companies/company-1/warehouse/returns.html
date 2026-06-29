@@ -1629,16 +1629,11 @@ reportDiscrepancyGeneral: function() {
         return;
     }
 
-    var itemsOptionsHtml = '';
-    for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
-        var item = ALL_ITEMS_LIST[i];
-        itemsOptionsHtml += '<option value="' + item.item_code + '">' + (item.name || item.item_code) + ' (' + item.item_code + ')</option>';
-    }
-
     var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
     html += '<p style="font-size:14px;color:#334155">🚨 الإبلاغ عن اختلاف في الرانشيت</p>';
     html += '<p style="font-size:13px;color:#64748b;margin-top:8px">الرجاء توضيح المشكلة التي اكتشفتها:</p>';
 
+    // نوع المشكلة
     html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع المشكلة</label>';
     html += '<select id="discTypeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
     html += '<option value="surplus">زيادة في الكمية</option>';
@@ -1649,21 +1644,30 @@ reportDiscrepancyGeneral: function() {
     html += '<option value="other">سبب آخر</option>';
     html += '</select></div>';
 
-    // حقول إضافية حسب نوع المشكلة (تبقى كما هي مع إضافة خيارات جديدة)
-    html += '<div id="discrepancyExtraFieldsGeneral" class="discrepancy-extra-fields">';
+    // حقل البحث عن الصنف (بدلاً من القائمة المنسدلة)
     html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المعني</label>';
-    html += '<select id="itemCodeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
-    html += itemsOptionsHtml;
-    html += '</select></div>';
-    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية</label>';
-    html += '<input type="number" id="qtyGeneral" value="1" min="1" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b">';
-    html += '</div>';
-    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">(في حالة "صنف مختلف") الصنف المتوقع</label>';
-    html += '<select id="expectedItemCodeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
-    html += itemsOptionsHtml;
-    html += '</select></div>';
+    html += '<input type="text" id="itemSearchGeneral" placeholder="🔍 ابحث عن صنف بالاسم أو الكود..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b" oninput="App._searchItemsForReport(this.value)">';
+    html += '<div id="itemSearchResultsGeneral" style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:12px;margin-top:4px;display:none;background:white"></div>';
+    html += '<input type="hidden" id="selectedItemCodeGeneral">';
+    html += '<input type="hidden" id="selectedItemUnitGeneral">';
     html += '</div>';
 
+    // الكمية والوحدة
+    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية</label>';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    html += '<input type="number" id="qtyGeneral" value="1" min="1" style="flex:1;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b">';
+    html += '<span id="unitDisplayGeneral" style="padding:10px;background:#f1f5f9;border-radius:12px;font-size:13px;color:#64748b;min-width:60px;text-align:center">وحدة</span>';
+    html += '</div></div>';
+
+    // حقل "صنف متوقع" (يظهر فقط عند اختيار "صنف مختلف")
+    html += '<div id="expectedItemContainer" style="display:none;margin-top:12px">';
+    html += '<label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المتوقع (في النظام)</label>';
+    html += '<input type="text" id="expectedItemSearchGeneral" placeholder="🔍 ابحث عن الصنف المتوقع..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b" oninput="App._searchExpectedItemForReport(this.value)">';
+    html += '<div id="expectedItemSearchResultsGeneral" style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:12px;margin-top:4px;display:none;background:white"></div>';
+    html += '<input type="hidden" id="selectedExpectedItemCodeGeneral">';
+    html += '</div>';
+
+    // ملاحظات
     html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات إضافية</label>';
     html += '<textarea id="discNotesGeneral" rows="2" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b"></textarea></div>';
 
@@ -1684,34 +1688,35 @@ reportDiscrepancyGeneral: function() {
         },
         didOpen: function() {
             var discTypeEl = document.getElementById('discTypeGeneral');
-            var extraFields = document.getElementById('discrepancyExtraFieldsGeneral');
-            if (discTypeEl && extraFields) {
+            var expectedContainer = document.getElementById('expectedItemContainer');
+            if (discTypeEl && expectedContainer) {
                 discTypeEl.addEventListener('change', function() {
                     if (discTypeEl.value === 'wrong_item') {
-                        extraFields.style.display = 'block';
+                        expectedContainer.style.display = 'block';
                     } else {
-                        extraFields.style.display = 'none';
+                        expectedContainer.style.display = 'none';
                     }
                 });
-                // إخفاء الحقول الإضافية افتراضياً
-                extraFields.style.display = 'none';
+                expectedContainer.style.display = 'none';
             }
         },
         preConfirm: function() {
             var discTypeEl = document.getElementById('discTypeGeneral');
-            var itemCodeEl = document.getElementById('itemCodeGeneral');
+            var selectedCode = document.getElementById('selectedItemCodeGeneral');
+            var selectedUnit = document.getElementById('selectedItemUnitGeneral');
             var qtyEl = document.getElementById('qtyGeneral');
-            var expectedItemCodeEl = document.getElementById('expectedItemCodeGeneral');
+            var expectedCode = document.getElementById('selectedExpectedItemCodeGeneral');
             var discNotesEl = document.getElementById('discNotesGeneral');
 
             var discType = discTypeEl ? discTypeEl.value : 'other';
-            var itemCode = itemCodeEl ? itemCodeEl.value : null;
+            var itemCode = selectedCode ? selectedCode.value : null;
+            var unit = selectedUnit ? selectedUnit.value : 'حبة';
             var qty = qtyEl ? parseInt(qtyEl.value) || 0 : 0;
-            var expectedItemCode = expectedItemCodeEl ? expectedItemCodeEl.value : null;
+            var expectedItemCode = expectedCode ? expectedCode.value : null;
             var notesText = discNotesEl ? discNotesEl.value : '';
 
             if (!itemCode) {
-                Swal.showValidationMessage('يرجى اختيار الصنف المعني');
+                Swal.showValidationMessage('يرجى اختيار صنف من نتائج البحث');
                 return false;
             }
 
@@ -1734,6 +1739,7 @@ reportDiscrepancyGeneral: function() {
             return {
                 discType: discType,
                 itemCode: itemCode,
+                unit: unit,
                 qty: qty,
                 expectedItemCode: expectedItemCode,
                 notesText: notesText
@@ -1744,6 +1750,7 @@ reportDiscrepancyGeneral: function() {
 
         var discType = result.value.discType;
         var itemCode = result.value.itemCode;
+        var unit = result.value.unit;
         var qty = result.value.qty;
         var expectedItemCode = result.value.expectedItemCode;
         var notesText = result.value.notesText;
@@ -1753,6 +1760,7 @@ reportDiscrepancyGeneral: function() {
         for (var k = 0; k < ALL_ITEMS_LIST.length; k++) {
             if (ALL_ITEMS_LIST[k].item_code === itemCode) {
                 itemName = ALL_ITEMS_LIST[k].name || itemCode;
+                unit = ALL_ITEMS_LIST[k].unit || unit;
             }
             if (ALL_ITEMS_LIST[k].item_code === expectedItemCode) {
                 expectedItemName = ALL_ITEMS_LIST[k].name || expectedItemCode;
@@ -1763,7 +1771,7 @@ reportDiscrepancyGeneral: function() {
             runsheet_id: self.session.runsheet_id,
             item_code: itemCode,
             item_name: itemName,
-            expected_qty: qty,
+            expected_qty: discType === 'shortage' ? qty : 0,
             actual_qty: discType === 'shortage' ? 0 : qty,
             difference_qty: discType === 'shortage' ? -qty : qty,
             discrepancy_type: discType,
@@ -1808,8 +1816,124 @@ reportDiscrepancyGeneral: function() {
             });
     });
 },
-    completeReturn: function() {
+_searchItemsForReport: function(query) {
+    var resultsContainer = document.getElementById('itemSearchResultsGeneral');
+    var searchInput = document.getElementById('itemSearchGeneral');
+    
+    if (!query || query.trim().length < 2) {
+        if (resultsContainer) {
+            resultsContainer.style.display = 'none';
+            resultsContainer.innerHTML = '';
+        }
+        return;
+    }
+    
+    var q = query.trim().toLowerCase();
+    var results = [];
+    
+    for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
+        var item = ALL_ITEMS_LIST[i];
+        var name = (item.name || '').toLowerCase();
+        var code = (item.item_code || '').toLowerCase();
+        var label = (item.search_label || '').toLowerCase();
+        
+        if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1) {
+            results.push(item);
+        }
+        if (results.length >= 15) break;
+    }
+    
+    if (results.length === 0) {
+        resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>';
+        resultsContainer.style.display = 'block';
+        return;
+    }
+    
+    var html = '';
+    for (var j = 0; j < results.length; j++) {
+        var item = results[j];
+        html += '<div onclick="App._selectItemForReport(\'' + item.item_code + '\', \'' + (item.name || '').replace(/'/g, "\\'") + '\', \'' + (item.unit || 'حبة') + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
+        html += '<span><strong>' + (item.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + item.item_code + ')</span></span>';
+        html += '<span style="color:#94a3b8;font-size:12px">📦 ' + (item.unit || 'حبة') + '</span>';
+        html += '</div>';
+    }
+    resultsContainer.innerHTML = html;
+    resultsContainer.style.display = 'block';
+},
+_selectItemForReport: function(itemCode, itemName, unit) {
+    var searchInput = document.getElementById('itemSearchGeneral');
+    var unitDisplay = document.getElementById('unitDisplayGeneral');
+    var selectedCode = document.getElementById('selectedItemCodeGeneral');
+    var selectedUnit = document.getElementById('selectedItemUnitGeneral');
+    var resultsContainer = document.getElementById('itemSearchResultsGeneral');
+    
+    if (searchInput) searchInput.value = itemName + ' (' + itemCode + ')';
+    if (unitDisplay) unitDisplay.textContent = unit;
+    if (selectedCode) selectedCode.value = itemCode;
+    if (selectedUnit) selectedUnit.value = unit;
+    if (resultsContainer) {
+        resultsContainer.style.display = 'none';
+        resultsContainer.innerHTML = '';
+    }
+},
+_searchExpectedItemForReport: function(query) {
+    var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
+    var searchInput = document.getElementById('expectedItemSearchGeneral');
+    
+    if (!query || query.trim().length < 2) {
+        if (resultsContainer) {
+            resultsContainer.style.display = 'none';
+            resultsContainer.innerHTML = '';
+        }
+        return;
+    }
+    
+    var q = query.trim().toLowerCase();
+    var results = [];
+    
+    for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
+        var item = ALL_ITEMS_LIST[i];
+        var name = (item.name || '').toLowerCase();
+        var code = (item.item_code || '').toLowerCase();
+        var label = (item.search_label || '').toLowerCase();
+        
+        if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1) {
+            results.push(item);
+        }
+        if (results.length >= 15) break;
+    }
+    
+    if (results.length === 0) {
+        resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>';
+        resultsContainer.style.display = 'block';
+        return;
+    }
+    
+    var html = '';
+    for (var j = 0; j < results.length; j++) {
+        var item = results[j];
+        html += '<div onclick="App._selectExpectedItemForReport(\'' + item.item_code + '\', \'' + (item.name || '').replace(/'/g, "\\'") + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
+        html += '<span><strong>' + (item.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + item.item_code + ')</span></span>';
+        html += '<span style="color:#94a3b8;font-size:12px">📦 ' + (item.unit || 'حبة') + '</span>';
+        html += '</div>';
+    }
+    resultsContainer.innerHTML = html;
+    resultsContainer.style.display = 'block';
+},
+_selectExpectedItemForReport: function(itemCode, itemName) {
+    var searchInput = document.getElementById('expectedItemSearchGeneral');
+    var selectedCode = document.getElementById('selectedExpectedItemCodeGeneral');
+    var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
+    
+    if (searchInput) searchInput.value = itemName + ' (' + itemCode + ')';
+    if (selectedCode) selectedCode.value = itemCode;
+    if (resultsContainer) {
+        resultsContainer.style.display = 'none';
+        resultsContainer.innerHTML = '';
+    }
+},
         var self = this;
+    completeReturn: function() {
         if (!this.session) { return; }
         if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
 
