@@ -196,13 +196,13 @@ var App = {
         else this.renderAccount();
     },
 
-    _img: function(code){
-        var cacheEntry = ITEMS_IMAGE_CACHE[code];
-        var url = cacheEntry ? (cacheEntry.image_url || '') : '';
-        return url 
-            ? '<img src="' + url + '" class="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow-sm" onerror="this.style.display=\'none\'">' 
-            : '<div class="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></div>';
-    },
+_img: function(code){
+    var cacheEntry = ITEMS_IMAGE_CACHE[code];
+    var url = cacheEntry ? (cacheEntry.image_url || '') : '';
+    return url 
+        ? '<img src="' + url + '" class="w-18 h-18 rounded-2xl object-cover border-2 border-white shadow-sm" onerror="this.style.display=\'none\'">' 
+        : '<div class="w-18 h-18 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></div>';
+},
 
 loadRunsheets: function(){
     var s = this;
@@ -393,7 +393,7 @@ openReturn: function(code){
                 var badgeColor = remaining > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700';
                 var badgeText = remaining > 0 ? 'متبقي: ' + remaining : '✅ تم التسليم';
                 
-                html += '<div class="card ' + (remaining > 0 ? '' : 'opacity-60') + '">';
+                html += '<div class="card ' + (remaining > 0 ? 'cursor-pointer active:scale-[0.98]' : 'opacity-60') + '" onclick="App.showItemDetail(\'' + (it.item_code || '') + '\', \'' + (it.item_name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\', ' + (it.qty_loaded || 0) + ', ' + (it.qty_delivered || 0) + ', ' + remaining + ')">';
                 html += '<div class="flex items-center gap-4">' + s._img(it.item_code);
                 html += '<div class="flex-1">';
                 html += '<p class="font-bold text-slate-700 text-sm">' + (it.item_name || '') + '</p>';
@@ -409,6 +409,41 @@ openReturn: function(code){
             
             safeHTML(byId('mainContent'), html);
         });
+    });
+},
+
+showItemDetail: function(code, name, unit, loaded, delivered, remaining){
+    var img = ITEMS_IMAGE_CACHE[code] || '';
+    var imgUrl = img ? (img.image_url || '') : '';
+    var desc = img ? (img.description || '') : '';
+    
+    var imgHtml = imgUrl 
+        ? '<img src="' + imgUrl + '" style="width:100%;height:300px;object-fit:cover;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.1)" onerror="this.style.display=\'none\'">' 
+        : '<div style="width:100%;height:300px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
+    
+    var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
+    html += imgHtml;
+    html += '<h3 style="font-size:20px;font-weight:800;color:#1e293b;margin-top:16px;margin-bottom:4px">' + name + '</h3>';
+    html += '<p style="font-size:13px;color:#64748b;margin-bottom:12px">الكود: ' + code + ' | الوحدة: ' + unit + '</p>';
+    
+    if(desc){
+        html += '<p style="font-size:13px;color:#475569;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:10px">📝 ' + desc + '</p>';
+    }
+    
+    html += '<div style="background:#f8fafc;border-radius:12px;padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin-bottom:12px">';
+    html += '<div><p style="font-size:11px;color:#94a3b8">محمّل</p><p style="font-size:20px;font-weight:800;color:#334155">' + loaded + '</p></div>';
+    html += '<div><p style="font-size:11px;color:#94a3b8">مسلّم</p><p style="font-size:20px;font-weight:800;color:#334155">' + delivered + '</p></div>';
+    html += '<div><p style="font-size:11px;color:#94a3b8">متبقي</p><p style="font-size:20px;font-weight:800;color:' + (remaining > 0 ? '#0d9488' : '#16a34a') + '">' + remaining + '</p></div>';
+    html += '</div>';
+    
+    html += '</div>';
+    
+    Swal.fire({
+        html: html,
+        width: '420px',
+        showCloseButton: true,
+        showConfirmButton: false,
+        customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-400 !text-lg' }
     });
 },
 
@@ -718,41 +753,149 @@ openReturn: function(code){
         this.startTimer();
     },
 
-    _buildReturnItemCard: function(index, it, remaining){
-        var isCompleted = it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes);
-        var isOver = it.qty_returned > remaining;
-        var borderColor = isOver ? 'border-r-4 border-orange-400' : (isCompleted ? 'border-r-4 border-green-400' : (it.qty_returned > 0 ? 'border-r-4 border-amber-400' : ''));
-        
-        var html = '<div class="card mb-3 slide-in ' + borderColor + '" id="return-card-' + index + '">';
-        
-        html += '<div class="flex items-center gap-4 mb-3">' + this._img(it.item_code);
-        html += '<div class="flex-1"><p class="font-bold text-slate-700">' + it.item_name + '</p><p class="text-xs text-slate-400">' + it.unit + '</p>';
-        var cacheEntry = ITEMS_IMAGE_CACHE[it.item_code];
-        var desc = cacheEntry ? (cacheEntry.description || '') : '';
-        if(desc){ html += '<p class="text-xs text-slate-500 mt-0.5">📝 ' + desc + '</p>'; }
-        html += '<p class="text-xs text-slate-500 mt-0.5">محمّل: <span class="font-bold">' + it.qty_loaded + '</span> | مسلّم: <span class="font-bold">' + it.qty_delivered + '</span> | <span class="font-bold text-teal-600">متبقي: ' + remaining + '</span></p></div></div>';
-        
-        var currentVal = it.qty_returned > 0 ? it.qty_returned : remaining;
-        html += '<div class="flex items-center gap-2 mb-2"><label class="text-xs font-bold text-slate-500 w-20">الكمية المرتجعة</label><button onclick="App.adjustQty(' + index + ',-1)" class="w-8 h-8 bg-slate-100 rounded-full text-xs font-black">-</button><input type="number" id="ret-qty-' + index + '" value="' + currentVal + '" min="0" onchange="App.onQtyChange(' + index + ')" class="w-16 text-center p-2 border-2 border-slate-200 rounded-xl font-bold text-sm focus:border-teal-400 outline-none"><button onclick="App.adjustQty(' + index + ',1)" class="w-8 h-8 bg-slate-100 rounded-full text-xs font-black">+</button><button onclick="App.setAllGood(' + index + ',' + remaining + ')" class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-lg font-bold">الكل سليم</button><button onclick="App.setAllDamaged(' + index + ',' + remaining + ')" class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-lg font-bold">الكل تالف</button></div>';
-        
-        var showCondition = it.qty_returned < remaining && it.qty_returned > 0;
-        html += '<div id="condition-div-' + index + '" class="flex items-center gap-2 mb-2 ' + (showCondition ? '' : 'hidden') + '"><label class="text-xs font-bold text-slate-500 w-20">تصنيف</label><select id="ret-cond-' + index + '" onchange="App.saveReturnItem(' + index + ')" class="flex-1 p-2 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs font-bold focus:border-teal-400 outline-none"><option value="good"' + ((it.return_condition||'good')==='good'?' selected':'') + '>🟢 سليم</option><option value="damaged"' + (it.return_condition==='damaged'?' selected':'') + '>🔴 تالف</option><option value="missing"' + (it.return_condition==='missing'?' selected':'') + '>⬛ مفقود</option></select></div>';
-        
-        var showNotes = it.qty_returned < remaining;
-        html += '<div id="notes-div-' + index + '" class="mb-2 ' + (showNotes ? '' : 'hidden') + '"><input type="text" id="ret-notes-' + index + '" value="' + (it.notes||'') + '" onchange="App.saveReturnItem(' + index + ')" placeholder="' + (it.qty_returned < remaining ? '⚠️ سبب النقص (إجباري)...' : 'ملاحظات...') + '" class="w-full p-2 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs focus:border-teal-400 outline-none"></div>';
-        
-        if(isOver){
-            html += '<button onclick="App.reportDiscrepancy(' + index + ',' + remaining + ')" class="btn-report w-full mt-2"><i class="fa-solid fa-triangle-exclamation ml-1"></i> إبلاغ عن اختلاف</button>';
-        }
-        
-        if(isOver){ html += '<p class="text-orange-600 text-xs font-bold mt-2">⚠️ الكمية المدخلة أكبر من المتبقي</p>'; }
-        else if(isCompleted){ html += '<p class="text-green-600 text-xs font-bold mt-2">✅ مكتمل</p>'; }
-        else if(it.qty_returned > 0){ html += '<p class="text-amber-600 text-xs font-bold mt-2">⏳ في انتظار السبب</p>'; }
-        
-        html += '</div>';
-        return html;
-    },
+_buildReturnItemCard: function(index, it, remaining){
+    var isCompleted = it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes);
+    var isOver = it.qty_returned > remaining;
+    var borderColor = isOver ? 'border-r-4 border-orange-400' : (isCompleted ? 'border-r-4 border-green-400' : (it.qty_returned > 0 ? 'border-r-4 border-amber-400' : ''));
+    
+    var html = '<div class="card mb-3 slide-in cursor-pointer active:scale-[0.98] ' + borderColor + '" id="return-card-' + index + '" onclick="App.editReturnItem(' + index + ')">';
+    
+    html += '<div class="flex items-center gap-4">' + this._img(it.item_code);
+    html += '<div class="flex-1"><p class="font-bold text-slate-700">' + it.item_name + '</p><p class="text-xs text-slate-400">' + it.unit + '</p>';
+    
+    var cacheEntry = ITEMS_IMAGE_CACHE[it.item_code];
+    var desc = cacheEntry ? (cacheEntry.description || '') : '';
+    if(desc){ html += '<p class="text-xs text-slate-500 mt-0.5">📝 ' + desc + '</p>'; }
+    
+    html += '<p class="text-xs text-slate-500 mt-0.5">محمّل: <span class="font-bold">' + it.qty_loaded + '</span> | مسلّم: <span class="font-bold">' + it.qty_delivered + '</span> | <span class="font-bold text-teal-600">متبقي: ' + remaining + '</span> | <span class="font-bold text-teal-600">مرتجع: ' + it.qty_returned + '</span></p>';
+    
+    if(it.notes){
+        html += '<p class="text-xs text-amber-600 mt-0.5">📝 ' + it.notes + '</p>';
+    }
+    
+    html += '</div>';
+    html += '<i class="fa-solid fa-pen text-slate-300 text-sm"></i>';
+    
+    if(isOver){ html += '<p class="text-orange-600 text-xs font-bold mt-2">⚠️ الكمية المدخلة أكبر من المتبقي</p>'; }
+    else if(isCompleted){ html += '<p class="text-green-600 text-xs font-bold mt-2">✅ مكتمل</p>'; }
+    else if(it.qty_returned > 0){ html += '<p class="text-amber-600 text-xs font-bold mt-2">⏳ في انتظار السبب</p>'; }
+    
+    html += '</div>';
+    return html;
+},
 
+editReturnItem: function(index){
+    var s = this;
+    var it = this.session.items[index];
+    var remaining = it.qty_loaded - it.qty_delivered;
+    
+    var img = ITEMS_IMAGE_CACHE[it.item_code] || '';
+    var imgUrl = img ? (img.image_url || '') : '';
+    var desc = img ? (img.description || '') : '';
+    
+    var imgHtml = imgUrl 
+        ? '<img src="' + imgUrl + '" style="width:100%;height:300px;object-fit:cover;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.1)" onerror="this.style.display=\'none\'">' 
+        : '<div style="width:100%;height:300px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
+    
+    var currentVal = it.qty_returned > 0 ? it.qty_returned : remaining;
+    
+    var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
+    html += imgHtml;
+    html += '<h3 style="font-size:20px;font-weight:800;color:#1e293b;margin-top:16px;margin-bottom:4px">' + (it.item_name || '') + '</h3>';
+    html += '<p style="font-size:13px;color:#64748b;margin-bottom:12px">الكود: ' + (it.item_code || '') + ' | الوحدة: ' + (it.unit || 'حبة') + '</p>';
+    
+    if(desc){
+        html += '<p style="font-size:13px;color:#475569;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:10px">📝 ' + desc + '</p>';
+    }
+    
+    html += '<div style="background:#f8fafc;border-radius:12px;padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin-bottom:16px">';
+    html += '<div><p style="font-size:11px;color:#94a3b8">محمّل</p><p style="font-size:20px;font-weight:800;color:#334155">' + it.qty_loaded + '</p></div>';
+    html += '<div><p style="font-size:11px;color:#94a3b8">مسلّم</p><p style="font-size:20px;font-weight:800;color:#334155">' + it.qty_delivered + '</p></div>';
+    html += '<div><p style="font-size:11px;color:#94a3b8">متبقي</p><p style="font-size:20px;font-weight:800;color:#0d9488">' + remaining + '</p></div>';
+    html += '</div>';
+    
+    // حقل الكمية
+    html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية المرتجعة</label>';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    html += '<button onclick="App._adjustEditQty(-1)" style="width:36px;height:36px;border-radius:50%;background:#e2e8f0;border:none;font-weight:700;font-size:16px;cursor:pointer">-</button>';
+    html += '<input type="number" id="swal-ret-qty" value="' + currentVal + '" min="0" style="width:80px;text-align:center;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:18px;font-weight:700;outline:none">';
+    html += '<button onclick="App._adjustEditQty(1)" style="width:36px;height:36px;border-radius:50%;background:#e2e8f0;border:none;font-weight:700;font-size:16px;cursor:pointer">+</button>';
+    html += '<button onclick="App._setEditAllGood(' + remaining + ')" style="background:#dcfce7;color:#166534;border:none;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">الكل سليم</button>';
+    html += '<button onclick="App._setEditAllDamaged(' + remaining + ')" style="background:#fef2f2;color:#b91c1c;border:none;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">الكل تالف</button>';
+    html += '</div></div>';
+    
+    // تصنيف
+    html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">تصنيف</label>';
+    html += '<select id="swal-ret-cond" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none">';
+    html += '<option value="good"' + ((it.return_condition||'good')==='good'?' selected':'') + '>🟢 سليم</option>';
+    html += '<option value="damaged"' + (it.return_condition==='damaged'?' selected':'') + '>🔴 تالف</option>';
+    html += '<option value="missing"' + (it.return_condition==='missing'?' selected':'') + '>⬛ مفقود</option>';
+    html += '</select></div>';
+    
+    // ملاحظات
+    html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات</label>';
+    html += '<input type="text" id="swal-ret-notes" value="' + (it.notes||'') + '" placeholder="سبب النقص..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none"></div>';
+    
+    // زر إبلاغ عن اختلاف (إذا الكمية > المتبقي)
+    html += '<div id="swal-discrepancy-warning" style="display:none;margin-bottom:12px"><button onclick="App._reportDiscrepancyFromSwal(' + index + ',' + remaining + ')" style="width:100%;padding:10px;background:#ea580c;color:#fff;border:none;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer"><i class="fa-solid fa-triangle-exclamation ml-1"></i> إبلاغ عن اختلاف</button></div>';
+    
+    html += '</div>';
+    
+    Swal.fire({
+        html: html,
+        width: '420px',
+        showCancelButton: true,
+        confirmButtonText: 'حفظ',
+        cancelButtonText: 'إلغاء',
+        customClass: { popup: '!rounded-3xl !p-5', confirmButton: '!rounded-xl !bg-teal-600 !px-8', cancelButton: '!rounded-xl' },
+        preConfirm: function(){
+            var qty = parseInt(document.getElementById('swal-ret-qty').value) || 0;
+            if(qty > remaining){
+                Swal.showValidationMessage('الكمية أكبر من المتبقي');
+                return false;
+            }
+            return {
+                qty: qty,
+                condition: document.getElementById('swal-ret-cond').value,
+                notes: document.getElementById('swal-ret-notes').value.trim()
+            };
+        }
+    }).then(function(result){
+        if(result.isConfirmed){
+            it.qty_returned = result.value.qty;
+            it.return_condition = result.value.condition;
+            it.notes = result.value.notes;
+            s.saveReturnItem(index);
+            s.renderActiveSession();
+            
+            if(result.value.qty < remaining && !result.value.notes){
+                Swal.fire({
+                    title: 'تنبيه',
+                    text: 'الكمية المرتجعة أقل من المتبقي. هل تريد إضافة سبب النقص؟',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'إضافة سبب',
+                    cancelButtonText: 'تخطي',
+                    customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl' }
+                }).then(function(r2){ if(r2.isConfirmed){ s.editReturnItem(index); } });
+            }
+        }
+    });
+    
+    // دوال مساعدة للنافذة المنبثقة
+    this._adjustEditQty = function(delta){
+        var input = document.getElementById('swal-ret-qty');
+        if(input){ var v = (parseInt(input.value)||0)+delta; if(v>=0)input.value=v; }
+    };
+    this._setEditAllGood = function(rem){
+        var input = document.getElementById('swal-ret-qty'); if(input)input.value=rem;
+        var sel = document.getElementById('swal-ret-cond'); if(sel)sel.value='good';
+    };
+    this._setEditAllDamaged = function(rem){
+        var input = document.getElementById('swal-ret-qty'); if(input)input.value=rem;
+        var sel = document.getElementById('swal-ret-cond'); if(sel)sel.value='damaged';
+    };
+},
     adjustQty: function(index, delta){
         var input = byId('ret-qty-' + index); if(!input)return;
         var current = parseInt(input.value) || 0;
