@@ -15,6 +15,7 @@
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
+        /* جميع الأنماط كما هي دون تغيير */
         *{margin:0;padding:0;box-sizing:border-box}
         html,body{height:100%;overflow:hidden;position:fixed;width:100%}
         body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
@@ -582,7 +583,7 @@ var App = {
     },
 
     // ============================================================
-    // شاشة المعاينة - مع بحث ذكي (قائمة منسدلة، وليس مودال)
+    // شاشة المعاينة
     // ============================================================
 
     renderPreview: function(rs, items) {
@@ -622,7 +623,7 @@ var App = {
         html += '<p class="text-xs text-slate-400 mt-2"><i class="fa-solid fa-box ml-1"></i> ' + remainingCount + ' صنف متبقي من ' + items.length + '</p>';
         html += '</div>';
 
-        // ===== البحث الذكي في المعاينة (قائمة منسدلة، وليس مودال) =====
+        // البحث في المعاينة - قائمة منسدلة
         html += '<div class="relative mb-4">';
         html += '<div class="flex items-center gap-2">';
         html += '<div class="flex-1 relative">';
@@ -631,7 +632,6 @@ var App = {
         html += '</div>';
         html += '<button onclick="App.openBarcodeScannerForPreview()" class="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-sm hover:bg-blue-700 transition flex-shrink-0"><i class="fa-solid fa-camera text-lg"></i></button>';
         html += '</div>';
-        // قائمة منسدلة للنتائج (وليست مودال)
         html += '<div id="previewSearchResults" class="hidden absolute top-full left-0 right-0 bg-white rounded-2xl mt-1 shadow-lg z-50 max-h-48 overflow-y-auto border border-slate-100"></div>';
         html += '</div>';
 
@@ -704,7 +704,6 @@ var App = {
         });
     },
 
-    // ===== البحث في المعاينة - قائمة منسدلة (وليس مودال) =====
     onPreviewItemSearch: function(query) {
         var self = this;
         if (this.itemSearchTimer) { clearTimeout(this.itemSearchTimer); }
@@ -728,7 +727,6 @@ var App = {
                 }
             }
             if (foundItems.length > 0) {
-                // عرض النتائج في قائمة منسدلة
                 var dd = byId('previewSearchResults');
                 if (!dd) { return; }
                 var html = '';
@@ -742,7 +740,6 @@ var App = {
                 }
                 safeHTML(dd, html);
                 dd.classList.remove('hidden');
-                // مسح حقل البحث بعد ظهور النتائج (اختياري)
             } else {
                 self._searchItemInDBForPreview(q);
             }
@@ -800,7 +797,6 @@ var App = {
         var searchInput = byId('itemSearchPreview');
         if (searchInput) { searchInput.value = ''; }
 
-        // البحث في _previewItems
         if (this._previewItems) {
             for (var i = 0; i < this._previewItems.length; i++) {
                 if (this._previewItems[i].item_code === itemCode) {
@@ -811,7 +807,6 @@ var App = {
                 }
             }
         }
-        // إذا لم يوجد في الرانشيت
         toast('الصنف غير موجود في هذا الرانشيت', 'info');
     },
 
@@ -1046,6 +1041,10 @@ var App = {
         this.startTimer();
     },
 
+    // ============================================================
+    // بطاقة الصنف – مع زر إبلاغ عن اختلاف
+    // ============================================================
+
     _buildItemCard: function(index, it, remaining) {
         var isCompleted = it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes);
         var isOver = it.qty_returned > remaining;
@@ -1078,8 +1077,35 @@ var App = {
         } else {
             html += '<span class="text-xs text-slate-400 font-bold mt-1">⏳ لم يبدأ</span>';
         }
+
+        // ===== زر إبلاغ عن اختلاف (يظهر فقط عند وجود زيادة أو نقص مع سبب) =====
+        if (it.qty_returned > remaining || (it.qty_returned < remaining && it.notes)) {
+            html += '<button onclick="event.stopPropagation();App.reportDiscrepancyFromCard(' + index + ', ' + remaining + ')" class="btn-warning text-[10px] py-1 px-2 mt-1 w-full"><i class="fa-solid fa-triangle-exclamation ml-1"></i> إبلاغ عن اختلاف</button>';
+        }
+
         html += '</div></div>';
         return html;
+    },
+
+    // ===== دالة جديدة للإبلاغ عن اختلاف من البطاقة =====
+    reportDiscrepancyFromCard: function(index, remaining) {
+        var self = this;
+        var it = this.session.items[index];
+        var actualQty = it.qty_returned || 0;
+        var diff = actualQty - remaining;
+
+        if (diff === 0) {
+            toast('الكمية مطابقة. لا يوجد اختلاف.', 'info');
+            return;
+        }
+
+        if (diff < 0 && !it.notes) {
+            toast('الكمية أقل من المتبقي. أضف سبباً في النافذة أولاً.', 'warning');
+            this.editReturnItem(index);
+            return;
+        }
+
+        this.reportDiscrepancy(index, remaining, actualQty, diff, it.notes || '');
     },
 
     onItemSearch: function(query) {
@@ -1232,7 +1258,7 @@ var App = {
     },
 
     // ============================================================
-    // تعديل الصنف - شاشة واحدة (بدون خطوتين)
+    // تعديل الصنف - شاشة واحدة
     // ============================================================
 
     editReturnItem: function(index) {
@@ -1250,7 +1276,6 @@ var App = {
 
         var currentVal = it.qty_returned > 0 ? it.qty_returned : remaining;
 
-        // ===== شاشة واحدة تحتوي على كل شيء =====
         var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
         html += imgHtml;
         html += '<h3 style="font-size:20px;font-weight:800;color:#1e293b;margin-top:16px;margin-bottom:4px">' + (it.item_name || '') + '</h3>';
@@ -1259,14 +1284,12 @@ var App = {
             html += '<p style="font-size:13px;color:#475569;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:10px">📝 ' + desc + '</p>';
         }
 
-        // الكميات
         html += '<div style="background:#f8fafc;border-radius:12px;padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin-bottom:16px">';
         html += '<div><p style="font-size:11px;color:#94a3b8">محمّل</p><p style="font-size:20px;font-weight:800;color:#334155">' + it.qty_loaded + '</p></div>';
         html += '<div><p style="font-size:11px;color:#94a3b8">مسلّم</p><p style="font-size:20px;font-weight:800;color:#334155">' + it.qty_delivered + '</p></div>';
         html += '<div><p style="font-size:11px;color:#94a3b8">متبقي</p><p style="font-size:20px;font-weight:800;color:#2563eb">' + remaining + '</p></div>';
         html += '</div>';
 
-        // الكمية المرتجعة
         html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية المرتجعة</label>';
         html += '<div style="display:flex;align-items:center;gap:8px">';
         html += '<button onclick="App._adjustEditQty(-1)" style="width:40px;height:40px;border-radius:50%;background:#f1f5f9;border:2px solid #e2e8f0;font-weight:700;font-size:18px;cursor:pointer;color:#1e293b">-</button>';
@@ -1276,7 +1299,6 @@ var App = {
         html += '<button onclick="App._setEditAllDamaged(' + remaining + ')" style="background:#fef2f2;color:#b91c1c;border:2px solid #fecaca;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">الكل تالف</button>';
         html += '</div></div>';
 
-        // التصنيف
         html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">التصنيف</label>';
         html += '<select id="swal-ret-cond" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
         html += '<option value="good"' + ((it.return_condition || 'good') === 'good' ? ' selected' : '') + '>🟢 سليم</option>';
@@ -1284,12 +1306,10 @@ var App = {
         html += '<option value="missing"' + (it.return_condition === 'missing' ? ' selected' : '') + '>⬛ مفقود</option>';
         html += '</select></div>';
 
-        // ملاحظات
         html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات</label>';
         html += '<input type="text" id="swal-ret-notes" value="' + (it.notes || '') + '" placeholder="سبب النقص..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b">';
         html += '</div>';
 
-        // الأزرار
         html += '<div style="display:flex;gap:8px;margin-top:8px">';
         html += '<button id="swal-save-btn" style="flex:1;background:#2563eb;color:#fff;padding:10px;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer">💾 حفظ</button>';
         html += '<button id="swal-report-btn" style="flex:1;background:#ea580c;color:#fff;padding:10px;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer"><i class="fa-solid fa-triangle-exclamation ml-1"></i> إبلاغ عن اختلاف</button>';
@@ -1893,7 +1913,7 @@ var App = {
     },
 
     // ============================================================
-    // تبويب حسابي - مع إحصائيات
+    // تبويب حسابي
     // ============================================================
 
     renderAccount: function() {
