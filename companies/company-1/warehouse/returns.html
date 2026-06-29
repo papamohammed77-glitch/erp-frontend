@@ -204,66 +204,63 @@ var App = {
             : '<div class="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></div>';
     },
 
-    loadRunsheets: function(){
-        var s = this;
-        safeHTML(byId('mainContent'),'<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>');
+loadRunsheets: function(){
+    var s = this;
+    safeHTML(byId('mainContent'),'<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>');
+    
+    var p1 = supabase.from('runsheets').select('id,runsheet_code,run_date,status,driver_id,return_handler_id, run_sheet_details(count)').eq('status','Returning').eq('return_handler_id',this.pubUserId||this.currentUser.email).order('run_date',{ascending:false}).limit(20);
+    var p2 = supabase.from('runsheets').select('id,runsheet_code,run_date,status,driver_id, run_sheet_details(count)').eq('status','Delivered').order('run_date',{ascending:false}).limit(50);
+    
+    Promise.all([p1,p2]).then(function(r){
+        var myActive = r[0].data || [];
+        var available = r[1].data || [];
+        s.allRunsheets = myActive.concat(available);
         
-        var p1 = supabase.from('runsheets').select('runsheet_code,run_date,status,driver_id,return_handler_id, run_sheet_details(count)').eq('status','Returning').eq('return_handler_id',this.pubUserId||this.currentUser.email).order('run_date',{ascending:false}).limit(20);
-        var p2 = supabase.from('runsheets').select('runsheet_code,run_date,status,driver_id, run_sheet_details(count)').eq('status','Delivered').order('run_date',{ascending:false}).limit(50);
-        
-Promise.all([p1,p2]).then(function(r){
-    var myActive = r[0].data || [];
-    var available = r[1].data || [];
-    s.allRunsheets = myActive.concat(available);
-    
-    var driverIds = [];
-    var runsheetIds = [];
-    for(var i = 0; i < s.allRunsheets.length; i++) {
-        if(s.allRunsheets[i].driver_id && driverIds.indexOf(s.allRunsheets[i].driver_id) === -1) {
-            driverIds.push(s.allRunsheets[i].driver_id);
-        }
-        if(s.allRunsheets[i].id) {
-            runsheetIds.push(s.allRunsheets[i].id);
-        }
-    }
-    
-    // جلب أسماء السائقين
-    var driverPromise = driverIds.length > 0 
-        ? supabase.from('users').select('id, name').in('id', driverIds)
-        : Promise.resolve({ data: [] });
-    
-    // جلب عدد الأصناف المتبقية لكل رانشيت
-    var remainingPromise = runsheetIds.length > 0
-        ? supabase.from('run_sheet_details')
-            .select('runsheet_id, qty_loaded, qty_delivered')
-            .in('runsheet_id', runsheetIds)
-        : Promise.resolve({ data: [] });
-    
-    Promise.all([driverPromise, remainingPromise]).then(function(results) {
-        // أسماء السائقين
-        var userMap = {};
-        var users = results[0].data || [];
-        for(var ui = 0; ui < users.length; ui++) { userMap[users[ui].id] = users[ui].name; }
-        s._driverMap = userMap;
-        
-        // عدد الأصناف المتبقية لكل رانشيت
-        var remainingMap = {};
-        var details = results[1].data || [];
-        for(var di = 0; di < details.length; di++) {
-            var det = details[di];
-            var remaining = (Number(det.qty_loaded) || 0) - (Number(det.qty_delivered) || 0);
-            if(remaining > 0) {
-                remainingMap[det.runsheet_id] = (remainingMap[det.runsheet_id] || 0) + 1;
+        var driverIds = [];
+        var runsheetIds = [];
+        for(var i = 0; i < s.allRunsheets.length; i++) {
+            if(s.allRunsheets[i].driver_id && driverIds.indexOf(s.allRunsheets[i].driver_id) === -1) {
+                driverIds.push(s.allRunsheets[i].driver_id);
+            }
+            if(s.allRunsheets[i].id) {
+                runsheetIds.push(s.allRunsheets[i].id);
             }
         }
-        s._remainingMap = remainingMap;
         
-        s.renderList(myActive, available);
+        var driverPromise = driverIds.length > 0 
+            ? supabase.from('users').select('id, name').in('id', driverIds)
+            : Promise.resolve({ data: [] });
+        
+        var remainingPromise = runsheetIds.length > 0
+            ? supabase.from('run_sheet_details')
+                .select('runsheet_id, qty_loaded, qty_delivered')
+                .in('runsheet_id', runsheetIds)
+            : Promise.resolve({ data: [] });
+        
+        Promise.all([driverPromise, remainingPromise]).then(function(results) {
+            var userMap = {};
+            var users = results[0].data || [];
+            for(var ui = 0; ui < users.length; ui++) { userMap[users[ui].id] = users[ui].name; }
+            s._driverMap = userMap;
+            
+            var remainingMap = {};
+            var details = results[1].data || [];
+            for(var di = 0; di < details.length; di++) {
+                var det = details[di];
+                var loaded = Number(det.qty_loaded) || 0;
+                var delivered = Number(det.qty_delivered) || 0;
+                if(loaded > delivered) {
+                    remainingMap[det.runsheet_id] = (remainingMap[det.runsheet_id] || 0) + 1;
+                }
+            }
+            s._remainingMap = remainingMap;
+            
+            s.renderList(myActive, available);
+        });
+    }).catch(function(){ 
+        safeHTML(byId('mainContent'),'<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>'); 
     });
-}).catch(function(){ 
-    safeHTML(byId('mainContent'),'<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>'); 
-});
-    },
+},
 
     renderList: function(myActive, available){
         var self = this;
@@ -280,7 +277,7 @@ Promise.all([p1,p2]).then(function(r){
         
         if(myActive.length > 0){
             html += '<h2 class="text-lg font-black text-slate-800 mb-3">📌 مهامي النشطة</h2>';
-            for(var i = 0; i < myActive.length; i++){ html += self._buildCard(myActive[i], true); }
+            for(var i = 0; i < myActive.length; i++){ html += self._buildCard(myActive[i], true, self._remainingMap); }
             html += '<hr class="my-6">';
         }
         
@@ -288,7 +285,7 @@ Promise.all([p1,p2]).then(function(r){
         if(available.length === 0){
             html += '<div class="text-center py-12"><div class="text-6xl mb-4">☕</div><p class="text-slate-400 font-bold">لا توجد رانشيتات مسلّمة.</p><p class="text-slate-300 text-sm mt-1">استمتع بقهوتك حتى تأتي مهمة جديدة!</p></div>';
         } else {
-            for(var j = 0; j < available.length; j++){ html += self._buildCard(available[j], false); }
+            for(var j = 0; j < available.length; j++){ html += self._buildCard(available[j], false, self._remainingMap); }
         }
         safeHTML(byId('mainContent'), html);
 
@@ -306,21 +303,19 @@ setTimeout(function() {
 }, 100);
     },
 
-_buildCard: function(rs, isActive){
+_buildCard: function(rs, isActive, remainingMap){
     var code = rs.runsheet_code || '';
     var driverName = (this._driverMap && rs.driver_id) ? (this._driverMap[rs.driver_id] || rs.driver_id) : (rs.driver_id || 'غير محدد');
     var icon = isActive ? '🔄' : '📦';
     var label = isActive ? 'قيد المرتجعات' : 'جاهز';
     var color = isActive ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600';
-    
-    var infoLine = rs.run_date + ' | السائق: ' + driverName + ' | الأصناف المتبقية: <span id="remaining-count-' + code + '" class="font-bold text-amber-600">...</span>';
+    var remainingCount = (remainingMap && rs.id) ? (remainingMap[rs.id] || 0) : 0;
     
     var btn = '';
     if(isActive){
         btn = '<button onclick="event.stopPropagation();App.cancelReturn(\'' + code + '\')" class="btn-danger mt-3 text-xs px-3 py-1.5"><i class="fa-solid fa-xmark ml-1"></i> إلغاء المرتجعات</button>';
     }
-    
-    return '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openReturn(\'' + code + '\')"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">' + icon + '</span><div><span class="font-black text-slate-800">' + code + '</span><p class="text-xs text-slate-400 mt-0.5">' + infoLine + '</p></div></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + color + '">' + label + '</span><i class="fa-solid fa-chevron-left text-slate-300 text-xs"></i></div></div>' + btn + '</div>';
+    return '<div class="card mb-3 cursor-pointer slide-in" onclick="App.openReturn(\'' + code + '\')"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="text-2xl">' + icon + '</span><div><span class="font-black text-slate-800">' + code + '</span><p class="text-xs text-slate-400 mt-0.5">' + rs.run_date + ' | السائق: ' + driverName + ' | الأصناف المتبقية: <span class="font-bold text-amber-600">' + remainingCount + '</span></p></div></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + color + '">' + label + '</span><i class="fa-solid fa-chevron-left text-slate-300 text-xs"></i></div></div>' + btn + '</div>';
 },
     onSearchInput: function(query){
         var s = this;
