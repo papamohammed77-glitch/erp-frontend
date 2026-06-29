@@ -377,37 +377,62 @@ openReturn: function(code){
                 return;
             }
             
-            var html = '<div class="flex items-center gap-3 mb-6"><button onclick="App.switchTab(\'pending\')" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-teal-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + ' | ' + driverName + '</span></div>';
-            
-            if(rs.status === 'Delivered'){
-                html += '<button onclick="App.startReturn(\'' + code + '\')" class="btn-primary mb-6"><i class="fa-solid fa-play ml-2"></i> بدء المرتجعات</button>';
+            // ========== شاشة المعاينة قبل بدء المرتجعات ==========
+            var remainingCount = 0;
+            for(var k = 0; k < items.length; k++){
+                var rem = (Number(items[k].qty_loaded) || 0) - (Number(items[k].qty_delivered) || 0);
+                if(rem > 0) remainingCount++;
             }
             
-            var remainingCount = 0;
-            html += '<div class="text-sm text-slate-400 mb-3">الأصناف في الرانشيت:</div>';
-            html += '<div class="space-y-2 mb-6">';
+            var html = '';
+            
+            // Header
+            html += '<div class="flex items-center gap-3 mb-4"><button onclick="App.switchTab(\'pending\')" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-teal-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + ' | ' + driverName + '</span></div>';
+            
+            // زر بدء المرتجعات
+            if(rs.status === 'Delivered'){
+                html += '<button onclick="App.startReturn(\'' + code + '\')" class="btn-primary mb-4"><i class="fa-solid fa-play ml-2"></i> بدء المرتجعات</button>';
+            }
+            
+            // بطاقة التقدم (ثابتة – لم يبدأ بعد)
+            html += '<div class="bg-teal-50 rounded-3xl p-5 mb-6 slide-in"><div class="flex items-center justify-between mb-4"><span class="font-black text-2xl text-slate-800">معاينة الرانشيت</span><span class="bg-white text-teal-600 px-4 py-2 rounded-2xl text-sm font-black shadow-sm">⏱️ 00:00</span></div><div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>الأصناف المتبقية في السيارة</span><span>' + remainingCount + ' / ' + itemCount + ' صنف</span></div><div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-teal-500 to-emerald-500 rounded-full" style="width:0%"></div></div></div></div>';
+            
+            // حقل البحث الذكي
+            html += '<div class="relative mb-4"><div class="flex items-center gap-2"><div class="flex-1 relative"><i class="fa-solid fa-barcode absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" id="itemSearchPreview" placeholder="🔍 امسح الباركود أو ابحث باسم الصنف..." class="w-full pr-10 pl-4 py-3.5 bg-white rounded-2xl border-2 border-slate-100 focus:border-teal-400 outline-none font-semibold text-sm" oninput="App.onPreviewItemSearch(this.value)" autocomplete="off"></div><button onclick="App.openBarcodeScannerForPreview()" class="w-12 h-12 bg-teal-600 text-white rounded-xl flex items-center justify-center shadow-sm hover:bg-teal-700 transition flex-shrink-0"><i class="fa-solid fa-camera text-lg"></i></button></div><div id="previewSearchResults" class="hidden absolute top-full left-0 right-0 bg-white rounded-2xl mt-1 shadow-lg z-50 max-h-48 overflow-y-auto border border-slate-100"></div></div>';
+            
+            // بطاقات الملخص (كلها صفر)
+            html += '<div class="grid grid-cols-3 gap-2 mb-4"><div class="bg-green-50 rounded-2xl p-3 text-center border border-green-200"><p class="text-xs text-green-500 font-bold">✅ سليم</p><p class="text-xl font-black text-green-600">0</p></div><div class="bg-red-50 rounded-2xl p-3 text-center border border-red-200"><p class="text-xs text-red-500 font-bold">❌ تالف</p><p class="text-xl font-black text-red-600">0</p></div><div class="bg-slate-50 rounded-2xl p-3 text-center border border-slate-200"><p class="text-xs text-slate-500 font-bold">⬛ مفقود</p><p class="text-xl font-black text-slate-600">0</p></div></div>';
+            
+            // قائمة الأصناف – المتبقي أولاً
+            var sortedItems = [];
             for(var k = 0; k < items.length; k++){
                 var it = items[k];
                 var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
-                if(remaining > 0) remainingCount++;
-                var badgeColor = remaining > 0 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700';
-                var badgeText = remaining > 0 ? 'متبقي: ' + remaining : '✅ تم التسليم';
+                sortedItems.push({ item: it, remaining: remaining });
+            }
+            sortedItems.sort(function(a, b){
+                if(a.remaining > 0 && b.remaining === 0) return -1;
+                if(a.remaining === 0 && b.remaining > 0) return 1;
+                return 0;
+            });
+            
+            html += '<div class="space-y-3">';
+            for(var k = 0; k < sortedItems.length; k++){
+                var it = sortedItems[k].item;
+                var remaining = sortedItems[k].remaining;
                 
-                html += '<div class="card ' + (remaining > 0 ? 'cursor-pointer active:scale-[0.98]' : 'opacity-60') + '" onclick="App.showItemDetail(\'' + (it.item_code || '') + '\', \'' + (it.item_name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\', ' + (it.qty_loaded || 0) + ', ' + (it.qty_delivered || 0) + ', ' + remaining + ')">';
-                html += '<div class="flex items-center gap-4">' + s._img(it.item_code);
-                html += '<div class="flex-1">';
-                html += '<p class="font-bold text-slate-700 text-sm">' + (it.item_name || '') + '</p>';
-                html += '<p class="text-xs text-slate-400">' + (it.unit || 'حبة') + '</p>';
-                html += '<p class="text-xs text-slate-500 mt-0.5">محمّل: <span class="font-bold">' + (it.qty_loaded || 0) + '</span> | مسلّم: <span class="font-bold">' + (it.qty_delivered || 0) + '</span></p>';
-                html += '</div>';
-                html += '<span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + badgeColor + '">' + badgeText + '</span>';
-                html += '</div>';
+                if(remaining <= 0){
+                    html += '<div class="card opacity-60 border-r-4 border-green-400"><div class="flex items-center gap-4">' + s._img(it.item_code) + '<div><p class="font-bold text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + (it.unit || 'حبة') + ' | محمّل: ' + (it.qty_loaded || 0) + ' | مسلّم: ' + (it.qty_delivered || 0) + '</p><span class="text-green-600 text-xs font-bold">✅ تم تسليمه بالكامل</span></div></div></div>';
+                } else {
+                    html += '<div class="card cursor-pointer active:scale-[0.98]" onclick="App.showItemDetail(\'' + (it.item_code || '') + '\', \'' + (it.item_name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\', ' + (it.qty_loaded || 0) + ', ' + (it.qty_delivered || 0) + ', ' + remaining + ')"><div class="flex items-center gap-4">' + s._img(it.item_code) + '<div class="flex-1"><p class="font-bold text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + (it.unit || 'حبة') + '</p><p class="text-xs text-slate-500 mt-0.5">محمّل: <span class="font-bold">' + (it.qty_loaded || 0) + '</span> | مسلّم: <span class="font-bold">' + (it.qty_delivered || 0) + '</span> | <span class="font-bold text-teal-600">متبقي: ' + remaining + '</span></p></div><i class="fa-solid fa-chevron-left text-slate-300 text-xs"></i></div></div>';
+                }
             }
             html += '</div>';
             
-            html += '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-4 text-sm text-amber-700 font-bold">📦 عدد الأصناف المتبقية في السيارة: <span class="text-amber-800">' + remainingCount + '</span> من أصل ' + itemCount + '</div>';
-            
             safeHTML(byId('mainContent'), html);
+            
+            // تخزين مؤقت للأصناف للبحث
+            s._previewItems = items;
         });
     });
 },
@@ -673,6 +698,84 @@ showItemDetail: function(code, name, unit, loaded, delivered, remaining){
         });
     },
 
+onPreviewItemSearch: function(query){
+    var self = this;
+    if(this.itemSearchTimer) clearTimeout(this.itemSearchTimer);
+    if(!query || query.trim().length < 1){ this._dismissHighlight(); return; }
+    var delay = query.length > 6 ? 50 : 300;
+    this.itemSearchTimer = setTimeout(function(){
+        var q = query.trim().toLowerCase();
+        var found = null;
+        if(self._previewItems){
+            for(var i = 0; i < self._previewItems.length; i++){
+                var it = self._previewItems[i];
+                var code = (it.item_code || '').toLowerCase();
+                var name = (it.item_name || '').toLowerCase();
+                if(code === q || code.indexOf(q) !== -1 || name.indexOf(q) !== -1){
+                    found = it; break;
+                }
+            }
+        }
+        if(found){
+            var remaining = (Number(found.qty_loaded) || 0) - (Number(found.qty_delivered) || 0);
+            self.showItemDetail(found.item_code, found.item_name, found.unit, found.qty_loaded, found.qty_delivered, remaining);
+            var searchInput = byId('itemSearchPreview');
+            if(searchInput) searchInput.value = '';
+            if(window.navigator && window.navigator.vibrate){ window.navigator.vibrate([50,50,50]); }
+        } else {
+            self._searchItemInDBForPreview(q);
+        }
+    }, delay);
+},
+
+_searchItemInDBForPreview: function(query){
+    var self = this;
+    supabase.from('items').select('item_code, name, unit').or('name.ilike.%'+query+'%,item_code.ilike.%'+query+'%').limit(5).then(function(res){
+        var items = res.data || [];
+        if(items.length === 0){
+            Swal.fire({toast:true,position:'top',icon:'info',title:'🔍 الصنف غير موجود في هذا الرانشيت',showConfirmButton:false,timer:2000,customClass:{popup:'!rounded-2xl !shadow-xl'}});
+        } else if(items.length === 1){
+            var found = null;
+            if(self._previewItems){
+                for(var i = 0; i < self._previewItems.length; i++){
+                    if(self._previewItems[i].item_code === items[0].item_code){ found = self._previewItems[i]; break; }
+                }
+            }
+            if(found){
+                var remaining = (Number(found.qty_loaded) || 0) - (Number(found.qty_delivered) || 0);
+                self.showItemDetail(found.item_code, found.item_name, found.unit, found.qty_loaded, found.qty_delivered, remaining);
+                var searchInput = byId('itemSearchPreview');
+                if(searchInput) searchInput.value = '';
+            } else {
+                Swal.fire({toast:true,position:'top',icon:'info',title:'الصنف موجود في المخزن لكن ليس في هذا الرانشيت',showConfirmButton:false,timer:2500,customClass:{popup:'!rounded-2xl !shadow-xl'}});
+            }
+        }
+    });
+},
+
+openBarcodeScannerForPreview: function(){
+    var self = this;
+    Swal.fire({
+        title:'مسح الباركود',html:'<div id="barcode-reader-preview" style="width:100%;max-width:300px;margin:0 auto;"></div>',
+        showCancelButton:false,showConfirmButton:false,
+        customClass:{popup:'!rounded-3xl !p-4'},
+        didOpen:function(){
+            var scanner = new Html5Qrcode("barcode-reader-preview");
+            scanner.start(
+                {facingMode:"environment"},{fps:10,qrbox:{width:250,height:150}},
+                function(decodedText){
+                    scanner.stop().then(function(){
+                        Swal.close();
+                        var searchInput = byId('itemSearchPreview');
+                        if(searchInput){ searchInput.value = decodedText; self.onPreviewItemSearch(decodedText); }
+                    });
+                },
+                function(){}
+            ).catch(function(err){ Swal.close(); toast('فشل تشغيل الكاميرا: '+err.message,'error'); });
+        },
+        willClose:function(){}
+    });
+},
     _loadLocalChanges: function(){
         var s = this;
         db.localChanges.where('runsheet_code').equals(s.session.runsheet_code).toArray().then(function(changes){
