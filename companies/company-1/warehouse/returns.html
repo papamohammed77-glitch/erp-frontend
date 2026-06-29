@@ -1001,11 +1001,8 @@ var App = {
         html += '<span class="text-xs font-bold text-red-500">❌ ' + summaryDamaged + '</span>';
         html += '<span class="text-xs font-bold text-slate-500">⬛ ' + summaryMissing + '</span>';
         html += '</div>';
-        html += '<button onclick="App.setAllGood()" class="btn-success text-xs py-1.5 px-3"><i class="fa-solid fa-check ml-1"></i> الكل سليم</button>';
-        html += '<button onclick="App.setAllDamaged()" class="btn-danger text-xs py-1.5 px-3"><i class="fa-solid fa-xmark ml-1"></i> الكل تالف</button>';
         html += '<button onclick="App.reportDiscrepancyGeneral()" class="btn-warning text-xs py-1.5 px-3"><i class="fa-solid fa-triangle-exclamation ml-1"></i> 🚨 إبلاغ عن اختلاف</button>';
         html += '</div>';
-
         html += '<div class="relative mb-4">';
         html += '<div class="flex items-center gap-2">';
         html += '<div class="flex-1 relative">';
@@ -1440,89 +1437,6 @@ reportDiscrepancyFromCard: function(index, remaining) {
         }
         this.summary = { good: summaryGood, damaged: summaryDamaged, missing: summaryMissing };
     },
-
-    setAllGood: function() {
-        var self = this;
-        var remainingItems = [];
-        for (var i = 0; i < this.session.items.length; i++) {
-            var it = this.session.items[i];
-            var remaining = it.qty_loaded - it.qty_delivered;
-            if (remaining > 0 && it.qty_returned < remaining) {
-                remainingItems.push({ index: i, remaining: remaining });
-            }
-        }
-        if (remainingItems.length === 0) {
-            toast('جميع الأصناف مكتملة بالفعل', 'info');
-            return;
-        }
-        Swal.fire({
-            title: 'تطبيق "الكل سليم"',
-            text: 'سيتم تصنيف ' + remainingItems.length + ' صنف كـ "سليم" وإرجاع الكمية بالكامل. متابعة؟',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، الكل سليم',
-            cancelButtonText: 'إلغاء',
-            customClass: {
-                popup: '!rounded-3xl',
-                confirmButton: '!rounded-xl !bg-green-600 !px-8',
-                cancelButton: '!rounded-xl !px-8'
-            }
-        }).then(function(result) {
-            if (!result.isConfirmed) { return; }
-            for (var j = 0; j < remainingItems.length; j++) {
-                var idx = remainingItems[j].index;
-                var it = self.session.items[idx];
-                it.qty_returned = remainingItems[j].remaining;
-                it.return_condition = 'good';
-                it.notes = 'تم التصنيف تلقائياً (الكل سليم)';
-                self.saveReturnItem(idx);
-            }
-            toast('تم تطبيق "الكل سليم" على ' + remainingItems.length + ' أصناف', 'success');
-            self.renderActiveSession();
-        });
-    },
-
-    setAllDamaged: function() {
-        var self = this;
-        var remainingItems = [];
-        for (var i = 0; i < this.session.items.length; i++) {
-            var it = this.session.items[i];
-            var remaining = it.qty_loaded - it.qty_delivered;
-            if (remaining > 0 && it.qty_returned < remaining) {
-                remainingItems.push({ index: i, remaining: remaining });
-            }
-        }
-        if (remainingItems.length === 0) {
-            toast('جميع الأصناف مكتملة بالفعل', 'info');
-            return;
-        }
-        Swal.fire({
-            title: 'تطبيق "الكل تالف"',
-            text: 'سيتم تصنيف ' + remainingItems.length + ' صنف كـ "تالف" وإرجاع الكمية بالكامل. متابعة؟',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، الكل تالف',
-            cancelButtonText: 'إلغاء',
-            customClass: {
-                popup: '!rounded-3xl',
-                confirmButton: '!rounded-xl !bg-red-600 !px-8',
-                cancelButton: '!rounded-xl !px-8'
-            }
-        }).then(function(result) {
-            if (!result.isConfirmed) { return; }
-            for (var j = 0; j < remainingItems.length; j++) {
-                var idx = remainingItems[j].index;
-                var it = self.session.items[idx];
-                it.qty_returned = remainingItems[j].remaining;
-                it.return_condition = 'damaged';
-                it.notes = 'تم التصنيف تلقائياً (الكل تالف)';
-                self.saveReturnItem(idx);
-            }
-            toast('تم تطبيق "الكل تالف" على ' + remainingItems.length + ' أصناف', 'success');
-            self.renderActiveSession();
-        });
-    },
-
     // ============================================================
     // الإبلاغ عن اختلاف - مع دعم "صنف مختلف"
     // ============================================================
@@ -1575,7 +1489,7 @@ reportDiscrepancyFromCard: function(index, remaining) {
         html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات إضافية</label>';
         html += '<textarea id="discNotes" rows="2" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b">' + (notes || '') + '</textarea></div>';
 
-        html += '<p style="font-size:12px;color:#dc2626;margin-top:12px">⚠️ سيتم إبلاغ المشرف. الرانشيت سيبقى معلقاً حتى التحقيق.</p>';
+        html += '<p style="font-size:12px;color:#dc2626;margin-top:12px">⚠️ سيتم تسجيل البلاغ . الرانشيت سيبقى معلقاً حتى التحقيق.</p>';
         html += '</div>';
 
         Swal.fire({
@@ -1583,7 +1497,7 @@ reportDiscrepancyFromCard: function(index, remaining) {
             html: html,
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'إبلاغ المشرف',
+            confirmButtonText: 'إبلاغ ',
             cancelButtonText: 'إلغاء',
             customClass: {
                 popup: '!rounded-3xl !p-5',
@@ -1677,7 +1591,7 @@ reportDiscrepancyFromCard: function(index, remaining) {
                 .then(function(j) {
                     Swal.close();
                     if (j.success) {
-                        var msg = 'تم إبلاغ المشرف بالاختلاف';
+                        var msg = 'تم تسجيل البلاغ بنجاح';
                         if (discType === 'wrong_item') {
                             msg += ' (صنف مختلف: ' + (payload.actual_item_name || actualItemCode) + ' بدلاً من ' + (payload.expected_item_name || expectedItemCode) + ')';
                         }
@@ -1725,20 +1639,26 @@ reportDiscrepancyGeneral: function() {
     html += '<p style="font-size:14px;color:#334155">🚨 الإبلاغ عن اختلاف في الرانشيت</p>';
     html += '<p style="font-size:13px;color:#64748b;margin-top:8px">الرجاء توضيح المشكلة التي اكتشفتها:</p>';
 
-    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع الاختلاف</label>';
+    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع المشكلة</label>';
     html += '<select id="discTypeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
-    html += '<option value="surplus">زيادة - كمية أكثر من المتوقع</option>';
-    html += '<option value="shortage">نقص - كمية أقل من المتوقع</option>';
+    html += '<option value="surplus">زيادة في الكمية</option>';
+    html += '<option value="shortage">نقص في الكمية</option>';
     html += '<option value="wrong_item">صنف مختلف</option>';
+    html += '<option value="damaged">صنف تالف</option>';
+    html += '<option value="missing">صنف مفقود</option>';
     html += '<option value="other">سبب آخر</option>';
     html += '</select></div>';
 
+    // حقول إضافية حسب نوع المشكلة (تبقى كما هي مع إضافة خيارات جديدة)
     html += '<div id="discrepancyExtraFieldsGeneral" class="discrepancy-extra-fields">';
-    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف الموجود (الفعلي)</label>';
-    html += '<select id="actualItemCodeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
+    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المعني</label>';
+    html += '<select id="itemCodeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
     html += itemsOptionsHtml;
     html += '</select></div>';
-    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المتوقع (في النظام)</label>';
+    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية</label>';
+    html += '<input type="number" id="qtyGeneral" value="1" min="1" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b">';
+    html += '</div>';
+    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">(في حالة "صنف مختلف") الصنف المتوقع</label>';
     html += '<select id="expectedItemCodeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
     html += itemsOptionsHtml;
     html += '</select></div>';
@@ -1747,7 +1667,7 @@ reportDiscrepancyGeneral: function() {
     html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات إضافية</label>';
     html += '<textarea id="discNotesGeneral" rows="2" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b"></textarea></div>';
 
-    html += '<p style="font-size:12px;color:#dc2626;margin-top:12px">⚠️ سيتم إبلاغ المشرف. الرانشيت سيبقى معلقاً حتى التحقيق.</p>';
+    html += '<p style="font-size:12px;color:#dc2626;margin-top:12px">⚠️ سيتم تسجيل البلاغ. الرانشيت سيبقى معلقاً حتى المراجعة.</p>';
     html += '</div>';
 
     Swal.fire({
@@ -1755,7 +1675,7 @@ reportDiscrepancyGeneral: function() {
         html: html,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: 'إبلاغ المشرف',
+        confirmButtonText: 'إبلاغ',
         cancelButtonText: 'إلغاء',
         customClass: {
             popup: '!rounded-3xl !p-5',
@@ -1768,30 +1688,44 @@ reportDiscrepancyGeneral: function() {
             if (discTypeEl && extraFields) {
                 discTypeEl.addEventListener('change', function() {
                     if (discTypeEl.value === 'wrong_item') {
-                        extraFields.classList.add('visible');
+                        extraFields.style.display = 'block';
                     } else {
-                        extraFields.classList.remove('visible');
+                        extraFields.style.display = 'none';
                     }
                 });
+                // إخفاء الحقول الإضافية افتراضياً
+                extraFields.style.display = 'none';
             }
         },
         preConfirm: function() {
             var discTypeEl = document.getElementById('discTypeGeneral');
-            var actualItemCodeEl = document.getElementById('actualItemCodeGeneral');
+            var itemCodeEl = document.getElementById('itemCodeGeneral');
+            var qtyEl = document.getElementById('qtyGeneral');
             var expectedItemCodeEl = document.getElementById('expectedItemCodeGeneral');
             var discNotesEl = document.getElementById('discNotesGeneral');
 
             var discType = discTypeEl ? discTypeEl.value : 'other';
-            var actualItemCode = actualItemCodeEl ? actualItemCodeEl.value : null;
+            var itemCode = itemCodeEl ? itemCodeEl.value : null;
+            var qty = qtyEl ? parseInt(qtyEl.value) || 0 : 0;
             var expectedItemCode = expectedItemCodeEl ? expectedItemCodeEl.value : null;
             var notesText = discNotesEl ? discNotesEl.value : '';
 
+            if (!itemCode) {
+                Swal.showValidationMessage('يرجى اختيار الصنف المعني');
+                return false;
+            }
+
+            if (qty <= 0) {
+                Swal.showValidationMessage('يرجى إدخال كمية صحيحة');
+                return false;
+            }
+
             if (discType === 'wrong_item') {
-                if (!actualItemCode || !expectedItemCode) {
-                    Swal.showValidationMessage('يرجى اختيار الصنف الموجود والمتوقع');
+                if (!expectedItemCode) {
+                    Swal.showValidationMessage('يرجى اختيار الصنف المتوقع');
                     return false;
                 }
-                if (actualItemCode === expectedItemCode) {
+                if (itemCode === expectedItemCode) {
                     Swal.showValidationMessage('الصنف الموجود والمتوقع متماثلان. يرجى اختيار صنفين مختلفين.');
                     return false;
                 }
@@ -1799,7 +1733,8 @@ reportDiscrepancyGeneral: function() {
 
             return {
                 discType: discType,
-                actualItemCode: actualItemCode,
+                itemCode: itemCode,
+                qty: qty,
                 expectedItemCode: expectedItemCode,
                 notesText: notesText
             };
@@ -1808,32 +1743,38 @@ reportDiscrepancyGeneral: function() {
         if (!result.isConfirmed) { return; }
 
         var discType = result.value.discType;
-        var actualItemCode = result.value.actualItemCode;
+        var itemCode = result.value.itemCode;
+        var qty = result.value.qty;
         var expectedItemCode = result.value.expectedItemCode;
         var notesText = result.value.notesText;
 
+        var itemName = '';
+        var expectedItemName = '';
+        for (var k = 0; k < ALL_ITEMS_LIST.length; k++) {
+            if (ALL_ITEMS_LIST[k].item_code === itemCode) {
+                itemName = ALL_ITEMS_LIST[k].name || itemCode;
+            }
+            if (ALL_ITEMS_LIST[k].item_code === expectedItemCode) {
+                expectedItemName = ALL_ITEMS_LIST[k].name || expectedItemCode;
+            }
+        }
+
         var payload = {
             runsheet_id: self.session.runsheet_id,
-            item_code: 'GENERAL',
-            item_name: 'بلاغ عام',
-            expected_qty: 0,
-            actual_qty: 0,
-            difference_qty: 0,
+            item_code: itemCode,
+            item_name: itemName,
+            expected_qty: qty,
+            actual_qty: discType === 'shortage' ? 0 : qty,
+            difference_qty: discType === 'shortage' ? -qty : qty,
             discrepancy_type: discType,
             notes: notesText
         };
 
         if (discType === 'wrong_item') {
-            payload.actual_item_code = actualItemCode;
             payload.expected_item_code = expectedItemCode;
-            for (var k = 0; k < ALL_ITEMS_LIST.length; k++) {
-                if (ALL_ITEMS_LIST[k].item_code === actualItemCode) {
-                    payload.actual_item_name = ALL_ITEMS_LIST[k].name || actualItemCode;
-                }
-                if (ALL_ITEMS_LIST[k].item_code === expectedItemCode) {
-                    payload.expected_item_name = ALL_ITEMS_LIST[k].name || expectedItemCode;
-                }
-            }
+            payload.expected_item_name = expectedItemName;
+            payload.actual_item_code = itemCode;
+            payload.actual_item_name = itemName;
         }
 
         Swal.fire({ title: 'جاري الإبلاغ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
@@ -1851,9 +1792,9 @@ reportDiscrepancyGeneral: function() {
             .then(function(j) {
                 Swal.close();
                 if (j.success) {
-                    var msg = 'تم إبلاغ المشرف بالاختلاف';
+                    var msg = 'تم تسجيل البلاغ بنجاح';
                     if (discType === 'wrong_item') {
-                        msg += ' (صنف مختلف: ' + (payload.actual_item_name || actualItemCode) + ' بدلاً من ' + (payload.expected_item_name || expectedItemCode) + ')';
+                        msg += ' (صنف مختلف: ' + itemName + ' بدلاً من ' + expectedItemName + ')';
                     }
                     toast(msg, 'success');
                     self.renderActiveSession();
