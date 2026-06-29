@@ -1081,8 +1081,6 @@ var App = {
             html += '<span class="text-xs text-slate-400 font-bold mt-1">⏳ لم يبدأ</span>';
         }
 
-        // زر إبلاغ عن اختلاف - يظهر دائماً (لأنه قد يكون صنف مختلف حتى لو الكميات متطابقة)
-        html += '<button onclick="event.stopPropagation();App.reportDiscrepancyFromCard(' + index + ', ' + remaining + ')" class="btn-warning text-[10px] py-1 px-2 mt-1 w-full"><i class="fa-solid fa-triangle-exclamation ml-1"></i> إبلاغ عن اختلاف</button>';
 
         html += '</div></div>';
         return html;
@@ -1090,23 +1088,27 @@ var App = {
 
     // ===== دالة للإبلاغ عن اختلاف من البطاقة (معدلة) =====
     reportDiscrepancyFromCard: function(index, remaining) {
-        var self = this;
-        var it = this.session.items[index];
-        var actualQty = it.qty_returned || 0;
-        var diff = actualQty - remaining;
+    var self = this;
+    var it = this.session.items[index];
+    var actualQty = it.qty_returned || 0;
+    var diff = actualQty - remaining;
 
-        // ✅ تم إزالة الشرط الذي يمنع الإبلاغ عند diff === 0
-        // لأن المستخدم قد يحتاج للإبلاغ عن "صنف مختلف" حتى لو الكميات متطابقة
+    // ✅ إذا كان diff === 0، نفتح نافذة التعديل بدلاً من الإبلاغ
+    if (diff === 0) {
+        toast('لا يوجد اختلاف في الكمية. يمكنك تعديل الصنف أو الإبلاغ عن صنف مختلف من النافذة.', 'info');
+        this.editReturnItem(index);
+        return;
+    }
 
-        if (diff < 0 && !it.notes) {
-            toast('الكمية أقل من المتبقي. أضف سبباً في النافذة أولاً.', 'warning');
-            this.editReturnItem(index);
-            return;
-        }
+    if (diff < 0 && !it.notes) {
+        toast('الكمية أقل من المتبقي. أضف سبباً في النافذة أولاً.', 'warning');
+        this.editReturnItem(index);
+        return;
+    }
 
-        // فتح نافذة الإبلاغ مع تمرير البيانات
-        this.reportDiscrepancy(index, remaining, actualQty, diff, it.notes || '');
-    },
+    // فتح نافذة الإبلاغ مع تمرير البيانات (للاختلافات الحقيقية فقط)
+    this.reportDiscrepancy(index, remaining, actualQty, diff, it.notes || '');
+},
 
     onItemSearch: function(query) {
         var self = this;
