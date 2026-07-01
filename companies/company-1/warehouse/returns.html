@@ -24,15 +24,9 @@
         .btn-primary{background:linear-gradient(135deg,#2563eb,#3b82f6);color:#ffffff;padding:0.875rem 1.5rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;width:100%;transition:all 0.15s ease;box-shadow:0 4px 12px rgba(37,99,235,0.25)}
         .btn-primary:active{transform:scale(0.97);box-shadow:0 2px 6px rgba(37,99,235,0.15)}
         .btn-secondary{background:#f1f5f9;color:#1e293b;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.15s ease}
-        .btn-secondary:active{transform:scale(0.97)}
         .btn-danger{background:linear-gradient(135deg,#dc2626,#ef4444);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.15s ease;box-shadow:0 4px 12px rgba(220,38,38,0.2)}
-        .btn-danger:active{transform:scale(0.97)}
-        .btn-success{background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.15s ease;box-shadow:0 4px 12px rgba(22,163,74,0.2)}
-        .btn-success:active{transform:scale(0.97)}
         .btn-warning{background:linear-gradient(135deg,#ea580c,#f97316);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.15s ease;box-shadow:0 4px 12px rgba(234,88,12,0.2)}
-        .btn-warning:active{transform:scale(0.97)}
         .tab-btn{transition:all 0.2s ease;padding:0.75rem 1.25rem;font-weight:700;font-size:0.875rem;border-bottom:3px solid transparent;color:#94a3b8;cursor:pointer;background:transparent;border-top:none;border-left:none;border-right:none}
-        .tab-btn:active{transform:scale(0.95)}
         .tab-btn.active{border-bottom-color:#2563eb;color:#1e293b}
         .progress-bar{transition:width 0.5s ease}
         .slide-in{animation:slideIn 0.25s ease}
@@ -107,7 +101,6 @@
         </div>
     </header>
 
-    <!-- تبويبات خطية -->
     <div class="flex gap-0 px-4 bg-white border-b border-slate-100 flex-shrink-0 overflow-x-auto">
         <button onclick="App.switchTab('pending')" class="tab-btn active" id="tab-pending">
             <i class="fa-solid fa-list-ul ml-1.5"></i> قيد المرتجعات
@@ -125,18 +118,18 @@
 
 <script>
 // ============================================================
-// 1. الإعدادات والمتغيرات العامة
+// الإعدادات والمتغيرات العامة
 // ============================================================
-
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 var db = new Dexie('RW_Returns');
-db.version(2).stores({
+db.version(3).stores({
     session: 'runsheet_code',
     localChanges: '++id,runsheet_code,item_code',
-    meta: 'key'
+    meta: 'key',
+    returnReasons: 'reason_code'
 });
 
 function byId(id) { return document.getElementById(id); }
@@ -145,24 +138,16 @@ function safeHTML(el, html) { if (el) { el.innerHTML = html; } }
 function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2 }); }
 
 function toast(m, t) {
-    Swal.fire({
-        toast: true,
-        position: 'top',
-        icon: t || 'info',
-        title: m,
-        showConfirmButton: false,
-        timer: 2000,
-        customClass: { popup: '!rounded-2xl !shadow-xl' }
-    });
+    Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000, customClass: { popup: '!rounded-2xl !shadow-xl' } });
 }
 
 var ITEMS_IMAGE_CACHE = {};
 var ALL_ITEMS_LIST = [];
+var RETURN_REASONS_LIST = [];
 
 // ============================================================
-// 2. التطبيق الرئيسي
+// التطبيق الرئيسي
 // ============================================================
-
 var App = {
     currentUser: null,
     pubUserId: null,
@@ -178,51 +163,30 @@ var App = {
     _remainingMap: {},
     _previewItems: [],
     summary: { good: 0, damaged: 0, missing: 0 },
-    _appType: 'returns',
 
     togglePass: function() {
         var p = byId('loginPass');
         var i = byId('passIcon');
-        if (p.type === 'password') {
-            p.type = 'text';
-            i.className = 'fa-solid fa-eye-slash';
-        } else {
-            p.type = 'password';
-            i.className = 'fa-solid fa-eye';
-        }
+        if (p.type === 'password') { p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; }
+        else { p.type = 'password'; i.className = 'fa-solid fa-eye'; }
     },
 
     doLogin: function() {
         var e = byId('loginEmail').value.trim();
         var p = byId('loginPass').value.trim();
-        if (!e || !p) {
-            byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
-            byId('loginMsg').classList.remove('hidden');
-            return;
-        }
+        if (!e || !p) { byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور'; byId('loginMsg').classList.remove('hidden'); return; }
         byId('loginMsg').classList.add('hidden');
         var self = this;
         Swal.showLoading();
-        supabase.auth.signInWithPassword({ email: e, password: p })
-            .then(function(res) {
-                Swal.close();
-                if (res.error) {
-                    byId('loginMsg').innerText = res.error.message;
-                    byId('loginMsg').classList.remove('hidden');
-                } else {
-                    if (byId('rememberMe').checked) {
-                        localStorage.setItem('rawaea_remember_email', e);
-                    } else {
-                        localStorage.removeItem('rawaea_remember_email');
-                    }
-                    self.init();
-                }
-            })
-            .catch(function() {
-                Swal.close();
-                byId('loginMsg').innerText = 'فشل الاتصال بالخادم';
-                byId('loginMsg').classList.remove('hidden');
-            });
+        supabase.auth.signInWithPassword({ email: e, password: p }).then(function(res) {
+            Swal.close();
+            if (res.error) { byId('loginMsg').innerText = res.error.message; byId('loginMsg').classList.remove('hidden'); }
+            else {
+                if (byId('rememberMe').checked) { localStorage.setItem('rawaea_remember_email', e); }
+                else { localStorage.removeItem('rawaea_remember_email'); }
+                self.init();
+            }
+        }).catch(function() { Swal.close(); byId('loginMsg').innerText = 'فشل الاتصال بالخادم'; byId('loginMsg').classList.remove('hidden'); });
     },
 
     init: function() {
@@ -234,218 +198,102 @@ var App = {
                 var isOwner = (meta.isOwner === true || meta.isOwner === 'true');
                 var perms = meta.permissions || [];
                 var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('warehouse') !== -1);
-                if (!hasAccess) {
-                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية الوصول للمخازن', icon: 'error', customClass: { popup: '!rounded-3xl' } });
-                    supabase.auth.signOut();
-                    return;
-                }
+                if (!hasAccess) { Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية الوصول للمخازن', icon: 'error', customClass: { popup: '!rounded-3xl' } }); supabase.auth.signOut(); return; }
 
-                supabase.from('items').select('item_code, name, unit, image_url, description')
-                    .then(function(itemsRes) {
-                        var items = itemsRes.data || [];
-                        ALL_ITEMS_LIST = items;
-                        for (var i = 0; i < items.length; i++) {
-                            if (items[i].item_code) {
-                                ITEMS_IMAGE_CACHE[items[i].item_code] = {
-                                    image_url: items[i].image_url || '',
-                                    description: items[i].description || ''
-                                };
-                            }
+                supabase.from('items').select('item_code, name, unit, image_url, description').then(function(itemsRes) {
+                    var items = itemsRes.data || [];
+                    ALL_ITEMS_LIST = items;
+                    for (var i = 0; i < items.length; i++) {
+                        if (items[i].item_code) {
+                            ITEMS_IMAGE_CACHE[items[i].item_code] = { image_url: items[i].image_url || '', description: items[i].description || '' };
                         }
-                    })
-                    .catch(function() {});
+                    }
+                }).catch(function() {});
 
-                supabase.from('users').select('id, name, active_warehouse_role')
-                    .eq('email', self.currentUser.email)
-                    .maybeSingle()
-                    .then(function(uRes) {
-                        var userData = uRes.data || {};
-                        self.pubUserId = userData.id || null;
-                        var userName = userData.name || meta.name || self.currentUser.email;
-                        var activeRole = userData.active_warehouse_role || meta.active_warehouse_role || '';
-                        if (!isOwner && activeRole !== 'مرتجعات') {
-                            Swal.fire({
-                                title: 'تنبيه',
-                                text: 'دورك النشط حالياً هو "' + (activeRole || 'غير محدد') + '". الرجاء التواصل مع مشرف المخازن.',
-                                icon: 'warning',
-                                customClass: { popup: '!rounded-3xl' }
-                            });
-                            supabase.auth.signOut();
-                            return;
-                        }
-                        safeText(byId('headerUserName'), userName);
-                        self.enterApp();
-                    })
-                    .catch(function() {
-                        safeText(byId('headerUserName'), meta.name || self.currentUser.email);
-                        self.enterApp();
-                    });
+                supabase.from('return_reasons').select('*').eq('is_active', true).then(function(reasonsRes) {
+                    RETURN_REASONS_LIST = reasonsRes.data || [];
+                }).catch(function() {});
+
+                supabase.from('users').select('id, name, active_warehouse_role').eq('email', self.currentUser.email).maybeSingle().then(function(uRes) {
+                    var userData = uRes.data || {};
+                    self.pubUserId = userData.id || null;
+                    var userName = userData.name || meta.name || self.currentUser.email;
+                    var activeRole = userData.active_warehouse_role || meta.active_warehouse_role || '';
+                    if (!isOwner && activeRole !== 'مرتجعات') { Swal.fire({ title: 'تنبيه', text: 'دورك النشط حالياً هو "' + (activeRole || 'غير محدد') + '". الرجاء التواصل مع مشرف المخازن.', icon: 'warning', customClass: { popup: '!rounded-3xl' } }); supabase.auth.signOut(); return; }
+                    safeText(byId('headerUserName'), userName);
+                    self.enterApp();
+                }).catch(function() { safeText(byId('headerUserName'), meta.name || self.currentUser.email); self.enterApp(); });
             }
         });
     },
 
-    enterApp: function() {
-        byId('loginScreen').classList.add('hidden');
-        byId('mainApp').classList.remove('hidden');
-        this.switchTab('pending');
-    },
-
-    doLogout: function() {
-        var self = this;
-        if (this.timerInterval) { clearInterval(this.timerInterval); }
-        supabase.auth.signOut().then(function() {
-            self.currentUser = null;
-            byId('mainApp').classList.add('hidden');
-            byId('loginScreen').classList.remove('hidden');
-        });
-    },
+    enterApp: function() { byId('loginScreen').classList.add('hidden'); byId('mainApp').classList.remove('hidden'); this.switchTab('pending'); },
+    doLogout: function() { var self = this; if (this.timerInterval) { clearInterval(this.timerInterval); } supabase.auth.signOut().then(function() { self.currentUser = null; byId('mainApp').classList.add('hidden'); byId('loginScreen').classList.remove('hidden'); }); },
 
     switchTab: function(tab) {
         this.currentTab = tab;
         var tabs = ['pending', 'completed', 'account'];
-        for (var i = 0; i < tabs.length; i++) {
-            var btn = byId('tab-' + tabs[i]);
-            if (btn) {
-                btn.classList.remove('active');
-            }
-        }
-        var act = byId('tab-' + tab);
-        if (act) {
-            act.classList.add('active');
-        }
-        if (tab === 'pending') {
-            this.loadRunsheets();
-        } else if (tab === 'completed') {
-            this.loadCompleted();
-        } else if (tab === 'account') {
-            this.renderAccount();
-        }
+        for (var i = 0; i < tabs.length; i++) { var btn = byId('tab-' + tabs[i]); if (btn) { btn.classList.remove('active'); } }
+        var act = byId('tab-' + tab); if (act) { act.classList.add('active'); }
+        if (tab === 'pending') { this.loadRunsheets(); }
+        else if (tab === 'completed') { this.loadCompleted(); }
+        else if (tab === 'account') { this.renderAccount(); }
     },
 
     loadRunsheets: function() {
         var self = this;
-        safeHTML(byId('mainContent'),
-            '<div class="space-y-4"><div class="skeleton h-12 w-full"></div><div class="grid grid-cols-2 gap-4"><div class="skeleton h-32 w-full"></div><div class="skeleton h-32 w-full"></div></div></div>'
-        );
-
-        var p1 = supabase.from('runsheets')
-            .select('id, runsheet_code, run_date, status, driver_id, return_handler_id, run_sheet_details(count)')
-            .eq('status', 'Returning')
-            .eq('return_handler_id', this.pubUserId || this.currentUser.email)
-            .order('run_date', { ascending: false })
-            .limit(20);
-
-        var p2 = supabase.from('runsheets')
-            .select('id, runsheet_code, run_date, status, driver_id, run_sheet_details(count)')
-            .eq('status', 'Delivered')
-            .order('run_date', { ascending: false })
-            .limit(50);
-
-        Promise.all([p1, p2])
-            .then(function(results) {
-                var myActive = results[0].data || [];
-                var available = results[1].data || [];
-                self.allRunsheets = myActive.concat(available);
-
-                var driverIds = [];
-                var runsheetIds = [];
-                for (var i = 0; i < self.allRunsheets.length; i++) {
-                    if (self.allRunsheets[i].driver_id && driverIds.indexOf(self.allRunsheets[i].driver_id) === -1) {
-                        driverIds.push(self.allRunsheets[i].driver_id);
-                    }
-                    if (self.allRunsheets[i].id) {
-                        runsheetIds.push(self.allRunsheets[i].id);
-                    }
-                }
-
-                var driverPromise = driverIds.length > 0
-                    ? supabase.from('users').select('id, name').in('id', driverIds)
-                    : Promise.resolve({ data: [] });
-
-                var remainingPromise = runsheetIds.length > 0
-                    ? supabase.from('run_sheet_details')
-                        .select('runsheet_id, qty_loaded, qty_delivered')
-                        .in('runsheet_id', runsheetIds)
-                    : Promise.resolve({ data: [] });
-
-                return Promise.all([driverPromise, remainingPromise])
-                    .then(function(extraResults) {
-                        var userMap = {};
-                        var users = extraResults[0].data || [];
-                        for (var ui = 0; ui < users.length; ui++) {
-                            userMap[users[ui].id] = users[ui].name;
-                        }
-                        self._driverMap = userMap;
-
-                        var remainingMap = {};
-                        var details = extraResults[1].data || [];
-                        for (var di = 0; di < details.length; di++) {
-                            var det = details[di];
-                            var loaded = Number(det.qty_loaded) || 0;
-                            var delivered = Number(det.qty_delivered) || 0;
-                            if (loaded > delivered) {
-                                remainingMap[det.runsheet_id] = (remainingMap[det.runsheet_id] || 0) + 1;
-                            }
-                        }
-                        self._remainingMap = remainingMap;
-
-                        self.renderRunsheetGrid(myActive, available);
-                    });
-            })
-            .catch(function(err) {
-                safeHTML(byId('mainContent'),
-                    '<div class="text-center py-20 text-red-400"><i class="fa-solid fa-circle-exclamation text-3xl mb-3"></i><p>فشل تحميل البيانات</p></div>'
-                );
+        safeHTML(byId('mainContent'), '<div class="space-y-4"><div class="skeleton h-12 w-full"></div><div class="grid grid-cols-2 gap-4"><div class="skeleton h-32 w-full"></div><div class="skeleton h-32 w-full"></div></div></div>');
+        var p1 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, return_handler_id, run_sheet_details(count)').eq('status', 'Returning').eq('return_handler_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
+        var p2 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, run_sheet_details(count)').eq('status', 'Delivered').order('run_date', { ascending: false }).limit(50);
+        Promise.all([p1, p2]).then(function(results) {
+            var myActive = results[0].data || [];
+            var available = results[1].data || [];
+            self.allRunsheets = myActive.concat(available);
+            var driverIds = []; var runsheetIds = [];
+            for (var i = 0; i < self.allRunsheets.length; i++) {
+                if (self.allRunsheets[i].driver_id && driverIds.indexOf(self.allRunsheets[i].driver_id) === -1) { driverIds.push(self.allRunsheets[i].driver_id); }
+                if (self.allRunsheets[i].id) { runsheetIds.push(self.allRunsheets[i].id); }
+            }
+            var driverPromise = driverIds.length > 0 ? supabase.from('users').select('id, name').in('id', driverIds) : Promise.resolve({ data: [] });
+            var remainingPromise = runsheetIds.length > 0 ? supabase.from('run_sheet_details').select('runsheet_id, qty_loaded, qty_delivered').in('runsheet_id', runsheetIds) : Promise.resolve({ data: [] });
+            return Promise.all([driverPromise, remainingPromise]).then(function(extraResults) {
+                var userMap = {}; var users = extraResults[0].data || [];
+                for (var ui = 0; ui < users.length; ui++) { userMap[users[ui].id] = users[ui].name; }
+                self._driverMap = userMap;
+                var remainingMap = {}; var details = extraResults[1].data || [];
+                for (var di = 0; di < details.length; di++) { var det = details[di]; var loaded = Number(det.qty_loaded) || 0; var delivered = Number(det.qty_delivered) || 0; if (loaded > delivered) { remainingMap[det.runsheet_id] = (remainingMap[det.runsheet_id] || 0) + 1; } }
+                self._remainingMap = remainingMap;
+                self.renderRunsheetGrid(myActive, available);
             });
+        }).catch(function(err) { safeHTML(byId('mainContent'), '<div class="text-center py-20 text-red-400"><i class="fa-solid fa-circle-exclamation text-3xl mb-3"></i><p>فشل تحميل البيانات</p></div>'); });
     },
 
     renderRunsheetGrid: function(myActive, available) {
-        var self = this;
-        var userName = this.currentUser.user_metadata.name || this.currentUser.email.split('@')[0] || 'زميل';
-        var hour = new Date().getHours();
-        var greeting = hour < 12 ? 'صباح الخير' : (hour < 18 ? 'مساء الخير' : 'مساء الخير');
-
+        var self = this; var userName = this.currentUser.user_metadata.name || this.currentUser.email.split('@')[0] || 'زميل';
+        var hour = new Date().getHours(); var greeting = hour < 12 ? 'صباح الخير' : (hour < 18 ? 'مساء الخير' : 'مساء الخير');
         var html = '';
-
         html += '<div class="mb-4 flex items-center justify-between">';
         html += '<p class="text-slate-500 text-sm">' + greeting + '، <span class="font-bold text-slate-700">' + userName + '</span> 👋</p>';
         html += '<span class="text-xs text-slate-400 bg-white px-3 py-1 rounded-full shadow-sm">' + (myActive.length + available.length) + ' رانشيت</span>';
         html += '</div>';
-
         html += '<div class="relative mb-6">';
-        html += '<div class="flex items-center gap-2">';
-        html += '<div class="flex-1 relative">';
-        html += '<i class="fa-solid fa-search absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>';
-        html += '<input type="text" id="searchRunsheet" placeholder="🔍 ابحث عن رقم رانشيت..." class="w-full pr-10 pl-4 py-3.5 bg-white rounded-2xl border-2 border-slate-100 focus:border-blue-400 outline-none font-semibold text-sm transition-all shadow-sm" oninput="App.onSearchInput(this.value)" autocomplete="off">';
-        html += '</div>';
-        html += '</div>';
+        html += '<div class="flex items-center gap-2"><div class="flex-1 relative"><i class="fa-solid fa-search absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i><input type="text" id="searchRunsheet" placeholder="🔍 ابحث عن رقم رانشيت..." class="w-full pr-10 pl-4 py-3.5 bg-white rounded-2xl border-2 border-slate-100 focus:border-blue-400 outline-none font-semibold text-sm transition-all shadow-sm" oninput="App.onSearchInput(this.value)" autocomplete="off"></div></div>';
         html += '<div id="searchDropdown" class="search-dropdown absolute top-full left-0 right-0 bg-white rounded-2xl mt-1 hidden z-40 border border-slate-100 shadow-lg"></div>';
         html += '</div>';
-
         if (myActive.length > 0) {
             html += '<h2 class="text-sm font-bold text-slate-500 mb-3"><i class="fa-solid fa-rotate fa-spin ml-1.5 text-amber-500"></i> مهامي النشطة (' + myActive.length + ')</h2>';
             html += '<div class="grid-cards mb-6">';
-            for (var i = 0; i < myActive.length; i++) {
-                html += self._buildRunsheetCard(myActive[i], true);
-            }
+            for (var i = 0; i < myActive.length; i++) { html += self._buildRunsheetCard(myActive[i], true); }
             html += '</div>';
         }
-
         html += '<h2 class="text-sm font-bold text-slate-500 mb-3"><i class="fa-solid fa-inbox ml-1.5 text-blue-500"></i> مهام متاحة (' + available.length + ')</h2>';
         if (available.length === 0) {
-            html += '<div class="text-center py-16 bg-white rounded-3xl border border-slate-100">';
-            html += '<div class="text-5xl mb-4">☕</div>';
-            html += '<p class="text-slate-400 font-bold">لا توجد رانشيتات مسلّمة</p>';
-            html += '<p class="text-slate-300 text-sm mt-1">استمتع بقهوتك حتى تأتي مهمة جديدة!</p>';
-            html += '</div>';
+            html += '<div class="text-center py-16 bg-white rounded-3xl border border-slate-100"><div class="text-5xl mb-4">☕</div><p class="text-slate-400 font-bold">لا توجد رانشيتات مسلّمة</p><p class="text-slate-300 text-sm mt-1">استمتع بقهوتك حتى تأتي مهمة جديدة!</p></div>';
         } else {
             html += '<div class="grid-cards">';
-            for (var j = 0; j < available.length; j++) {
-                html += self._buildRunsheetCard(available[j], false);
-            }
+            for (var j = 0; j < available.length; j++) { html += self._buildRunsheetCard(available[j], false); }
             html += '</div>';
         }
-
         safeHTML(byId('mainContent'), html);
     },
 
@@ -453,11 +301,9 @@ var App = {
         var code = rs.runsheet_code || '';
         var driverName = (this._driverMap && rs.driver_id) ? (this._driverMap[rs.driver_id] || 'غير محدد') : 'غير محدد';
         var remainingCount = (this._remainingMap && rs.id) ? (this._remainingMap[rs.id] || 0) : 0;
-
         var statusClass = isActive ? 'border-amber-200 bg-amber-50/30' : 'border-blue-200 bg-blue-50/30';
         var statusDot = isActive ? 'bg-amber-500' : 'bg-blue-500';
         var statusLabel = isActive ? 'قيد العمل' : 'جاهز';
-
         var btn = '';
         if (isActive) {
             btn = '<button onclick="event.stopPropagation();App.openReturn(\'' + code + '\')" class="btn-secondary text-xs py-1.5 px-3 w-full mt-2"><i class="fa-solid fa-arrow-left ml-1"></i> متابعة</button>';
@@ -465,486 +311,222 @@ var App = {
         } else {
             btn = '<button onclick="event.stopPropagation();App.openReturn(\'' + code + '\')" class="btn-primary text-xs py-2 px-3 w-full mt-2"><i class="fa-solid fa-play ml-1"></i> بدء المرتجعات</button>';
         }
-
         return '<div class="card cursor-pointer slide-in border-2 ' + statusClass + '" onclick="App.openReturn(\'' + code + '\')">' +
-            '<div class="flex items-start justify-between mb-2">' +
-            '<span class="font-black text-base text-slate-800">' + code + '</span>' +
-            '<span class="w-2 h-2 rounded-full ' + statusDot + ' flex-shrink-0 mt-1.5"></span>' +
-            '</div>' +
+            '<div class="flex items-start justify-between mb-2"><span class="font-black text-base text-slate-800">' + code + '</span><span class="w-2 h-2 rounded-full ' + statusDot + ' flex-shrink-0 mt-1.5"></span></div>' +
             '<p class="text-xs text-slate-400">' + (rs.run_date || '') + '</p>' +
             '<p class="text-xs text-slate-500 mt-0.5"><i class="fa-solid fa-user ml-1 text-slate-400"></i>' + driverName + '</p>' +
             '<p class="text-xs text-slate-500 mt-0.5"><i class="fa-solid fa-box ml-1 text-slate-400"></i>' + remainingCount + ' صنف متبقي</p>' +
-            '<div class="mt-2 flex items-center gap-1.5">' +
-            '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ' + (isActive ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700') + '">' + statusLabel + '</span>' +
-            '</div>' +
-            btn +
-            '</div>';
+            '<div class="mt-2 flex items-center gap-1.5"><span class="text-[10px] font-bold px-2 py-0.5 rounded-full ' + (isActive ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700') + '">' + statusLabel + '</span></div>' + btn + '</div>';
     },
 
     onSearchInput: function(query) {
-        var self = this;
-        if (this.searchTimer) { clearTimeout(this.searchTimer); }
-        if (!query || query.trim().length < 1) {
-            var dd = byId('searchDropdown');
-            if (dd) { dd.classList.add('hidden'); }
-            return;
-        }
-        this.searchTimer = setTimeout(function() {
-            supabase.from('runsheets')
-                .select('runsheet_code, status, run_date, driver_id, run_sheet_details(count)')
-                .in('status', ['Delivered', 'Returning'])
-                .ilike('runsheet_code', '%' + query.trim() + '%')
-                .limit(10)
-                .then(function(res) {
-                    self.searchResults = res.data || [];
-                    self.renderSearchDropdown();
-                });
-        }, 300);
-    },
-
-    renderSearchDropdown: function() {
-        var dd = byId('searchDropdown');
-        if (!dd) { return; }
-        if (this.searchResults.length === 0) {
-            safeHTML(dd, '<div class="p-4 text-center text-slate-400 text-sm">🔍 لا يوجد رانشيت بهذا الرقم</div>');
-            dd.classList.remove('hidden');
-            return;
-        }
-        var html = '';
-        for (var i = 0; i < this.searchResults.length; i++) {
-            var rs = this.searchResults[i];
-            var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
-            var statusLabel = rs.status === 'Returning' ? '🔄 قيد العمل' : '📦 جاهز';
-            html += '<div onclick="App.openReturn(\'' + rs.runsheet_code + '\')" class="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex justify-between items-center">';
-            html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><span class="text-xs text-slate-400 mr-2">' + itemCount + ' صنف</span></div>';
-            html += '<span class="text-xs text-slate-500">' + statusLabel + '</span>';
-            html += '</div>';
-        }
-        safeHTML(dd, html);
-        dd.classList.remove('hidden');
-    },
-
-    openReturn: function(code) {
-        var self = this;
+    var self = this;
+    if (this.searchTimer) { clearTimeout(this.searchTimer); }
+    if (!query || query.trim().length < 1) {
         var dd = byId('searchDropdown');
         if (dd) { dd.classList.add('hidden'); }
-
-        safeHTML(byId('mainContent'),
-            '<div class="space-y-4"><div class="skeleton h-12 w-full"></div><div class="grid grid-cols-2 gap-4"><div class="skeleton h-32 w-full"></div><div class="skeleton h-32 w-full"></div></div></div>'
-        );
-
+        return;
+    }
+    this.searchTimer = setTimeout(function() {
         supabase.from('runsheets')
-            .select('*')
-            .eq('runsheet_code', code)
-            .maybeSingle()
-            .then(function(rsRes) {
-                if (!rsRes.data) {
-                    toast('الرانشيت غير موجود', 'error');
-                    self.loadRunsheets();
+            .select('runsheet_code, status, run_date, driver_id, run_sheet_details(count)')
+            .in('status', ['Delivered', 'Returning'])
+            .ilike('runsheet_code', '%' + query.trim() + '%')
+            .limit(10)
+            .then(function(res) {
+                self.searchResults = res.data || [];
+                self.renderSearchDropdown();
+            });
+    }, 300);
+},
+
+renderSearchDropdown: function() {
+    var dd = byId('searchDropdown');
+    if (!dd) { return; }
+    if (this.searchResults.length === 0) {
+        safeHTML(dd, '<div class="p-4 text-center text-slate-400 text-sm">🔍 لا يوجد رانشيت بهذا الرقم</div>');
+        dd.classList.remove('hidden');
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < this.searchResults.length; i++) {
+        var rs = this.searchResults[i];
+        var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
+        var statusLabel = rs.status === 'Returning' ? '🔄 قيد العمل' : '📦 جاهز';
+        html += '<div onclick="App.openReturn(\'' + rs.runsheet_code + '\')" class="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex justify-between items-center">';
+        html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><span class="text-xs text-slate-400 mr-2">' + itemCount + ' صنف</span></div>';
+        html += '<span class="text-xs text-slate-500">' + statusLabel + '</span>';
+        html += '</div>';
+    }
+    safeHTML(dd, html);
+    dd.classList.remove('hidden');
+},
+
+    openReturn: function(code) {
+        var self = this; var dd = byId('searchDropdown'); if (dd) { dd.classList.add('hidden'); }
+        safeHTML(byId('mainContent'), '<div class="space-y-4"><div class="skeleton h-12 w-full"></div><div class="grid grid-cols-2 gap-4"><div class="skeleton h-32 w-full"></div><div class="skeleton h-32 w-full"></div></div></div>');
+        supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle().then(function(rsRes) {
+            if (!rsRes.data) { toast('الرانشيت غير موجود', 'error'); self.loadRunsheets(); return; }
+            var rs = rsRes.data;
+            supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id).then(function(detRes) {
+                var items = detRes.data || [];
+                var isActive = (rs.status === 'Returning' && (rs.return_handler_id === self.pubUserId || rs.return_handler_id === self.currentUser.email));
+                if (isActive) {
+                    self.session = { runsheet_code: code, runsheet_id: rs.id, start_time: rs.return_start || new Date().toISOString(), driver_name: (self._driverMap && rs.driver_id) ? (self._driverMap[rs.driver_id] || 'غير محدد') : 'غير محدد', items: [] };
+                    for (var i = 0; i < items.length; i++) {
+                        var it = items[i];
+                        self.session.items.push({
+                            item_code: it.item_code, item_name: it.item_name || '', unit: it.unit || 'حبة',
+                            qty_ordered: Number(it.qty_ordered) || 0, qty_loaded: Number(it.qty_loaded) || 0,
+                            qty_delivered: Number(it.qty_delivered) || 0, qty_returned: Number(it.qty_returned) || 0,
+                            return_condition: it.return_condition || 'good', notes: it.notes || '', unit_price: Number(it.unit_price) || 0
+                        });
+                    }
+                    self._loadLocalChanges();
                     return;
                 }
-                var rs = rsRes.data;
-
-                supabase.from('run_sheet_details')
-                    .select('*')
-                    .eq('runsheet_id', rs.id)
-                    .then(function(detRes) {
-                        var items = detRes.data || [];
-                        var isActive = (rs.status === 'Returning' && (rs.return_handler_id === self.pubUserId || rs.return_handler_id === self.currentUser.email));
-
-                        if (isActive) {
-                            self.session = {
-                                runsheet_code: code,
-                                runsheet_id: rs.id,
-                                start_time: rs.return_start || new Date().toISOString(),
-                                driver_name: (self._driverMap && rs.driver_id) ? (self._driverMap[rs.driver_id] || 'غير محدد') : 'غير محدد',
-                                items: []
-                            };
-                            for (var i = 0; i < items.length; i++) {
-                                var it = items[i];
-                                self.session.items.push({
-                                    item_code: it.item_code,
-                                    item_name: it.item_name || '',
-                                    unit: it.unit || 'حبة',
-                                    qty_ordered: Number(it.qty_ordered) || 0,
-                                    qty_loaded: Number(it.qty_loaded) || 0,
-                                    qty_delivered: Number(it.qty_delivered) || 0,
-                                    qty_returned: Number(it.qty_returned) || 0,
-                                    return_condition: it.return_condition || 'good',
-                                    notes: it.notes || '',
-                                    unit_price: Number(it.unit_price) || 0
-                                });
-                            }
-                            self._loadLocalChanges();
-                            return;
-                        }
-
-                        self._previewItems = items;
-                        self.renderPreview(rs, items);
-                    });
+                self._previewItems = items; self.renderPreview(rs, items);
             });
+        });
     },
 
-    // ============================================================
-    // شاشة المعاينة
-    // ============================================================
-
     renderPreview: function(rs, items) {
-        var self = this;
-        var code = rs.runsheet_code || '';
+        var self = this; var code = rs.runsheet_code || '';
         var driverName = (this._driverMap && rs.driver_id) ? (this._driverMap[rs.driver_id] || 'غير محدد') : 'غير محدد';
-
-        var remainingCount = 0;
-        var sortedItems = [];
+        var remainingCount = 0; var sortedItems = [];
         for (var k = 0; k < items.length; k++) {
-            var it = items[k];
-            var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
-            sortedItems.push({ item: it, remaining: remaining });
-            if (remaining > 0) { remainingCount++; }
+            var it = items[k]; var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
+            sortedItems.push({ item: it, remaining: remaining }); if (remaining > 0) { remainingCount++; }
         }
-        sortedItems.sort(function(a, b) {
-            if (a.remaining > 0 && b.remaining === 0) { return -1; }
-            if (a.remaining === 0 && b.remaining > 0) { return 1; }
-            return 0;
-        });
-
+        sortedItems.sort(function(a, b) { if (a.remaining > 0 && b.remaining === 0) { return -1; } if (a.remaining === 0 && b.remaining > 0) { return 1; } return 0; });
         var html = '';
-
-        html += '<div class="flex items-center gap-3 mb-4">';
-        html += '<button onclick="App.loadRunsheets()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-sm border border-slate-100"><i class="fa-solid fa-arrow-right"></i></button>';
-        html += '<div><span class="font-black text-xl text-slate-800">' + code + '</span><p class="text-xs text-slate-400">السائق: ' + driverName + '</p></div>';
-        html += '</div>';
-
-        if (rs.status === 'Delivered') {
-            html += '<button onclick="App.startReturn(\'' + code + '\')" class="btn-primary mb-4"><i class="fa-solid fa-play ml-2"></i> بدء المرتجعات</button>';
-        }
-
+        html += '<div class="flex items-center gap-3 mb-4"><button onclick="App.loadRunsheets()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-sm border border-slate-100"><i class="fa-solid fa-arrow-right"></i></button><div><span class="font-black text-xl text-slate-800">' + code + '</span><p class="text-xs text-slate-400">السائق: ' + driverName + '</p></div></div>';
+        if (rs.status === 'Delivered') { html += '<button onclick="App.startReturn(\'' + code + '\')" class="btn-primary mb-4"><i class="fa-solid fa-play ml-2"></i> بدء المرتجعات</button>'; }
         var progressPercent = items.length > 0 ? Math.round(((items.length - remainingCount) / items.length) * 100) : 0;
-        html += '<div class="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-slate-100 slide-in">';
-        html += '<div class="flex items-center justify-between mb-3"><span class="font-bold text-slate-700">تقدم الرانشيت</span><span class="text-sm font-bold text-blue-600">' + progressPercent + '%</span></div>';
-        html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" style="width:' + progressPercent + '%"></div></div>';
-        html += '<p class="text-xs text-slate-400 mt-2"><i class="fa-solid fa-box ml-1"></i> ' + remainingCount + ' صنف متبقي من ' + items.length + '</p>';
-        html += '</div>';
-
-        // البحث في المعاينة
-        html += '<div class="relative mb-4">';
-        html += '<div class="flex items-center gap-2">';
-        html += '<div class="flex-1 relative">';
-        html += '<i class="fa-solid fa-barcode absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"></i>';
-        html += '<input type="text" id="itemSearchPreview" placeholder="🔍 امسح الباركود أو ابحث باسم الصنف..." class="w-full pr-10 pl-4 py-3.5 bg-white rounded-2xl border-2 border-slate-100 focus:border-blue-400 outline-none font-semibold text-sm transition-all shadow-sm" oninput="App.onPreviewItemSearch(this.value)" autocomplete="off">';
-        html += '</div>';
-        html += '<button onclick="App.openBarcodeScannerForPreview()" class="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-sm hover:bg-blue-700 transition flex-shrink-0"><i class="fa-solid fa-camera text-lg"></i></button>';
-        html += '</div>';
-        html += '<div id="previewSearchResults" class="hidden absolute top-full left-0 right-0 bg-white rounded-2xl mt-1 shadow-lg z-50 max-h-48 overflow-y-auto border border-slate-100"></div>';
-        html += '</div>';
-
+        html += '<div class="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-slate-100 slide-in"><div class="flex items-center justify-between mb-3"><span class="font-bold text-slate-700">تقدم الرانشيت</span><span class="text-sm font-bold text-blue-600">' + progressPercent + '%</span></div><div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" style="width:' + progressPercent + '%"></div></div><p class="text-xs text-slate-400 mt-2"><i class="fa-solid fa-box ml-1"></i> ' + remainingCount + ' صنف متبقي من ' + items.length + '</p></div>';
+        html += '<div class="relative mb-4"><div class="flex items-center gap-2"><div class="flex-1 relative"><i class="fa-solid fa-barcode absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"></i><input type="text" id="itemSearchPreview" placeholder="🔍 امسح الباركود أو ابحث باسم الصنف..." class="w-full pr-10 pl-4 py-3.5 bg-white rounded-2xl border-2 border-slate-100 focus:border-blue-400 outline-none font-semibold text-sm transition-all shadow-sm" oninput="App.onPreviewItemSearch(this.value)" autocomplete="off"></div><button onclick="App.openBarcodeScannerForPreview()" class="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-sm hover:bg-blue-700 transition flex-shrink-0"><i class="fa-solid fa-camera text-lg"></i></button></div><div id="previewSearchResults" class="hidden absolute top-full left-0 right-0 bg-white rounded-2xl mt-1 shadow-lg z-50 max-h-48 overflow-y-auto border border-slate-100"></div></div>';
         html += '<div class="grid-cards">';
         for (var i = 0; i < sortedItems.length; i++) {
-            var it = sortedItems[i].item;
-            var remaining = sortedItems[i].remaining;
-            var isCompleted = (remaining <= 0);
-
+            var it2 = sortedItems[i].item; var remaining2 = sortedItems[i].remaining;
+            var isCompleted = (remaining2 <= 0);
             var cardClass = 'card cursor-pointer active:scale-[0.98] border-2 ' + (isCompleted ? 'border-green-200 bg-green-50/20' : 'border-blue-200 hover:border-blue-400');
-            var badge = isCompleted ? '<span class="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">✅ مسلّم بالكامل</span>' :
-                '<span class="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">' + remaining + ' متبقي</span>';
-
-            html += '<div class="' + cardClass + '" onclick="App.showItemDetail(\'' + (it.item_code || '') + '\', \'' + (it.item_name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\', ' + (it.qty_loaded || 0) + ', ' + (it.qty_delivered || 0) + ', ' + remaining + ')">';
-            html += '<div class="flex flex-col items-center text-center">';
-            html += self._img(it.item_code);
-            html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it.item_name || '').substring(0, 25) + '</p>';
-            html += '<p class="text-xs text-slate-400 mt-0.5">' + (it.unit || 'حبة') + '</p>';
-            html += '<div class="mt-1.5 flex flex-wrap items-center justify-center gap-1">';
-            html += '<span class="text-xs text-slate-500">محمّل: <strong>' + (it.qty_loaded || 0) + '</strong></span>';
-            html += '<span class="text-xs text-slate-500">مسلّم: <strong>' + (it.qty_delivered || 0) + '</strong></span>';
-            html += '</div>';
-            html += '<div class="mt-1.5">' + badge + '</div>';
-            html += '</div></div>';
+            var badge = isCompleted ? '<span class="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">✅ مسلّم بالكامل</span>' : '<span class="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">' + remaining2 + ' متبقي</span>';
+            html += '<div class="' + cardClass + '" onclick="App.showItemDetail(\'' + (it2.item_code || '') + '\', \'' + (it2.item_name || '').replace(/'/g, "\\'") + '\', \'' + (it2.unit || 'حبة') + '\', ' + (it2.qty_loaded || 0) + ', ' + (it2.qty_delivered || 0) + ', ' + remaining2 + ')"><div class="flex flex-col items-center text-center">' + self._img(it2.item_code) + '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it2.item_name || '').substring(0, 25) + '</p><p class="text-xs text-slate-400 mt-0.5">' + (it2.unit || 'حبة') + '</p><div class="mt-1.5 flex flex-wrap items-center justify-center gap-1"><span class="text-xs text-slate-500">محمّل: <strong>' + (it2.qty_loaded || 0) + '</strong></span><span class="text-xs text-slate-500">مسلّم: <strong>' + (it2.qty_delivered || 0) + '</strong></span></div><div class="mt-1.5">' + badge + '</div></div></div>';
         }
         html += '</div>';
-
         safeHTML(byId('mainContent'), html);
     },
 
     _img: function(code) {
-        var cacheEntry = ITEMS_IMAGE_CACHE[code];
-        var url = cacheEntry ? (cacheEntry.image_url || '') : '';
-        return url ?
-            '<img src="' + url + '" class="w-28 h-28 rounded-2xl object-cover border-2 border-white shadow-sm" onerror="this.style.display=\'none\'">' :
-            '<div class="w-28 h-28 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box text-3xl"></i></div>';
+        var cacheEntry = ITEMS_IMAGE_CACHE[code]; var url = cacheEntry ? (cacheEntry.image_url || '') : '';
+        return url ? '<img src="' + url + '" class="w-28 h-28 rounded-2xl object-cover border-2 border-white shadow-sm" onerror="this.style.display=\'none\'">' : '<div class="w-28 h-28 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box text-3xl"></i></div>';
     },
 
     showItemDetail: function(code, name, unit, loaded, delivered, remaining) {
-        var cacheEntry = ITEMS_IMAGE_CACHE[code] || {};
-        var imgUrl = cacheEntry.image_url || '';
-        var desc = cacheEntry.description || '';
-
-        var imgHtml = imgUrl ?
-            '<img src="' + imgUrl + '" style="width:100%;height:280px;object-fit:cover;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.06)" onerror="this.style.display=\'none\'">' :
-            '<div style="width:100%;height:280px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
-
-        var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
-        html += imgHtml;
+        var cacheEntry = ITEMS_IMAGE_CACHE[code] || {}; var imgUrl = cacheEntry.image_url || ''; var desc = cacheEntry.description || '';
+        var imgHtml = imgUrl ? '<img src="' + imgUrl + '" style="width:100%;height:280px;object-fit:cover;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.06)" onerror="this.style.display=\'none\'">' : '<div style="width:100%;height:280px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
+        var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">' + imgHtml;
         html += '<h3 style="font-size:20px;font-weight:800;color:#1e293b;margin-top:16px;margin-bottom:4px">' + name + '</h3>';
         html += '<p style="font-size:13px;color:#64748b;margin-bottom:12px">الكود: ' + code + ' | الوحدة: ' + unit + '</p>';
-        if (desc) {
-            html += '<p style="font-size:13px;color:#475569;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:10px">📝 ' + desc + '</p>';
-        }
-        html += '<div style="background:#f8fafc;border-radius:12px;padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin-bottom:12px">';
-        html += '<div><p style="font-size:11px;color:#94a3b8">محمّل</p><p style="font-size:20px;font-weight:800;color:#334155">' + loaded + '</p></div>';
-        html += '<div><p style="font-size:11px;color:#94a3b8">مسلّم</p><p style="font-size:20px;font-weight:800;color:#334155">' + delivered + '</p></div>';
-        html += '<div><p style="font-size:11px;color:#94a3b8">متبقي</p><p style="font-size:20px;font-weight:800;color:' + (remaining > 0 ? '#2563eb' : '#16a34a') + '">' + remaining + '</p></div>';
-        html += '</div></div>';
-
-        Swal.fire({
-            html: html,
-            width: '420px',
-            showCloseButton: true,
-            showConfirmButton: false,
-            customClass: {
-                popup: '!rounded-3xl !p-5',
-                closeButton: '!text-slate-400 !text-lg'
-            }
-        });
+        if (desc) { html += '<p style="font-size:13px;color:#475569;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:10px">📝 ' + desc + '</p>'; }
+        html += '<div style="background:#f8fafc;border-radius:12px;padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin-bottom:12px"><div><p style="font-size:11px;color:#94a3b8">محمّل</p><p style="font-size:20px;font-weight:800;color:#334155">' + loaded + '</p></div><div><p style="font-size:11px;color:#94a3b8">مسلّم</p><p style="font-size:20px;font-weight:800;color:#334155">' + delivered + '</p></div><div><p style="font-size:11px;color:#94a3b8">متبقي</p><p style="font-size:20px;font-weight:800;color:' + (remaining > 0 ? '#2563eb' : '#16a34a') + '">' + remaining + '</p></div></div></div>';
+        Swal.fire({ html: html, width: '420px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-400 !text-lg' } });
     },
 
     onPreviewItemSearch: function(query) {
-        var self = this;
-        if (this.itemSearchTimer) { clearTimeout(this.itemSearchTimer); }
-        if (!query || query.trim().length < 1) {
-            var dd = byId('previewSearchResults');
-            if (dd) { dd.classList.add('hidden'); }
-            return;
-        }
+        var self = this; if (this.itemSearchTimer) { clearTimeout(this.itemSearchTimer); }
+        if (!query || query.trim().length < 1) { var dd = byId('previewSearchResults'); if (dd) { dd.classList.add('hidden'); } return; }
         var delay = query.length > 6 ? 50 : 300;
         this.itemSearchTimer = setTimeout(function() {
-            var q = query.trim().toLowerCase();
-            var foundItems = [];
-            if (self._previewItems) {
-                for (var i = 0; i < self._previewItems.length; i++) {
-                    var it = self._previewItems[i];
-                    var code = (it.item_code || '').toLowerCase();
-                    var name = (it.item_name || '').toLowerCase();
-                    if (code === q || code.indexOf(q) !== -1 || name.indexOf(q) !== -1) {
-                        foundItems.push(it);
-                    }
-                }
-            }
-            if (foundItems.length > 0) {
-                var dd = byId('previewSearchResults');
-                if (!dd) { return; }
-                var html = '';
-                for (var j = 0; j < foundItems.length; j++) {
-                    var it = foundItems[j];
-                    var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
-                    html += '<div onclick="App._selectPreviewItem(\'' + it.item_code + '\')" class="p-3 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex justify-between items-center">';
-                    html += '<div><span class="font-bold text-slate-700">' + (it.item_name || '') + '</span><span class="text-xs text-slate-400 mr-2">' + it.item_code + '</span></div>';
-                    html += '<span class="text-xs text-slate-500">متبقي: ' + remaining + '</span>';
-                    html += '</div>';
-                }
-                safeHTML(dd, html);
-                dd.classList.remove('hidden');
-            } else {
-                self._searchItemInDBForPreview(q);
-            }
+            var q = query.trim().toLowerCase(); var foundItems = [];
+            if (self._previewItems) { for (var i = 0; i < self._previewItems.length; i++) { var it = self._previewItems[i]; var code = (it.item_code || '').toLowerCase(); var name = (it.item_name || '').toLowerCase(); if (code === q || code.indexOf(q) !== -1 || name.indexOf(q) !== -1) { foundItems.push(it); } } }
+            if (foundItems.length > 0) { var dd2 = byId('previewSearchResults'); if (!dd2) { return; } var html = ''; for (var j = 0; j < foundItems.length; j++) { var it2 = foundItems[j]; var remaining = (Number(it2.qty_loaded) || 0) - (Number(it2.qty_delivered) || 0); html += '<div onclick="App._selectPreviewItem(\'' + it2.item_code + '\')" class="p-3 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex justify-between items-center"><div><span class="font-bold text-slate-700">' + (it2.item_name || '') + '</span><span class="text-xs text-slate-400 mr-2">' + it2.item_code + '</span></div><span class="text-xs text-slate-500">متبقي: ' + remaining + '</span></div>'; } safeHTML(dd2, html); dd2.classList.remove('hidden'); } else { self._searchItemInDBForPreview(q); }
         }, delay);
     },
 
-    _selectPreviewItem: function(itemCode) {
-        var dd = byId('previewSearchResults');
-        if (dd) { dd.classList.add('hidden'); }
-        var searchInput = byId('itemSearchPreview');
-        if (searchInput) { searchInput.value = ''; }
-
-        if (this._previewItems) {
-            for (var i = 0; i < this._previewItems.length; i++) {
-                if (this._previewItems[i].item_code === itemCode) {
-                    var it = this._previewItems[i];
-                    var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
-                    this.showItemDetail(it.item_code, it.item_name, it.unit, it.qty_loaded, it.qty_delivered, remaining);
-                    break;
-                }
-            }
-        }
-    },
+    _selectPreviewItem: function(itemCode) { var dd = byId('previewSearchResults'); if (dd) { dd.classList.add('hidden'); } var searchInput = byId('itemSearchPreview'); if (searchInput) { searchInput.value = ''; } if (this._previewItems) { for (var i = 0; i < this._previewItems.length; i++) { if (this._previewItems[i].item_code === itemCode) { var it = this._previewItems[i]; var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0); this.showItemDetail(it.item_code, it.item_name, it.unit, it.qty_loaded, it.qty_delivered, remaining); break; } } } },
 
     _searchItemInDBForPreview: function(query) {
         var self = this;
-        supabase.from('items')
-            .select('item_code, name, unit')
-            .or('name.ilike.%' + query + '%,item_code.ilike.%' + query + '%')
-            .limit(5)
-            .then(function(res) {
-                var items = res.data || [];
-                var dd = byId('previewSearchResults');
-                if (!dd) { return; }
-                if (items.length === 0) {
-                    safeHTML(dd, '<div class="p-3 text-center text-slate-400 text-sm">🔍 لا توجد نتائج</div>');
-                    dd.classList.remove('hidden');
-                    return;
-                }
-                var html = '';
-                for (var j = 0; j < items.length; j++) {
-                    html += '<div onclick="App._selectPreviewItemFromDB(\'' + items[j].item_code + '\')" class="p-3 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex justify-between items-center">';
-                    html += '<div><span class="font-bold text-slate-700">' + (items[j].name || '') + '</span><span class="text-xs text-slate-400 mr-2">' + items[j].item_code + '</span></div>';
-                    html += '<span class="text-xs text-slate-400">من المخزن</span>';
-                    html += '</div>';
-                }
-                safeHTML(dd, html);
-                dd.classList.remove('hidden');
-            });
-    },
-
-    _selectPreviewItemFromDB: function(itemCode) {
-        var dd = byId('previewSearchResults');
-        if (dd) { dd.classList.add('hidden'); }
-        var searchInput = byId('itemSearchPreview');
-        if (searchInput) { searchInput.value = ''; }
-
-        if (this._previewItems) {
-            for (var i = 0; i < this._previewItems.length; i++) {
-                if (this._previewItems[i].item_code === itemCode) {
-                    var it = this._previewItems[i];
-                    var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
-                    this.showItemDetail(it.item_code, it.item_name, it.unit, it.qty_loaded, it.qty_delivered, remaining);
-                    return;
-                }
-            }
-        }
-        toast('الصنف غير موجود في هذا الرانشيت', 'info');
-    },
-
-    openBarcodeScannerForPreview: function() {
-        var self = this;
-        Swal.fire({
-            title: 'مسح الباركود',
-            html: '<div id="barcode-reader-preview" style="width:100%;max-width:300px;margin:0 auto;"></div>',
-            showCancelButton: false,
-            showConfirmButton: false,
-            customClass: { popup: '!rounded-3xl !p-4' },
-            didOpen: function() {
-                var scanner = new Html5Qrcode("barcode-reader-preview");
-                scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 150 } },
-                    function(decodedText) {
-                        scanner.stop().then(function() {
-                            Swal.close();
-                            var searchInput = byId('itemSearchPreview');
-                            if (searchInput) {
-                                searchInput.value = decodedText;
-                                self.onPreviewItemSearch(decodedText);
-                            }
-                        });
-                    },
-                    function() {}
-                ).catch(function(err) {
-                    Swal.close();
-                    toast('فشل تشغيل الكاميرا: ' + err.message, 'error');
-                });
-            },
-            willClose: function() {}
+        supabase.from('items').select('item_code, name, unit').or('name.ilike.%' + query + '%,item_code.ilike.%' + query + '%').limit(5).then(function(res) {
+            var items = res.data || []; var dd = byId('previewSearchResults'); if (!dd) { return; }
+            if (items.length === 0) { safeHTML(dd, '<div class="p-3 text-center text-slate-400 text-sm">🔍 لا توجد نتائج</div>'); dd.classList.remove('hidden'); return; }
+            var html = '';
+            for (var j = 0; j < items.length; j++) { html += '<div onclick="App._selectPreviewItemFromDB(\'' + items[j].item_code + '\')" class="p-3 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex justify-between items-center"><div><span class="font-bold text-slate-700">' + (items[j].name || '') + '</span><span class="text-xs text-slate-400 mr-2">' + items[j].item_code + '</span></div><span class="text-xs text-slate-400">من المخزن</span></div>'; }
+            safeHTML(dd, html); dd.classList.remove('hidden');
         });
     },
 
-    startReturn: function(code) {
-        var self = this;
-        if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
-        Swal.fire({ title: 'جاري بدء المرتجعات...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
-        supabase.auth.getSession()
-            .then(function(ses) {
-                var t = ses.data.session.access_token;
-                return fetch(SUPABASE_URL + '/functions/v1/start-return', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
-                    body: JSON.stringify({ runsheet_code: code })
-                });
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(j) {
+    _selectPreviewItemFromDB: function(itemCode) { var dd = byId('previewSearchResults'); if (dd) { dd.classList.add('hidden'); } var searchInput = byId('itemSearchPreview'); if (searchInput) { searchInput.value = ''; } if (this._previewItems) { for (var i = 0; i < this._previewItems.length; i++) { if (this._previewItems[i].item_code === itemCode) { var it = this._previewItems[i]; var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0); this.showItemDetail(it.item_code, it.item_name, it.unit, it.qty_loaded, it.qty_delivered, remaining); return; } } } toast('الصنف غير موجود في هذا الرانشيت', 'info'); },
+
+openBarcodeScannerForPreview: function() {
+    var self = this;
+    Swal.fire({
+        title: 'مسح الباركود',
+        html: '<div id="barcode-reader-preview" style="width:100%;max-width:300px;margin:0 auto;"></div>',
+        showCancelButton: false,
+        showConfirmButton: false,
+        customClass: { popup: '!rounded-3xl !p-4' },
+        didOpen: function() {
+            var scanner = new Html5Qrcode("barcode-reader-preview");
+            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 150 } },
+                function(decodedText) {
+                    scanner.stop().then(function() {
+                        Swal.close();
+                        var searchInput = byId('itemSearchPreview');
+                        if (searchInput) {
+                            searchInput.value = decodedText;
+                            self.onPreviewItemSearch(decodedText);
+                        }
+                    });
+                },
+                function() {}
+            ).catch(function(err) {
                 Swal.close();
-                if (j.success) {
-                    toast('تم بدء المرتجعات بنجاح', 'success');
-                    self.openReturn(code);
-                } else {
-                    toast(j.msg || 'فشل بدء المرتجعات', 'error');
-                }
-            })
-            .catch(function() {
-                Swal.close();
-                toast('فشل الاتصال بالخادم', 'error');
+                toast('فشل تشغيل الكاميرا: ' + err.message, 'error');
             });
+        },
+        willClose: function() {}
+    });
+},
+    startReturn: function(code) {
+        var self = this; if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
+        Swal.fire({ title: 'جاري بدء المرتجعات...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+        supabase.auth.getSession().then(function(ses) { var t = ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/start-return', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code }) }); }).then(function(r) { return r.json(); }).then(function(j) { Swal.close(); if (j.success) { toast('تم بدء المرتجعات بنجاح', 'success'); self.openReturn(code); } else { toast(j.msg || 'فشل بدء المرتجعات', 'error'); } }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
     },
 
     cancelReturn: function(code) {
         var self = this;
-        Swal.fire({
-            title: 'تأكيد الإلغاء',
-            text: 'هل أنت متأكد من إلغاء مرتجعات ' + code + '؟ سيعود الرانشيت إلى حالة مسلّم.',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، ألغِ',
-            cancelButtonText: 'لا، تراجع',
-            customClass: {
-                popup: '!rounded-3xl',
-                confirmButton: '!rounded-xl !bg-red-500 !px-8',
-                cancelButton: '!rounded-xl !px-8'
-            }
-        }).then(function(result) {
-            if (!result.isConfirmed) { return; }
-            Swal.showLoading();
-            supabase.auth.getSession()
-                .then(function(ses) {
-                    var t = ses.data.session.access_token;
-                    return fetch(SUPABASE_URL + '/functions/v1/cancel-return', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
-                        body: JSON.stringify({ runsheet_code: code })
-                    });
-                })
-                .then(function(r) { return r.json(); })
-                .then(function(j) {
-                    Swal.close();
-                    if (j.success) {
-                        toast('تم إلغاء المرتجعات', 'success');
-                        self.session = null;
-                        if (self.timerInterval) { clearInterval(self.timerInterval); }
-                        self.loadRunsheets();
-                    } else {
-                        toast(j.msg || 'فشل الإلغاء', 'error');
-                    }
-                })
-                .catch(function() {
-                    Swal.close();
-                    toast('فشل الاتصال بالخادم', 'error');
-                });
+        Swal.fire({ title: 'تأكيد الإلغاء', text: 'هل أنت متأكد من إلغاء مرتجعات ' + code + '؟ سيعود الرانشيت إلى حالة مسلّم.', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، ألغِ', cancelButtonText: 'لا، تراجع', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-500 !px-8', cancelButton: '!rounded-xl !px-8' } }).then(function(result) {
+            if (!result.isConfirmed) { return; } Swal.showLoading();
+            supabase.auth.getSession().then(function(ses) { var t = ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/cancel-return', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code }) }); }).then(function(r) { return r.json(); }).then(function(j) { Swal.close(); if (j.success) { toast('تم إلغاء المرتجعات', 'success'); self.session = null; if (self.timerInterval) { clearInterval(self.timerInterval); } self.loadRunsheets(); } else { toast(j.msg || 'فشل الإلغاء', 'error'); } }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
         });
     },
 
-    _loadLocalChanges: function() {
-        var self = this;
-        db.localChanges.where('runsheet_code').equals(self.session.runsheet_code)
-            .toArray()
-            .then(function(changes) {
-                if (changes.length > 0) {
-                    for (var i = 0; i < changes.length; i++) {
-                        var ch = changes[i];
-                        for (var j = 0; j < self.session.items.length; j++) {
-                            if (self.session.items[j].item_code === ch.item_code) {
-                                self.session.items[j].qty_returned = ch.qty_returned || self.session.items[j].qty_returned;
-                                self.session.items[j].return_condition = ch.return_condition || self.session.items[j].return_condition;
-                                self.session.items[j].notes = ch.notes || self.session.items[j].notes;
-                                break;
-                            }
-                        }
+_loadLocalChanges: function() {
+    var self = this;
+    db.localChanges.where('runsheet_code').equals(self.session.runsheet_code).toArray().then(function(changes) {
+        if (changes.length > 0) {
+            for (var i = 0; i < changes.length; i++) {
+                var ch = changes[i];
+                for (var j = 0; j < self.session.items.length; j++) {
+                    if (self.session.items[j].item_code === ch.item_code) {
+                        self.session.items[j].qty_returned = ch.qty_returned || self.session.items[j].qty_returned;
+                        self.session.items[j].return_condition = ch.return_condition || self.session.items[j].return_condition;
+                        self.session.items[j].notes = ch.notes || self.session.items[j].notes;
+                        break;
                     }
                 }
-                self.renderActiveSession();
-            })
-            .catch(function() { self.renderActiveSession(); });
-    },
-
+            }
+        }
+        self.renderActiveSession();
+    }).catch(function() {
+        self.renderActiveSession();
+    });
+},
     // ============================================================
-    // الجلسة النشطة
+    // الجلسة النشطة – مع أسباب المرتجعات الديناميكية
     // ============================================================
-
     renderActiveSession: function() {
         var self = this;
         if (!this.session) { this.loadRunsheets(); return; }
@@ -958,7 +540,9 @@ var App = {
 
         var totalRemainingItems = 0;
         var completedItems = 0;
-        var summaryGood = 0, summaryDamaged = 0, summaryMissing = 0;
+        var summaryGood = 0;
+        var summaryDamaged = 0;
+        var summaryMissing = 0;
 
         for (var i = 0; i < ses.items.length; i++) {
             var it = ses.items[i];
@@ -966,18 +550,24 @@ var App = {
             if (remaining > 0) {
                 totalRemainingItems++;
                 if (it.qty_returned > 0) {
-                    if (it.return_condition === 'good' || !it.return_condition) { summaryGood += it.qty_returned; }
-                    else if (it.return_condition === 'damaged') { summaryDamaged += it.qty_returned; }
-                    else if (it.return_condition === 'missing') { summaryMissing += it.qty_returned; }
+                    if (it.return_condition === 'good' || !it.return_condition) {
+                        summaryGood += it.qty_returned;
+                    } else if (it.return_condition === 'damaged') {
+                        summaryDamaged += it.qty_returned;
+                    } else if (it.return_condition === 'missing') {
+                        summaryMissing += it.qty_returned;
+                    }
                 }
-                if (it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes)) { completedItems++; }
+                if (it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes)) {
+                    completedItems++;
+                }
             }
         }
+
         this.summary = { good: summaryGood, damaged: summaryDamaged, missing: summaryMissing };
         var progress = totalRemainingItems ? Math.round((completedItems / totalRemainingItems) * 100) : 0;
 
         var html = '';
-
         html += '<div class="flex items-center gap-3 mb-4">';
         html += '<button onclick="App.loadRunsheets()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-sm border border-slate-100"><i class="fa-solid fa-arrow-right"></i></button>';
         html += '<div><span class="font-black text-xl text-slate-800">' + ses.runsheet_code + '</span><p class="text-xs text-slate-400">السائق: ' + (ses.driver_name || 'غير محدد') + '</p></div>';
@@ -992,7 +582,9 @@ var App = {
         html += '<span>' + completedItems + ' من ' + totalRemainingItems + ' صنف</span>';
         html += '<span>' + progress + '%</span>';
         html += '</div>';
-        html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" style="width:' + progress + '%"></div></div>';
+        html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden">';
+        html += '<div class="progress-bar h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" style="width:' + progress + '%"></div>';
+        html += '</div>';
         html += '</div>';
 
         html += '<div class="flex flex-wrap items-center gap-2 mb-4">';
@@ -1003,6 +595,7 @@ var App = {
         html += '</div>';
         html += '<button onclick="App.reportDiscrepancyGeneral()" class="btn-warning text-xs py-1.5 px-3"><i class="fa-solid fa-triangle-exclamation ml-1"></i> 🚨 إبلاغ عن اختلاف</button>';
         html += '</div>';
+
         html += '<div class="relative mb-4">';
         html += '<div class="flex items-center gap-2">';
         html += '<div class="flex-1 relative">';
@@ -1018,17 +611,17 @@ var App = {
 
         html += '<div class="grid-cards">';
         for (var j = 0; j < ses.items.length; j++) {
-            var it = ses.items[j];
-            var remaining = it.qty_loaded - it.qty_delivered;
-            if (remaining <= 0) {
+            var it2 = ses.items[j];
+            var remaining2 = it2.qty_loaded - it2.qty_delivered;
+            if (remaining2 <= 0) {
                 html += '<div class="card border-2 border-green-200 bg-green-50/20 opacity-70">';
                 html += '<div class="flex flex-col items-center text-center">';
-                html += self._img(it.item_code);
-                html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it.item_name || '').substring(0, 25) + '</p>';
+                html += self._img(it2.item_code);
+                html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it2.item_name || '').substring(0, 25) + '</p>';
                 html += '<span class="text-xs text-green-600 font-bold mt-1">✅ مكتمل</span>';
                 html += '</div></div>';
             } else {
-                html += self._buildItemCard(j, it, remaining);
+                html += self._buildItemCard(j, it2, remaining2);
             }
         }
         html += '</div>';
@@ -1042,70 +635,58 @@ var App = {
         this.startTimer();
     },
 
-    // ============================================================
-    // بطاقة الصنف – مع زر إبلاغ عن اختلاف
-    // ============================================================
+    _buildItemCard: function(index, it, remaining) {
+        var isCompleted = it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes);
+        var isOver = it.qty_returned > remaining;
+        var borderColor = isOver ? 'border-orange-300' : (isCompleted ? 'border-green-300' : (it.qty_returned > 0 ? 'border-amber-300' : 'border-slate-200'));
+        var bgColor = isOver ? 'bg-orange-50/20' : (isCompleted ? 'bg-green-50/20' : (it.qty_returned > 0 ? 'bg-amber-50/20' : ''));
 
-_buildItemCard: function(index, it, remaining) {
-    var isCompleted = it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes);
-    var isOver = it.qty_returned > remaining;
-    var borderColor = isOver ? 'border-orange-300' : (isCompleted ? 'border-green-300' : (it.qty_returned > 0 ? 'border-amber-300' : 'border-slate-200'));
-    var bgColor = isOver ? 'bg-orange-50/20' : (isCompleted ? 'bg-green-50/20' : (it.qty_returned > 0 ? 'bg-amber-50/20' : ''));
+        var conditionLabels = { 'good': '🟢 سليم', 'damaged': '🔴 تالف', 'missing': '⬛ مفقود' };
+        var conditionLabel = it.return_condition ? (conditionLabels[it.return_condition] || it.return_condition) : '';
 
-    var conditionLabels = {
-        'good': '🟢 سليم',
-        'damaged': '🔴 تالف',
-        'missing': '⬛ مفقود'
-    };
-    var conditionLabel = it.return_condition ? (conditionLabels[it.return_condition] || it.return_condition) : '';
+        var html = '<div class="card cursor-pointer active:scale-[0.98] border-2 ' + borderColor + ' ' + bgColor + '" id="return-card-' + index + '" onclick="App.editReturnItem(' + index + ')">';
+        html += '<div class="flex flex-col items-center text-center">';
+        html += this._img(it.item_code);
+        html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it.item_name || '').substring(0, 25) + '</p>';
+        html += '<p class="text-xs text-slate-400 mt-0.5">' + (it.unit || 'حبة') + '</p>';
+        html += '<div class="mt-1 text-xs text-slate-500">';
+        html += 'متبقي: <strong class="text-blue-600">' + remaining + '</strong>';
+        html += ' | مرتجع: <strong class="' + (it.qty_returned > 0 ? 'text-amber-600' : 'text-slate-400') + '">' + it.qty_returned + '</strong>';
+        html += '</div>';
+        if (conditionLabel) {
+            html += '<span class="text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">' + conditionLabel + '</span>';
+        }
+        if (isCompleted) {
+            html += '<span class="text-xs text-green-600 font-bold mt-1">✅ مكتمل</span>';
+        } else if (it.qty_returned > 0) {
+            html += '<span class="text-xs text-amber-600 font-bold mt-1">⏳ قيد التعديل</span>';
+        } else {
+            html += '<span class="text-xs text-slate-400 font-bold mt-1">⏳ لم يبدأ</span>';
+        }
+        html += '</div></div>';
+        return html;
+    },
 
-    var html = '<div class="card cursor-pointer active:scale-[0.98] border-2 ' + borderColor + ' ' + bgColor + '" id="return-card-' + index + '" onclick="App.editReturnItem(' + index + ')">';
-    html += '<div class="flex flex-col items-center text-center">';
-    html += this._img(it.item_code);
-    html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it.item_name || '').substring(0, 25) + '</p>';
-    html += '<p class="text-xs text-slate-400 mt-0.5">' + (it.unit || 'حبة') + '</p>';
-    html += '<div class="mt-1 text-xs text-slate-500">';
-    html += 'متبقي: <strong class="text-blue-600">' + remaining + '</strong>';
-    html += ' | مرتجع: <strong class="' + (it.qty_returned > 0 ? 'text-amber-600' : 'text-slate-400') + '">' + it.qty_returned + '</strong>';
-    html += '</div>';
-    if (conditionLabel) {
-        html += '<span class="text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">' + conditionLabel + '</span>';
-    }
-    if (isCompleted) {
-        html += '<span class="text-xs text-green-600 font-bold mt-1">✅ مكتمل</span>';
-    } else if (it.qty_returned > 0) {
-        html += '<span class="text-xs text-amber-600 font-bold mt-1">⏳ قيد التعديل</span>';
-    } else {
-        html += '<span class="text-xs text-slate-400 font-bold mt-1">⏳ لم يبدأ</span>';
-    }
-    // ✅ تم حذف زر "إبلاغ عن اختلاف" من هنا
-    html += '</div></div>';
-    return html;
-},
+    reportDiscrepancyFromCard: function(index, remaining) {
+        var self = this;
+        var it = this.session.items[index];
+        var actualQty = it.qty_returned || 0;
+        var diff = actualQty - remaining;
 
-    // ===== دالة للإبلاغ عن اختلاف من البطاقة (معدلة) =====
-reportDiscrepancyFromCard: function(index, remaining) {
-    var self = this;
-    var it = this.session.items[index];
-    var actualQty = it.qty_returned || 0;
-    var diff = actualQty - remaining;
+        if (diff === 0) {
+            toast('لا يوجد اختلاف في الكمية. يمكنك تعديل الصنف أو الإبلاغ عن صنف مختلف من النافذة.', 'info');
+            this.editReturnItem(index);
+            return;
+        }
 
-    // ✅ إذا كان diff === 0، نفتح نافذة التعديل بدلاً من الإبلاغ
-    if (diff === 0) {
-        toast('لا يوجد اختلاف في الكمية. يمكنك تعديل الصنف أو الإبلاغ عن صنف مختلف من النافذة.', 'info');
-        this.editReturnItem(index);
-        return;
-    }
+        if (diff < 0 && !it.notes) {
+            toast('الكمية أقل من المتبقي. أضف سبباً في النافذة أولاً.', 'warning');
+            this.editReturnItem(index);
+            return;
+        }
 
-    if (diff < 0 && !it.notes) {
-        toast('الكمية أقل من المتبقي. أضف سبباً في النافذة أولاً.', 'warning');
-        this.editReturnItem(index);
-        return;
-    }
-
-    // فتح نافذة الإبلاغ مع تمرير البيانات (للاختلافات الحقيقية فقط)
-    this.reportDiscrepancy(index, remaining, actualQty, diff, it.notes || '');
-},
+        this.reportDiscrepancy(index, remaining, actualQty, diff, it.notes || '');
+    },
 
     onItemSearch: function(query) {
         var self = this;
@@ -1117,7 +698,8 @@ reportDiscrepancyFromCard: function(index, remaining) {
         var delay = query.length > 6 ? 50 : 300;
         this.itemSearchTimer = setTimeout(function() {
             var q = query.trim().toLowerCase();
-            var found = null, foundIndex = -1;
+            var found = null;
+            var foundIndex = -1;
             if (self.session && self.session.items) {
                 for (var i = 0; i < self.session.items.length; i++) {
                     var it = self.session.items[i];
@@ -1186,29 +768,25 @@ reportDiscrepancyFromCard: function(index, remaining) {
 
     _searchItemInDB: function(query) {
         var self = this;
-        supabase.from('items')
-            .select('item_code, name, unit')
-            .or('name.ilike.%' + query + '%,item_code.ilike.%' + query + '%')
-            .limit(5)
-            .then(function(res) {
-                var items = res.data || [];
-                var dd = byId('itemSearchResults');
-                if (!dd) { return; }
-                if (items.length === 0) {
-                    safeHTML(dd, '<div class="p-3 text-center text-slate-400 text-sm">🔍 لا توجد نتائج</div>');
-                    dd.classList.remove('hidden');
-                    return;
-                }
-                var html = '';
-                for (var j = 0; j < items.length; j++) {
-                    html += '<div onclick="App._selectSearchItem(\'' + items[j].item_code + '\')" class="p-3 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex justify-between items-center">';
-                    html += '<div><span class="font-bold text-slate-700">' + items[j].name + '</span><span class="text-xs text-slate-400 mr-2">' + items[j].item_code + '</span></div>';
-                    html += '<span class="text-xs text-slate-400">من المخزن</span>';
-                    html += '</div>';
-                }
-                safeHTML(dd, html);
+        supabase.from('items').select('item_code, name, unit').or('name.ilike.%' + query + '%,item_code.ilike.%' + query + '%').limit(5).then(function(res) {
+            var items = res.data || [];
+            var dd = byId('itemSearchResults');
+            if (!dd) { return; }
+            if (items.length === 0) {
+                safeHTML(dd, '<div class="p-3 text-center text-slate-400 text-sm">🔍 لا توجد نتائج</div>');
                 dd.classList.remove('hidden');
-            });
+                return;
+            }
+            var html = '';
+            for (var j = 0; j < items.length; j++) {
+                html += '<div onclick="App._selectSearchItem(\'' + items[j].item_code + '\')" class="p-3 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex justify-between items-center">';
+                html += '<div><span class="font-bold text-slate-700">' + items[j].name + '</span><span class="text-xs text-slate-400 mr-2">' + items[j].item_code + '</span></div>';
+                html += '<span class="text-xs text-slate-400">من المخزن</span>';
+                html += '</div>';
+            }
+            safeHTML(dd, html);
+            dd.classList.remove('hidden');
+        });
     },
 
     _selectSearchItem: function(itemCode) {
@@ -1257,9 +835,8 @@ reportDiscrepancyFromCard: function(index, remaining) {
     },
 
     // ============================================================
-    // تعديل الصنف - شاشة واحدة
+    // تعديل الصنف – مع أسباب ديناميكية من return_reasons
     // ============================================================
-
     editReturnItem: function(index) {
         var self = this;
         var it = this.session.items[index];
@@ -1269,11 +846,27 @@ reportDiscrepancyFromCard: function(index, remaining) {
         var imgUrl = cacheEntry.image_url || '';
         var desc = cacheEntry.description || '';
 
-        var imgHtml = imgUrl ?
-            '<img src="' + imgUrl + '" style="width:100%;height:280px;object-fit:cover;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.06)" onerror="this.style.display=\'none\'">' :
-            '<div style="width:100%;height:280px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
+        var imgHtml = imgUrl ? '<img src="' + imgUrl + '" style="width:100%;height:280px;object-fit:cover;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.06)" onerror="this.style.display=\'none\'">' : '<div style="width:100%;height:280px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
 
         var currentVal = it.qty_returned > 0 ? it.qty_returned : remaining;
+
+        // بناء قائمة أسباب المرتجعات الديناميكية
+        var reasonsOptionsHtml = '';
+        for (var r = 0; r < RETURN_REASONS_LIST.length; r++) {
+            var reasonItem = RETURN_REASONS_LIST[r];
+            var selected = '';
+            if (it.notes === reasonItem.reason_code || it.notes === reasonItem.reason_name) {
+                selected = ' selected';
+            }
+            var icon = '📝';
+            if (reasonItem.reason_category === 'damaged') { icon = '🔴'; }
+            else if (reasonItem.reason_category === 'refused') { icon = '🚫'; }
+            else if (reasonItem.reason_category === 'error') { icon = '⚠️'; }
+            else if (reasonItem.reason_category === 'expired') { icon = '⏰'; }
+            else if (reasonItem.reason_category === 'not_found') { icon = '❓'; }
+            else if (reasonItem.reason_category === 'wrong_item') { icon = '🔄'; }
+            reasonsOptionsHtml += '<option value="' + reasonItem.reason_code + '"' + selected + '>' + icon + ' ' + reasonItem.reason_name + '</option>';
+        }
 
         var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
         html += imgHtml;
@@ -1298,15 +891,11 @@ reportDiscrepancyFromCard: function(index, remaining) {
         html += '<button onclick="App._setEditAllDamaged(' + remaining + ')" style="background:#fef2f2;color:#b91c1c;border:2px solid #fecaca;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">الكل تالف</button>';
         html += '</div></div>';
 
-        html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">التصنيف</label>';
-        html += '<select id="swal-ret-cond" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
-        html += '<option value="good"' + ((it.return_condition || 'good') === 'good' ? ' selected' : '') + '>🟢 سليم</option>';
-        html += '<option value="damaged"' + (it.return_condition === 'damaged' ? ' selected' : '') + '>🔴 تالف</option>';
-        html += '<option value="missing"' + (it.return_condition === 'missing' ? ' selected' : '') + '>⬛ مفقود</option>';
-        html += '</select></div>';
+        html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">سبب المرتجع</label>';
+        html += '<select id="swal-ret-reason" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + reasonsOptionsHtml + '</select></div>';
 
-        html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات</label>';
-        html += '<input type="text" id="swal-ret-notes" value="' + (it.notes || '') + '" placeholder="سبب النقص..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b">';
+        html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات إضافية</label>';
+        html += '<input type="text" id="swal-ret-notes" value="' + (it.notes || '') + '" placeholder="أي ملاحظات إضافية..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b">';
         html += '</div>';
 
         html += '<div style="display:flex;gap:8px;margin-top:8px">';
@@ -1319,10 +908,7 @@ reportDiscrepancyFromCard: function(index, remaining) {
             width: '420px',
             showCloseButton: true,
             showConfirmButton: false,
-            customClass: {
-                popup: '!rounded-3xl !p-5',
-                closeButton: '!text-slate-400 !text-lg'
-            },
+            customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-400 !text-lg' },
             didOpen: function() {
                 var saveBtn = document.getElementById('swal-save-btn');
                 if (saveBtn) {
@@ -1332,12 +918,25 @@ reportDiscrepancyFromCard: function(index, remaining) {
                             toast('الكمية أكبر من المتبقي', 'error');
                             return;
                         }
-                        var condition = document.getElementById('swal-ret-cond').value;
+                        var reasonCode = document.getElementById('swal-ret-reason').value;
                         var notes = document.getElementById('swal-ret-notes').value.trim();
 
+                        // تحديد return_condition من reason_category
+                        var returnCondition = 'good';
+                        for (var rr = 0; rr < RETURN_REASONS_LIST.length; rr++) {
+                            if (RETURN_REASONS_LIST[rr].reason_code === reasonCode) {
+                                returnCondition = RETURN_REASONS_LIST[rr].reason_category || 'other';
+                                break;
+                            }
+                        }
+                        // القيم الخاصة
+                        if (reasonCode === 'R001') { returnCondition = 'damaged'; }
+                        else if (reasonCode === 'R002') { returnCondition = 'refused'; }
+                        else if (reasonCode === 'R005') { returnCondition = 'missing'; }
+
                         it.qty_returned = qty;
-                        it.return_condition = condition;
-                        it.notes = notes;
+                        it.return_condition = returnCondition;
+                        it.notes = notes || reasonCode;
 
                         self.saveReturnItem(index);
                         Swal.close();
@@ -1351,21 +950,11 @@ reportDiscrepancyFromCard: function(index, remaining) {
                                 showCancelButton: true,
                                 confirmButtonText: 'إضافة سبب',
                                 cancelButtonText: 'تخطي',
-                                customClass: {
-                                    popup: '!rounded-3xl',
-                                    confirmButton: '!rounded-xl !bg-amber-500 !px-6',
-                                    cancelButton: '!rounded-xl !px-6'
-                                }
-                            }).then(function(r2) {
-                                if (r2.isConfirmed) {
-                                    self.editReturnItem(index);
-                                }
-                            });
+                                customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl !px-6' }
+                            }).then(function(r2) { if (r2.isConfirmed) { self.editReturnItem(index); } });
                         }
                     });
                 }
-
-
             }
         });
     },
@@ -1382,15 +971,15 @@ reportDiscrepancyFromCard: function(index, remaining) {
     _setEditAllGood: function(rem) {
         var input = document.getElementById('swal-ret-qty');
         if (input) { input.value = rem; }
-        var sel = document.getElementById('swal-ret-cond');
-        if (sel) { sel.value = 'good'; }
+        var sel = document.getElementById('swal-ret-reason');
+        if (sel) { sel.value = 'R002'; }
     },
 
     _setEditAllDamaged: function(rem) {
         var input = document.getElementById('swal-ret-qty');
         if (input) { input.value = rem; }
-        var sel = document.getElementById('swal-ret-cond');
-        if (sel) { sel.value = 'damaged'; }
+        var sel = document.getElementById('swal-ret-reason');
+        if (sel) { sel.value = 'R001'; }
     },
 
     saveReturnItem: function(index) {
@@ -1406,27 +995,22 @@ reportDiscrepancyFromCard: function(index, remaining) {
             updated_at: new Date().toISOString()
         });
 
-        supabase.from('run_sheet_details')
-            .update({
-                qty_returned: it.qty_returned,
-                return_condition: it.return_condition || 'good',
-                notes: it.notes || null
-            })
-            .eq('runsheet_id', this.session.runsheet_id)
-            .eq('item_code', it.item_code)
-            .then(function(res) {
-                if (res.error) {
-                    console.error('❌ فشل حفظ في Supabase:', res.error.message);
-                } else {
-                    console.log('✅ تم حفظ ' + it.item_code);
-                }
-            });
+        supabase.from('run_sheet_details').update({
+            qty_returned: it.qty_returned,
+            return_condition: it.return_condition || 'good',
+            notes: it.notes || null
+        }).eq('runsheet_id', this.session.runsheet_id).eq('item_code', it.item_code).then(function(res) {
+            if (res.error) { console.error('❌ فشل حفظ في Supabase:', res.error.message); }
+            else { console.log('✅ تم حفظ ' + it.item_code); }
+        });
 
         this.updateSummaryCards();
     },
 
     updateSummaryCards: function() {
-        var summaryGood = 0, summaryDamaged = 0, summaryMissing = 0;
+        var summaryGood = 0;
+        var summaryDamaged = 0;
+        var summaryMissing = 0;
         for (var i = 0; i < this.session.items.length; i++) {
             var it = this.session.items[i];
             if (it.qty_returned > 0) {
@@ -1437,9 +1021,6 @@ reportDiscrepancyFromCard: function(index, remaining) {
         }
         this.summary = { good: summaryGood, damaged: summaryDamaged, missing: summaryMissing };
     },
-    // ============================================================
-    // الإبلاغ عن اختلاف - مع دعم "صنف مختلف"
-    // ============================================================
 
     reportDiscrepancy: function(index, remaining, actualQty, diff, notes) {
         var self = this;
@@ -1450,7 +1031,6 @@ reportDiscrepancyFromCard: function(index, remaining) {
             diff = actualQty - remaining;
         }
 
-        // بناء قائمة الأصناف من ALL_ITEMS_LIST
         var itemsOptionsHtml = '';
         for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
             var item = ALL_ITEMS_LIST[i];
@@ -1464,7 +1044,6 @@ reportDiscrepancyFromCard: function(index, remaining) {
         html += '<p style="font-size:13px;color:#ea580c">الموجود: <strong>' + actualQty + '</strong></p>';
         html += '<p style="font-size:13px;color:' + (diff > 0 ? '#16a34a' : (diff < 0 ? '#dc2626' : '#64748b')) + '">الفرق: <strong>' + (diff > 0 ? '+' : '') + diff + '</strong></p>';
 
-        // نوع الاختلاف
         html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع الاختلاف</label>';
         html += '<select id="discType" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
         html += '<option value="surplus">زيادة - كمية أكثر من المتوقع</option>';
@@ -1473,22 +1052,15 @@ reportDiscrepancyFromCard: function(index, remaining) {
         html += '<option value="other">سبب آخر</option>';
         html += '</select></div>';
 
-        // حقول إضافية لـ "صنف مختلف"
         html += '<div id="discrepancyExtraFields" class="discrepancy-extra-fields">';
         html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف الموجود (الفعلي)</label>';
-        html += '<select id="actualItemCode" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
-        html += itemsOptionsHtml;
-        html += '</select></div>';
+        html += '<select id="actualItemCode" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + itemsOptionsHtml + '</select></div>';
         html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المتوقع (في النظام)</label>';
-        html += '<select id="expectedItemCode" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
-        html += itemsOptionsHtml;
-        html += '</select></div>';
+        html += '<select id="expectedItemCode" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + itemsOptionsHtml + '</select></div>';
         html += '</div>';
 
-        // ملاحظات إضافية
         html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات إضافية</label>';
         html += '<textarea id="discNotes" rows="2" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b">' + (notes || '') + '</textarea></div>';
-
         html += '<p style="font-size:12px;color:#dc2626;margin-top:12px">⚠️ سيتم تسجيل البلاغ . الرانشيت سيبقى معلقاً حتى التحقيق.</p>';
         html += '</div>';
 
@@ -1499,20 +1071,12 @@ reportDiscrepancyFromCard: function(index, remaining) {
             showCancelButton: true,
             confirmButtonText: 'إبلاغ ',
             cancelButtonText: 'إلغاء',
-            customClass: {
-                popup: '!rounded-3xl !p-5',
-                confirmButton: '!rounded-xl !bg-orange-600 !px-8',
-                cancelButton: '!rounded-xl !px-8'
-            },
+            customClass: { popup: '!rounded-3xl !p-5', confirmButton: '!rounded-xl !bg-orange-600 !px-8', cancelButton: '!rounded-xl !px-8' },
             didOpen: function() {
-                // تفعيل/إخفاء الحقول الإضافية
                 App._toggleDiscrepancyFields();
-                // إضافة مستمع لتغيير النوع
                 var discTypeEl = document.getElementById('discType');
                 if (discTypeEl) {
-                    discTypeEl.addEventListener('change', function() {
-                        App._toggleDiscrepancyFields();
-                    });
+                    discTypeEl.addEventListener('change', function() { App._toggleDiscrepancyFields(); });
                 }
             },
             preConfirm: function() {
@@ -1536,17 +1100,10 @@ reportDiscrepancyFromCard: function(index, remaining) {
                         return false;
                     }
                 }
-
-                return {
-                    discType: discType,
-                    actualItemCode: actualItemCode,
-                    expectedItemCode: expectedItemCode,
-                    notesText: notesText
-                };
+                return { discType: discType, actualItemCode: actualItemCode, expectedItemCode: expectedItemCode, notesText: notesText };
             }
         }).then(function(result) {
             if (!result.isConfirmed) { return; }
-
             var discType = result.value.discType;
             var actualItemCode = result.value.actualItemCode;
             var expectedItemCode = result.value.expectedItemCode;
@@ -1577,36 +1134,20 @@ reportDiscrepancyFromCard: function(index, remaining) {
             }
 
             Swal.fire({ title: 'جاري الإبلاغ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
-
-            supabase.auth.getSession()
-                .then(function(ses) {
-                    var t = ses.data.session.access_token;
-                    return fetch(SUPABASE_URL + '/functions/v1/report-discrepancy', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
-                        body: JSON.stringify(payload)
-                    });
-                })
-                .then(function(r) { return r.json(); })
-                .then(function(j) {
-                    Swal.close();
-                    if (j.success) {
-                        var msg = 'تم تسجيل البلاغ بنجاح';
-                        if (discType === 'wrong_item') {
-                            msg += ' (صنف مختلف: ' + (payload.actual_item_name || actualItemCode) + ' بدلاً من ' + (payload.expected_item_name || expectedItemCode) + ')';
-                        }
-                        toast(msg, 'success');
-                        self.session.items[index].qty_returned = remaining;
-                        self.session.items[index].notes = 'اختلاف - تم الإبلاغ (' + discType + ')';
-                        self.saveReturnItem(index);
-                    } else {
-                        toast(j.msg || 'فشل الإبلاغ', 'error');
-                    }
-                })
-                .catch(function() {
-                    Swal.close();
-                    toast('فشل الاتصال بالخادم', 'error');
-                });
+            supabase.auth.getSession().then(function(ses) {
+                var t = ses.data.session.access_token;
+                return fetch(SUPABASE_URL + '/functions/v1/report-discrepancy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t }, body: JSON.stringify(payload) });
+            }).then(function(r) { return r.json(); }).then(function(j) {
+                Swal.close();
+                if (j.success) {
+                    var msg = 'تم تسجيل البلاغ بنجاح';
+                    if (discType === 'wrong_item') { msg += ' (صنف مختلف: ' + (payload.actual_item_name || actualItemCode) + ' بدلاً من ' + (payload.expected_item_name || expectedItemCode) + ')'; }
+                    toast(msg, 'success');
+                    self.session.items[index].qty_returned = remaining;
+                    self.session.items[index].notes = 'اختلاف - تم الإبلاغ (' + discType + ')';
+                    self.saveReturnItem(index);
+                } else { toast(j.msg || 'فشل الإبلاغ', 'error'); }
+            }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
         });
     },
 
@@ -1614,450 +1155,279 @@ reportDiscrepancyFromCard: function(index, remaining) {
         var discType = document.getElementById('discType');
         var extraFields = document.getElementById('discrepancyExtraFields');
         if (discType && extraFields) {
-            if (discType.value === 'wrong_item') {
-                extraFields.classList.add('visible');
-            } else {
-                extraFields.classList.remove('visible');
-            }
+            if (discType.value === 'wrong_item') { extraFields.classList.add('visible'); }
+            else { extraFields.classList.remove('visible'); }
         }
     },
-reportDiscrepancyGeneral: function() {
-    var self = this;
-    
-    if (!this.session || !this.session.items) {
-        toast('لا توجد جلسة نشطة', 'warning');
-        return;
-    }
 
-    var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
-    html += '<p style="font-size:14px;color:#334155">🚨 الإبلاغ عن اختلاف في الرانشيت</p>';
-    html += '<p style="font-size:13px;color:#64748b;margin-top:8px">الرجاء توضيح المشكلة التي اكتشفتها:</p>';
+    reportDiscrepancyGeneral: function() {
+        var self = this;
+        if (!this.session || !this.session.items) { toast('لا توجد جلسة نشطة', 'warning'); return; }
 
-    // نوع المشكلة
-    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع المشكلة</label>';
-    html += '<select id="discTypeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
-    html += '<option value="surplus">زيادة في الكمية</option>';
-    html += '<option value="shortage">نقص في الكمية</option>';
-    html += '<option value="wrong_item">صنف مختلف</option>';
-    html += '<option value="damaged">صنف تالف</option>';
-    html += '<option value="missing">صنف مفقود</option>';
-    html += '<option value="other">سبب آخر</option>';
-    html += '</select></div>';
+        var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
+        html += '<p style="font-size:14px;color:#334155">🚨 الإبلاغ عن اختلاف في الرانشيت</p>';
+        html += '<p style="font-size:13px;color:#64748b;margin-top:8px">الرجاء توضيح المشكلة التي اكتشفتها:</p>';
 
-    // حقل البحث عن الصنف (بدلاً من القائمة المنسدلة)
-    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المعني</label>';
-    html += '<input type="text" id="itemSearchGeneral" placeholder="🔍 ابحث عن صنف بالاسم أو الكود..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b" oninput="App._searchItemsForReport(this.value)">';
-    html += '<div id="itemSearchResultsGeneral" style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:12px;margin-top:4px;display:none;background:white"></div>';
-    html += '<input type="hidden" id="selectedItemCodeGeneral">';
-    html += '<input type="hidden" id="selectedItemUnitGeneral">';
-    html += '</div>';
+        html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع المشكلة</label>';
+        html += '<select id="discTypeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
+        html += '<option value="surplus">زيادة في الكمية</option><option value="shortage">نقص في الكمية</option><option value="wrong_item">صنف مختلف</option><option value="damaged">صنف تالف</option><option value="missing">صنف مفقود</option><option value="other">سبب آخر</option>';
+        html += '</select></div>';
 
-    // الكمية والوحدة
-    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية</label>';
-    html += '<div style="display:flex;align-items:center;gap:8px">';
-    html += '<input type="number" id="qtyGeneral" value="1" min="1" style="flex:1;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b">';
-    html += '<span id="unitDisplayGeneral" style="padding:10px;background:#f1f5f9;border-radius:12px;font-size:13px;color:#64748b;min-width:60px;text-align:center">وحدة</span>';
-    html += '</div></div>';
+        html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المعني</label>';
+        html += '<input type="text" id="itemSearchGeneral" placeholder="🔍 ابحث عن صنف بالاسم أو الكود..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b" oninput="App._searchItemsForReport(this.value)">';
+        html += '<div id="itemSearchResultsGeneral" style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:12px;margin-top:4px;display:none;background:white"></div>';
+        html += '<input type="hidden" id="selectedItemCodeGeneral"><input type="hidden" id="selectedItemUnitGeneral">';
+        html += '</div>';
 
-    // حقل "صنف متوقع" (يظهر فقط عند اختيار "صنف مختلف")
-    html += '<div id="expectedItemContainer" style="display:none;margin-top:12px">';
-    html += '<label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المتوقع (في النظام)</label>';
-    html += '<input type="text" id="expectedItemSearchGeneral" placeholder="🔍 ابحث عن الصنف المتوقع..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b" oninput="App._searchExpectedItemForReport(this.value)">';
-    html += '<div id="expectedItemSearchResultsGeneral" style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:12px;margin-top:4px;display:none;background:white"></div>';
-    html += '<input type="hidden" id="selectedExpectedItemCodeGeneral">';
-    html += '</div>';
+        html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية</label>';
+        html += '<div style="display:flex;align-items:center;gap:8px"><input type="number" id="qtyGeneral" value="1" min="1" style="flex:1;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b"><span id="unitDisplayGeneral" style="padding:10px;background:#f1f5f9;border-radius:12px;font-size:13px;color:#64748b;min-width:60px;text-align:center">وحدة</span></div></div>';
 
-    // ملاحظات
-    html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات إضافية</label>';
-    html += '<textarea id="discNotesGeneral" rows="2" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b"></textarea></div>';
+        html += '<div id="expectedItemContainer" style="display:none;margin-top:12px">';
+        html += '<label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المتوقع (في النظام)</label>';
+        html += '<input type="text" id="expectedItemSearchGeneral" placeholder="🔍 ابحث عن الصنف المتوقع..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b" oninput="App._searchExpectedItemForReport(this.value)">';
+        html += '<div id="expectedItemSearchResultsGeneral" style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:12px;margin-top:4px;display:none;background:white"></div>';
+        html += '<input type="hidden" id="selectedExpectedItemCodeGeneral">';
+        html += '</div>';
 
-    html += '<p style="font-size:12px;color:#dc2626;margin-top:12px">⚠️ سيتم تسجيل البلاغ. الرانشيت سيبقى معلقاً حتى المراجعة.</p>';
-    html += '</div>';
+        html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات إضافية</label>';
+        html += '<textarea id="discNotesGeneral" rows="2" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b"></textarea></div>';
+        html += '<p style="font-size:12px;color:#dc2626;margin-top:12px">⚠️ سيتم تسجيل البلاغ. الرانشيت سيبقى معلقاً حتى المراجعة.</p>';
+        html += '</div>';
 
-    Swal.fire({
-        title: '🚨 إبلاغ عن اختلاف في الرانشيت',
-        html: html,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonText: 'إبلاغ',
-        cancelButtonText: 'إلغاء',
-        customClass: {
-            popup: '!rounded-3xl !p-5',
-            confirmButton: '!rounded-xl !bg-orange-600 !px-8',
-            cancelButton: '!rounded-xl !px-8'
-        },
-        didOpen: function() {
-            var discTypeEl = document.getElementById('discTypeGeneral');
-            var expectedContainer = document.getElementById('expectedItemContainer');
-            if (discTypeEl && expectedContainer) {
-                discTypeEl.addEventListener('change', function() {
-                    if (discTypeEl.value === 'wrong_item') {
-                        expectedContainer.style.display = 'block';
-                    } else {
-                        expectedContainer.style.display = 'none';
-                    }
-                });
-                expectedContainer.style.display = 'none';
-            }
-        },
-        preConfirm: function() {
-            var discTypeEl = document.getElementById('discTypeGeneral');
-            var selectedCode = document.getElementById('selectedItemCodeGeneral');
-            var selectedUnit = document.getElementById('selectedItemUnitGeneral');
-            var qtyEl = document.getElementById('qtyGeneral');
-            var expectedCode = document.getElementById('selectedExpectedItemCodeGeneral');
-            var discNotesEl = document.getElementById('discNotesGeneral');
-
-            var discType = discTypeEl ? discTypeEl.value : 'other';
-            var itemCode = selectedCode ? selectedCode.value : null;
-            var unit = selectedUnit ? selectedUnit.value : 'حبة';
-            var qty = qtyEl ? parseInt(qtyEl.value) || 0 : 0;
-            var expectedItemCode = expectedCode ? expectedCode.value : null;
-            var notesText = discNotesEl ? discNotesEl.value : '';
-
-            if (!itemCode) {
-                Swal.showValidationMessage('يرجى اختيار صنف من نتائج البحث');
-                return false;
-            }
-
-            if (qty <= 0) {
-                Swal.showValidationMessage('يرجى إدخال كمية صحيحة');
-                return false;
-            }
-
-            if (discType === 'wrong_item') {
-                if (!expectedItemCode) {
-                    Swal.showValidationMessage('يرجى اختيار الصنف المتوقع');
-                    return false;
+        Swal.fire({
+            title: '🚨 إبلاغ عن اختلاف في الرانشيت',
+            html: html,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'إبلاغ',
+            cancelButtonText: 'إلغاء',
+            customClass: { popup: '!rounded-3xl !p-5', confirmButton: '!rounded-xl !bg-orange-600 !px-8', cancelButton: '!rounded-xl !px-8' },
+            didOpen: function() {
+                var discTypeEl = document.getElementById('discTypeGeneral');
+                var expectedContainer = document.getElementById('expectedItemContainer');
+                if (discTypeEl && expectedContainer) {
+                    discTypeEl.addEventListener('change', function() {
+                        if (discTypeEl.value === 'wrong_item') { expectedContainer.style.display = 'block'; }
+                        else { expectedContainer.style.display = 'none'; }
+                    });
+                    expectedContainer.style.display = 'none';
                 }
-                if (itemCode === expectedItemCode) {
-                    Swal.showValidationMessage('الصنف الموجود والمتوقع متماثلان. يرجى اختيار صنفين مختلفين.');
-                    return false;
+            },
+            preConfirm: function() {
+                var discTypeEl = document.getElementById('discTypeGeneral');
+                var selectedCode = document.getElementById('selectedItemCodeGeneral');
+                var selectedUnit = document.getElementById('selectedItemUnitGeneral');
+                var qtyEl = document.getElementById('qtyGeneral');
+                var expectedCode = document.getElementById('selectedExpectedItemCodeGeneral');
+                var discNotesEl = document.getElementById('discNotesGeneral');
+
+                var discType = discTypeEl ? discTypeEl.value : 'other';
+                var itemCode = selectedCode ? selectedCode.value : null;
+                var unit = selectedUnit ? selectedUnit.value : 'حبة';
+                var qty = qtyEl ? parseInt(qtyEl.value) || 0 : 0;
+                var expectedItemCode = expectedCode ? expectedCode.value : null;
+                var notesText = discNotesEl ? discNotesEl.value : '';
+
+                if (!itemCode) { Swal.showValidationMessage('يرجى اختيار صنف من نتائج البحث'); return false; }
+                if (qty <= 0) { Swal.showValidationMessage('يرجى إدخال كمية صحيحة'); return false; }
+                if (discType === 'wrong_item') {
+                    if (!expectedItemCode) { Swal.showValidationMessage('يرجى اختيار الصنف المتوقع'); return false; }
+                    if (itemCode === expectedItemCode) { Swal.showValidationMessage('الصنف الموجود والمتوقع متماثلان. يرجى اختيار صنفين مختلفين.'); return false; }
                 }
+                return { discType: discType, itemCode: itemCode, unit: unit, qty: qty, expectedItemCode: expectedItemCode, notesText: notesText };
+            }
+        }).then(function(result) {
+            if (!result.isConfirmed) { return; }
+            var discType = result.value.discType;
+            var itemCode = result.value.itemCode;
+            var unit = result.value.unit;
+            var qty = result.value.qty;
+            var expectedItemCode = result.value.expectedItemCode;
+            var notesText = result.value.notesText;
+
+            var itemName = '';
+            var expectedItemName = '';
+            for (var k = 0; k < ALL_ITEMS_LIST.length; k++) {
+                if (ALL_ITEMS_LIST[k].item_code === itemCode) { itemName = ALL_ITEMS_LIST[k].name || itemCode; unit = ALL_ITEMS_LIST[k].unit || unit; }
+                if (ALL_ITEMS_LIST[k].item_code === expectedItemCode) { expectedItemName = ALL_ITEMS_LIST[k].name || expectedItemCode; }
             }
 
-            return {
-                discType: discType,
-                itemCode: itemCode,
-                unit: unit,
-                qty: qty,
-                expectedItemCode: expectedItemCode,
-                notesText: notesText
+            var payload = {
+                runsheet_id: self.session.runsheet_id,
+                item_code: itemCode,
+                item_name: itemName,
+                expected_qty: discType === 'shortage' ? qty : 0,
+                actual_qty: discType === 'shortage' ? 0 : qty,
+                difference_qty: discType === 'shortage' ? -qty : qty,
+                discrepancy_type: discType,
+                notes: notesText
             };
-        }
-    }).then(function(result) {
-        if (!result.isConfirmed) { return; }
-
-        var discType = result.value.discType;
-        var itemCode = result.value.itemCode;
-        var unit = result.value.unit;
-        var qty = result.value.qty;
-        var expectedItemCode = result.value.expectedItemCode;
-        var notesText = result.value.notesText;
-
-        var itemName = '';
-        var expectedItemName = '';
-        for (var k = 0; k < ALL_ITEMS_LIST.length; k++) {
-            if (ALL_ITEMS_LIST[k].item_code === itemCode) {
-                itemName = ALL_ITEMS_LIST[k].name || itemCode;
-                unit = ALL_ITEMS_LIST[k].unit || unit;
+            if (discType === 'wrong_item') {
+                payload.expected_item_code = expectedItemCode;
+                payload.expected_item_name = expectedItemName;
+                payload.actual_item_code = itemCode;
+                payload.actual_item_name = itemName;
             }
-            if (ALL_ITEMS_LIST[k].item_code === expectedItemCode) {
-                expectedItemName = ALL_ITEMS_LIST[k].name || expectedItemCode;
-            }
-        }
 
-        var payload = {
-            runsheet_id: self.session.runsheet_id,
-            item_code: itemCode,
-            item_name: itemName,
-            expected_qty: discType === 'shortage' ? qty : 0,
-            actual_qty: discType === 'shortage' ? 0 : qty,
-            difference_qty: discType === 'shortage' ? -qty : qty,
-            discrepancy_type: discType,
-            notes: notesText
-        };
-
-        if (discType === 'wrong_item') {
-            payload.expected_item_code = expectedItemCode;
-            payload.expected_item_name = expectedItemName;
-            payload.actual_item_code = itemCode;
-            payload.actual_item_name = itemName;
-        }
-
-        Swal.fire({ title: 'جاري الإبلاغ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
-
-        supabase.auth.getSession()
-            .then(function(ses) {
+            Swal.fire({ title: 'جاري الإبلاغ...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+            supabase.auth.getSession().then(function(ses) {
                 var t = ses.data.session.access_token;
-                return fetch(SUPABASE_URL + '/functions/v1/report-discrepancy', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
-                    body: JSON.stringify(payload)
-                });
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(j) {
+                return fetch(SUPABASE_URL + '/functions/v1/report-discrepancy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t }, body: JSON.stringify(payload) });
+            }).then(function(r) { return r.json(); }).then(function(j) {
                 Swal.close();
                 if (j.success) {
                     var msg = 'تم تسجيل البلاغ بنجاح';
-                    if (discType === 'wrong_item') {
-                        msg += ' (صنف مختلف: ' + itemName + ' بدلاً من ' + expectedItemName + ')';
-                    }
+                    if (discType === 'wrong_item') { msg += ' (صنف مختلف: ' + itemName + ' بدلاً من ' + expectedItemName + ')'; }
                     toast(msg, 'success');
                     self.renderActiveSession();
-                } else {
-                    toast(j.msg || 'فشل الإبلاغ', 'error');
-                }
-            })
-            .catch(function() {
-                Swal.close();
-                toast('فشل الاتصال بالخادم', 'error');
-            });
-    });
-},
-_searchItemsForReport: function(query) {
-    var resultsContainer = document.getElementById('itemSearchResultsGeneral');
-    var searchInput = document.getElementById('itemSearchGeneral');
-    
-    if (!query || query.trim().length < 2) {
-        if (resultsContainer) {
-            resultsContainer.style.display = 'none';
-            resultsContainer.innerHTML = '';
-        }
-        return;
-    }
-    
-    var q = query.trim().toLowerCase();
-    var results = [];
-    
-    for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
-        var item = ALL_ITEMS_LIST[i];
-        var name = (item.name || '').toLowerCase();
-        var code = (item.item_code || '').toLowerCase();
-        var label = (item.search_label || '').toLowerCase();
-        
-        if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1) {
-            results.push(item);
-        }
-        if (results.length >= 15) break;
-    }
-    
-    if (results.length === 0) {
-        resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>';
-        resultsContainer.style.display = 'block';
-        return;
-    }
-    
-    var html = '';
-    for (var j = 0; j < results.length; j++) {
-        var item = results[j];
-        html += '<div onclick="App._selectItemForReport(\'' + item.item_code + '\', \'' + (item.name || '').replace(/'/g, "\\'") + '\', \'' + (item.unit || 'حبة') + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
-        html += '<span><strong>' + (item.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + item.item_code + ')</span></span>';
-        html += '<span style="color:#94a3b8;font-size:12px">📦 ' + (item.unit || 'حبة') + '</span>';
-        html += '</div>';
-    }
-    resultsContainer.innerHTML = html;
-    resultsContainer.style.display = 'block';
-},
-_selectItemForReport: function(itemCode, itemName, unit) {
-    var searchInput = document.getElementById('itemSearchGeneral');
-    var unitDisplay = document.getElementById('unitDisplayGeneral');
-    var selectedCode = document.getElementById('selectedItemCodeGeneral');
-    var selectedUnit = document.getElementById('selectedItemUnitGeneral');
-    var resultsContainer = document.getElementById('itemSearchResultsGeneral');
-    
-    if (searchInput) searchInput.value = itemName + ' (' + itemCode + ')';
-    if (unitDisplay) unitDisplay.textContent = unit;
-    if (selectedCode) selectedCode.value = itemCode;
-    if (selectedUnit) selectedUnit.value = unit;
-    if (resultsContainer) {
-        resultsContainer.style.display = 'none';
-        resultsContainer.innerHTML = '';
-    }
-},
-_searchExpectedItemForReport: function(query) {
-    var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
-    var searchInput = document.getElementById('expectedItemSearchGeneral');
-    
-    if (!query || query.trim().length < 2) {
-        if (resultsContainer) {
-            resultsContainer.style.display = 'none';
-            resultsContainer.innerHTML = '';
-        }
-        return;
-    }
-    
-    var q = query.trim().toLowerCase();
-    var results = [];
-    
-    for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
-        var item = ALL_ITEMS_LIST[i];
-        var name = (item.name || '').toLowerCase();
-        var code = (item.item_code || '').toLowerCase();
-        var label = (item.search_label || '').toLowerCase();
-        
-        if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1) {
-            results.push(item);
-        }
-        if (results.length >= 15) break;
-    }
-    
-    if (results.length === 0) {
-        resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>';
-        resultsContainer.style.display = 'block';
-        return;
-    }
-    
-    var html = '';
-    for (var j = 0; j < results.length; j++) {
-        var item = results[j];
-        html += '<div onclick="App._selectExpectedItemForReport(\'' + item.item_code + '\', \'' + (item.name || '').replace(/'/g, "\\'") + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
-        html += '<span><strong>' + (item.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + item.item_code + ')</span></span>';
-        html += '<span style="color:#94a3b8;font-size:12px">📦 ' + (item.unit || 'حبة') + '</span>';
-        html += '</div>';
-    }
-    resultsContainer.innerHTML = html;
-    resultsContainer.style.display = 'block';
-},
-_selectExpectedItemForReport: function(itemCode, itemName) {
-    var searchInput = document.getElementById('expectedItemSearchGeneral');
-    var selectedCode = document.getElementById('selectedExpectedItemCodeGeneral');
-    var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
-    
-    if (searchInput) searchInput.value = itemName + ' (' + itemCode + ')';
-    if (selectedCode) selectedCode.value = itemCode;
-    if (resultsContainer) {
-        resultsContainer.style.display = 'none';
-        resultsContainer.innerHTML = '';
-    }
-},
+                } else { toast(j.msg || 'فشل الإبلاغ', 'error'); }
+            }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
+        });
+    },
+
+    _searchItemsForReport: function(query) {
+        var resultsContainer = document.getElementById('itemSearchResultsGeneral');
+        if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
+        var q = query.trim().toLowerCase(); var results = [];
+        for (var i = 0; i < ALL_ITEMS_LIST.length; i++) { var item = ALL_ITEMS_LIST[i]; var name = (item.name || '').toLowerCase(); var code = (item.item_code || '').toLowerCase(); var label = (item.search_label || '').toLowerCase(); if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1) { results.push(item); } if (results.length >= 15) break; }
+        if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
+        var html = '';
+        for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
+        resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
+    },
+
+    _selectItemForReport: function(itemCode, itemName, unit) {
+        var searchInput = document.getElementById('itemSearchGeneral');
+        var unitDisplay = document.getElementById('unitDisplayGeneral');
+        var selectedCode = document.getElementById('selectedItemCodeGeneral');
+        var selectedUnit = document.getElementById('selectedItemUnitGeneral');
+        var resultsContainer = document.getElementById('itemSearchResultsGeneral');
+        if (searchInput) searchInput.value = itemName + ' (' + itemCode + ')';
+        if (unitDisplay) unitDisplay.textContent = unit;
+        if (selectedCode) selectedCode.value = itemCode;
+        if (selectedUnit) selectedUnit.value = unit;
+        if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; }
+    },
+
+    _searchExpectedItemForReport: function(query) {
+        var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
+        if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
+        var q = query.trim().toLowerCase(); var results = [];
+        for (var i = 0; i < ALL_ITEMS_LIST.length; i++) { var item = ALL_ITEMS_LIST[i]; var name = (item.name || '').toLowerCase(); var code = (item.item_code || '').toLowerCase(); var label = (item.search_label || '').toLowerCase(); if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1) { results.push(item); } if (results.length >= 15) break; }
+        if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
+        var html = '';
+        for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectExpectedItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
+        resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
+    },
+
+    _selectExpectedItemForReport: function(itemCode, itemName) {
+        var searchInput = document.getElementById('expectedItemSearchGeneral');
+        var selectedCode = document.getElementById('selectedExpectedItemCodeGeneral');
+        var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
+        if (searchInput) searchInput.value = itemName + ' (' + itemCode + ')';
+        if (selectedCode) selectedCode.value = itemCode;
+        if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; }
+    },
+
+    // ============================================================
+    // completeReturn – ترسل reason و return_condition
+    // ============================================================
     completeReturn: function() {
+        var self = this;
         if (!this.session) { return; }
         if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
 
-        supabase.from('stock_discrepancies')
-            .select('id')
-            .eq('runsheet_id', this.session.runsheet_id)
-            .eq('status', 'pending')
-            .then(function(discRes) {
-                var pendingDisc = discRes.data || [];
-                if (pendingDisc.length > 0) {
-                    Swal.fire({
-                        title: 'لا يمكن الإنهاء',
-                        text: 'يوجد ' + pendingDisc.length + ' بلاغات اختلاف معلقة. يجب مراجعة المشرف أولاً.',
-                        icon: 'warning',
-                        customClass: { popup: '!rounded-3xl' }
-                    });
-                    return;
-                }
+        supabase.from('stock_discrepancies').select('id').eq('runsheet_id', this.session.runsheet_id).eq('status', 'pending').then(function(discRes) {
+            var pendingDisc = discRes.data || [];
+            if (pendingDisc.length > 0) {
+                Swal.fire({ title: 'لا يمكن الإنهاء', text: 'يوجد ' + pendingDisc.length + ' بلاغات اختلاف معلقة. يجب مراجعة المشرف أولاً.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
+                return;
+            }
 
-                var items = [];
-                var hasErrors = false;
-                var totalGood = 0, totalDamaged = 0, totalMissing = 0, totalShortageValue = 0;
+            var items = [];
+            var hasErrors = false;
+            var totalGood = 0;
+            var totalDamaged = 0;
+            var totalMissing = 0;
+            var totalShortageValue = 0;
 
-                for (var i = 0; i < self.session.items.length; i++) {
-                    var it = self.session.items[i];
-                    var remaining = it.qty_loaded - it.qty_delivered;
-                    if (remaining <= 0) { continue; }
+            for (var i = 0; i < self.session.items.length; i++) {
+                var it = self.session.items[i];
+                var remaining = it.qty_loaded - it.qty_delivered;
+                if (remaining <= 0) { continue; }
 
-                    var returned = it.qty_returned || 0;
-                    var condition = it.return_condition || 'good';
-                    var notes = it.notes || '';
+                var returned = it.qty_returned || 0;
+                var condition = it.return_condition || 'good';
+                var notes = it.notes || '';
 
-                    if (returned < remaining && !notes) {
-                        hasErrors = true;
-                        continue;
-                    }
+                if (returned < remaining && !notes) { hasErrors = true; continue; }
 
-                    if (condition === 'good') { totalGood += returned; }
-                    else if (condition === 'damaged') { totalDamaged += returned; }
-                    else if (condition === 'missing') { totalMissing += returned; }
+                if (condition === 'good') { totalGood += returned; }
+                else if (condition === 'damaged') { totalDamaged += returned; }
+                else if (condition === 'missing') { totalMissing += returned; }
 
-                    if (condition === 'missing') {
-                        totalShortageValue += (remaining - returned) * (it.unit_price || 0);
-                    }
+                if (condition === 'missing') { totalShortageValue += (remaining - returned) * (it.unit_price || 0); }
 
-                    items.push({
-                        item_code: it.item_code,
-                        item_name: it.item_name || '',
-                        qty_loaded: it.qty_loaded,
-                        qty_delivered: it.qty_delivered,
-                        unit_price: it.unit_price || 0,
-                        returnedQty: returned,
-                        return_condition: condition,
-                        notes: notes
-                    });
-                }
-
-                if (hasErrors) {
-                    Swal.fire({
-                        title: 'تنبيه',
-                        text: 'هناك أصناف لم تكتمل. يجب ذكر سبب النقص لكل صنف لم يُرجع بالكامل.',
-                        icon: 'warning',
-                        customClass: { popup: '!rounded-3xl' }
-                    });
-                    return;
-                }
-
-                var summaryHtml = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
-                summaryHtml += '<p style="font-size:14px;margin-bottom:12px;color:#334155">مراجعة نهائية للمرتجعات:</p>';
-                summaryHtml += '<div style="background:#f0fdf4;padding:10px;border-radius:8px;margin-bottom:6px;border:1px solid #bbf7d0"><span style="color:#166534;font-weight:bold">🟢 سليم:</span> <strong>' + totalGood + '</strong></div>';
-                summaryHtml += '<div style="background:#fef2f2;padding:10px;border-radius:8px;margin-bottom:6px;border:1px solid #fecaca"><span style="color:#b91c1c;font-weight:bold">🔴 تالف:</span> <strong>' + totalDamaged + '</strong></div>';
-                summaryHtml += '<div style="background:#f8fafc;padding:10px;border-radius:8px;margin-bottom:6px;border:1px solid #e2e8f0"><span style="color:#475569;font-weight:bold">⬛ مفقود:</span> <strong>' + totalMissing + '</strong></div>';
-                if (totalShortageValue > 0) {
-                    summaryHtml += '<div style="background:#fff7ed;padding:10px;border-radius:8px;margin-top:8px;border:1px solid #fed7aa"><span style="color:#c2410c;font-weight:bold">💰 قيمة العجز:</span> <strong>' + totalShortageValue.toFixed(2) + ' ج.م</strong></div>';
-                }
-                summaryHtml += '</div>';
-
-                Swal.fire({
-                    title: '🎯 تأكيد إنهاء المرتجعات',
-                    html: summaryHtml,
-                    icon: totalShortageValue > 0 ? 'warning' : 'info',
-                    showCancelButton: true,
-                    confirmButtonText: '✅ تأكيد وإنهاء',
-                    cancelButtonText: '✕ إلغاء',
-                    customClass: {
-                        popup: '!rounded-3xl',
-                        confirmButton: '!rounded-xl !bg-blue-600 !px-8',
-                        cancelButton: '!rounded-xl !px-8'
-                    }
-                }).then(function(result) {
-                    if (!result.isConfirmed) { return; }
-
-                    Swal.fire({ title: 'جاري إنهاء المرتجعات...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
-
-                    supabase.auth.getSession()
-                        .then(function(ses) {
-                            var t = ses.data.session.access_token;
-                            return fetch(SUPABASE_URL + '/functions/v1/complete-return', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
-                                body: JSON.stringify({
-                                    runsheet_code: self.session.runsheet_code,
-                                    items: items
-                                })
-                            });
-                        })
-                        .then(function(r) { return r.json(); })
-                        .then(function(j) {
-                            Swal.close();
-                            if (j.success) {
-                                db.localChanges.where('runsheet_code').equals(self.session.runsheet_code).delete();
-                                toast('🎉 تم إنهاء المرتجعات بنجاح!', 'success');
-                                self.session = null;
-                                if (self.timerInterval) { clearInterval(self.timerInterval); }
-                                self.loadRunsheets();
-                            } else {
-                                toast(j.msg || 'فشل الإنهاء', 'error');
-                            }
-                        })
-                        .catch(function() {
-                            Swal.close();
-                            toast('فشل الاتصال بالخادم', 'error');
-                        });
+                items.push({
+                    item_code: it.item_code,
+                    item_name: it.item_name || '',
+                    qty_loaded: it.qty_loaded,
+                    qty_delivered: it.qty_delivered,
+                    unit_price: it.unit_price || 0,
+                    returnedQty: returned,
+                    return_condition: condition,
+                    reason: notes
                 });
+            }
+
+            if (hasErrors) {
+                Swal.fire({ title: 'تنبيه', text: 'هناك أصناف لم تكتمل. يجب ذكر سبب النقص لكل صنف لم يُرجع بالكامل.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
+                return;
+            }
+
+            var summaryHtml = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
+            summaryHtml += '<p style="font-size:14px;margin-bottom:12px;color:#334155">مراجعة نهائية للمرتجعات:</p>';
+            summaryHtml += '<div style="background:#f0fdf4;padding:10px;border-radius:8px;margin-bottom:6px;border:1px solid #bbf7d0"><span style="color:#166534;font-weight:bold">🟢 سليم:</span> <strong>' + totalGood + '</strong></div>';
+            summaryHtml += '<div style="background:#fef2f2;padding:10px;border-radius:8px;margin-bottom:6px;border:1px solid #fecaca"><span style="color:#b91c1c;font-weight:bold">🔴 تالف:</span> <strong>' + totalDamaged + '</strong></div>';
+            summaryHtml += '<div style="background:#f8fafc;padding:10px;border-radius:8px;margin-bottom:6px;border:1px solid #e2e8f0"><span style="color:#475569;font-weight:bold">⬛ مفقود:</span> <strong>' + totalMissing + '</strong></div>';
+            if (totalShortageValue > 0) {
+                summaryHtml += '<div style="background:#fff7ed;padding:10px;border-radius:8px;margin-top:8px;border:1px solid #fed7aa"><span style="color:#c2410c;font-weight:bold">💰 قيمة العجز على السائق:</span> <strong>' + totalShortageValue.toFixed(2) + ' ج.م</strong></div>';
+            }
+            summaryHtml += '</div>';
+
+            Swal.fire({
+                title: '🎯 تأكيد إنهاء المرتجعات',
+                html: summaryHtml,
+                icon: totalShortageValue > 0 ? 'warning' : 'info',
+                showCancelButton: true,
+                confirmButtonText: '✅ تأكيد وإنهاء',
+                cancelButtonText: '✕ إلغاء',
+                customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-blue-600 !px-8', cancelButton: '!rounded-xl !px-8' }
+            }).then(function(result) {
+                if (!result.isConfirmed) { return; }
+                Swal.fire({ title: 'جاري إنهاء المرتجعات...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
+
+                supabase.auth.getSession().then(function(ses) {
+                    var t = ses.data.session.access_token;
+                    return fetch(SUPABASE_URL + '/functions/v1/complete-return', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
+                        body: JSON.stringify({ runsheet_code: self.session.runsheet_code, items: items })
+                    });
+                }).then(function(r) { return r.json(); }).then(function(j) {
+                    Swal.close();
+                    if (j.success) {
+                        db.localChanges.where('runsheet_code').equals(self.session.runsheet_code).delete();
+                        toast('🎉 تم إنهاء المرتجعات بنجاح!', 'success');
+                        self.session = null;
+                        if (self.timerInterval) { clearInterval(self.timerInterval); }
+                        self.loadRunsheets();
+                    } else {
+                        toast(j.msg || 'فشل الإنهاء', 'error');
+                    }
+                }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
             });
+        });
     },
 
     startTimer: function() {
@@ -2069,57 +1439,27 @@ _selectExpectedItemForReport: function(itemCode, itemName) {
                 var m = Math.floor(diff / 60);
                 var sec = diff % 60;
                 var el = document.querySelector('.bg-blue-50.text-blue-600');
-                if (el) {
-                    safeText(el, '⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0'));
-                }
+                if (el) { safeText(el, '⏱️ ' + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0')); }
             }
         }, 1000);
     },
-    // ============================================================
-    // تبويب مكتملة
-    // ============================================================
 
     loadCompleted: function() {
         var self = this;
-        safeHTML(byId('mainContent'),
-            '<div class="space-y-4"><div class="skeleton h-12 w-full"></div><div class="grid grid-cols-2 gap-4"><div class="skeleton h-32 w-full"></div><div class="skeleton h-32 w-full"></div></div></div>'
-        );
-
-        supabase.from('runsheets')
-            .select('runsheet_code, run_date, status, driver_id')
-            .eq('status', 'Returned')
-            .eq('return_handler_id', this.pubUserId || this.currentUser.email)
-            .order('run_date', { ascending: false })
-            .limit(50)
-            .then(function(res) {
-                self.completedRunsheets = res.data || [];
-
-                var driverIds = [];
-                for (var i = 0; i < self.completedRunsheets.length; i++) {
-                    if (self.completedRunsheets[i].driver_id && driverIds.indexOf(self.completedRunsheets[i].driver_id) === -1) {
-                        driverIds.push(self.completedRunsheets[i].driver_id);
-                    }
-                }
-                if (driverIds.length > 0) {
-                    supabase.from('users').select('id, name').in('id', driverIds)
-                        .then(function(uRes) {
-                            var userMap = {};
-                            var users = uRes.data || [];
-                            for (var ui = 0; ui < users.length; ui++) {
-                                userMap[users[ui].id] = users[ui].name;
-                            }
-                            self._driverMap = userMap;
-                            self.renderCompletedList(self.completedRunsheets);
-                        });
-                } else {
+        safeHTML(byId('mainContent'), '<div class="space-y-4"><div class="skeleton h-12 w-full"></div><div class="grid grid-cols-2 gap-4"><div class="skeleton h-32 w-full"></div><div class="skeleton h-32 w-full"></div></div></div>');
+        supabase.from('runsheets').select('runsheet_code, run_date, status, driver_id').eq('status', 'Returned').eq('return_handler_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(50).then(function(res) {
+            self.completedRunsheets = res.data || [];
+            var driverIds = [];
+            for (var i = 0; i < self.completedRunsheets.length; i++) { if (self.completedRunsheets[i].driver_id && driverIds.indexOf(self.completedRunsheets[i].driver_id) === -1) { driverIds.push(self.completedRunsheets[i].driver_id); } }
+            if (driverIds.length > 0) {
+                supabase.from('users').select('id, name').in('id', driverIds).then(function(uRes) {
+                    var userMap = {}; var users = uRes.data || [];
+                    for (var ui = 0; ui < users.length; ui++) { userMap[users[ui].id] = users[ui].name; }
+                    self._driverMap = userMap;
                     self.renderCompletedList(self.completedRunsheets);
-                }
-            })
-            .catch(function() {
-                safeHTML(byId('mainContent'),
-                    '<div class="text-center py-20 text-red-400"><i class="fa-solid fa-circle-exclamation text-3xl mb-3"></i><p>فشل تحميل البيانات</p></div>'
-                );
-            });
+                });
+            } else { self.renderCompletedList(self.completedRunsheets); }
+        }).catch(function() { safeHTML(byId('mainContent'), '<div class="text-center py-20 text-red-400"><i class="fa-solid fa-circle-exclamation text-3xl mb-3"></i><p>فشل تحميل البيانات</p></div>'); });
     },
 
     renderCompletedList: function(list) {
@@ -2127,25 +1467,14 @@ _selectExpectedItemForReport: function(itemCode, itemName) {
         var html = '';
         html += '<h2 class="text-sm font-bold text-slate-500 mb-4"><i class="fa-solid fa-check-circle ml-1.5 text-green-500"></i> الرانشيتات المكتملة</h2>';
         html += '<input type="text" id="searchCompleted" placeholder="🔍 ابحث في المكتملة..." class="w-full p-3.5 bg-white rounded-2xl border-2 border-slate-100 focus:border-blue-400 outline-none font-semibold text-sm transition-all shadow-sm mb-4" oninput="App.searchCompleted(this.value)">';
-
         if (list.length === 0) {
-            html += '<div class="text-center py-16 bg-white rounded-3xl border border-slate-100">';
-            html += '<div class="text-5xl mb-4">🏆</div>';
-            html += '<p class="text-slate-400 font-bold">لم تنهِ أي رانشيت بعد</p>';
-            html += '<p class="text-slate-300 text-sm mt-1">العمل الجاد يُؤتي ثماره!</p>';
-            html += '</div>';
+            html += '<div class="text-center py-16 bg-white rounded-3xl border border-slate-100"><div class="text-5xl mb-4">🏆</div><p class="text-slate-400 font-bold">لم تنهِ أي رانشيت بعد</p><p class="text-slate-300 text-sm mt-1">العمل الجاد يُؤتي ثماره!</p></div>';
         } else {
             html += '<div class="grid-cards">';
             for (var i = 0; i < list.length; i++) {
                 var rs = list[i];
                 var driverName = (self._driverMap && rs.driver_id) ? (self._driverMap[rs.driver_id] || 'غير محدد') : 'غير محدد';
-                html += '<div class="card border-2 border-green-200 bg-green-50/20">';
-                html += '<div class="flex flex-col items-center text-center">';
-                html += '<span class="font-black text-base text-slate-800">' + rs.runsheet_code + '</span>';
-                html += '<p class="text-xs text-slate-400 mt-0.5">' + (rs.run_date || '') + '</p>';
-                html += '<p class="text-xs text-slate-500 mt-0.5"><i class="fa-solid fa-user ml-1 text-slate-400"></i>' + driverName + '</p>';
-                html += '<button onclick="App.reopenReturn(\'' + rs.runsheet_code + '\')" class="btn-warning text-xs py-1.5 px-3 w-full mt-2"><i class="fa-solid fa-pen-to-square ml-1"></i> تعديل المرتجعات</button>';
-                html += '</div></div>';
+                html += '<div class="card border-2 border-green-200 bg-green-50/20"><div class="flex flex-col items-center text-center"><span class="font-black text-base text-slate-800">' + rs.runsheet_code + '</span><p class="text-xs text-slate-400 mt-0.5">' + (rs.run_date || '') + '</p><p class="text-xs text-slate-500 mt-0.5"><i class="fa-solid fa-user ml-1 text-slate-400"></i>' + driverName + '</p><button onclick="App.reopenReturn(\'' + rs.runsheet_code + '\')" class="btn-warning text-xs py-1.5 px-3 w-full mt-2"><i class="fa-solid fa-pen-to-square ml-1"></i> تعديل المرتجعات</button></div></div>';
             }
             html += '</div>';
         }
@@ -2154,88 +1483,25 @@ _selectExpectedItemForReport: function(itemCode, itemName) {
 
     searchCompleted: function(query) {
         var filtered = this.completedRunsheets;
-        if (query && query.trim()) {
-            var q = query.trim().toLowerCase();
-            filtered = this.completedRunsheets.filter(function(rs) {
-                return (rs.runsheet_code || '').toLowerCase().indexOf(q) !== -1;
-            });
-        }
+        if (query && query.trim()) { var q = query.trim().toLowerCase(); filtered = this.completedRunsheets.filter(function(rs) { return (rs.runsheet_code || '').toLowerCase().indexOf(q) !== -1; }); }
         this.renderCompletedList(filtered);
     },
 
     reopenReturn: function(code) {
         var self = this;
-        supabase.from('runsheets')
-            .select('status')
-            .eq('runsheet_code', code)
-            .maybeSingle()
-            .then(function(res) {
-                if (!res.data || res.data.status !== 'Returned') {
-                    Swal.fire({
-                        title: 'لا يمكن التعديل',
-                        text: 'الرانشيت لم يعد في حالة مكتمل المرتجعات.',
-                        icon: 'warning',
-                        customClass: { popup: '!rounded-3xl' }
-                    });
-                    self.loadCompleted();
-                    return;
-                }
-                Swal.fire({
-                    title: 'تأكيد التعديل',
-                    text: 'سيتم إعادة فتح الرانشيت ' + code + ' لتعديل المرتجعات. متابعة؟',
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'نعم، تعديل',
-                    cancelButtonText: 'إلغاء',
-                    customClass: {
-                        popup: '!rounded-3xl',
-                        confirmButton: '!rounded-xl !bg-amber-500 !px-8',
-                        cancelButton: '!rounded-xl !px-8'
-                    }
-                }).then(function(r) {
-                    if (!r.isConfirmed) { return; }
-                    Swal.showLoading();
-                    supabase.auth.getSession()
-                        .then(function(ses) {
-                            var t = ses.data.session.access_token;
-                            return fetch(SUPABASE_URL + '/functions/v1/reopen-return', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
-                                body: JSON.stringify({ runsheet_code: code })
-                            });
-                        })
-                        .then(function(res) {
-                            if (!res) { return; }
-                            if (!res.ok) { return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); }
-                            return res.json();
-                        })
-                        .then(function(json) {
-                            Swal.close();
-                            if (json && json.success) {
-                                toast('تم إعادة فتح الرانشيت للتعديل', 'success');
-                                self.loadRunsheets();
-                            } else {
-                                toast((json && json.msg) || 'فشل', 'error');
-                                self.loadCompleted();
-                            }
-                        })
-                        .catch(function(err) {
-                            Swal.close();
-                            toast(err.message || 'فشل الاتصال', 'error');
-                            self.loadCompleted();
-                        });
-                });
+        supabase.from('runsheets').select('status').eq('runsheet_code', code).maybeSingle().then(function(res) {
+            if (!res.data || res.data.status !== 'Returned') { Swal.fire({ title: 'لا يمكن التعديل', text: 'الرانشيت لم يعد في حالة مكتمل المرتجعات.', icon: 'warning', customClass: { popup: '!rounded-3xl' } }); self.loadCompleted(); return; }
+            Swal.fire({ title: 'تأكيد التعديل', text: 'سيتم إعادة فتح الرانشيت ' + code + ' لتعديل المرتجعات. متابعة؟', icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، تعديل', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-8', cancelButton: '!rounded-xl !px-8' } }).then(function(r) {
+                if (!r.isConfirmed) { return; }
+                Swal.showLoading();
+                supabase.auth.getSession().then(function(ses) { var t = ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/reopen-return', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code }) }); }).then(function(res) { if (!res) { return; } if (!res.ok) { return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); }); } return res.json(); }).then(function(json) { Swal.close(); if (json && json.success) { toast('تم إعادة فتح الرانشيت للتعديل', 'success'); self.loadRunsheets(); } else { toast((json && json.msg) || 'فشل', 'error'); self.loadCompleted(); } }).catch(function(err) { Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); self.loadCompleted(); });
             });
+        });
     },
-
-    // ============================================================
-    // تبويب حسابي
-    // ============================================================
 
     renderAccount: function() {
         var self = this;
         var html = '';
-
         html += '<div class="text-center mb-6 mt-2">';
         html += '<div class="w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-blue-200 mb-3">';
         html += (this.currentUser.user_metadata.name || '?').charAt(0);
@@ -2252,72 +1518,27 @@ _selectExpectedItemForReport: function(itemCode, itemName) {
         weekAgo.setDate(weekAgo.getDate() - 7);
         var weekAgoStr = weekAgo.toISOString().split('T')[0];
 
-        supabase.from('runsheets')
-            .select('id, status, run_date, return_start, return_end')
-            .eq('return_handler_id', this.pubUserId || this.currentUser.email)
-            .gte('run_date', weekAgoStr)
-            .order('run_date', { ascending: false })
-            .then(function(rsRes) {
-                var runsheets = rsRes.data || [];
-                var totalRunsheets = runsheets.length;
-                var completedRunsheets = runsheets.filter(function(r) { return r.status === 'Returned'; }).length;
-                var activeRunsheets = runsheets.filter(function(r) { return r.status === 'Returning'; }).length;
+        supabase.from('runsheets').select('id, status, run_date, return_start, return_end').eq('return_handler_id', this.pubUserId || this.currentUser.email).gte('run_date', weekAgoStr).order('run_date', { ascending: false }).then(function(rsRes) {
+            var runsheets = rsRes.data || [];
+            var totalRunsheets = runsheets.length;
+            var completedRunsheets = runsheets.filter(function(r) { return r.status === 'Returned'; }).length;
+            var activeRunsheets = runsheets.filter(function(r) { return r.status === 'Returning'; }).length;
 
-                var totalTime = 0;
-                var timeCount = 0;
-                for (var i = 0; i < runsheets.length; i++) {
-                    var r = runsheets[i];
-                    if (r.return_start && r.return_end) {
-                        var start = new Date(r.return_start);
-                        var end = new Date(r.return_end);
-                        var diff = (end - start) / 1000 / 60;
-                        if (diff > 0) {
-                            totalTime += diff;
-                            timeCount++;
-                        }
-                    }
-                }
-                var avgTime = timeCount > 0 ? Math.round(totalTime / timeCount) : 0;
+            var totalTime = 0;
+            var timeCount = 0;
+            for (var i = 0; i < runsheets.length; i++) { var r = runsheets[i]; if (r.return_start && r.return_end) { var start = new Date(r.return_start); var end = new Date(r.return_end); var diff = (end - start) / 1000 / 60; if (diff > 0) { totalTime += diff; timeCount++; } } }
+            var avgTime = timeCount > 0 ? Math.round(totalTime / timeCount) : 0;
 
-                var rsIds = runsheets.map(function(r) { return r.id; });
-                if (rsIds.length > 0) {
-                    supabase.from('run_sheet_details')
-                        .select('runsheet_id, qty_returned, return_condition')
-                        .in('runsheet_id', rsIds)
-                        .then(function(detRes) {
-                            var details = detRes.data || [];
-                            var totalGood = 0, totalDamaged = 0, totalMissing = 0;
-                            for (var j = 0; j < details.length; j++) {
-                                var d = details[j];
-                                var qty = Number(d.qty_returned) || 0;
-                                if (qty > 0) {
-                                    if (d.return_condition === 'good' || !d.return_condition) { totalGood += qty; }
-                                    else if (d.return_condition === 'damaged') { totalDamaged += qty; }
-                                    else if (d.return_condition === 'missing') { totalMissing += qty; }
-                                }
-                            }
-
-                            supabase.from('stock_discrepancies')
-                                .select('id')
-                                .eq('status', 'pending')
-                                .then(function(discRes) {
-                                    var pendingDisc = discRes.data || [];
-                                    self._renderAccountStats(html, totalRunsheets, completedRunsheets, activeRunsheets, totalGood, totalDamaged, totalMissing, avgTime, pendingDisc.length);
-                                })
-                                .catch(function() {
-                                    self._renderAccountStats(html, totalRunsheets, completedRunsheets, activeRunsheets, totalGood, totalDamaged, totalMissing, avgTime, 0);
-                                });
-                        })
-                        .catch(function() {
-                            self._renderAccountStats(html, totalRunsheets, completedRunsheets, activeRunsheets, 0, 0, 0, avgTime, 0);
-                        });
-                } else {
-                    self._renderAccountStats(html, totalRunsheets, completedRunsheets, activeRunsheets, 0, 0, 0, avgTime, 0);
-                }
-            })
-            .catch(function() {
-                self._renderAccountStats(html, 0, 0, 0, 0, 0, 0, 0, 0);
-            });
+            var rsIds = runsheets.map(function(r) { return r.id; });
+            if (rsIds.length > 0) {
+                supabase.from('run_sheet_details').select('runsheet_id, qty_returned, return_condition').in('runsheet_id', rsIds).then(function(detRes) {
+                    var details = detRes.data || [];
+                    var totalGood = 0; var totalDamaged = 0; var totalMissing = 0;
+                    for (var j = 0; j < details.length; j++) { var d = details[j]; var qty = Number(d.qty_returned) || 0; if (qty > 0) { if (d.return_condition === 'good' || !d.return_condition) { totalGood += qty; } else if (d.return_condition === 'damaged') { totalDamaged += qty; } else if (d.return_condition === 'missing') { totalMissing += qty; } } }
+                    supabase.from('stock_discrepancies').select('id').eq('status', 'pending').then(function(discRes) { var pendingDisc = discRes.data || []; self._renderAccountStats(html, totalRunsheets, completedRunsheets, activeRunsheets, totalGood, totalDamaged, totalMissing, avgTime, pendingDisc.length); }).catch(function() { self._renderAccountStats(html, totalRunsheets, completedRunsheets, activeRunsheets, totalGood, totalDamaged, totalMissing, avgTime, 0); });
+                }).catch(function() { self._renderAccountStats(html, totalRunsheets, completedRunsheets, activeRunsheets, 0, 0, 0, avgTime, 0); });
+            } else { self._renderAccountStats(html, totalRunsheets, completedRunsheets, activeRunsheets, 0, 0, 0, avgTime, 0); }
+        }).catch(function() { self._renderAccountStats(html, 0, 0, 0, 0, 0, 0, 0, 0); });
     },
 
     _renderAccountStats: function(html, total, completed, active, good, damaged, missing, avgTime, pendingDisc) {
@@ -2336,7 +1557,6 @@ _selectExpectedItemForReport: function(itemCode, itemName) {
         finalHtml += '<div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 mb-4">';
         finalHtml += '<div class="flex items-center gap-3"><div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-envelope"></i></div><div><p class="text-xs text-slate-400">البريد الإلكتروني</p><p class="font-bold text-sm text-slate-700">' + this.currentUser.email + '</p></div></div>';
         finalHtml += '</div>';
-
         finalHtml += '<button onclick="App.doLogout()" class="w-full btn-secondary text-red-500 border-2 border-red-200 hover:bg-red-50 transition py-3.5"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button>';
 
         safeHTML(byId('mainContent'), finalHtml);
@@ -2346,55 +1566,26 @@ _selectExpectedItemForReport: function(itemCode, itemName) {
 // ============================================================
 // Service Worker
 // ============================================================
-
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('../sw.js')
-        .then(function(reg) {
-            reg.addEventListener('updatefound', function() {
-                var newWorker = reg.installing;
-                newWorker.addEventListener('statechange', function() {
-                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        Swal.fire({
-                            title: '🔄 تحديث متاح',
-                            text: 'تم تحميل نسخة أحدث من التطبيق.',
-                            icon: 'info',
-                            confirmButtonText: 'تحديث الآن',
-                            customClass: {
-                                popup: '!rounded-3xl',
-                                confirmButton: '!rounded-xl !bg-blue-600 !px-8'
-                            }
-                        }).then(function() {
-                            newWorker.postMessage({ action: 'skipWaiting' });
-                            window.location.reload();
-                        });
-                    }
-                });
+    navigator.serviceWorker.register('../sw.js').then(function(reg) {
+        reg.addEventListener('updatefound', function() {
+            var newWorker = reg.installing;
+            newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    Swal.fire({ title: '🔄 تحديث متاح', text: 'تم تحميل نسخة أحدث من التطبيق.', icon: 'info', confirmButtonText: 'تحديث الآن', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-blue-600 !px-8' } }).then(function() { newWorker.postMessage({ action: 'skipWaiting' }); window.location.reload(); });
+                }
             });
-        })
-        .catch(function() {});
+        });
+    }).catch(function() {});
 }
 
 // ============================================================
 // بدء التشغيل
 // ============================================================
-
 document.addEventListener('DOMContentLoaded', function() {
     var remembered = localStorage.getItem('rawaea_remember_email');
-    if (remembered) {
-        var emailInput = byId('loginEmail');
-        if (emailInput) {
-            emailInput.value = remembered;
-            var check = byId('rememberMe');
-            if (check) { check.checked = true; }
-        }
-    }
-
-    supabase.auth.getSession().then(function(res) {
-        if (res.data && res.data.session) {
-            App.init();
-        }
-    });
-
+    if (remembered) { var emailInput = byId('loginEmail'); if (emailInput) { emailInput.value = remembered; var check = byId('rememberMe'); if (check) { check.checked = true; } } }
+    supabase.auth.getSession().then(function(res) { if (res.data && res.data.session) { App.init(); } });
     App.init();
 });
 </script>
