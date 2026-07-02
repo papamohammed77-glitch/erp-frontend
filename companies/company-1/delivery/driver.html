@@ -130,7 +130,18 @@ var App = {
         });
     },
 
-    enterApp: function() { byId('loginScreen').classList.add('hidden'); byId('mainApp').classList.remove('hidden'); this.switchTab('dashboard'); },
+    enterApp: function() {
+    byId('loginScreen').classList.add('hidden');
+    byId('mainApp').classList.remove('hidden');
+    this.switchTab('dashboard');
+    
+    // 🆕 التحقق من وصول رانشيت جديد كل 60 ثانية
+    var self = this;
+    this.checkForNewRunsheet(); // تشغيل فوري
+    setInterval(function() {
+        self.checkForNewRunsheet();
+    }, 60000); // كل دقيقة
+},
 
 doLogout: function() {
     var self = this;
@@ -153,6 +164,75 @@ doLogout: function() {
     });
 },
 
+// ==================== التحقق من وصول رانشيت جديد ====================
+checkForNewRunsheet: function() {
+    var self = this;
+    if (!self.pubUserId) return;
+    
+    // نخزن آخر رانشيت معروف في localStorage
+    var lastRunsheetCode = localStorage.getItem('driver_last_runsheet') || '';
+    
+    supabase.from('runsheets')
+        .select('runsheet_code, run_date')
+        .eq('driver_id', self.pubUserId)
+        .eq('status', 'Loaded')
+        .order('run_date', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+        .then(function(res) {
+            var rs = res.data;
+            if (!rs) return;
+            
+            // إذا كان الرانشيت جديداً (غير الذي شاهده من قبل)
+            if (rs.runsheet_code !== lastRunsheetCode && rs.runsheet_code !== '') {
+                // تحديث localStorage بالرانشيت الجديد
+                localStorage.setItem('driver_last_runsheet', rs.runsheet_code);
+                
+                // اهتزاز (Vibration)
+                if (window.navigator && window.navigator.vibrate) {
+                    window.navigator.vibrate([200, 100, 200]);
+                }
+                
+                // نغمة صوتية خفيفة
+                try {
+                    var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    var oscillator = audioCtx.createOscillator();
+                    var gainNode = audioCtx.createGain();
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime + 0.1);
+                    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                    oscillator.start(audioCtx.currentTime);
+                    oscillator.stop(audioCtx.currentTime + 0.5);
+                } catch(e) {
+                    // تجاهل أخطاء الصوت
+                }
+                
+                // إشعار بصري
+                var Toast = Swal.mixin({
+                    toast: true,
+                    position: 'top',
+                    showConfirmButton: true,
+                    confirmButtonText: 'عرض',
+                    timer: 10000,
+                    timerProgressBar: true,
+                    customClass: { popup: '!rounded-2xl !shadow-xl !p-4 !bg-sky-600 !text-white' }
+                });
+                Toast.fire({
+                    title: '📦 رحلة جديدة!',
+                    text: 'تم تعيين رانشيت جديد لك: ' + rs.runsheet_code,
+                    icon: 'success'
+                }).then(function(result) {
+                    if (result.isConfirmed) {
+                        self.switchTab('dashboard');
+                    }
+                });
+            }
+        }).catch(function() {});
+},
     switchTab: function(tab) {
         if (tab === 'orderDetail') return;
         this.currentTab = tab;
@@ -463,7 +543,11 @@ openOrder: function(orderCode) {
                 items: items,
                 isDelivery: false,
                 start_time: null,
-                summary: {}
+                summary: {},
+                customer_id: order.customer_id || null,
+                credit_limit: 0,
+                current_debt: 0,
+                is_blocked: false
             };
             
             // ✅ التحقق من localStorage – هل كان الأوردر قيد التسليم قبل الخروج؟
@@ -474,11 +558,34 @@ openOrder: function(orderCode) {
                 self.orderSession.isDelivery = true;
             }
             
-            self.renderOrderView();
-            
-            // ✅ إذا كان isDelivery = true، ابدأ التايمر تلقائياً
-            if (self.orderSession.isDelivery) {
-                self.startOrderTimer();
+            // 🆕 جلب الحد الائتماني للعميل
+            if (order.customer_id) {
+                supabase.from('customers')
+                    .select('credit_limit, debt')
+                    .eq('id', order.customer_id)
+                    .maybeSingle()
+                    .then(function(custRes) {
+                        if (custRes.data) {
+                            self.orderSession.credit_limit = Number(custRes.data.credit_limit) || 0;
+                            self.orderSession.current_debt = Number(custRes.data.debt) || 0;
+                        }
+                        // نستدعي renderOrderView في جميع الأحوال (بعد جلب البيانات أو فشله)
+                        self.renderOrderView();
+                        if (self.orderSession.isDelivery) {
+                            self.startOrderTimer();
+                        }
+                    }).catch(function() {
+                        // إذا فشل الجلب، نعرض بدون فحص الائتمان
+                        self.renderOrderView();
+                        if (self.orderSession.isDelivery) {
+                            self.startOrderTimer();
+                        }
+                    });
+            } else {
+                self.renderOrderView();
+                if (self.orderSession.isDelivery) {
+                    self.startOrderTimer();
+                }
             }
         }).catch(function(err) {
             safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل تفاصيل الأوردر: ' + (err.message || 'خطأ غير معروف') + '</div>');
@@ -640,20 +747,74 @@ editDeliveryItem: function(index) {
     var cacheEntry = ITEMS_IMAGE_CACHE[it.item_code];
     var img = cacheEntry ? (cacheEntry.image_url || '') : '';
     var imgHtml = img ? '<img src="' + img + '" class="w-20 h-20 rounded-2xl object-cover mx-auto shadow-sm mb-3" onerror="this.style.display=\'none\'">' : '<div class="w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl mx-auto flex items-center justify-center text-slate-400 mb-3"><i class="fa-solid fa-box text-2xl"></i></div>';
-    Swal.fire({ title: '<span class="text-slate-800">' + it.item_name + '</span>', html: '<div class="text-center">' + imgHtml + '</div><div class="text-right text-sm space-y-2"><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة في الأوردر</span><strong class="text-slate-700">' + (Number(it.qty) || 0) + '</strong></div><div class="flex justify-between"><span class="text-slate-400">الكمية المحمّلة للصنف</span><strong class="text-slate-700">' + loaded + '</strong></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + (it.unit || '') + '</span></div></div><div class="mt-4 text-right"><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المسلّمة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="' + delivered + '" min="0" max="' + loaded + '"><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes || '') + '" placeholder="سبب النقص..."></div>', showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }, preConfirm: function() { return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-qty').value) || 0, loaded)), notes: document.getElementById('swal-notes').value.trim(), reasonDelivery: document.getElementById('swal-notes').value.trim() }; } }).then(function(r) { if (r.isConfirmed) { self.orderSession.items[index].qty_delivered = r.value.qty; self.orderSession.items[index].notes = r.value.notes; self.renderOrderView(); if (r.value.qty < (Number(it.qty) || 0) && !r.value.notes) { Swal.fire({ title: 'تنبيه', text: 'الكمية المسلّمة أقل من المطلوبة في الأوردر. هل تريد إضافة سبب النقص؟', icon: 'question', showCancelButton: true, confirmButtonText: 'إضافة سبب', cancelButtonText: 'تخطي', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl' } }).then(function(r2) { if (r2.isConfirmed) { self.editDeliveryItem(index); } }); } } });
+    
+    var currentVal = delivered > 0 ? delivered : loaded;
+    
+    var htmlContent = '<div class="text-center">' + imgHtml + '</div><div class="text-right text-sm space-y-2"><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة في الأوردر</span><strong class="text-slate-700">' + (Number(it.qty) || 0) + '</strong></div><div class="flex justify-between"><span class="text-slate-400">الكمية المحمّلة للصنف</span><strong class="text-slate-700">' + loaded + '</strong></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + (it.unit || '') + '</span></div></div><div class="mt-4 text-right"><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المسلّمة</label><div style="display:flex;align-items:center;gap:8px"><button onclick="App._adjustQty(-1)" style="width:40px;height:40px;border-radius:50%;background:#f1f5f9;border:2px solid #e2e8f0;font-weight:700;font-size:18px;cursor:pointer;color:#1e293b">-</button><input type="number" id="swal-del-qty" value="' + currentVal + '" min="0" max="' + loaded + '" style="width:80px;text-align:center;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:18px;font-weight:700;outline:none;color:#1e293b"><button onclick="App._adjustQty(1)" style="width:40px;height:40px;border-radius:50%;background:#f1f5f9;border:2px solid #e2e8f0;font-weight:700;font-size:18px;cursor:pointer;color:#1e293b">+</button><button onclick="App._setEditAllDelivered(' + loaded + ')" style="background:#dcfce7;color:#166534;border:2px solid #bbf7d0;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ تسليم الكل</button></div></div><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes || '') + '" placeholder="سبب النقص..."></div>';
+    
+    Swal.fire({ title: '<span class="text-slate-800">' + it.item_name + '</span>', html: htmlContent, showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-8', cancelButton: '!rounded-xl' }, preConfirm: function() { return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-del-qty').value) || 0, loaded)), notes: document.getElementById('swal-notes').value.trim(), reasonDelivery: document.getElementById('swal-notes').value.trim() }; } }).then(function(r) { if (r.isConfirmed) { self.orderSession.items[index].qty_delivered = r.value.qty; self.orderSession.items[index].notes = r.value.notes; self.renderOrderView(); if (r.value.qty < (Number(it.qty) || 0) && !r.value.notes) { Swal.fire({ title: 'تنبيه', text: 'الكمية المسلّمة أقل من المطلوبة في الأوردر. هل تريد إضافة سبب النقص؟', icon: 'question', showCancelButton: true, confirmButtonText: 'إضافة سبب', cancelButtonText: 'تخطي', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl' } }).then(function(r2) { if (r2.isConfirmed) { self.editDeliveryItem(index); } }); } } });
 },
+
 startOrderDelivery: function() {
     if (!this.orderSession) return;
+    var self = this;
+    var o = this.orderSession;
+    
+    // 🆕 التحقق من الحد الائتماني
+    if (o.customer_id && o.credit_limit > 0) {
+        var projectedDebt = o.current_debt + o.total_amount;
+        
+        if (projectedDebt > o.credit_limit) {
+            // ❌ ممنوع – تجاوز الحد الائتماني
+            
+            // تسجيل الحدث في credit_block_events
+            supabase.from('credit_block_events').insert({
+                company_id: '00000000-0000-0000-0000-000000000001',
+                order_id: o.order_id,
+                runsheet_id: self.session ? self.session.runsheet_id : (self.activeRunsheet ? self.activeRunsheet.id : null),
+                driver_id: self.pubUserId,
+                customer_id: o.customer_id,
+                credit_limit: o.credit_limit,
+                current_debt: o.current_debt,
+                order_amount: o.total_amount,
+                status: 'blocked'
+            }).then(function() {
+                console.log('✅ تم تسجيل حادثة منع تجاوز الحد الائتماني');
+            }).catch(function(err) {
+                console.error('فشل تسجيل credit_block_event:', err);
+            });
+            
+            // تنبيه السائق ومنعه من المتابعة
+            Swal.fire({
+                title: '🚫 لا يمكن بدء التسليم',
+                html: '<div style="text-align:right;font-family:Cairo">' +
+                    '<p style="color:#dc2626;font-weight:bold;margin-bottom:12px">العميل تجاوز الحد الائتماني!</p>' +
+                    '<div style="background:#f8fafc;padding:12px;border-radius:12px;text-align:center">' +
+                    '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>💰 الحد الائتماني:</span> <strong>' + fmtNum(o.credit_limit) + ' ' + self.settings.currency + '</strong></div>' +
+                    '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>📊 الدين الحالي:</span> <strong>' + fmtNum(o.current_debt) + ' ' + self.settings.currency + '</strong></div>' +
+                    '<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>🛒 قيمة الأوردر:</span> <strong>' + fmtNum(o.total_amount) + ' ' + self.settings.currency + '</strong></div>' +
+                    '<div style="display:flex;justify-content:space-between;border-top:1px solid #e2e8f0;padding-top:4px;margin-top:4px"><span>🔴 التجاوز:</span> <strong style="color:#dc2626">' + fmtNum(projectedDebt - o.credit_limit) + ' ' + self.settings.currency + '</strong></div>' +
+                    '</div>' +
+                    '<p style="margin-top:12px;font-size:12px;color:#64748b">يرجى التواصل مع المشرف للحصول على موافقة.</p>' +
+                    '</div>',
+                icon: 'error',
+                confirmButtonText: 'حسناً',
+                customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-red-600 !px-8' }
+            });
+            
+            return; // 🛑 إيقاف التنفيذ – لا يمكن بدء التسليم
+        }
+    }
+    
+    // ✅ مسموح – بدء التسليم
     this.orderSession.isDelivery = true;
     
-    // ✅ حفظ وقت البدء في localStorage
     var startTime = new Date().toISOString();
     this.orderSession.start_time = startTime;
     
     var key = 'order_timer_' + this.orderSession.order_code;
     localStorage.setItem(key, startTime);
     
-    var self = this;
     var ord = null;
     for (var j = 0; j < self.session.orders.length; j++) {
         if (self.session.orders[j].order_code === self.orderSession.order_code) {
@@ -673,6 +834,7 @@ finishOrderDelivery: function() {
     var self = this;
     if (!this.orderSession) return;
     
+    // 1. التحقق من إدخال أسباب الرفض
     var items = this.orderSession.items;
     for (var i = 0; i < items.length; i++) {
         var ordered = Number(items[i].qty) || 0;
@@ -685,6 +847,7 @@ finishOrderDelivery: function() {
         }
     }
     
+    // 2. نافذة التأكيد النهائية
     Swal.fire({
         title: 'تأكيد إنهاء التسليم',
         text: 'سيتم إنهاء تسليم هذا الأوردر. المبلغ الإجمالي: ' + fmtNum(this.orderSession.summary.grand_total) + ' ' + this.settings.currency,
@@ -710,7 +873,7 @@ finishOrderDelivery: function() {
                         return { itemCode: it.item_code, deliveredQty: Number(it.qty_delivered) || 0, reason: it.notes || '' };
                     }),
                     summary: self.orderSession.summary,
-    amount_paid: self.orderSession.summary ? self.orderSession.summary.grand_total : 0
+                    amount_paid: self.orderSession.summary ? self.orderSession.summary.grand_total : 0
                 })
             });
         }).then(function(res) {
@@ -720,26 +883,35 @@ finishOrderDelivery: function() {
         }).then(function(json) {
             Swal.close();
             if (json && json.success) {
-                toast('تم إنهاء تسليم الأوردر', 'success');
-                    // 🆕 إعادة تجميع run_sheet_details
-    if (self.session && self.session.runsheet_id) {
-        supabase.functions.invoke('sync-run-sheet-details', {
-            body: { runsheet_id: self.session.runsheet_id }
-        }).then(function() {
-            console.log('🔄 sync-run-sheet-details done');
-        }).catch(function() {});
-    }
-                // ✅ إيقاف عداد وقت الأوردر
+                // 🆕 الملخص المالي الفوري (Toast Notification)
+                var summary = self.orderSession.summary;
+                var msgHtml = '<div style="text-align:right;font-family:Cairo;">' +
+                    '<p style="font-size:14px;font-weight:bold;margin-bottom:6px;">✅ تم التسليم بنجاح</p>' +
+                    '<div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>💰 تم التحصيل:</span> <strong>' + fmtNum(summary.grand_total) + ' ' + self.settings.currency + '</strong></div>' +
+                    '<div style="display:flex;justify-content:space-between;margin-bottom:2px;"><span>📦 مرتجع:</span> <strong>' + fmtNum(self.orderSession.items.reduce(function(acc, it){ return acc + (Number(it.qty)||0) - (Number(it.qty_delivered)||0); }, 0)) + ' قطعة</strong></div>' +
+                    '<div style="display:flex;justify-content:space-between;"><span>📋 الحالة:</span> <strong style="color:#10b981;">مكتمل</strong></div>' +
+                    '</div>';
+                
+                var Toast = Swal.mixin({
+                    toast: true,
+                    position: 'bottom',
+                    showConfirmButton: false,
+                    timer: 5000,
+                    timerProgressBar: true,
+                    customClass: { popup: '!rounded-2xl !shadow-xl !p-4 !bg-white !border !border-slate-200' }
+                });
+                Toast.fire({ html: msgHtml });
+                
+                // إيقاف عداد وقت الأوردر
                 if (self.orderTimerInterval) {
                     clearInterval(self.orderTimerInterval);
                     self.orderTimerInterval = null;
                 }
                 
-                // ✅ مسح localStorage
+                // مسح localStorage
                 var key = 'order_timer_' + self.orderSession.order_code;
                 localStorage.removeItem(key);
                 
-                // ✅ مسح start_time من الجلسة
                 self.orderSession.start_time = null;
                 self.orderSession.isDelivery = false;
                 
@@ -752,6 +924,15 @@ finishOrderDelivery: function() {
                 }
                 if (ord) ord.order_status = 'Delivered';
                 self.goBackToOrdersList();
+                
+                // 🆕 إعادة تجميع run_sheet_details
+                if (self.session && self.session.runsheet_id) {
+                    supabase.functions.invoke('sync-run-sheet-details', {
+                        body: { runsheet_id: self.session.runsheet_id }
+                    }).then(function() {
+                        console.log('🔄 sync-run-sheet-details done');
+                    }).catch(function() {});
+                }
             } else {
                 toast((json && json.msg) || 'فشل', 'error');
             }
@@ -979,10 +1160,12 @@ renderBalance: function() {
 },
 
 renderBalanceView: function(totalRunsheetValue, totalDeliveredValue, totalReturnedValue, deliveredOrders) {
-    // ✅ المطلوب توريده = تم تحصيله (النقدية اللي جمعها المندوب من العملاء)
+    // المطلوب توريده = تم تحصيله
     var requiredToSubmit = totalDeliveredValue;
+    // العجز = إجمالي الرحلة - تم تحصيله - المرتجع
+    var shortage = totalRunsheetValue - totalDeliveredValue - totalReturnedValue;
     
-    // ✅ تحديد حالة الرانشيت للملحوظة
+    // تحديد حالة الرانشيت للملحوظة
     var statusNote = '';
     var status = App.activeRunsheet ? App.activeRunsheet.status : 'Delivering';
     
@@ -995,44 +1178,71 @@ renderBalanceView: function(totalRunsheetValue, totalDeliveredValue, totalReturn
     }
     
     var html = '<div class="p-4">';
-    html += '<h2 class="text-lg font-black text-slate-800 mb-4">⚖️ رصيدي ومسؤوليتي المالية</h2>';
+    html += '<h2 class="text-lg font-black text-slate-800 mb-4">⚖️ لوحة القيادة المالية</h2>';
     
-    // ① إجمالي قيمة الرانشيت
-    html += '<div class="card text-center mb-4 bg-sky-50 border-sky-200">';
-    html += '<p class="text-xs text-sky-500 font-bold mb-1">💰 إجمالي قيمة الرانشيت</p>';
-    html += '<p class="text-4xl font-black text-sky-600">' + fmtNum(totalRunsheetValue) + ' ج.م</p>';
-    html += '<p class="text-xs text-sky-400 mt-1">قيمة جميع الأوردرات التي خرجت بها</p>';
+    // 🆕 الصف الأول: بطاقتان رئيسيتان (إجمالي الرحلة | المطلوب توريده)
+    html += '<div class="grid grid-cols-2 gap-3 mb-3">';
+    
+    // بطاقة إجمالي الرحلة (زرقاء)
+    html += '<div class="bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg shadow-sky-200">';
+    html += '<p class="text-xs font-bold text-sky-100 mb-1">💰 إجمالي الرحلة</p>';
+    html += '<p class="text-2xl font-black">' + fmtNum(totalRunsheetValue) + '</p>';
+    html += '<p class="text-xs text-sky-100 mt-1">قيمة الأوردرات المحمّلة</p>';
     html += '</div>';
     
-    // ② المطلوب توريده
-    var submitColor = requiredToSubmit > 0 ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200';
-    var submitTextColor = requiredToSubmit > 0 ? 'text-blue-600' : 'text-green-600';
-    var submitLabel = requiredToSubmit > 0 ? 'المبلغ المطلوب توريده للحسابات' : 'لا يوجد مبلغ للتوريد';
-    html += '<div class="card text-center mb-4 ' + submitColor + '">';
-    html += '<p class="text-xs font-bold mb-1 ' + (requiredToSubmit > 0 ? 'text-blue-500' : 'text-green-600') + '">🔴 المطلوب توريده</p>';
-    html += '<p class="text-4xl font-black ' + submitTextColor + '">' + fmtNum(requiredToSubmit) + ' ج.م</p>';
-    html += '<p class="text-xs mt-1 ' + (requiredToSubmit > 0 ? 'text-blue-400' : 'text-green-500') + '">' + submitLabel + '</p>';
+    // بطاقة المطلوب توريده (حمراء)
+    var submitBg = requiredToSubmit > 0 ? 'from-red-500 to-rose-600' : 'from-emerald-500 to-teal-600';
+    var submitShadow = requiredToSubmit > 0 ? 'shadow-red-200' : 'shadow-emerald-200';
+    html += '<div class="bg-gradient-to-br ' + submitBg + ' rounded-2xl p-4 text-white shadow-lg ' + submitShadow + '">';
+    html += '<p class="text-xs font-bold text-rose-100 mb-1">🔴 المطلوب توريده</p>';
+    html += '<p class="text-2xl font-black">' + fmtNum(requiredToSubmit) + '</p>';
+    html += '<p class="text-xs text-rose-100 mt-1">' + (requiredToSubmit > 0 ? 'يُسلّم للحسابات' : 'لا يوجد') + '</p>';
+    html += '</div>';
     html += '</div>';
     
-    // ✅ الملحوظة حسب حالة الرانشيت
+    // 🆕 الصف الثاني: ثلاث بطاقات تفصيلية (المسلّم | المرتجع | العجز)
+    html += '<div class="grid grid-cols-3 gap-2 mb-3">';
+    
+    // تم تحصيله (أخضر)
+    html += '<div class="bg-white rounded-2xl p-3 border border-green-200 shadow-sm text-center">';
+    html += '<p class="text-xs text-green-500 font-bold mb-1">💵 المسلّم</p>';
+    html += '<p class="text-lg font-black text-green-600">' + fmtNum(totalDeliveredValue) + '</p>';
+    html += '<p class="text-[10px] text-green-400">' + deliveredOrders.length + ' أوردر</p>';
+    html += '</div>';
+    
+    // المرتجع (بنفسجي)
+    html += '<div class="bg-white rounded-2xl p-3 border border-purple-200 shadow-sm text-center">';
+    html += '<p class="text-xs text-purple-500 font-bold mb-1">📦 المرتجع</p>';
+    html += '<p class="text-lg font-black text-purple-600">' + fmtNum(totalReturnedValue) + '</p>';
+    html += '<p class="text-[10px] text-purple-400">تبرأ ذمتك منه</p>';
+    html += '</div>';
+    
+    // العجز (أحمر أو رمادي)
+    var shortageBg = shortage > 0 ? 'border-red-200' : 'border-slate-200';
+    var shortageText = shortage > 0 ? 'text-red-600' : 'text-slate-400';
+    var shortageLabel = shortage > 0 ? 'عجز' : 'لا يوجد';
+    html += '<div class="bg-white rounded-2xl p-3 border ' + shortageBg + ' shadow-sm text-center">';
+    html += '<p class="text-xs text-slate-500 font-bold mb-1">⚠️ العجز</p>';
+    html += '<p class="text-lg font-black ' + shortageText + '">' + fmtNum(shortage) + '</p>';
+    html += '<p class="text-[10px] text-slate-400">' + shortageLabel + '</p>';
+    html += '</div>';
+    html += '</div>';
+    
+    // 🆕 صافي العهدة (بطاقة كبيرة)
+    var netBalance = requiredToSubmit - totalReturnedValue;
+    var netBg = netBalance > 0 ? 'from-amber-500 to-orange-600' : 'from-green-500 to-emerald-600';
+    var netLabel = netBalance > 0 ? 'صافي المطلوب توريده' : 'صافي المتاح';
+    var netIcon = netBalance > 0 ? '🔴' : '🟢';
+    html += '<div class="bg-gradient-to-br ' + netBg + ' rounded-2xl p-4 text-white shadow-lg mb-3 text-center">';
+    html += '<p class="text-xs font-bold text-amber-100 mb-1">' + netIcon + ' ' + netLabel + '</p>';
+    html += '<p class="text-3xl font-black">' + fmtNum(Math.abs(netBalance)) + '</p>';
+    html += '</div>';
+    
+    // الملحوظة حسب حالة الرانشيت
     if (statusNote) {
         var noteBg = status === 'Delivering' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-green-50 border-green-200 text-green-700';
         html += '<div class="mb-4 p-3 rounded-xl text-center text-sm font-bold ' + noteBg + '">' + statusNote + '</div>';
     }
-    
-    // بطاقات التفاصيل
-    html += '<div class="grid grid-cols-2 gap-3 mb-4">';
-    html += '<div class="card text-center bg-green-50">';
-    html += '<p class="text-xs text-green-500 font-bold mb-1">💵 تم تحصيله</p>';
-    html += '<p class="text-2xl font-black text-green-600">' + fmtNum(totalDeliveredValue) + ' ج.م</p>';
-    html += '<p class="text-xs text-green-400 mt-1">' + deliveredOrders.length + ' أوردر مسلّم</p>';
-    html += '</div>';
-    html += '<div class="card text-center bg-purple-50">';
-    html += '<p class="text-xs text-purple-500 font-bold mb-1">📦 مرتجع للمخزن</p>';
-    html += '<p class="text-2xl font-black text-purple-600">' + fmtNum(totalReturnedValue) + ' ج.م</p>';
-    html += '<p class="text-xs text-purple-400 mt-1">تبرأ ذمتك منه</p>';
-    html += '</div>';
-    html += '</div>';
     
     // آخر الأوردرات المسلّمة
     html += '<h3 class="font-bold text-slate-700 mb-3">📊 آخر الأوردرات المسلّمة</h3>';
@@ -1054,7 +1264,6 @@ renderBalanceView: function(totalRunsheetValue, totalDeliveredValue, totalReturn
     html += '</div>';
     safeHTML(byId('mainContent'), html);
 },
-  
       // ==================== تقديم شكوى ====================
 // ==================== تقديم شكوى أو بلاغ ====================
 showNewComplaint: function() {
