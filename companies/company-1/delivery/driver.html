@@ -1056,54 +1056,215 @@ renderBalanceView: function(totalRunsheetValue, totalDeliveredValue, totalReturn
 },
   
       // ==================== تقديم شكوى ====================
-    showNewComplaint: function() {
-        var self = this;
-        var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
-        html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">سبب الشكوى</label>';
-        html += '<select id="complaintReason" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
-        html += '<option value="damaged_warehouse">التلف من المخزن</option><option value="wrong_item">صنف مختلف</option><option value="shortage">نقص في الكمية</option><option value="other">سبب آخر</option>';
-        html += '</select></div>';
-        html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الملاحظات</label>';
-        html += '<textarea id="complaintNotes" rows="3" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b"></textarea></div>';
-        html += '</div>';
+// ==================== تقديم شكوى أو بلاغ ====================
+showNewComplaint: function() {
+    var self = this;
+    
+    // تحميل أنواع الشكاوى من complaint_types
+    supabase.from('complaint_types').select('id, type_name').eq('is_active', true).then(function(typesRes) {
+        var types = typesRes.data || [];
+        var typeOptions = '';
+        for (var t = 0; t < types.length; t++) {
+            typeOptions += '<option value="' + types[t].id + '">' + types[t].type_name + '</option>';
+        }
+        
+        // تحميل الخصومات المعلقة للسائق (إن وُجدت)
+        var liabilitiesPromise = self.pubUserId
+            ? supabase.from('driver_liabilities').select('id, amount, item_name, reason').eq('driver_id', self.pubUserId).in('status', ['pending', 'confirmed']).order('created_at', { ascending: false }).limit(10)
+            : Promise.resolve({ data: [] });
+        
+        liabilitiesPromise.then(function(liabRes) {
+            var liabilities = liabRes.data || [];
+            var liabOptions = '<option value="">لا يوجد (شكوى عامة)</option>';
+            for (var l = 0; l < liabilities.length; l++) {
+                var liab = liabilities[l];
+                liabOptions += '<option value="' + liab.id + '">' + fmtNum(liab.amount) + ' ج.م - ' + (liab.item_name || liab.reason || '') + '</option>';
+            }
+            
+            // 🆕 بناء قائمة الأصناف للبحث الذكي
+            var itemsOptionsHtml = '';
+            var allItems = [];
+            // استخدام ITEMS_IMAGE_CACHE أو استدعاء Supabase
+            if (Object.keys(ITEMS_IMAGE_CACHE).length > 0) {
+                var codes = Object.keys(ITEMS_IMAGE_CACHE);
+                for (var ic = 0; ic < Math.min(codes.length, 50); ic++) {
+                    allItems.push({ code: codes[ic], name: codes[ic], unit: '' });
+                }
+            }
+            
+            var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
+            
+            // نوع الشكوى
+            html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع الشكوى</label>';
+            html += '<select id="complaintTypeId" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + typeOptions + '</select></div>';
+            
+            // الخصم المرتبط (اختياري)
+            html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الخصم المرتبط (اختياري)</label>';
+            html += '<select id="complaintLiabilityId" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + liabOptions + '</select></div>';
+            
+            // 🆕 بحث ذكي عن الصنف (اختياري)
+            html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف المرتبط (اختياري – ابحث بالاسم أو الكود أو امسح باركود)</label>';
+            html += '<div style="display:flex;gap:4px">';
+            html += '<div style="flex:1;position:relative">';
+            html += '<input type="text" id="complaintItemSearch" placeholder="ابحث..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b" oninput="App._searchComplaintItem(this.value)">';
+            html += '<div id="complaintItemResults" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:150px;overflow-y:auto;background:white;border:1px solid #e2e8f0;border-radius:12px;z-index:50"></div>';
+            html += '</div>';
+            html += '<button onclick="App._scanComplaintBarcode()" style="width:44px;height:44px;background:#0284c7;color:white;border:none;border-radius:12px;cursor:pointer;font-size:18px"><i class="fa-solid fa-camera"></i></button>';
+            html += '</div>';
+            html += '<input type="hidden" id="complaintItemCode">';
+            html += '<input type="hidden" id="complaintItemName">';
+            html += '</div>';
+            
+            // الوصف
+            html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">وصف الشكوى</label>';
+            html += '<textarea id="complaintDescription" rows="3" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b" placeholder="اشرح المشكلة بالتفصيل..."></textarea></div>';
+            
+            html += '</div>';
 
-        Swal.fire({
-            title: 'تقديم شكوى',
-            html: html, showCancelButton: true, confirmButtonText: 'تقديم', cancelButtonText: 'إلغاء',
-            customClass: { popup: '!rounded-3xl !p-5', confirmButton: '!rounded-xl !bg-amber-600 !px-8', cancelButton: '!rounded-xl !px-8' }
-        }).then(function(result) {
-            if (!result.isConfirmed) return;
-            var reason = document.getElementById('complaintReason').value;
-            var notes = document.getElementById('complaintNotes').value.trim();
-            
-            if (!notes) { toast('يرجى كتابة ملاحظات توضح الشكوى', 'warning'); return; }
-            
-            Swal.showLoading();
-            supabase.auth.getSession().then(function(ses) {
-                var t = ses.data.session.access_token;
-                return fetch(SUPABASE_URL + '/functions/v1/report-discrepancy', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t },
-                    body: JSON.stringify({
-                        runsheet_id: self.session ? self.session.runsheet_id : (self.activeRunsheet ? self.activeRunsheet.id : null),
-                        item_code: null,
-                        item_name: 'شكوى سائق',
-                        expected_qty: 0,
-                        actual_qty: 0,
-                        difference_qty: 0,
-                        discrepancy_type: reason,
-                        notes: notes,
-                        driver_id: self.pubUserId
-                    })
+            Swal.fire({
+                title: 'تقديم شكوى أو بلاغ',
+                html: html,
+                width: '500px',
+                showCancelButton: true,
+                confirmButtonText: 'تقديم',
+                cancelButtonText: 'إلغاء',
+                customClass: { popup: '!rounded-3xl !p-5', confirmButton: '!rounded-xl !bg-amber-600 !px-8', cancelButton: '!rounded-xl !px-8' },
+                preConfirm: function() {
+                    var typeId = document.getElementById('complaintTypeId').value;
+                    var liabilityId = document.getElementById('complaintLiabilityId').value || null;
+                    var itemCode = document.getElementById('complaintItemCode').value || null;
+                    var itemName = document.getElementById('complaintItemName').value || null;
+                    var description = document.getElementById('complaintDescription').value.trim();
+                    
+                    if (!typeId) { Swal.showValidationMessage('يرجى اختيار نوع الشكوى'); return false; }
+                    if (!description) { Swal.showValidationMessage('يرجى كتابة وصف للشكوى'); return false; }
+                    
+                    return { typeId: typeId, liabilityId: liabilityId, itemCode: itemCode, itemName: itemName, description: description };
+                }
+            }).then(function(result) {
+                if (!result.isConfirmed) return;
+                
+                var d = result.value;
+                Swal.showLoading();
+                
+                // توليد كود الشكوى
+                supabase.from('service_complaints').select('complaint_code').order('created_at', { ascending: false }).limit(1).then(function(codeRes) {
+                    var lastCode = (codeRes.data && codeRes.data.length > 0) ? codeRes.data[0].complaint_code : 'COMP-000';
+                    var num = parseInt(lastCode.replace('COMP-', '')) || 0;
+                    var newCode = 'COMP-' + String(num + 1).padStart(3, '0');
+                    
+                    var insertData = {
+                        complaint_code: newCode,
+                        company_id: '00000000-0000-0000-0000-000000000001',
+                        source_type: 'driver_app',
+                        employee_id: self.pubUserId,
+                        runsheet_id: (self.session && self.session.runsheet_id) ? self.session.runsheet_id : (self.activeRunsheet ? self.activeRunsheet.id : null),
+                        liability_id: d.liabilityId,
+                        complaint_type_id: d.typeId,
+                        item_code: d.itemCode,
+                        item_name: d.itemName,
+                        status: 'open',
+                        description: d.description
+                    };
+                    
+                    return supabase.from('service_complaints').insert(insertData);
+                }).then(function(insertRes) {
+                    Swal.close();
+                    if (insertRes.error) {
+                        toast('فشل تقديم الشكوى: ' + insertRes.error.message, 'error');
+                    } else {
+                        toast('✅ تم تقديم الشكوى بنجاح. ستتم مراجعتها من قبل المشرف.', 'success');
+                        // إذا كانت مرتبطة بخصم، نحدث حالته إلى disputed
+                        if (d.liabilityId) {
+                            supabase.from('driver_liabilities').update({ status: 'disputed' }).eq('id', d.liabilityId).then(function() {});
+                        }
+                        self.renderAccount();
+                    }
+                }).catch(function(err) {
+                    Swal.close();
+                    toast('فشل الاتصال', 'error');
+                    console.error(err);
                 });
-            }).then(function(r) { return r.json(); }).then(function(j) {
-                Swal.close();
-                if (j.success) { toast('تم تقديم الشكوى. ستتم مراجعتها من قبل المشرف.', 'success'); self.renderAccount(); }
-                else { toast(j.msg || 'فشل تقديم الشكوى', 'error'); }
-            }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
+            });
         });
-    },
+    });
+},
+
+// ==================== بحث ذكي عن صنف داخل نافذة الشكوى ====================
+_searchComplaintItem: function(query) {
+    var resultsDiv = document.getElementById('complaintItemResults');
+    if (!query || query.trim().length < 1) {
+        if (resultsDiv) { resultsDiv.style.display = 'none'; resultsDiv.innerHTML = ''; }
+        return;
+    }
+    
+    var q = query.trim().toLowerCase();
+    supabase.from('items')
+        .select('item_code, name, unit')
+        .or('name.ilike.%' + q + '%,item_code.ilike.%' + q + '%,barcode.ilike.%' + q + '%')
+        .limit(10)
+        .then(function(res) {
+            if (!resultsDiv) return;
+            var items = res.data || [];
+            if (items.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding:8px;color:#94a3b8;text-align:center">لا توجد نتائج</div>';
+                resultsDiv.style.display = 'block';
+                return;
+            }
+            var html = '';
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                html += '<div onclick="App._selectComplaintItem(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\')" style="padding:8px;border-bottom:1px solid #f1f5f9;cursor:pointer;font-size:13px;display:flex;justify-content:space-between">';
+                html += '<span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8">(' + it.item_code + ')</span></span>';
+                html += '<span style="color:#94a3b8">' + (it.unit || '') + '</span>';
+                html += '</div>';
+            }
+            resultsDiv.innerHTML = html;
+            resultsDiv.style.display = 'block';
+        });
+},
+
+_selectComplaintItem: function(code, name) {
+    document.getElementById('complaintItemSearch').value = name + ' (' + code + ')';
+    document.getElementById('complaintItemCode').value = code;
+    document.getElementById('complaintItemName').value = name;
+    var resultsDiv = document.getElementById('complaintItemResults');
+    if (resultsDiv) { resultsDiv.style.display = 'none'; resultsDiv.innerHTML = ''; }
+},
+
+_scanComplaintBarcode: function() {
+    var self = this;
+    Swal.fire({
+        title: 'مسح الباركود',
+        html: '<div id="complaintBarcodeReader" style="width:100%;max-width:300px;margin:0 auto;"></div>',
+        showCancelButton: false,
+        showConfirmButton: false,
+        customClass: { popup: '!rounded-3xl !p-4' },
+        didOpen: function() {
+            if (typeof Html5Qrcode === 'undefined') {
+                Swal.close();
+                toast('مكتبة الماسح غير محملة', 'error');
+                return;
+            }
+            var scanner = new Html5Qrcode("complaintBarcodeReader");
+            scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 150 } },
+                function(decodedText) {
+                    scanner.stop().then(function() {
+                        Swal.close();
+                        document.getElementById('complaintItemSearch').value = decodedText;
+                        self._searchComplaintItem(decodedText);
+                    });
+                },
+                function() {}
+            ).catch(function(err) {
+                Swal.close();
+                toast('فشل تشغيل الكاميرا: ' + err.message, 'error');
+            });
+        }
+    });
+},
     // ==================== حسابي ====================
-    renderAccount: function() {
+renderAccount: function() {
     var self = this;
     var userName = (this.currentUser && this.currentUser.user_metadata) ? (this.currentUser.user_metadata.name || this.currentUser.email) : '';
     var userInitial = userName ? userName.charAt(0) : '?';
@@ -1113,12 +1274,14 @@ renderBalanceView: function(totalRunsheetValue, totalDeliveredValue, totalReturn
     html += '<h2 class="font-black text-xl text-slate-800">' + userName + '</h2>';
     html += '<p class="text-sm text-slate-400">مندوب توصيل</p>';
     
+    // بطاقة البريد
     html += '<div class="card mt-4 text-right"><p class="text-xs text-slate-400">البريد</p><p class="font-bold">' + (this.currentUser ? this.currentUser.email : '') + '</p></div>';
     
+    // 🆕 قسم الشكاوى
     html += '<div class="card mt-4 text-right">';
-    html += '<h3 class="font-bold text-sm text-slate-700 mb-3"><i class="fa-solid fa-clipboard-list ml-1"></i> 📝 شكاويّ</h3>';
+    html += '<h3 class="font-bold text-sm text-slate-700 mb-3"><i class="fa-solid fa-clipboard-list ml-1"></i> 📝 شكاويّ وبلاغاتي</h3>';
     html += '<div id="accountComplaints" class="text-center py-4 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>';
-    html += '<button onclick="App.showNewComplaint()" class="btn-secondary w-full text-xs py-2 mt-2"><i class="fa-solid fa-plus ml-1"></i> تقديم شكوى جديدة</button>';
+    html += '<button onclick="App.showNewComplaint()" class="w-full bg-sky-50 text-sky-700 py-2 rounded-xl font-bold text-xs hover:bg-sky-100 transition"><i class="fa-solid fa-plus ml-1"></i> تقديم شكوى أو بلاغ</button>';
     html += '</div>';
     
     html += '<button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button>';
@@ -1126,11 +1289,11 @@ renderBalanceView: function(totalRunsheetValue, totalDeliveredValue, totalReturn
     
     safeHTML(byId('mainContent'), html);
     
-    // تحميل الشكاوى
+    // تحميل الشكاوى والبلاغات من service_complaints
     if (self.pubUserId) {
-        supabase.from('investigations')
-            .select('investigation_code, investigation_type, status, notes, created_at')
-            .eq('driver_id', self.pubUserId)
+        supabase.from('service_complaints')
+            .select('complaint_code, source_type, status, description, created_at, complaint_types(type_name), driver_liabilities(amount, item_name)')
+            .eq('employee_id', self.pubUserId)
             .order('created_at', { ascending: false })
             .limit(10)
             .then(function(res) {
@@ -1139,25 +1302,49 @@ renderBalanceView: function(totalRunsheetValue, totalDeliveredValue, totalReturn
                 if (!container) return;
                 
                 if (complaints.length === 0) {
-                    safeHTML(container, '<p class="text-slate-400">لا توجد شكاوى مقدمة</p>');
+                    safeHTML(container, '<p class="text-slate-400">لا توجد شكاوى أو بلاغات</p>');
                     return;
                 }
                 
-                var statusLabels = { 'open': '🟡 مفتوحة', 'under_review': '🔵 قيد المراجعة', 'resolved': '🟢 محلولة' };
-                var html2 = '<div class="space-y-2">';
+                var statusLabels = {
+                    'open': '🟡 مفتوحة',
+                    'under_review': '🔵 قيد المراجعة',
+                    'accepted': '🟢 مقبولة',
+                    'rejected': '🔴 مرفوضة',
+                    'closed': '⚫ مغلقة'
+                };
+                var sourceLabels = {
+                    'driver_app': '📱 تطبيق المندوب',
+                    'return_app': '📦 المرتجعات',
+                    'supervisor_app': '👤 المشرف',
+                    'main_app': '🏢 النظام الأم'
+                };
+                
+                var html2 = '<div class="space-y-2 max-h-60 overflow-y-auto">';
                 for (var i = 0; i < complaints.length; i++) {
                     var c = complaints[i];
                     var stLabel = statusLabels[c.status] || c.status;
+                    var srcLabel = sourceLabels[c.source_type] || c.source_type;
+                    var typeName = (c.complaint_types && c.complaint_types.type_name) ? c.complaint_types.type_name : '---';
+                    var amountStr = (c.driver_liabilities && c.driver_liabilities.amount) ? ' - ' + fmtNum(c.driver_liabilities.amount) + ' ج.م' : '';
+                    var itemStr = (c.driver_liabilities && c.driver_liabilities.item_name) ? c.driver_liabilities.item_name : '';
                     var dateStr = c.created_at ? new Date(c.created_at).toLocaleDateString('ar-EG') : '';
+                    
                     html2 += '<div class="bg-slate-50 rounded-xl p-3 text-sm">';
-                    html2 += '<div class="flex justify-between"><span class="font-bold">' + (c.investigation_code || '') + '</span><span>' + stLabel + '</span></div>';
-                    html2 += '<p class="text-xs text-slate-400 mt-1">' + dateStr + (c.notes ? ' | ' + c.notes.substring(0, 50) : '') + '</p>';
+                    html2 += '<div class="flex justify-between items-start mb-1">';
+                    html2 += '<span class="font-bold text-slate-700">' + (c.complaint_code || '') + '</span>';
+                    html2 += '<span class="text-xs">' + stLabel + '</span>';
+                    html2 += '</div>';
+                    html2 += '<p class="text-xs text-slate-500">' + typeName + amountStr + '</p>';
+                    if (itemStr) { html2 += '<p class="text-xs text-slate-400">' + itemStr + '</p>'; }
+                    html2 += '<p class="text-xs text-slate-400 mt-1">' + dateStr + ' | ' + srcLabel + '</p>';
+                    if (c.description) { html2 += '<p class="text-xs text-slate-500 mt-1 line-clamp-2">' + c.description.substring(0, 80) + '</p>'; }
                     html2 += '</div>';
                 }
                 html2 += '</div>';
                 safeHTML(container, html2);
             }).catch(function() {
-                safeHTML(byId('accountComplaints'), '<p class="text-slate-400">تعذر تحميل الشكاوى</p>');
+                safeHTML(byId('accountComplaints'), '<p class="text-slate-400">تعذر تحميل البيانات</p>');
             });
     }
 },
