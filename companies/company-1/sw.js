@@ -1,6 +1,6 @@
 // sw.js – الروائع ERP
-// الإصدار 2.0 – Network First مع إشعار فوري بالتحديث
-var CACHE_NAME = 'rawaea-erp-v2';
+// الإصدار 2.1 – Network First مع إشعار فوري بالتحديث + تحديث الكاش حسب الطلب
+var CACHE_NAME = 'rawaea-erp-v3';
 
 self.addEventListener('install', function(event) {
   self.skipWaiting();
@@ -33,7 +33,7 @@ self.addEventListener('fetch', function(event) {
 
   event.respondWith(
     fetch(event.request).then(function(networkResponse) {
-      // ✅ الشبكة أولاً – نُحدِّث الكاش بالنسخة الجديدة
+      // الشبكة أولاً – نُحدِّث الكاش بالنسخة الجديدة
       if (networkResponse && networkResponse.status === 200) {
         var clone = networkResponse.clone();
         caches.open(CACHE_NAME).then(function(cache) {
@@ -42,10 +42,25 @@ self.addEventListener('fetch', function(event) {
       }
       return networkResponse;
     }).catch(function() {
-      // ⚠️ فقط عند فشل الشبكة، نستخدم الكاش
+      // فقط عند فشل الشبكة، نستخدم الكاش
       return caches.match(event.request).then(function(cached) {
         return cached || new Response('غير متصل', { status: 503 });
       });
     })
   );
+});
+
+// 🆕 مستمع الرسائل – تحديث الكاش حسب الطلب + تخطي الانتظار
+self.addEventListener('message', function(event) {
+  if (event.data && event.data.action === 'skipWaiting') {
+    self.skipWaiting();
+  }
+  if (event.data && event.data.action === 'updateCache') {
+    var url = event.data.url || '';
+    if (url) {
+      caches.open(CACHE_NAME).then(function(cache) {
+        cache.add(url).catch(function() {});
+      });
+    }
+  }
 });
