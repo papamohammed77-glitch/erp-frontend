@@ -635,37 +635,31 @@ _loadLocalChanges: function() {
         this.startTimer();
     },
 
-    _buildItemCard: function(index, it, remaining) {
-        var isCompleted = it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes);
-        var isOver = it.qty_returned > remaining;
-        var borderColor = isOver ? 'border-orange-300' : (isCompleted ? 'border-green-300' : (it.qty_returned > 0 ? 'border-amber-300' : 'border-slate-200'));
-        var bgColor = isOver ? 'bg-orange-50/20' : (isCompleted ? 'bg-green-50/20' : (it.qty_returned > 0 ? 'bg-amber-50/20' : ''));
+_buildItemCard: function(index, it, remaining) {
+    var isCompleted = it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes);
+    var isOver = it.qty_returned > remaining;
+    var borderColor = isOver ? 'border-orange-300' : (isCompleted ? 'border-green-300' : (it.qty_returned > 0 ? 'border-amber-300' : 'border-slate-200'));
+    var bgColor = isOver ? 'bg-orange-50/20' : (isCompleted ? 'bg-green-50/20' : (it.qty_returned > 0 ? 'bg-amber-50/20' : ''));
 
-        var conditionLabels = { 'good': '🟢 سليم', 'damaged': '🔴 تالف', 'missing': '⬛ مفقود' };
-        var conditionLabel = it.return_condition ? (conditionLabels[it.return_condition] || it.return_condition) : '';
-
-        var html = '<div class="card cursor-pointer active:scale-[0.98] border-2 ' + borderColor + ' ' + bgColor + '" id="return-card-' + index + '" onclick="App.editReturnItem(' + index + ')">';
-        html += '<div class="flex flex-col items-center text-center">';
-        html += this._img(it.item_code);
-        html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it.item_name || '').substring(0, 25) + '</p>';
-        html += '<p class="text-xs text-slate-400 mt-0.5">' + (it.unit || 'حبة') + '</p>';
-        html += '<div class="mt-1 text-xs text-slate-500">';
-        html += 'متبقي: <strong class="text-blue-600">' + remaining + '</strong>';
-        html += ' | مرتجع: <strong class="' + (it.qty_returned > 0 ? 'text-amber-600' : 'text-slate-400') + '">' + it.qty_returned + '</strong>';
-        html += '</div>';
-        if (conditionLabel) {
-            html += '<span class="text-[10px] font-bold mt-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">' + conditionLabel + '</span>';
-        }
-        if (isCompleted) {
-            html += '<span class="text-xs text-green-600 font-bold mt-1">✅ مكتمل</span>';
-        } else if (it.qty_returned > 0) {
-            html += '<span class="text-xs text-amber-600 font-bold mt-1">⏳ قيد التعديل</span>';
-        } else {
-            html += '<span class="text-xs text-slate-400 font-bold mt-1">⏳ لم يبدأ</span>';
-        }
-        html += '</div></div>';
-        return html;
-    },
+    var html = '<div class="card cursor-pointer active:scale-[0.98] border-2 ' + borderColor + ' ' + bgColor + '" id="return-card-' + index + '" onclick="App.editReturnItem(' + index + ')">';
+    html += '<div class="flex flex-col items-center text-center">';
+    html += this._img(it.item_code);
+    html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it.item_name || '').substring(0, 25) + '</p>';
+    html += '<p class="text-xs text-slate-400 mt-0.5">' + (it.unit || 'حبة') + '</p>';
+    html += '<div class="mt-1 text-xs text-slate-500">';
+    html += 'متبقي: <strong class="text-blue-600">' + remaining + '</strong>';
+    html += ' | مرتجع: <strong class="' + (it.qty_returned > 0 ? 'text-amber-600' : 'text-slate-400') + '">' + it.qty_returned + '</strong>';
+    html += '</div>';
+    if (isCompleted) {
+        html += '<span class="text-xs text-green-600 font-bold mt-1">✅ مكتمل</span>';
+    } else if (it.qty_returned > 0) {
+        html += '<span class="text-xs text-amber-600 font-bold mt-1">⏳ قيد التعديل</span>';
+    } else {
+        html += '<span class="text-xs text-slate-400 font-bold mt-1">⏳ لم يبدأ</span>';
+    }
+    html += '</div></div>';
+    return html;
+},
 
     reportDiscrepancyFromCard: function(index, remaining) {
         var self = this;
@@ -837,127 +831,112 @@ _loadLocalChanges: function() {
     // ============================================================
     // تعديل الصنف – مع أسباب ديناميكية من return_reasons
     // ============================================================
-    editReturnItem: function(index) {
-        var self = this;
-        var it = this.session.items[index];
-        var remaining = it.qty_loaded - it.qty_delivered;
+editReturnItem: function(index) {
+    var self = this;
+    var it = this.session.items[index];
+    var remaining = it.qty_loaded - it.qty_delivered;
 
-        var cacheEntry = ITEMS_IMAGE_CACHE[it.item_code] || {};
-        var imgUrl = cacheEntry.image_url || '';
-        var desc = cacheEntry.description || '';
+    var cacheEntry = ITEMS_IMAGE_CACHE[it.item_code] || {};
+    var imgUrl = cacheEntry.image_url || '';
+    var desc = cacheEntry.description || '';
 
-        var imgHtml = imgUrl ? '<img src="' + imgUrl + '" style="width:100%;height:280px;object-fit:cover;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.06)" onerror="this.style.display=\'none\'">' : '<div style="width:100%;height:280px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
+    var imgHtml = imgUrl ? '<img src="' + imgUrl + '" style="width:100%;height:280px;object-fit:cover;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,0.06)" onerror="this.style.display=\'none\'">' : '<div style="width:100%;height:280px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
 
-        var currentVal = it.qty_returned > 0 ? it.qty_returned : remaining;
+    var currentVal = it.qty_returned > 0 ? it.qty_returned : remaining;
 
-        // بناء قائمة أسباب المرتجعات الديناميكية
-        var reasonsOptionsHtml = '';
-        for (var r = 0; r < RETURN_REASONS_LIST.length; r++) {
-            var reasonItem = RETURN_REASONS_LIST[r];
-            var selected = '';
-            if (it.notes === reasonItem.reason_code || it.notes === reasonItem.reason_name) {
-                selected = ' selected';
-            }
-            var icon = '📝';
-            if (reasonItem.reason_category === 'damaged') { icon = '🔴'; }
-            else if (reasonItem.reason_category === 'refused') { icon = '🚫'; }
-            else if (reasonItem.reason_category === 'error') { icon = '⚠️'; }
-            else if (reasonItem.reason_category === 'expired') { icon = '⏰'; }
-            else if (reasonItem.reason_category === 'not_found') { icon = '❓'; }
-            else if (reasonItem.reason_category === 'wrong_item') { icon = '🔄'; }
-            reasonsOptionsHtml += '<option value="' + reasonItem.reason_code + '"' + selected + '>' + icon + ' ' + reasonItem.reason_name + '</option>';
+    // بناء قائمة أسباب عدم الاستلام الديناميكية
+    var reasonsOptionsHtml = '';
+    for (var r = 0; r < RETURN_REASONS_LIST.length; r++) {
+        var reasonItem = RETURN_REASONS_LIST[r];
+        var selected = '';
+        if (it.notes === reasonItem.reason_code || it.notes === reasonItem.reason_name) {
+            selected = ' selected';
         }
+        var icon = '📝';
+        if (reasonItem.reason_category === 'damaged') { icon = '🔴'; }
+        else if (reasonItem.reason_category === 'refused') { icon = '🚫'; }
+        else if (reasonItem.reason_category === 'error') { icon = '⚠️'; }
+        else if (reasonItem.reason_category === 'expired') { icon = '⏰'; }
+        else if (reasonItem.reason_category === 'not_found') { icon = '❓'; }
+        else if (reasonItem.reason_category === 'wrong_item') { icon = '🔄'; }
+        reasonsOptionsHtml += '<option value="' + reasonItem.reason_code + '"' + selected + '>' + icon + ' ' + reasonItem.reason_name + '</option>';
+    }
 
-        var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
-        html += imgHtml;
-        html += '<h3 style="font-size:20px;font-weight:800;color:#1e293b;margin-top:16px;margin-bottom:4px">' + (it.item_name || '') + '</h3>';
-        html += '<p style="font-size:13px;color:#64748b;margin-bottom:12px">الكود: ' + (it.item_code || '') + ' | الوحدة: ' + (it.unit || 'حبة') + '</p>';
-        if (desc) {
-            html += '<p style="font-size:13px;color:#475569;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:10px">📝 ' + desc + '</p>';
-        }
+    var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
+    html += imgHtml;
+    html += '<h3 style="font-size:20px;font-weight:800;color:#1e293b;margin-top:16px;margin-bottom:4px">' + (it.item_name || '') + '</h3>';
+    html += '<p style="font-size:13px;color:#64748b;margin-bottom:12px">الكود: ' + (it.item_code || '') + ' | الوحدة: ' + (it.unit || 'حبة') + '</p>';
+    if (desc) {
+        html += '<p style="font-size:13px;color:#475569;margin-bottom:12px;background:#f8fafc;padding:10px;border-radius:10px">📝 ' + desc + '</p>';
+    }
 
-        html += '<div style="background:#f8fafc;border-radius:12px;padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin-bottom:16px">';
-        html += '<div><p style="font-size:11px;color:#94a3b8">محمّل</p><p style="font-size:20px;font-weight:800;color:#334155">' + it.qty_loaded + '</p></div>';
-        html += '<div><p style="font-size:11px;color:#94a3b8">مسلّم</p><p style="font-size:20px;font-weight:800;color:#334155">' + it.qty_delivered + '</p></div>';
-        html += '<div><p style="font-size:11px;color:#94a3b8">متبقي</p><p style="font-size:20px;font-weight:800;color:#2563eb">' + remaining + '</p></div>';
-        html += '</div>';
+    html += '<div style="background:#f8fafc;border-radius:12px;padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;margin-bottom:16px">';
+    html += '<div><p style="font-size:11px;color:#94a3b8">محمّل</p><p style="font-size:20px;font-weight:800;color:#334155">' + it.qty_loaded + '</p></div>';
+    html += '<div><p style="font-size:11px;color:#94a3b8">مسلّم</p><p style="font-size:20px;font-weight:800;color:#334155">' + it.qty_delivered + '</p></div>';
+    html += '<div><p style="font-size:11px;color:#94a3b8">متبقي</p><p style="font-size:20px;font-weight:800;color:#2563eb">' + remaining + '</p></div>';
+    html += '</div>';
 
-        html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية المرتجعة</label>';
-        html += '<div style="display:flex;align-items:center;gap:8px">';
-        html += '<button onclick="App._adjustEditQty(-1)" style="width:40px;height:40px;border-radius:50%;background:#f1f5f9;border:2px solid #e2e8f0;font-weight:700;font-size:18px;cursor:pointer;color:#1e293b">-</button>';
-        html += '<input type="number" id="swal-ret-qty" value="' + currentVal + '" min="0" max="' + remaining + '" style="width:80px;text-align:center;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:18px;font-weight:700;outline:none;color:#1e293b">';
-        html += '<button onclick="App._adjustEditQty(1)" style="width:40px;height:40px;border-radius:50%;background:#f1f5f9;border:2px solid #e2e8f0;font-weight:700;font-size:18px;cursor:pointer;color:#1e293b">+</button>';
-        html += '<button onclick="App._setEditAllGood(' + remaining + ')" style="background:#dcfce7;color:#166534;border:2px solid #bbf7d0;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">الكل سليم</button>';
-        html += '<button onclick="App._setEditAllDamaged(' + remaining + ')" style="background:#fef2f2;color:#b91c1c;border:2px solid #fecaca;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">الكل تالف</button>';
-        html += '</div></div>';
+    html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية المرتجعة</label>';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
+    html += '<button onclick="App._adjustEditQty(-1)" style="width:40px;height:40px;border-radius:50%;background:#f1f5f9;border:2px solid #e2e8f0;font-weight:700;font-size:18px;cursor:pointer;color:#1e293b">-</button>';
+    html += '<input type="number" id="swal-ret-qty" value="' + currentVal + '" min="0" max="' + remaining + '" style="width:80px;text-align:center;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:18px;font-weight:700;outline:none;color:#1e293b">';
+    html += '<button onclick="App._adjustEditQty(1)" style="width:40px;height:40px;border-radius:50%;background:#f1f5f9;border:2px solid #e2e8f0;font-weight:700;font-size:18px;cursor:pointer;color:#1e293b">+</button>';
+    html += '<button onclick="App._setEditReturnAll(' + remaining + ')" style="background:#dcfce7;color:#166534;border:2px solid #bbf7d0;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ استلام الكل</button>';
+    html += '</div></div>';
 
-        html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">سبب المرتجع</label>';
-        html += '<select id="swal-ret-reason" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + reasonsOptionsHtml + '</select></div>';
+    html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">سبب عدم الاستلام (إن وجد نقص)</label>';
+    html += '<select id="swal-ret-reason" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + reasonsOptionsHtml + '</select></div>';
 
-        html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات إضافية</label>';
-        html += '<input type="text" id="swal-ret-notes" value="' + (it.notes || '') + '" placeholder="أي ملاحظات إضافية..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b">';
-        html += '</div>';
+    html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات إضافية</label>';
+    html += '<input type="text" id="swal-ret-notes" value="' + (it.notes || '') + '" placeholder="أي ملاحظات إضافية..." style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b">';
+    html += '</div>';
 
-        html += '<div style="display:flex;gap:8px;margin-top:8px">';
-        html += '<button id="swal-save-btn" style="flex:1;background:#2563eb;color:#fff;padding:10px;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer">💾 حفظ</button>';
-        html += '</div>';
-        html += '</div>';
+    html += '<div style="display:flex;gap:8px;margin-top:8px">';
+    html += '<button id="swal-save-btn" style="flex:1;background:#2563eb;color:#fff;padding:10px;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer">💾 حفظ</button>';
+    html += '</div>';
+    html += '</div>';
 
-        Swal.fire({
-            html: html,
-            width: '420px',
-            showCloseButton: true,
-            showConfirmButton: false,
-            customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-400 !text-lg' },
-            didOpen: function() {
-                var saveBtn = document.getElementById('swal-save-btn');
-                if (saveBtn) {
-                    saveBtn.addEventListener('click', function() {
-                        var qty = parseInt(document.getElementById('swal-ret-qty').value) || 0;
-                        if (qty > remaining) {
-                            toast('الكمية أكبر من المتبقي', 'error');
-                            return;
-                        }
-                        var reasonCode = document.getElementById('swal-ret-reason').value;
-                        var notes = document.getElementById('swal-ret-notes').value.trim();
+    Swal.fire({
+        html: html,
+        width: '420px',
+        showCloseButton: true,
+        showConfirmButton: false,
+        customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-400 !text-lg' },
+        didOpen: function() {
+            var saveBtn = document.getElementById('swal-save-btn');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', function() {
+                    var qty = parseInt(document.getElementById('swal-ret-qty').value) || 0;
+                    if (qty > remaining) {
+                        toast('الكمية أكبر من المتبقي', 'error');
+                        return;
+                    }
+                    var reasonCode = document.getElementById('swal-ret-reason').value;
+                    var notes = document.getElementById('swal-ret-notes').value.trim();
 
-                        // تحديد return_condition من reason_category
-                        var returnCondition = 'good';
-                        for (var rr = 0; rr < RETURN_REASONS_LIST.length; rr++) {
-                            if (RETURN_REASONS_LIST[rr].reason_code === reasonCode) {
-                                returnCondition = RETURN_REASONS_LIST[rr].reason_category || 'other';
-                                break;
-                            }
-                        }
-                        // القيم الخاصة
-                        if (reasonCode === 'R001') { returnCondition = 'damaged'; }
-                        else if (reasonCode === 'R002') { returnCondition = 'refused'; }
-                        else if (reasonCode === 'R005') { returnCondition = 'missing'; }
+                    it.qty_returned = qty;
+                    it.notes = notes || reasonCode;
 
-                        it.qty_returned = qty;
-                        it.return_condition = returnCondition;
-                        it.notes = notes || reasonCode;
+                    self.saveReturnItem(index);
+                    Swal.close();
+                    self.renderActiveSession();
 
-                        self.saveReturnItem(index);
-                        Swal.close();
-                        self.renderActiveSession();
-
-                        if (qty < remaining && !notes) {
-                            Swal.fire({
-                                title: 'تنبيه',
-                                text: 'الكمية المرتجعة أقل من المتبقي. هل تريد إضافة سبب النقص؟',
-                                icon: 'question',
-                                showCancelButton: true,
-                                confirmButtonText: 'إضافة سبب',
-                                cancelButtonText: 'تخطي',
-                                customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl !px-6' }
-                            }).then(function(r2) { if (r2.isConfirmed) { self.editReturnItem(index); } });
-                        }
-                    });
-                }
+                    if (qty < remaining && !notes) {
+                        Swal.fire({
+                            title: 'تنبيه',
+                            text: 'الكمية المرتجعة أقل من المتبقي. هل تريد إضافة سبب النقص؟',
+                            icon: 'question',
+                            showCancelButton: true,
+                            confirmButtonText: 'إضافة سبب',
+                            cancelButtonText: 'تخطي',
+                            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6', cancelButton: '!rounded-xl !px-6' }
+                        }).then(function(r2) { if (r2.isConfirmed) { self.editReturnItem(index); } });
+                    }
+                });
             }
-        });
-    },
+        }
+    });
+},
 
     _adjustEditQty: function(delta) {
         var input = document.getElementById('swal-ret-qty');
@@ -968,19 +947,6 @@ _loadLocalChanges: function() {
         }
     },
 
-    _setEditAllGood: function(rem) {
-        var input = document.getElementById('swal-ret-qty');
-        if (input) { input.value = rem; }
-        var sel = document.getElementById('swal-ret-reason');
-        if (sel) { sel.value = 'R002'; }
-    },
-
-    _setEditAllDamaged: function(rem) {
-        var input = document.getElementById('swal-ret-qty');
-        if (input) { input.value = rem; }
-        var sel = document.getElementById('swal-ret-reason');
-        if (sel) { sel.value = 'R001'; }
-    },
 
     saveReturnItem: function(index) {
         var self = this;
