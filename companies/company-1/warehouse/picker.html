@@ -372,6 +372,7 @@ var App = {
 
     startPicking: function(code){
         var self = this;
+        window._rwHasActiveSession = true;
         if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
         Swal.fire({ title: 'جاري بدء التحضير...', allowOutsideClick: false, didOpen: function(){ Swal.showLoading(); } });
         supabase.auth.getSession().then(function(sessionRes){
@@ -510,7 +511,18 @@ var App = {
             }).then(function(json){
                 Swal.close();
                 if(!json || !json.success){ toast((json && json.msg) || 'فشل', 'error'); return; }
-                toast('تم إنهاء التحضير', 'success'); db.session.clear(); self.session = null; if(self.timerInterval) clearInterval(self.timerInterval); self.renderPendingTab();
+                toast('تم إنهاء التحضير', 'success');
+db.session.clear();
+self.session = null;
+if (self.timerInterval) clearInterval(self.timerInterval);
+
+// ✅ إنهاء الجلسة النشطة والسماح بالتحديث التلقائي
+window._rwHasActiveSession = false;
+if (typeof RW_checkPendingReload === 'function') {
+    RW_checkPendingReload();
+}
+
+self.renderPendingTab();
             }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
         });
     },
@@ -605,5 +617,6 @@ if('serviceWorker' in navigator){
 
 document.addEventListener('DOMContentLoaded', function(){ App.init(); });
 </script>
+<script src="../register-sw.js"></script>
 </body>
 </html>
