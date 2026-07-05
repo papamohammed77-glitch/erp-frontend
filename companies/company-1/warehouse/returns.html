@@ -538,7 +538,6 @@ renderActiveSession: function() {
         elapsed = String(Math.floor(diff / 60)).padStart(2, '0') + ':' + String(diff % 60).padStart(2, '0');
     }
 
-    // 🆕 تجميع الإحصائيات فقط للأصناف التي تحتاج مرتجعات
     var totalRemainingItems = 0;
     var completedItems = 0;
     var summaryGood = 0;
@@ -574,7 +573,6 @@ renderActiveSession: function() {
     html += '<div><span class="font-black text-xl text-slate-800">' + ses.runsheet_code + '</span><p class="text-xs text-slate-400">السائق: ' + (ses.driver_name || 'غير محدد') + '</p></div>';
     html += '</div>';
 
-    // 🆕 شريط التقدم مع زر "استلام الكل"
     html += '<div class="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-slate-100 slide-in">';
     html += '<div class="flex items-center justify-between mb-3">';
     html += '<span class="font-bold text-slate-700">تقدم المرتجعات</span>';
@@ -588,7 +586,6 @@ renderActiveSession: function() {
     html += '<div class="progress-bar h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" style="width:' + progress + '%"></div>';
     html += '</div>';
 
-    // 🆕 زر "استلام الكل" - يظهر فقط إذا كان هناك أصناف متبقية
     if (totalRemainingItems > 0) {
         html += '<div class="mt-3 flex gap-2">';
         html += '<button onclick="App._setAllReturnsToRemaining()" class="flex-1 bg-emerald-50 text-emerald-700 py-2.5 rounded-xl font-bold text-sm border border-emerald-200 hover:bg-emerald-100 transition">✅ استلام الكل</button>';
@@ -619,16 +616,12 @@ renderActiveSession: function() {
 
     html += '<div id="searchHighlightResult" class="hidden mb-4"></div>';
 
-    // 🆕 عرض الأصناف المرتجعة فقط (remaining > 0)
     html += '<div class="grid-cards">';
     var hasReturnableItems = false;
     for (var j = 0; j < ses.items.length; j++) {
         var it2 = ses.items[j];
         var remaining2 = it2.qty_loaded - it2.qty_delivered;
-        if (remaining2 <= 0) {
-            // 🆕 الصنف المكتمل: لا يظهر في القائمة الرئيسية
-            continue;
-        }
+        if (remaining2 <= 0) { continue; }
         hasReturnableItems = true;
         html += self._buildItemCard(j, it2, remaining2);
     }
@@ -645,6 +638,53 @@ renderActiveSession: function() {
     safeHTML(byId('mainContent'), html);
     this.startTimer();
 },
+
+_buildItemCard: function(index, it, remaining) {
+    var isCompleted = it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes);
+    var isOver = it.qty_returned > remaining;
+    var borderColor = isOver ? 'border-orange-300' : (isCompleted ? 'border-green-300' : (it.qty_returned > 0 ? 'border-amber-300' : 'border-slate-200'));
+    var bgColor = isOver ? 'bg-orange-50/20' : (isCompleted ? 'bg-green-50/20' : (it.qty_returned > 0 ? 'bg-amber-50/20' : ''));
+
+    var html = '<div class="card cursor-pointer active:scale-[0.98] border-2 ' + borderColor + ' ' + bgColor + '" id="return-card-' + index + '" onclick="App.editReturnItem(' + index + ')">';
+    html += '<div class="flex flex-col items-center text-center">';
+    html += this._img(it.item_code);
+    html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it.item_name || '').substring(0, 25) + '</p>';
+    html += '<p class="text-xs text-slate-400 mt-0.5">' + (it.unit || 'حبة') + '</p>';
+    html += '<div class="mt-1 text-xs text-slate-500">';
+    html += 'متبقي: <strong class="text-blue-600">' + remaining + '</strong>';
+    html += ' | مرتجع: <strong class="' + (it.qty_returned > 0 ? 'text-amber-600' : 'text-slate-400') + '">' + it.qty_returned + '</strong>';
+    html += '</div>';
+    if (isCompleted) {
+        html += '<span class="text-xs text-green-600 font-bold mt-1">✅ مكتمل</span>';
+    } else if (it.qty_returned > 0) {
+        html += '<span class="text-xs text-amber-600 font-bold mt-1">⏳ قيد التعديل</span>';
+    } else {
+        html += '<span class="text-xs text-slate-400 font-bold mt-1">⏳ لم يبدأ</span>';
+    }
+    html += '</div></div>';
+    return html;
+},
+
+    reportDiscrepancyFromCard: function(index, remaining) {
+        var self = this;
+        var it = this.session.items[index];
+        var actualQty = it.qty_returned || 0;
+        var diff = actualQty - remaining;
+
+        if (diff === 0) {
+            toast('لا يوجد اختلاف في الكمية. يمكنك تعديل الصنف أو الإبلاغ عن صنف مختلف من النافذة.', 'info');
+            this.editReturnItem(index);
+            return;
+        }
+
+        if (diff < 0 && !it.notes) {
+            toast('الكمية أقل من المتبقي. أضف سبباً في النافذة أولاً.', 'warning');
+            this.editReturnItem(index);
+            return;
+        }
+
+        this.reportDiscrepancy(index, remaining, actualQty, diff, it.notes || '');
+    },
 
     onItemSearch: function(query) {
         var self = this;
@@ -808,8 +848,8 @@ editReturnItem: function(index) {
 
     var currentVal = it.qty_returned > 0 ? it.qty_returned : remaining;
 
-    // بناء قائمة أسباب عدم الاستلام الديناميكية
-    var reasonsOptionsHtml = '';
+    // 🆕 بناء قائمة أسباب عدم الاستلام الديناميكية من RETURN_REASONS_LIST
+    var reasonsOptionsHtml = '<option value="">بدون سبب</option>';
     for (var r = 0; r < RETURN_REASONS_LIST.length; r++) {
         var reasonItem = RETURN_REASONS_LIST[r];
         var selected = '';
@@ -848,6 +888,7 @@ editReturnItem: function(index) {
     html += '<button onclick="App._setEditReturnAll(' + remaining + ')" style="background:#dcfce7;color:#166534;border:2px solid #bbf7d0;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ استلام الكل</button>';
     html += '</div></div>';
 
+    // 🆕 استبدال حقل النص الحر بقائمة منسددة ديناميكية
     html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">سبب عدم الاستلام (إن وجد نقص)</label>';
     html += '<select id="swal-ret-reason" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + reasonsOptionsHtml + '</select></div>';
 
@@ -878,14 +919,20 @@ editReturnItem: function(index) {
                     var reasonCode = document.getElementById('swal-ret-reason').value;
                     var notes = document.getElementById('swal-ret-notes').value.trim();
 
+                    // 🆕 دمج السبب المختار مع الملاحظات الإضافية
                     it.qty_returned = qty;
-                    it.notes = notes || reasonCode;
+                    it.notes = notes;
+                    if (reasonCode && notes) {
+                        it.notes = reasonCode + ' | ' + notes;
+                    } else if (reasonCode) {
+                        it.notes = reasonCode;
+                    }
 
                     self.saveReturnItem(index);
                     Swal.close();
                     self.renderActiveSession();
 
-                    if (qty < remaining && !notes) {
+                    if (qty < remaining && !it.notes) {
                         Swal.fire({
                             title: 'تنبيه',
                             text: 'الكمية المرتجعة أقل من المتبقي. هل تريد إضافة سبب النقص؟',
@@ -901,6 +948,35 @@ editReturnItem: function(index) {
         }
     });
 },
+
+    _setAllReturnsToRemaining: function() {
+        var self = this;
+        if (!this.session || !this.session.items) return;
+
+        var updatedCount = 0;
+        for (var i = 0; i < this.session.items.length; i++) {
+            var it = this.session.items[i];
+            var remaining = it.qty_loaded - it.qty_delivered;
+            if (remaining > 0) {
+                it.qty_returned = remaining;
+                it.return_condition = 'good';
+                it.notes = '';
+                self.saveReturnItem(i);
+                updatedCount++;
+            }
+        }
+
+        if (updatedCount > 0) {
+            toast('✅ تم استلام ' + updatedCount + ' صنف بالكامل', 'success');
+            if (window.navigator && window.navigator.vibrate) {
+                window.navigator.vibrate(50);
+            }
+        } else {
+            toast('لا توجد أصناف متبقية للاستلام', 'info');
+        }
+
+        this.renderActiveSession();
+    },
 
     _adjustEditQty: function(delta) {
         var input = document.getElementById('swal-ret-qty');
@@ -936,35 +1012,6 @@ editReturnItem: function(index) {
 
         this.updateSummaryCards();
     },
-    
-_setAllReturnsToRemaining: function() {
-    var self = this;
-    if (!this.session || !this.session.items) return;
-
-    var updatedCount = 0;
-    for (var i = 0; i < this.session.items.length; i++) {
-        var it = this.session.items[i];
-        var remaining = it.qty_loaded - it.qty_delivered;
-        if (remaining > 0) {
-            it.qty_returned = remaining;
-            it.return_condition = 'good';
-            it.notes = '';
-            self.saveReturnItem(i);
-            updatedCount++;
-        }
-    }
-
-    if (updatedCount > 0) {
-        toast('✅ تم استلام ' + updatedCount + ' صنف بالكامل', 'success');
-        if (window.navigator && window.navigator.vibrate) {
-            window.navigator.vibrate(50);
-        }
-    } else {
-        toast('لا توجد أصناف متبقية للاستلام', 'info');
-    }
-
-    this.renderActiveSession();
-},
 
     updateSummaryCards: function() {
         var summaryGood = 0;
@@ -1244,26 +1291,27 @@ _setAllReturnsToRemaining: function() {
         });
     },
 
-_searchItemsForReport: function(query) {
-    var resultsContainer = document.getElementById('itemSearchResultsGeneral');
-    if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
-    var q = query.trim().toLowerCase(); var results = [];
-    for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
-        var item = ALL_ITEMS_LIST[i];
-        var name = (item.name || '').toLowerCase();
-        var code = (item.item_code || '').toLowerCase();
-        var label = (item.search_label || '').toLowerCase();
-        var barcode = (item.barcode || '').toLowerCase();
-        if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1 || barcode.indexOf(q) !== -1) {
-            results.push(item);
+    _searchItemsForReport: function(query) {
+        var resultsContainer = document.getElementById('itemSearchResultsGeneral');
+        if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
+        var q = query.trim().toLowerCase(); var results = [];
+        for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
+            var item = ALL_ITEMS_LIST[i];
+            var name = (item.name || '').toLowerCase();
+            var code = (item.item_code || '').toLowerCase();
+            var label = (item.search_label || '').toLowerCase();
+            var barcode = (item.barcode || '').toLowerCase();
+            if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1 || barcode.indexOf(q) !== -1) {
+                results.push(item);
+            }
+            if (results.length >= 15) break;
         }
-        if (results.length >= 15) break;
-    }
-    if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
-    var html = '';
-    for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
-    resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
-},
+        if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
+        var html = '';
+        for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
+        resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
+    },
+
     _selectItemForReport: function(itemCode, itemName, unit) {
         var searchInput = document.getElementById('itemSearchGeneral');
         var unitDisplay = document.getElementById('unitDisplayGeneral');
@@ -1277,26 +1325,26 @@ _searchItemsForReport: function(query) {
         if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; }
     },
 
-_searchExpectedItemForReport: function(query) {
-    var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
-    if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
-    var q = query.trim().toLowerCase(); var results = [];
-    for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
-        var item = ALL_ITEMS_LIST[i];
-        var name = (item.name || '').toLowerCase();
-        var code = (item.item_code || '').toLowerCase();
-        var label = (item.search_label || '').toLowerCase();
-        var barcode = (item.barcode || '').toLowerCase();
-        if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1 || barcode.indexOf(q) !== -1) {
-            results.push(item);
+    _searchExpectedItemForReport: function(query) {
+        var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
+        if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
+        var q = query.trim().toLowerCase(); var results = [];
+        for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
+            var item = ALL_ITEMS_LIST[i];
+            var name = (item.name || '').toLowerCase();
+            var code = (item.item_code || '').toLowerCase();
+            var label = (item.search_label || '').toLowerCase();
+            var barcode = (item.barcode || '').toLowerCase();
+            if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1 || barcode.indexOf(q) !== -1) {
+                results.push(item);
+            }
+            if (results.length >= 15) break;
         }
-        if (results.length >= 15) break;
-    }
-    if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
-    var html = '';
-    for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectExpectedItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
-    resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
-},
+        if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
+        var html = '';
+        for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectExpectedItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
+        resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
+    },
 
     _selectExpectedItemForReport: function(itemCode, itemName) {
         var searchInput = document.getElementById('expectedItemSearchGeneral');
