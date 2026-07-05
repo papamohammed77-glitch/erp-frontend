@@ -527,160 +527,124 @@ _loadLocalChanges: function() {
     // ============================================================
     // الجلسة النشطة – مع أسباب المرتجعات الديناميكية
     // ============================================================
-    renderActiveSession: function() {
-        var self = this;
-        if (!this.session) { this.loadRunsheets(); return; }
-        var ses = this.session;
+renderActiveSession: function() {
+    var self = this;
+    if (!this.session) { this.loadRunsheets(); return; }
+    var ses = this.session;
 
-        var elapsed = '00:00';
-        if (ses.start_time) {
-            var diff = Math.floor((new Date() - new Date(ses.start_time)) / 1000);
-            elapsed = String(Math.floor(diff / 60)).padStart(2, '0') + ':' + String(diff % 60).padStart(2, '0');
-        }
-
-        var totalRemainingItems = 0;
-        var completedItems = 0;
-        var summaryGood = 0;
-        var summaryDamaged = 0;
-        var summaryMissing = 0;
-
-        for (var i = 0; i < ses.items.length; i++) {
-            var it = ses.items[i];
-            var remaining = it.qty_loaded - it.qty_delivered;
-            if (remaining > 0) {
-                totalRemainingItems++;
-                if (it.qty_returned > 0) {
-                    if (it.return_condition === 'good' || !it.return_condition) {
-                        summaryGood += it.qty_returned;
-                    } else if (it.return_condition === 'damaged') {
-                        summaryDamaged += it.qty_returned;
-                    } else if (it.return_condition === 'missing') {
-                        summaryMissing += it.qty_returned;
-                    }
-                }
-                if (it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes)) {
-                    completedItems++;
-                }
-            }
-        }
-
-        this.summary = { good: summaryGood, damaged: summaryDamaged, missing: summaryMissing };
-        var progress = totalRemainingItems ? Math.round((completedItems / totalRemainingItems) * 100) : 0;
-
-        var html = '';
-        html += '<div class="flex items-center gap-3 mb-4">';
-        html += '<button onclick="App.loadRunsheets()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-sm border border-slate-100"><i class="fa-solid fa-arrow-right"></i></button>';
-        html += '<div><span class="font-black text-xl text-slate-800">' + ses.runsheet_code + '</span><p class="text-xs text-slate-400">السائق: ' + (ses.driver_name || 'غير محدد') + '</p></div>';
-        html += '</div>';
-
-        html += '<div class="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-slate-100 slide-in">';
-        html += '<div class="flex items-center justify-between mb-3">';
-        html += '<span class="font-bold text-slate-700">تقدم المرتجعات</span>';
-        html += '<span class="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-bold">⏱️ ' + elapsed + '</span>';
-        html += '</div>';
-        html += '<div class="flex items-center justify-between text-xs font-bold text-slate-400 mb-1.5">';
-        html += '<span>' + completedItems + ' من ' + totalRemainingItems + ' صنف</span>';
-        html += '<span>' + progress + '%</span>';
-        html += '</div>';
-        html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden">';
-        html += '<div class="progress-bar h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" style="width:' + progress + '%"></div>';
-        html += '</div>';
-        html += '</div>';
-
-        html += '<div class="flex flex-wrap items-center gap-2 mb-4">';
-        html += '<div class="flex items-center gap-2 bg-white rounded-2xl px-3 py-2 shadow-sm border border-slate-100">';
-        html += '<span class="text-xs font-bold text-green-600">✅ ' + summaryGood + '</span>';
-        html += '<span class="text-xs font-bold text-red-500">❌ ' + summaryDamaged + '</span>';
-        html += '<span class="text-xs font-bold text-slate-500">⬛ ' + summaryMissing + '</span>';
-        html += '</div>';
-        html += '<button onclick="App.reportDiscrepancyGeneral()" class="btn-warning text-xs py-1.5 px-3"><i class="fa-solid fa-triangle-exclamation ml-1"></i> 🚨 إبلاغ عن اختلاف</button>';
-        html += '</div>';
-
-        html += '<div class="relative mb-4">';
-        html += '<div class="flex items-center gap-2">';
-        html += '<div class="flex-1 relative">';
-        html += '<i class="fa-solid fa-barcode absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"></i>';
-        html += '<input type="text" id="itemSearch" placeholder="🔍 امسح الباركود أو ابحث باسم الصنف..." class="w-full pr-10 pl-4 py-3.5 bg-white rounded-2xl border-2 border-slate-100 focus:border-blue-400 outline-none font-semibold text-sm transition-all shadow-sm" oninput="App.onItemSearch(this.value)" autocomplete="off">';
-        html += '</div>';
-        html += '<button onclick="App.openBarcodeScanner()" class="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-sm hover:bg-blue-700 transition flex-shrink-0"><i class="fa-solid fa-camera text-lg"></i></button>';
-        html += '</div>';
-        html += '<div id="itemSearchResults" class="hidden absolute top-full left-0 right-0 bg-white rounded-2xl mt-1 shadow-lg z-50 max-h-48 overflow-y-auto border border-slate-100"></div>';
-        html += '</div>';
-
-        html += '<div id="searchHighlightResult" class="hidden mb-4"></div>';
-
-        html += '<div class="grid-cards">';
-        for (var j = 0; j < ses.items.length; j++) {
-            var it2 = ses.items[j];
-            var remaining2 = it2.qty_loaded - it2.qty_delivered;
-            if (remaining2 <= 0) {
-                html += '<div class="card border-2 border-green-200 bg-green-50/20 opacity-70">';
-                html += '<div class="flex flex-col items-center text-center">';
-                html += self._img(it2.item_code);
-                html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it2.item_name || '').substring(0, 25) + '</p>';
-                html += '<span class="text-xs text-green-600 font-bold mt-1">✅ مكتمل</span>';
-                html += '</div></div>';
-            } else {
-                html += self._buildItemCard(j, it2, remaining2);
-            }
-        }
-        html += '</div>';
-
-        html += '<div class="mt-6 space-y-3">';
-        html += '<button onclick="App.completeReturn()" class="btn-primary"><i class="fa-solid fa-check ml-2"></i> إنهاء المرتجعات</button>';
-        html += '<button onclick="App.cancelReturn(\'' + ses.runsheet_code + '\')" class="btn-danger w-full"><i class="fa-solid fa-xmark ml-1"></i> إلغاء المرتجعات</button>';
-        html += '</div>';
-
-        safeHTML(byId('mainContent'), html);
-        this.startTimer();
-    },
-
-_buildItemCard: function(index, it, remaining) {
-    var isCompleted = it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes);
-    var isOver = it.qty_returned > remaining;
-    var borderColor = isOver ? 'border-orange-300' : (isCompleted ? 'border-green-300' : (it.qty_returned > 0 ? 'border-amber-300' : 'border-slate-200'));
-    var bgColor = isOver ? 'bg-orange-50/20' : (isCompleted ? 'bg-green-50/20' : (it.qty_returned > 0 ? 'bg-amber-50/20' : ''));
-
-    var html = '<div class="card cursor-pointer active:scale-[0.98] border-2 ' + borderColor + ' ' + bgColor + '" id="return-card-' + index + '" onclick="App.editReturnItem(' + index + ')">';
-    html += '<div class="flex flex-col items-center text-center">';
-    html += this._img(it.item_code);
-    html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it.item_name || '').substring(0, 25) + '</p>';
-    html += '<p class="text-xs text-slate-400 mt-0.5">' + (it.unit || 'حبة') + '</p>';
-    html += '<div class="mt-1 text-xs text-slate-500">';
-    html += 'متبقي: <strong class="text-blue-600">' + remaining + '</strong>';
-    html += ' | مرتجع: <strong class="' + (it.qty_returned > 0 ? 'text-amber-600' : 'text-slate-400') + '">' + it.qty_returned + '</strong>';
-    html += '</div>';
-    if (isCompleted) {
-        html += '<span class="text-xs text-green-600 font-bold mt-1">✅ مكتمل</span>';
-    } else if (it.qty_returned > 0) {
-        html += '<span class="text-xs text-amber-600 font-bold mt-1">⏳ قيد التعديل</span>';
-    } else {
-        html += '<span class="text-xs text-slate-400 font-bold mt-1">⏳ لم يبدأ</span>';
+    var elapsed = '00:00';
+    if (ses.start_time) {
+        var diff = Math.floor((new Date() - new Date(ses.start_time)) / 1000);
+        elapsed = String(Math.floor(diff / 60)).padStart(2, '0') + ':' + String(diff % 60).padStart(2, '0');
     }
-    html += '</div></div>';
-    return html;
+
+    // 🆕 تجميع الإحصائيات فقط للأصناف التي تحتاج مرتجعات
+    var totalRemainingItems = 0;
+    var completedItems = 0;
+    var summaryGood = 0;
+    var summaryDamaged = 0;
+    var summaryMissing = 0;
+
+    for (var i = 0; i < ses.items.length; i++) {
+        var it = ses.items[i];
+        var remaining = it.qty_loaded - it.qty_delivered;
+        if (remaining > 0) {
+            totalRemainingItems++;
+            if (it.qty_returned > 0) {
+                if (it.return_condition === 'good' || !it.return_condition) {
+                    summaryGood += it.qty_returned;
+                } else if (it.return_condition === 'damaged') {
+                    summaryDamaged += it.qty_returned;
+                } else if (it.return_condition === 'missing') {
+                    summaryMissing += it.qty_returned;
+                }
+            }
+            if (it.qty_returned >= remaining || (it.qty_returned < remaining && it.notes)) {
+                completedItems++;
+            }
+        }
+    }
+
+    this.summary = { good: summaryGood, damaged: summaryDamaged, missing: summaryMissing };
+    var progress = totalRemainingItems ? Math.round((completedItems / totalRemainingItems) * 100) : 0;
+
+    var html = '';
+    html += '<div class="flex items-center gap-3 mb-4">';
+    html += '<button onclick="App.loadRunsheets()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-sm border border-slate-100"><i class="fa-solid fa-arrow-right"></i></button>';
+    html += '<div><span class="font-black text-xl text-slate-800">' + ses.runsheet_code + '</span><p class="text-xs text-slate-400">السائق: ' + (ses.driver_name || 'غير محدد') + '</p></div>';
+    html += '</div>';
+
+    // 🆕 شريط التقدم مع زر "استلام الكل"
+    html += '<div class="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-slate-100 slide-in">';
+    html += '<div class="flex items-center justify-between mb-3">';
+    html += '<span class="font-bold text-slate-700">تقدم المرتجعات</span>';
+    html += '<span class="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-bold">⏱️ ' + elapsed + '</span>';
+    html += '</div>';
+    html += '<div class="flex items-center justify-between text-xs font-bold text-slate-400 mb-1.5">';
+    html += '<span>' + completedItems + ' من ' + totalRemainingItems + ' صنف</span>';
+    html += '<span>' + progress + '%</span>';
+    html += '</div>';
+    html += '<div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden">';
+    html += '<div class="progress-bar h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full" style="width:' + progress + '%"></div>';
+    html += '</div>';
+
+    // 🆕 زر "استلام الكل" - يظهر فقط إذا كان هناك أصناف متبقية
+    if (totalRemainingItems > 0) {
+        html += '<div class="mt-3 flex gap-2">';
+        html += '<button onclick="App._setAllReturnsToRemaining()" class="flex-1 bg-emerald-50 text-emerald-700 py-2.5 rounded-xl font-bold text-sm border border-emerald-200 hover:bg-emerald-100 transition">✅ استلام الكل</button>';
+        html += '</div>';
+    }
+
+    html += '</div>';
+
+    html += '<div class="flex flex-wrap items-center gap-2 mb-4">';
+    html += '<div class="flex items-center gap-2 bg-white rounded-2xl px-3 py-2 shadow-sm border border-slate-100">';
+    html += '<span class="text-xs font-bold text-green-600">✅ ' + summaryGood + '</span>';
+    html += '<span class="text-xs font-bold text-red-500">❌ ' + summaryDamaged + '</span>';
+    html += '<span class="text-xs font-bold text-slate-500">⬛ ' + summaryMissing + '</span>';
+    html += '</div>';
+    html += '<button onclick="App.reportDiscrepancyGeneral()" class="btn-warning text-xs py-1.5 px-3"><i class="fa-solid fa-triangle-exclamation ml-1"></i> 🚨 إبلاغ عن اختلاف</button>';
+    html += '</div>';
+
+    html += '<div class="relative mb-4">';
+    html += '<div class="flex items-center gap-2">';
+    html += '<div class="flex-1 relative">';
+    html += '<i class="fa-solid fa-barcode absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"></i>';
+    html += '<input type="text" id="itemSearch" placeholder="🔍 امسح الباركود أو ابحث باسم الصنف..." class="w-full pr-10 pl-4 py-3.5 bg-white rounded-2xl border-2 border-slate-100 focus:border-blue-400 outline-none font-semibold text-sm transition-all shadow-sm" oninput="App.onItemSearch(this.value)" autocomplete="off">';
+    html += '</div>';
+    html += '<button onclick="App.openBarcodeScanner()" class="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-sm hover:bg-blue-700 transition flex-shrink-0"><i class="fa-solid fa-camera text-lg"></i></button>';
+    html += '</div>';
+    html += '<div id="itemSearchResults" class="hidden absolute top-full left-0 right-0 bg-white rounded-2xl mt-1 shadow-lg z-50 max-h-48 overflow-y-auto border border-slate-100"></div>';
+    html += '</div>';
+
+    html += '<div id="searchHighlightResult" class="hidden mb-4"></div>';
+
+    // 🆕 عرض الأصناف المرتجعة فقط (remaining > 0)
+    html += '<div class="grid-cards">';
+    var hasReturnableItems = false;
+    for (var j = 0; j < ses.items.length; j++) {
+        var it2 = ses.items[j];
+        var remaining2 = it2.qty_loaded - it2.qty_delivered;
+        if (remaining2 <= 0) {
+            // 🆕 الصنف المكتمل: لا يظهر في القائمة الرئيسية
+            continue;
+        }
+        hasReturnableItems = true;
+        html += self._buildItemCard(j, it2, remaining2);
+    }
+    if (!hasReturnableItems) {
+        html += '<div class="col-span-full text-center py-8 text-slate-400">✅ جميع الأصناف مكتملة</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="mt-6 space-y-3">';
+    html += '<button onclick="App.completeReturn()" class="btn-primary"><i class="fa-solid fa-check ml-2"></i> إنهاء المرتجعات</button>';
+    html += '<button onclick="App.cancelReturn(\'' + ses.runsheet_code + '\')" class="btn-danger w-full"><i class="fa-solid fa-xmark ml-1"></i> إلغاء المرتجعات</button>';
+    html += '</div>';
+
+    safeHTML(byId('mainContent'), html);
+    this.startTimer();
 },
-
-    reportDiscrepancyFromCard: function(index, remaining) {
-        var self = this;
-        var it = this.session.items[index];
-        var actualQty = it.qty_returned || 0;
-        var diff = actualQty - remaining;
-
-        if (diff === 0) {
-            toast('لا يوجد اختلاف في الكمية. يمكنك تعديل الصنف أو الإبلاغ عن صنف مختلف من النافذة.', 'info');
-            this.editReturnItem(index);
-            return;
-        }
-
-        if (diff < 0 && !it.notes) {
-            toast('الكمية أقل من المتبقي. أضف سبباً في النافذة أولاً.', 'warning');
-            this.editReturnItem(index);
-            return;
-        }
-
-        this.reportDiscrepancy(index, remaining, actualQty, diff, it.notes || '');
-    },
 
     onItemSearch: function(query) {
         var self = this;
@@ -844,8 +808,8 @@ editReturnItem: function(index) {
 
     var currentVal = it.qty_returned > 0 ? it.qty_returned : remaining;
 
-    // 🆕 بناء قائمة أسباب عدم الاستلام الديناميكية من RETURN_REASONS_LIST
-    var reasonsOptionsHtml = '<option value="">بدون سبب</option>';
+    // بناء قائمة أسباب عدم الاستلام الديناميكية
+    var reasonsOptionsHtml = '';
     for (var r = 0; r < RETURN_REASONS_LIST.length; r++) {
         var reasonItem = RETURN_REASONS_LIST[r];
         var selected = '';
@@ -884,7 +848,6 @@ editReturnItem: function(index) {
     html += '<button onclick="App._setEditReturnAll(' + remaining + ')" style="background:#dcfce7;color:#166534;border:2px solid #bbf7d0;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ استلام الكل</button>';
     html += '</div></div>';
 
-    // 🆕 استبدال حقل النص الحر بقائمة منسددة ديناميكية
     html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">سبب عدم الاستلام (إن وجد نقص)</label>';
     html += '<select id="swal-ret-reason" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + reasonsOptionsHtml + '</select></div>';
 
@@ -915,20 +878,14 @@ editReturnItem: function(index) {
                     var reasonCode = document.getElementById('swal-ret-reason').value;
                     var notes = document.getElementById('swal-ret-notes').value.trim();
 
-                    // 🆕 دمج السبب المختار مع الملاحظات الإضافية
                     it.qty_returned = qty;
-                    it.notes = notes;
-                    if (reasonCode && notes) {
-                        it.notes = reasonCode + ' | ' + notes;
-                    } else if (reasonCode) {
-                        it.notes = reasonCode;
-                    }
+                    it.notes = notes || reasonCode;
 
                     self.saveReturnItem(index);
                     Swal.close();
                     self.renderActiveSession();
 
-                    if (qty < remaining && !it.notes) {
+                    if (qty < remaining && !notes) {
                         Swal.fire({
                             title: 'تنبيه',
                             text: 'الكمية المرتجعة أقل من المتبقي. هل تريد إضافة سبب النقص؟',
@@ -979,6 +936,35 @@ editReturnItem: function(index) {
 
         this.updateSummaryCards();
     },
+    
+_setAllReturnsToRemaining: function() {
+    var self = this;
+    if (!this.session || !this.session.items) return;
+
+    var updatedCount = 0;
+    for (var i = 0; i < this.session.items.length; i++) {
+        var it = this.session.items[i];
+        var remaining = it.qty_loaded - it.qty_delivered;
+        if (remaining > 0) {
+            it.qty_returned = remaining;
+            it.return_condition = 'good';
+            it.notes = '';
+            self.saveReturnItem(i);
+            updatedCount++;
+        }
+    }
+
+    if (updatedCount > 0) {
+        toast('✅ تم استلام ' + updatedCount + ' صنف بالكامل', 'success');
+        if (window.navigator && window.navigator.vibrate) {
+            window.navigator.vibrate(50);
+        }
+    } else {
+        toast('لا توجد أصناف متبقية للاستلام', 'info');
+    }
+
+    this.renderActiveSession();
+},
 
     updateSummaryCards: function() {
         var summaryGood = 0;
@@ -1258,17 +1244,26 @@ editReturnItem: function(index) {
         });
     },
 
-    _searchItemsForReport: function(query) {
-        var resultsContainer = document.getElementById('itemSearchResultsGeneral');
-        if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
-        var q = query.trim().toLowerCase(); var results = [];
-        for (var i = 0; i < ALL_ITEMS_LIST.length; i++) { var item = ALL_ITEMS_LIST[i]; var name = (item.name || '').toLowerCase(); var code = (item.item_code || '').toLowerCase(); var label = (item.search_label || '').toLowerCase(); if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1) { results.push(item); } if (results.length >= 15) break; }
-        if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
-        var html = '';
-        for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
-        resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
-    },
-
+_searchItemsForReport: function(query) {
+    var resultsContainer = document.getElementById('itemSearchResultsGeneral');
+    if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
+    var q = query.trim().toLowerCase(); var results = [];
+    for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
+        var item = ALL_ITEMS_LIST[i];
+        var name = (item.name || '').toLowerCase();
+        var code = (item.item_code || '').toLowerCase();
+        var label = (item.search_label || '').toLowerCase();
+        var barcode = (item.barcode || '').toLowerCase();
+        if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1 || barcode.indexOf(q) !== -1) {
+            results.push(item);
+        }
+        if (results.length >= 15) break;
+    }
+    if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
+    var html = '';
+    for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\', \'' + (it.unit || 'حبة') + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
+    resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
+},
     _selectItemForReport: function(itemCode, itemName, unit) {
         var searchInput = document.getElementById('itemSearchGeneral');
         var unitDisplay = document.getElementById('unitDisplayGeneral');
@@ -1282,16 +1277,26 @@ editReturnItem: function(index) {
         if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; }
     },
 
-    _searchExpectedItemForReport: function(query) {
-        var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
-        if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
-        var q = query.trim().toLowerCase(); var results = [];
-        for (var i = 0; i < ALL_ITEMS_LIST.length; i++) { var item = ALL_ITEMS_LIST[i]; var name = (item.name || '').toLowerCase(); var code = (item.item_code || '').toLowerCase(); var label = (item.search_label || '').toLowerCase(); if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1) { results.push(item); } if (results.length >= 15) break; }
-        if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
-        var html = '';
-        for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectExpectedItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
-        resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
-    },
+_searchExpectedItemForReport: function(query) {
+    var resultsContainer = document.getElementById('expectedItemSearchResultsGeneral');
+    if (!query || query.trim().length < 2) { if (resultsContainer) { resultsContainer.style.display = 'none'; resultsContainer.innerHTML = ''; } return; }
+    var q = query.trim().toLowerCase(); var results = [];
+    for (var i = 0; i < ALL_ITEMS_LIST.length; i++) {
+        var item = ALL_ITEMS_LIST[i];
+        var name = (item.name || '').toLowerCase();
+        var code = (item.item_code || '').toLowerCase();
+        var label = (item.search_label || '').toLowerCase();
+        var barcode = (item.barcode || '').toLowerCase();
+        if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || label.indexOf(q) !== -1 || barcode.indexOf(q) !== -1) {
+            results.push(item);
+        }
+        if (results.length >= 15) break;
+    }
+    if (results.length === 0) { resultsContainer.innerHTML = '<div style="padding:10px;color:#94a3b8;text-align:center">🔍 لا توجد نتائج</div>'; resultsContainer.style.display = 'block'; return; }
+    var html = '';
+    for (var j = 0; j < results.length; j++) { var it = results[j]; html += '<div onclick="App._selectExpectedItemForReport(\'' + it.item_code + '\', \'' + (it.name || '').replace(/'/g, "\\'") + '\')" style="padding:10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center"><span><strong>' + (it.name || '') + '</strong> <span style="color:#94a3b8;font-size:12px">(' + it.item_code + ')</span></span><span style="color:#94a3b8;font-size:12px">📦 ' + (it.unit || 'حبة') + '</span></div>'; }
+    resultsContainer.innerHTML = html; resultsContainer.style.display = 'block';
+},
 
     _selectExpectedItemForReport: function(itemCode, itemName) {
         var searchInput = document.getElementById('expectedItemSearchGeneral');
