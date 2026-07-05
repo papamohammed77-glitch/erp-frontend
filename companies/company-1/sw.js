@@ -1,66 +1,95 @@
-// sw.js – الروائع ERP
-// الإصدار 2.1 – Network First مع إشعار فوري بالتحديث + تحديث الكاش حسب الطلب
-var CACHE_NAME = 'rawaea-erp-v3';
+var STATIC_CACHE = 'rw-static-v1';
+var SHELL_CACHE = 'rw-shell';
+var STATIC_EXTENSIONS = ['.css', '.woff', '.woff2', '.ttf', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp'];
 
 self.addEventListener('install', function(event) {
-  self.skipWaiting();
+    self.skipWaiting();
 });
 
 self.addEventListener('activate', function(event) {
-  event.waitUntil(
-    caches.keys().then(function(keys) {
-      return Promise.all(
-        keys.filter(function(key) { return key !== CACHE_NAME; })
-            .map(function(key) { return caches.delete(key); })
-      );
-    }).then(function() {
-      self.clients.claim();
-    })
-  );
+    event.waitUntil(
+        Promise.all([
+            caches.keys().then(function(keys) {
+                return Promise.all(keys.map(function(key) {
+                    if (key !== STATIC_CACHE && key !== SHELL_CACHE) {
+                        return caches.delete(key);
+                    }
+                }));
+            }),
+            self.clients.claim()
+        ]).then(function() {
+            return self.clients.matchAll({ type: 'window' });
+        }).then(function(clientsList) {
+            clientsList.forEach(function(client) {
+                client.postMessage({ type: 'RW_SW_UPDATED', at: Date.now() });
+            });
+        })
+    );
 });
+
+function isHTMLRequest(request) {
+    if (request.mode === 'navigate') return true;
+    var accept = request.headers.get('accept') || '';
+    return accept.indexOf('text/html') !== -1;
+}
+
+function isStaticAsset(pathname) {
+    for (var i = 0; i < STATIC_EXTENSIONS.length; i++) {
+        if (pathname.indexOf(STATIC_EXTENSIONS[i]) !== -1) return true;
+    }
+    return false;
+}
 
 self.addEventListener('fetch', function(event) {
-  if (event.request.method !== 'GET') return;
+    var request = event.request;
+    var url = new URL(request.url);
 
-  // لا يُخبَّأ Supabase أو CDNs
-  if (event.request.url.indexOf('supabase.co') !== -1 ||
-      event.request.url.indexOf('cdn.jsdelivr.net') !== -1 ||
-      event.request.url.indexOf('cdnjs.cloudflare.com') !== -1 ||
-      event.request.url.indexOf('cdn.tailwindcss.com') !== -1 ||
-      event.request.url.indexOf('fonts.googleapis.com') !== -1) {
-    return;
-  }
+    if (request.method !== 'GET') return;
 
-  event.respondWith(
-    fetch(event.request).then(function(networkResponse) {
-      // الشبكة أولاً – نُحدِّث الكاش بالنسخة الجديدة
-      if (networkResponse && networkResponse.status === 200) {
-        var clone = networkResponse.clone();
-        caches.open(CACHE_NAME).then(function(cache) {
-          cache.put(event.request, clone);
-        });
-      }
-      return networkResponse;
-    }).catch(function() {
-      // فقط عند فشل الشبكة، نستخدم الكاش
-      return caches.match(event.request).then(function(cached) {
-        return cached || new Response('غير متصل', { status: 503 });
-      });
-    })
-  );
-});
-
-// 🆕 مستمع الرسائل – تحديث الكاش حسب الطلب + تخطي الانتظار
-self.addEventListener('message', function(event) {
-  if (event.data && event.data.action === 'skipWaiting') {
-    self.skipWaiting();
-  }
-  if (event.data && event.data.action === 'updateCache') {
-    var url = event.data.url || '';
-    if (url) {
-      caches.open(CACHE_NAME).then(function(cache) {
-        cache.add(url).catch(function() {});
-      });
+    if (url.hostname.indexOf('supabase.co') !== -1 || url.origin !== self.location.origin) {
+        event.respondWith(fetch(request));
+        return;
     }
-  }
+
+    if (isHTMLRequest(request)) {
+        event.respondWith(
+            fetch(request).then(function(networkResponse) {
+                var copy = networkResponse.clone();
+                caches.open(SHELL_CACHE).then(function(cache) {
+                    cache.put(request, copy);
+                });
+                return networkResponse;
+            }).catch(function() {
+                return caches.match(request);
+            })
+        );
+        return;
+    }
+
+    if (isStaticAsset(url.pathname)) {
+        event.respondWith(
+            caches.match(request).then(function(cached) {
+                return cached || fetch(request).then(function(response) {
+                    var copy = response.clone();
+                    caches.open(STATIC_CACHE).then(function(cache) {
+                        cache.put(request, copy);
+                    });
+                    return response;
+                });
+            })
+        );
+        return;
+    }
+
+    event.respondWith(
+        fetch(request).then(function(networkResponse) {
+            var copy = networkResponse.clone();
+            caches.open(STATIC_CACHE).then(function(cache) {
+                cache.put(request, copy);
+            });
+            return networkResponse;
+        }).catch(function() {
+            return caches.match(request);
+        })
+    );
 });
