@@ -844,8 +844,8 @@ editReturnItem: function(index) {
 
     var currentVal = it.qty_returned > 0 ? it.qty_returned : remaining;
 
-    // بناء قائمة أسباب عدم الاستلام الديناميكية
-    var reasonsOptionsHtml = '';
+    // 🆕 بناء قائمة أسباب عدم الاستلام الديناميكية من RETURN_REASONS_LIST
+    var reasonsOptionsHtml = '<option value="">بدون سبب</option>';
     for (var r = 0; r < RETURN_REASONS_LIST.length; r++) {
         var reasonItem = RETURN_REASONS_LIST[r];
         var selected = '';
@@ -884,6 +884,7 @@ editReturnItem: function(index) {
     html += '<button onclick="App._setEditReturnAll(' + remaining + ')" style="background:#dcfce7;color:#166534;border:2px solid #bbf7d0;padding:8px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">✅ استلام الكل</button>';
     html += '</div></div>';
 
+    // 🆕 استبدال حقل النص الحر بقائمة منسددة ديناميكية
     html += '<div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">سبب عدم الاستلام (إن وجد نقص)</label>';
     html += '<select id="swal-ret-reason" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + reasonsOptionsHtml + '</select></div>';
 
@@ -914,14 +915,20 @@ editReturnItem: function(index) {
                     var reasonCode = document.getElementById('swal-ret-reason').value;
                     var notes = document.getElementById('swal-ret-notes').value.trim();
 
+                    // 🆕 دمج السبب المختار مع الملاحظات الإضافية
                     it.qty_returned = qty;
-                    it.notes = notes || reasonCode;
+                    it.notes = notes;
+                    if (reasonCode && notes) {
+                        it.notes = reasonCode + ' | ' + notes;
+                    } else if (reasonCode) {
+                        it.notes = reasonCode;
+                    }
 
                     self.saveReturnItem(index);
                     Swal.close();
                     self.renderActiveSession();
 
-                    if (qty < remaining && !notes) {
+                    if (qty < remaining && !it.notes) {
                         Swal.fire({
                             title: 'تنبيه',
                             text: 'الكمية المرتجعة أقل من المتبقي. هل تريد إضافة سبب النقص؟',
