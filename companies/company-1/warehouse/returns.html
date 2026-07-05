@@ -491,7 +491,9 @@ openBarcodeScannerForPreview: function() {
     });
 },
     startReturn: function(code) {
-        var self = this; if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
+        var self = this;window._rwHasActiveSession = true;
+         if (!navigator.onLine) { toast('أنت غير متصل', 'warning'); return; }
+      
         Swal.fire({ title: 'جاري بدء المرتجعات...', allowOutsideClick: false, didOpen: function() { Swal.showLoading(); } });
         supabase.auth.getSession().then(function(ses) { var t = ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/start-return', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code }) }); }).then(function(r) { return r.json(); }).then(function(j) { Swal.close(); if (j.success) { toast('تم بدء المرتجعات بنجاح', 'success'); self.openReturn(code); } else { toast(j.msg || 'فشل بدء المرتجعات', 'error'); } }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
     },
@@ -1454,6 +1456,11 @@ _setEditReturnAll: function(maxQty) {
                         toast('🎉 تم إنهاء المرتجعات بنجاح!', 'success');
                         self.session = null;
                         if (self.timerInterval) { clearInterval(self.timerInterval); }
+                            // ✅ إنهاء الجلسة النشطة والسماح بالتحديث
+                    window._rwHasActiveSession = false;
+                    if (typeof RW_checkPendingReload === 'function') {
+                        RW_checkPendingReload();
+                    }
                         self.loadRunsheets();
                     } else {
                         toast(j.msg || 'فشل الإنهاء', 'error');
@@ -1622,5 +1629,6 @@ document.addEventListener('DOMContentLoaded', function() {
     App.init();
 });
 </script>
+<script src="../register-sw.js"></script>
 </body>
 </html>
