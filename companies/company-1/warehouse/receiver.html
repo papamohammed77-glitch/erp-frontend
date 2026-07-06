@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
+    <script src="../core.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
@@ -19,8 +20,8 @@
         .card:active{transform:scale(0.985)}
         .btn-primary{background:linear-gradient(135deg,#059669,#10b981);color:#fff;padding:1rem 1.5rem;border-radius:16px;font-weight:700;border:none;cursor:pointer;width:100%;box-shadow:0 4px 12px rgba(5,150,105,0.25)}
         .btn-primary:active{transform:scale(0.97)}
+        .btn-danger{background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(239,68,68,0.2)}
         .tab-btn{transition:all 0.2s ease}
-        .tab-btn:active{transform:scale(0.95)}
         .accordion-content{max-height:0;overflow:hidden;transition:max-height 0.3s ease-out}
         .accordion-content.open{max-height:2000px}
         .slide-in{animation:slideIn 0.3s ease}
@@ -31,6 +32,7 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
+<!-- شاشة الدخول -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
     <div class="bg-white rounded-[36px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
         <div class="text-center mb-6">
@@ -49,87 +51,267 @@
     </div>
 </div>
 
+<!-- التطبيق الرئيسي -->
 <div id="mainApp" class="hidden flex flex-col h-full">
     <header class="bg-gradient-to-r from-emerald-700 to-emerald-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
         <span class="font-black text-base">📦 مسؤول الاستلام</span>
-        <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
+        <div class="flex items-center gap-2">
+            <span class="text-xs font-bold" id="headerUserName"></span>
+            <button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
+        </div>
     </header>
+
     <div class="flex gap-1.5 p-2 bg-white border-b border-slate-100 overflow-x-auto flex-shrink-0">
-        <button onclick="App.filterStatus('all')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm bg-emerald-600 text-white shadow-sm shadow-emerald-200" id="tab-all">📋 الكل</button>
-        <button onclick="App.filterStatus('Sent')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-Sent">🟡 مُرسلة</button>
-        <button onclick="App.filterStatus('Partially Received')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-Partial">🟠 استلام جزئي</button>
-        <button onclick="App.renderAccount()" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-account">⚙️ حسابي</button>
+        <button onclick="App.switchTab('pending')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm bg-emerald-600 text-white shadow-sm shadow-emerald-200" id="tab-pending">📋 قيد الاستلام</button>
+        <button onclick="App.switchTab('completed')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-completed">✅ مكتملة</button>
+        <button onclick="App.switchTab('account')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-account">⚙️ حسابي</button>
     </div>
+
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
 </div>
 
 <script>
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-var db = new Dexie('RW_Receiver'); db.version(1).stores({ purchaseOrders: 'po_code', meta: 'key' });
-
-function byId(id) { return document.getElementById(id); }
-function safeText(el, text) { if (el) el.textContent = text; }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
-
+// ============================================================
+// التطبيق الرئيسي – receiver.html (النموذج الذهبي - النسخة النهائية 100%)
+// ============================================================
 var App = {
-    currentUser: null, pubUserId: null, purchaseOrders: [], currentFilter: 'all', activeTimers: {},
-    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
-    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
-    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('warehouse')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}supabase.from('users').select('id,name,active_warehouse_role').eq('email',s.currentUser.email).maybeSingle().then(function(u){s.pubUserId=u.data?u.data.id:null;var n=u.data?u.data.name:null;var ar=u.data?u.data.active_warehouse_role:'';if(!isO&&ar!=='استلام'){Swal.fire({title:'تنبيه',text:'دورك النشط هو "'+(ar||'غير محدد')+'"',icon:'warning'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),n||m.name||s.currentUser.email);s.enterApp();}).catch(function(){safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();});}});},
-    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.loadPurchaseOrders();},
-    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
+    currentUser: null,
+    pubUserId: null,
+    currentTab: 'pending',
+    purchaseOrders: [],
+    activeTimers: {},
 
-    filterStatus: function(s){this.currentFilter=s;['all','Sent','Partially Received','account'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-emerald-600','text-white','shadow-sm','shadow-emerald-200');b.classList.add('text-slate-400');}});var a=byId('tab-'+s);if(a){a.classList.add('bg-emerald-600','text-white','shadow-sm','shadow-emerald-200');a.classList.remove('text-slate-400');}if(s==='account')this.renderAccount();else this.renderList();},
-
-    loadPurchaseOrders: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>');
-        supabase.from('purchase_orders').select('po_code,po_date,supplier_name,status,total_amount').in('status',['Sent','Partially Received']).order('po_date',{ascending:false}).limit(50).then(function(r){s.purchaseOrders=r.data||[];s.renderList();});
+    togglePass: function(){
+        var p = RW_UI.byId('loginPass');
+        var i = RW_UI.byId('passIcon');
+        if(p.type === 'password'){ p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; }
+        else { p.type = 'password'; i.className = 'fa-solid fa-eye'; }
     },
 
-    renderList: function(){
-        var filtered=this.purchaseOrders;
-        if(this.currentFilter!=='all'){filtered=filtered.filter(function(po){return po.status===App.currentFilter;});}
-        var html=''; var userName=this.currentUser.user_metadata.name||this.currentUser.email.split('@')[0]||'زميل';
-        html+='<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">'+userName+'</span> 👋</p></div>';
-        html+='<input type="text" id="searchPO" placeholder="🔍 ابحث عن أمر شراء..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-emerald-400 outline-none font-semibold text-sm shadow-sm mb-4" oninput="App.renderList()">';
-        html+='<h2 class="text-lg font-black mb-4">📦 أوامر الشراء</h2>';
-        if(filtered.length===0){html+='<div class="text-center py-12"><div class="text-6xl mb-4">☕</div><p class="text-slate-400">لا توجد أوامر شراء معلقة.</p></div>';}
-        else {for(var i=0;i<filtered.length;i++){var po=filtered[i];var sc=po.status==='Sent'?'bg-amber-50 text-amber-600':'bg-orange-50 text-orange-600';var sl=po.status==='Sent'?'مُرسل':'استلام جزئي';html+='<div class="card mb-3 cursor-pointer slide-in"><div class="flex justify-between items-center" onclick="App.toggleAccordion('+i+',\''+po.po_code+'\')"><div><span class="font-black">'+po.po_code+'</span><p class="text-xs text-slate-400">'+po.po_date+'</p></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold '+sc+'">'+sl+'</span><i class="fa-solid fa-chevron-down text-slate-300" id="chevron-'+i+'"></i></div></div><div class="accordion-content" id="accordion-'+i+'"><div class="border-t mt-3 pt-3"><div id="details-'+i+'" class="text-center py-4">جاري التحميل...</div><button id="btn-rec-'+i+'" class="btn-primary mt-4 hidden" onclick="App.submitReceiving('+i+',\''+po.po_code+'\')"><i class="fa-solid fa-check ml-2"></i> اعتماد الاستلام</button></div></div></div>';}}
-        safeHTML(byId('mainContent'),html);
-    },
-
-    toggleAccordion: function(i,code){var a=byId('accordion-'+i),c=byId('chevron-'+i);if(!a)return;if(a.classList.contains('open')){a.classList.remove('open');if(c)c.className='fa-solid fa-chevron-down text-slate-300';if(this.activeTimers[i]){clearInterval(this.activeTimers[i]);delete this.activeTimers[i];}}else{a.classList.add('open');if(c)c.className='fa-solid fa-chevron-up text-slate-300';this.loadPODetails(i,code);}},
-
-    loadPODetails: function(i,code){
-        var s=this; safeHTML(byId('details-'+i),'<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        supabase.from('purchase_order_details').select('item_code,item_name,qty_ordered,unit').eq('po_code',code).then(function(r){var items=r.data||[];var html='';for(var j=0;j<items.length;j++){var it=items[j];html+='<div class="flex justify-between p-3 border-b"><div><p class="font-bold">'+(it.item_name||'')+'</p><p class="text-xs text-slate-400">'+it.item_code+'</p><p class="text-xs">مطلوب: '+it.qty_ordered+'</p></div><input type="number" id="qty-'+i+'-'+j+'" value="'+it.qty_ordered+'" min="0" max="'+it.qty_ordered+'" class="w-20 p-2 border rounded-xl text-center font-bold text-sm"></div>';}safeHTML(byId('details-'+i),html);var btn=byId('btn-rec-'+i);if(btn)btn.classList.remove('hidden');});
-    },
-
-    submitReceiving: function(i,code){
-        var items=[]; var qtyInputs=document.querySelectorAll('#details-'+i+' input[type="number"]');
-        for(var j=0;j<qtyInputs.length;j++){
-            var q=parseInt(qtyInputs[j].value)||0;
-            // استخراج item_code من العنصر الشقيق (p الذي يحتوي على الكود)
-            var parentRow = qtyInputs[j].parentElement;
-            var itemCode = '';
-            if(parentRow){
-                var codeEl = parentRow.querySelector('.text-xs.text-slate-400');
-                if(codeEl) itemCode = codeEl.textContent.trim();
-            }
-            items.push({itemCode: itemCode, itemName: '', receivedQty: q, reason: ''});
+    doLogin: function(){
+        var email = RW_UI.byId('loginEmail').value.trim();
+        var pass = RW_UI.byId('loginPass').value.trim();
+        if(!email || !pass){
+            RW_UI.byId('loginMsg').innerText = 'أدخل البيانات';
+            RW_UI.byId('loginMsg').classList.remove('hidden');
+            return;
         }
-        var s=this; Swal.fire({title:'تأكيد الاستلام',text:'اعتماد استلام '+code+'؟',icon:'question',showCancelButton:true,confirmButtonText:'نعم',cancelButtonText:'لا',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-emerald-600',cancelButton:'!rounded-xl'}}).then(function(r){if(!r.isConfirmed)return;Swal.showLoading();
-        supabase.auth.getSession().then(function(ses){var t=ses.data.session.access_token;return fetch(SUPABASE_URL+'/functions/v1/receive-purchase',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({po_code:code,itemsReceived:items,notes:''})});}).then(function(r){return r.json();}).then(function(j){Swal.close();if(j.success){toast('تم الاستلام','success');s.loadPurchaseOrders();}else{toast(j.msg||'فشل','error');}}).catch(function(){Swal.close();});
+        RW_UI.byId('loginMsg').classList.add('hidden');
+        RW_UI.showLoader('جاري تسجيل الدخول...');
+        RW_Auth.doLogin(email, pass, function(user, err) {
+            RW_UI.hideLoader();
+            if (err) {
+                RW_UI.byId('loginMsg').innerText = err;
+                RW_UI.byId('loginMsg').classList.remove('hidden');
+            } else {
+                App.init();
+            }
         });
     },
 
-    renderAccount: function(){var html='<div class="text-center mb-8 mt-4"><div class="w-20 h-20 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg mb-4">'+(this.currentUser.user_metadata.name||'?').charAt(0)+'</div><h2 class="font-black text-xl">'+(this.currentUser.user_metadata.name||this.currentUser.email)+'</h2><p class="text-sm text-slate-400">مسؤول استلام</p></div><div class="card mb-3"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center"><i class="fa-solid fa-envelope"></i></div><div><p class="text-xs text-slate-400">البريد الإلكتروني</p><p class="font-bold text-sm">'+this.currentUser.email+'</p></div></div></div><button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button>';safeHTML(byId('mainContent'),html);}
+    init: function(){
+        var self = this;
+        RW_Auth.init(function(user, err) {
+            if (err || !user) {
+                RW_UI.showError('انتهت الجلسة. يرجى إعادة التحميل.', function() { location.reload(); });
+                return;
+            }
+            self.currentUser = user;
+            
+            // التحقق من الصلاحية والدور النشط
+            if (!user.isOwner && user.activeWarehouseRole !== 'استلام') {
+                RW_UI.showError('دورك النشط هو "' + (user.activeWarehouseRole || 'غير محدد') + '". الرجاء التواصل مع مشرف المخازن.', function() { RW_Auth.doLogout(); });
+                return;
+            }
+
+            RW_UI.safeText(RW_UI.byId('headerUserName'), user.name);
+            self.enterApp();
+        });
+    },
+
+    enterApp: function(){
+        RW_UI.byId('loginScreen').classList.add('hidden');
+        RW_UI.byId('mainApp').classList.remove('hidden');
+        this.switchTab('pending');
+    },
+
+    doLogout: function(){
+        RW_Auth.doLogout(function() {
+            RW_UI.byId('mainApp').classList.add('hidden');
+            RW_UI.byId('loginScreen').classList.remove('hidden');
+        });
+    },
+
+    switchTab: function(tab){
+        this.currentTab = tab;
+        var tabs = ['pending', 'completed', 'account'];
+        for (var i = 0; i < tabs.length; i++) {
+            var btn = RW_UI.byId('tab-' + tabs[i]);
+            if (btn) { btn.classList.remove('bg-emerald-600', 'text-white', 'shadow-sm', 'shadow-emerald-200'); btn.classList.add('text-slate-400'); }
+        }
+        var activeBtn = RW_UI.byId('tab-' + tab);
+        if (activeBtn) { activeBtn.classList.add('bg-emerald-600', 'text-white', 'shadow-sm', 'shadow-emerald-200'); activeBtn.classList.remove('text-slate-400'); }
+        
+        if (tab === 'pending') this.loadPurchaseOrders();
+        else if (tab === 'completed') this.renderCompleted();
+        else if (tab === 'account') this.renderAccount();
+    },
+
+    // ==================== تحميل أوامر الشراء المعلقة ====================
+    loadPurchaseOrders: function(){
+        var self = this;
+        var container = RW_UI.byId('mainContent');
+        RW_UI.showSkeleton('mainContent', 3, 'card');
+
+        supabase.from('purchase_orders').select('po_code, po_date, supplier_name, status, total_amount').in('status', ['Sent', 'Partially Received']).order('po_date', { ascending: false }).limit(50).then(function(res) {
+            self.purchaseOrders = res.data || [];
+            self.renderList();
+        }).catch(function(err) {
+            RW_UI.showEmptyState('mainContent', 'فشل تحميل البيانات. تأكد من الاتصال.', '📡');
+        });
+    },
+
+    renderList: function(){
+        var self = this;
+        var filtered = this.purchaseOrders;
+        var html = '';
+        html += '<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">' + (this.currentUser.name || 'زميل') + '</span> 👋</p></div>';
+        html += '<input type="text" id="searchPO" placeholder="🔍 ابحث عن أمر شراء..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-emerald-400 outline-none font-semibold text-sm shadow-sm mb-4" oninput="App.renderList()">';
+        html += '<h2 class="text-lg font-black mb-4">📦 أوامر الشراء المعلقة</h2>';
+        
+        if (filtered.length === 0) {
+            html += '<div class="text-center py-12"><div class="text-6xl mb-4">☕</div><p class="text-slate-400 font-bold">لا توجد أوامر شراء معلقة.</p><p class="text-slate-300 text-sm mt-1">استمتع بقهوتك حتى تأتي مهمة جديدة!</p></div>';
+        } else {
+            var q = (RW_UI.byId('searchPO') ? RW_UI.byId('searchPO').value : '').toLowerCase();
+            if (q) {
+                filtered = filtered.filter(function(po) { return po.po_code.toLowerCase().indexOf(q) !== -1 || (po.supplier_name || '').toLowerCase().indexOf(q) !== -1; });
+            }
+            for (var i = 0; i < filtered.length; i++) {
+                var po = filtered[i];
+                var sc = po.status === 'Sent' ? 'bg-amber-50 text-amber-600' : 'bg-orange-50 text-orange-600';
+                var sl = po.status === 'Sent' ? 'مُرسل' : 'استلام جزئي';
+                html += '<div class="card mb-3 cursor-pointer slide-in"><div class="flex justify-between items-center" onclick="App.toggleAccordion(' + i + ',\'' + po.po_code + '\')"><div><span class="font-black">' + po.po_code + '</span><p class="text-xs text-slate-400">' + po.po_date + ' | ' + (po.supplier_name || '---') + '</p></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span><i class="fa-solid fa-chevron-down text-slate-300" id="chevron-' + i + '"></i></div></div><div class="accordion-content" id="accordion-' + i + '"><div class="border-t mt-3 pt-3"><div id="details-' + i + '" class="text-center py-4">جاري تحميل التفاصيل...</div><button id="btn-rec-' + i + '" class="btn-primary mt-4 hidden" onclick="App.submitReceiving(' + i + ',\'' + po.po_code + '\')"><i class="fa-solid fa-check ml-2"></i> اعتماد الاستلام</button></div></div></div>';
+            }
+        }
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+    },
+
+    toggleAccordion: function(i, code){
+        var a = RW_UI.byId('accordion-' + i);
+        var c = RW_UI.byId('chevron-' + i);
+        if (!a) return;
+        if (a.classList.contains('open')) {
+            a.classList.remove('open');
+            if (c) c.className = 'fa-solid fa-chevron-down text-slate-300';
+            if (this.activeTimers[i]) { clearInterval(this.activeTimers[i]); delete this.activeTimers[i]; }
+        } else {
+            a.classList.add('open');
+            if (c) c.className = 'fa-solid fa-chevron-up text-slate-300';
+            this.loadPODetails(i, code);
+        }
+    },
+
+    loadPODetails: function(i, code){
+        var self = this;
+        RW_UI.safeHTML(RW_UI.byId('details-' + i), '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
+        supabase.from('purchase_order_details').select('item_code, item_name, qty_ordered, unit').eq('po_code', code).then(function(r) {
+            var items = r.data || [];
+            var html = '';
+            for (var j = 0; j < items.length; j++) {
+                var it = items[j];
+                // ✅ تم التصحيح: استخدام data-item-code attribute
+                html += '<div class="flex justify-between items-center p-3 border-b"><div><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + it.item_code + ' | مطلوب: ' + it.qty_ordered + ' ' + (it.unit || 'حبة') + '</p></div><input type="number" id="qty-' + i + '-' + j + '" value="' + it.qty_ordered + '" min="0" max="' + it.qty_ordered + '" class="w-20 p-2 border rounded-xl text-center font-bold text-sm" data-item-code="' + it.item_code + '"></div>';
+            }
+            RW_UI.safeHTML(RW_UI.byId('details-' + i), html || '<p class="text-slate-400 text-center py-4">لا توجد أصناف.</p>');
+            var btn = RW_UI.byId('btn-rec-' + i);
+            if (btn) btn.classList.remove('hidden');
+        });
+    },
+
+    submitReceiving: function(i, code){
+        var self = this;
+        var items = [];
+        var qtyInputs = document.querySelectorAll('#details-' + i + ' input[type="number"]');
+        for (var j = 0; j < qtyInputs.length; j++) {
+            var q = parseInt(qtyInputs[j].value) || 0;
+            // ✅ تم التصحيح: استخراج itemCode من data-item-code
+            var itemCode = qtyInputs[j].getAttribute('data-item-code') || '';
+            items.push({ itemCode: itemCode, itemName: '', receivedQty: q, reason: '' });
+        }
+        
+        RW_UI.showConfirm('اعتماد استلام ' + code + '؟', function() {
+            // ✅ منع اللمس المتعدد
+            var confirmBtn = document.querySelector('.swal2-confirm');
+            if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerText = 'جارٍ...'; }
+            
+            RW_UI.showLoader('جاري حفظ الاستلام...');
+            RW_API.call('receive-purchase', { po_code: code, itemsReceived: items, notes: '' }, function(json, err) {
+                RW_UI.hideLoader();
+                if (err || !json.success) {
+                    RW_UI.showError(json.msg || err || 'فشل الحفظ');
+                } else {
+                    RW_UI.toast('تم الاستلام بنجاح', 'success');
+                    self.loadPurchaseOrders();
+                }
+            });
+        });
+    },
+
+    // ==================== تبويب المكتملة (مُفعل) ====================
+    renderCompleted: function() {
+        var self = this;
+        var container = RW_UI.byId('mainContent');
+        RW_UI.showSkeleton('mainContent', 3, 'card');
+        
+        // ✅ تم التصحيح: تفعيل التبويب ببيانات حقيقية
+        supabase.from('purchase_orders')
+            .select('po_code, po_date, supplier_name, status, total_amount')
+            .in('status', ['Received', 'Partially Received'])
+            .order('po_date', { ascending: false })
+            .limit(30)
+            .then(function(res) {
+                var orders = res.data || [];
+                var html = '';
+                html += '<h2 class="text-lg font-black mb-4">✅ أوامر الشراء المستلمة</h2>';
+                
+                if (orders.length === 0) {
+                    html += '<div class="text-center py-12"><div class="text-6xl mb-4">📭</div><p class="text-slate-400 font-bold">لا توجد استلامات مكتملة بعد.</p><p class="text-slate-300 text-sm mt-1">كل ما تستلمه سيظهر هنا.</p></div>';
+                } else {
+                    for (var i = 0; i < orders.length; i++) {
+                        var po = orders[i];
+                        var sc = po.status === 'Received' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700';
+                        var sl = po.status === 'Received' ? 'مكتمل' : 'استلام جزئي';
+                        html += '<div class="card mb-3 slide-in"><div class="flex justify-between items-center"><div><span class="font-black">' + po.po_code + '</span><p class="text-xs text-slate-400">' + po.po_date + ' | ' + (po.supplier_name || '---') + '</p></div><div><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span><p class="font-black text-emerald-600 mt-1 text-left">' + RW_UI.formatNumber(po.total_amount) + ' EGP</p></div></div></div>';
+                    }
+                }
+                RW_UI.safeHTML(container, html);
+            })
+            .catch(function() {
+                RW_UI.showEmptyState('mainContent', 'فشل تحميل البيانات.', '📡');
+            });
+    },
+
+    renderAccount: function(){
+        var self = this;
+        var html = '<div class="text-center mb-8 mt-4"><div class="w-20 h-20 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg mb-4">' + (this.currentUser.name || '?').charAt(0) + '</div><h2 class="font-black text-xl">' + (this.currentUser.name || this.currentUser.email) + '</h2><p class="text-sm text-slate-400">مسؤول استلام</p></div><div class="card mb-3"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center"><i class="fa-solid fa-envelope"></i></div><div><p class="text-xs text-slate-400">البريد الإلكتروني</p><p class="font-bold text-sm">' + this.currentUser.email + '</p></div></div></div><button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button>';
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+    }
 };
-if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
-document.addEventListener('DOMContentLoaded',function(){App.init();});
+
+// ============================================================
+// بدء التشغيل
+// ============================================================
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
+document.addEventListener('DOMContentLoaded', function() {
+    // التحقق من وجود جلسة سابقة
+    RW_Auth.init(function(user, err) {
+        if (user) {
+            App.currentUser = user;
+            App.enterApp();
+        }
+    });
+});
 </script>
+<script src="../register-sw.js"></script>
 </body>
 </html>
