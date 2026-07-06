@@ -122,7 +122,76 @@ var Store = {
     updateCartTotals: function() { var curr = this.settings.currency || 'SAR', subtotal = 0, totalSaved = 0; for (var i = 0; i < this.cart.length; i++) { var item = this.cart[i], ip = item.price, hasD = item.discountPercent > 0, fip = hasD ? ip - (ip * item.discountPercent / 100) : ip; subtotal += fip * item.qty; if (hasD) totalSaved += (ip - fip) * item.qty; else if (item.oldPrice > ip) totalSaved += (item.oldPrice - ip) * item.qty; } var delivery = this.settings.deliveryFee || 0; if ((this.settings.freeShippingThreshold||0) > 0 && subtotal >= (this.settings.freeShippingThreshold||0)) delivery = 0; var afterCoupon = subtotal - this.couponDiscount; if (afterCoupon < 0) afterCoupon = 0; var taxRate = this.settings.taxRate || 0; var taxAmount = taxRate > 0 ? Math.round(afterCoupon * taxRate) / 100 : 0; var grandTotal = afterCoupon + delivery + taxAmount; document.getElementById('cartSubtotal').textContent = formatCurrency(subtotal, curr); var sr = document.getElementById('cartSavingsRow'); if (totalSaved > 0) { sr.classList.remove('hidden'); document.getElementById('cartSavings').textContent = formatCurrency(totalSaved, curr); } else sr.classList.add('hidden'); var cr = document.getElementById('cartCouponRow'); if (this.couponDiscount > 0) { cr.classList.remove('hidden'); document.getElementById('cartCouponDiscount').textContent = formatCurrency(this.couponDiscount, curr); } else cr.classList.add('hidden'); document.getElementById('cartDelivery').textContent = delivery > 0 ? formatCurrency(delivery, curr) : '🚚 مجاني'; var tr = document.getElementById('cartTaxRow'); if (taxRate > 0) { tr.classList.remove('hidden'); document.getElementById('cartTax').textContent = formatCurrency(taxAmount, curr); } else tr.classList.add('hidden'); document.getElementById('cartTotal').textContent = formatCurrency(grandTotal, curr); },
     applyCoupon: function() { var code = (document.getElementById('couponInput').value||'').trim().toUpperCase(); if (!code) { Swal.fire({icon:'warning',title:'أدخل كود الكوبون'}); return; } var s = this; supabase.from('coupons').select('*').eq('code',code).eq('is_active',true).single().then(function(res) { var msg = document.getElementById('couponMsg'); if (!res.data) { msg.classList.remove('hidden'); msg.className='text-xs font-bold text-red-600'; msg.textContent='❌ كوبون غير صالح'; s.couponDiscount=0; s.couponCode=''; s.updateCartTotals(); return; } var coupon = res.data, subtotal = 0; for (var i=0;i<s.cart.length;i++) { var ip=s.cart[i].price; if(s.cart[i].discountPercent>0) ip=ip-(ip*s.cart[i].discountPercent/100); subtotal+=ip*s.cart[i].qty; } if (coupon.min_cart_amount && subtotal < coupon.min_cart_amount) { msg.classList.remove('hidden'); msg.className='text-xs font-bold text-red-600'; msg.textContent='❌ الحد الأدنى: '+coupon.min_cart_amount; return; } if (coupon.type==='percentage') { s.couponDiscount = subtotal * coupon.value / 100; if (coupon.max_discount && s.couponDiscount > coupon.max_discount) s.couponDiscount = coupon.max_discount; } else s.couponDiscount = coupon.value; s.couponCode = code; s.updateCartTotals(); msg.classList.remove('hidden'); msg.className='text-xs font-bold text-emerald-600'; msg.textContent='✅ تم التطبيق!'; }); },
     checkout: function() { var name=(document.getElementById('custName').value||'').trim(), phone=(document.getElementById('custPhone').value||'').trim(), area=(document.getElementById('custArea').value||'').trim(); if (!name||!phone||!area) { Swal.fire({icon:'warning',title:'أكمل بيانات العميل في السلة'}); return; } if (!this.cart.length) { Swal.fire({icon:'warning',title:'السلة فارغة'}); return; } saveCustomerData({name:name,phone:phone,area:area}); var subtotal=0; for (var i=0;i<this.cart.length;i++) { var ip=this.cart[i].price; if(this.cart[i].discountPercent>0) ip=ip-(ip*this.cart[i].discountPercent/100); subtotal+=ip*this.cart[i].qty; } var delivery=this.settings.deliveryFee||0; if ((this.settings.freeShippingThreshold||0)>0 && subtotal>=(this.settings.freeShippingThreshold||0)) delivery=0; var afterCoupon=subtotal-this.couponDiscount; if(afterCoupon<0) afterCoupon=0; var taxAmount=(this.settings.taxRate||0)>0?Math.round(afterCoupon*(this.settings.taxRate||0))/100:0; var total=afterCoupon+delivery+taxAmount; if ((this.settings.minInvoiceAmount||0)>0 && total<(this.settings.minInvoiceAmount||0)) { Swal.fire({icon:'warning',title:'الحد الأدنى: '+(this.settings.minInvoiceAmount||0)}); return; } var s=this; Swal.fire({title:'تأكيد الطلب',html:'<div class="text-right"><p>الإجمالي: <strong>'+formatCurrency(total,s.settings.currency||'SAR')+'</strong></p><p class="text-sm text-gray-500 mt-2">'+name+' | '+phone+' | '+area+'</p></div>',showCancelButton:true,confirmButtonText:'تأكيد',cancelButtonText:'رجوع'}).then(function(r){if(r.isConfirmed) s.submitOrder({name:name,phone:phone,area:area,notes:(document.getElementById('custNotes').value||'').trim()},total);}); },
-    submitOrder: function(customer, total) { var s = this; Swal.fire({title:'جاري إرسال الطلب...',allowOutsideClick:false,didOpen:function(){Swal.showLoading();}}); var itemsList=[]; for (var i=0;i<this.cart.length;i++) itemsList.push({code:this.cart[i].code,name:this.cart[i].name,price:this.cart[i].price,qty:this.cart[i].qty,unit:this.cart[i].unit}); supabase.functions.invoke('submit-online-order',{body:{user:customer,cartItems:itemsList,total:total,delivery:this.settings.deliveryFee||0}, headers:{Authorization:'Bearer '+SUPABASE_KEY}}).then(function(res){ Swal.close(); if(!res.error){ Swal.fire({icon:'success',title:'تم إرسال الطلب بنجاح!',confirmButtonText:'حسناً'}); s.cart=[]; s.couponCode=''; s.couponDiscount=0; document.getElementById('couponInput').value=''; document.getElementById('couponMsg').classList.add('hidden'); s.currentPage=0; s.loadPage(); s.updateCartBadge(); s.closeCart(); } else Swal.fire({icon:'error',title:'فشل إرسال الطلب'}); }).catch(function(){Swal.close();Swal.fire({icon:'error',title:'فشل الاتصال'});}); }
+// ============================================================
+// استبدال دالة submitOrder بالكامل في store/index.html
+// ============================================================
+submitOrder: function(customer, total) {
+    var self = this;
+    Swal.fire({
+        title: 'جاري إرسال الطلب...',
+        allowOutsideClick: false,
+        didOpen: function() { Swal.showLoading(); }
+    });
+
+    var itemsList = [];
+    for (var i = 0; i < self.cart.length; i++) {
+        itemsList.push({
+            code: self.cart[i].code,
+            name: self.cart[i].name,
+            price: self.cart[i].price,
+            qty: self.cart[i].qty,
+            unit: self.cart[i].unit
+        });
+    }
+
+    var bodyPayload = {
+        user: customer,
+        cartItems: itemsList,
+        total: total,
+        delivery: self.settings.deliveryFee || 0
+    };
+
+    supabase.auth.getSession().then(function(ses) {
+        var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+        if (!token) {
+            Swal.close();
+            Swal.fire({ icon: 'error', title: 'انتهت الجلسة. يرجى إعادة تحميل الصفحة.' });
+            return;
+        }
+        return fetch(SUPABASE_URL + '/functions/v1/submit-online-order', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify(bodyPayload)
+        });
+    }).then(function(res) {
+        if (!res) return;
+        return res.json();
+    }).then(function(json) {
+        Swal.close();
+        if (json && json.success) {
+            Swal.fire({ icon: 'success', title: 'تم إرسال الطلب بنجاح!', confirmButtonText: 'حسناً' });
+            self.cart = [];
+            self.couponCode = '';
+            self.couponDiscount = 0;
+            var couponInput = document.getElementById('couponInput');
+            if (couponInput) couponInput.value = '';
+            var couponMsg = document.getElementById('couponMsg');
+            if (couponMsg) couponMsg.classList.add('hidden');
+            self.currentPage = 0;
+            self.loadPage();
+            self.updateCartBadge();
+            self.closeCart();
+        } else {
+            Swal.fire({ icon: 'error', title: (json && json.msg) || 'فشل إرسال الطلب' });
+        }
+    }).catch(function() {
+        Swal.close();
+        Swal.fire({ icon: 'error', title: 'فشل الاتصال' });
+    });
+}
 };
 
 if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
