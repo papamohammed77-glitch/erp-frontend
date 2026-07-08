@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Cairo',sans-serif;background:#f3f4f6;-webkit-tap-highlight-color:transparent}
@@ -96,30 +97,14 @@
 </div>
 
 <script>
-// ============================================================
-// التهيئة
-// ============================================================
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-function byId(id) { return document.getElementById(id); }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function safeText(el, text) { if (el) el.textContent = text; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG'); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
-
-// ============================================================
-// التطبيق
-// ============================================================
 var App = {
     currentUser: null,
     currentTab: 'dashboard',
     chartInstance: null,
 
     togglePass: function() {
-        var passInput = byId('loginPass');
-        var icon = byId('passIcon');
+        var passInput = RW_UI.byId('loginPass');
+        var icon = RW_UI.byId('passIcon');
         if (passInput.type === 'password') {
             passInput.type = 'text';
             icon.className = 'fa-solid fa-eye-slash';
@@ -130,81 +115,68 @@ var App = {
     },
 
     forgotPassword: function() {
-        var email = byId('loginEmail').value.trim();
-        if (!email) { toast('أدخل بريدك الإلكتروني أولاً', 'warning'); return; }
+        var email = RW_UI.byId('loginEmail').value.trim();
+        if (!email) { RW_UI.toast('أدخل بريدك الإلكتروني أولاً', 'warning'); return; }
         Swal.showLoading();
-        supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password' }).then(function(res) {
+        supabase.auth.resetPasswordForEmail(email).then(function(res) {
             Swal.close();
-            if (res.error) toast(res.error.message, 'error');
-            else toast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك', 'success');
-        }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
+            if (res.error) RW_UI.toast(res.error.message, 'error');
+            else RW_UI.toast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك', 'success');
+        }).catch(function() { Swal.close(); RW_UI.toast('فشل الاتصال بالخادم', 'error'); });
     },
 
     doLogin: function() {
-        var email = byId('loginEmail').value.trim();
-        var pass = byId('loginPass').value.trim();
+        var email = RW_UI.byId('loginEmail').value.trim();
+        var pass = RW_UI.byId('loginPass').value.trim();
         if (!email || !pass) {
-            byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
-            byId('loginMsg').classList.remove('hidden');
+            RW_UI.byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
+            RW_UI.byId('loginMsg').classList.remove('hidden');
             return;
         }
-        byId('loginMsg').classList.add('hidden');
+        RW_UI.byId('loginMsg').classList.add('hidden');
         var self = this;
-        Swal.showLoading();
-        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res) {
-            Swal.close();
-            if (res.error) {
-                byId('loginMsg').innerText = res.error.message;
-                byId('loginMsg').classList.remove('hidden');
-            } else {
-                if (byId('rememberMe').checked) localStorage.setItem('remember_email', email);
+        RW_UI.showLoader('جاري تسجيل الدخول...');
+        RW_Auth.doLogin(email, pass, function(user, err) {
+            RW_UI.hideLoader();
+            if (err) { RW_UI.byId('loginMsg').innerText = err; RW_UI.byId('loginMsg').classList.remove('hidden'); }
+            else {
+                if (RW_UI.byId('rememberMe').checked) localStorage.setItem('remember_email', email);
                 else localStorage.removeItem('remember_email');
                 self.init();
             }
-        }).catch(function() {
-            Swal.close();
-            byId('loginMsg').innerText = 'فشل الاتصال بالخادم';
-            byId('loginMsg').classList.remove('hidden');
         });
     },
 
     init: function() {
         var self = this;
         var remembered = localStorage.getItem('remember_email');
-        if (remembered) { byId('loginEmail').value = remembered; byId('rememberMe').checked = true; }
+        if (remembered) { RW_UI.byId('loginEmail').value = remembered; RW_UI.byId('rememberMe').checked = true; }
 
-        supabase.auth.getSession().then(function(res) {
-            if (res.data && res.data.session) {
-                self.currentUser = res.data.session.user;
-                var meta = self.currentUser.user_metadata || {};
-                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-
-                if (isOwner) {
-                    safeText(byId('headerUserName'), meta.name || self.currentUser.email);
-                    self.enterApp();
-                } else {
-                    Swal.fire({ title: 'غير مصرح', text: 'هذا التطبيق مخصص للمالك فقط', icon: 'error' });
-                    supabase.auth.signOut();
-                }
-            }
+        RW_Auth.init(function(user, err) {
+            if (err || !user) { if (err === 'NO_SESSION') return; RW_UI.showError('فشل استعادة الجلسة'); return; }
+            var isOwner = user.isOwner;
+            if (!isOwner) { RW_UI.showError('غير مصرح'); RW_Auth.doLogout(); return; }
+            RW_UI.safeText(RW_UI.byId('headerUserName'), user.name);
+            self.currentUser = user;
+            self.enterApp();
         });
     },
 
     enterApp: function() {
-        byId('loginScreen').classList.add('hidden');
-        byId('mainApp').classList.remove('hidden');
+        RW_UI.byId('loginScreen').classList.add('hidden');
+        RW_UI.byId('mainApp').classList.remove('hidden');
         this.switchTab('dashboard');
     },
 
     doLogout: function() {
         var self = this;
-        supabase.auth.signOut().then(function() {
+        RW_Auth.doLogout(function() {
             self.currentUser = null;
-            byId('mainApp').classList.add('hidden');
-            byId('loginScreen').classList.remove('hidden');
-            byId('loginEmail').value = '';
-            byId('loginPass').value = '';
-            byId('loginMsg').classList.add('hidden');
+            RW_UI.byId('mainApp').classList.add('hidden');
+            RW_UI.byId('loginScreen').classList.remove('hidden');
+            RW_UI.byId('loginEmail').value = '';
+            RW_UI.byId('loginPass').value = '';
+            RW_UI.byId('loginMsg').classList.add('hidden');
         });
     },
 
@@ -212,10 +184,10 @@ var App = {
         this.currentTab = tab;
         var tabs = ['dashboard', 'reports', 'settings', 'audit'];
         for (var i = 0; i < tabs.length; i++) {
-            var btn = byId('tab-' + tabs[i]);
+            var btn = RW_UI.byId('tab-' + tabs[i]);
             if (btn) { btn.classList.remove('tab-active'); btn.classList.add('text-gray-500'); }
         }
-        var activeBtn = byId('tab-' + tab);
+        var activeBtn = RW_UI.byId('tab-' + tab);
         if (activeBtn) { activeBtn.classList.add('tab-active'); activeBtn.classList.remove('text-gray-500'); }
         if (tab === 'dashboard') this.renderDashboard();
         else if (tab === 'reports') this.renderReports();
@@ -223,10 +195,9 @@ var App = {
         else if (tab === 'audit') this.renderAudit();
     },
 
-    // ==================== لوحة التحكم ====================
     renderDashboard: function() {
         var self = this;
-        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
 
         Promise.all([
             supabase.from('orders').select('id, total_amount, order_status, created_at').order('created_at', { ascending: false }).limit(50),
@@ -291,11 +262,11 @@ var App = {
             html += '<button onclick="App.switchTab(\'audit\')" class="stat-card text-center"><div class="text-2xl mb-1">📋</div><div class="text-sm font-bold">التدقيق</div></button>';
             html += '</div>';
 
-            safeHTML(byId('mainContent'), html);
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
 
             setTimeout(function() { self.renderSalesChart(); }, 300);
         }).catch(function() {
-            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');
         });
     },
 
@@ -326,7 +297,6 @@ var App = {
         });
     },
 
-    // ==================== التقارير ====================
     renderReports: function() {
         var html = '<h2 class="text-lg font-black mb-4">📊 التقارير المالية والإدارية</h2>';
         html += '<p class="text-sm text-gray-500 mb-4">اضغط على أي تقرير لفتحه في النظام الأم</p>';
@@ -346,13 +316,12 @@ var App = {
             html += '<div class="card mb-3 cursor-pointer hover:shadow-lg transition-all" onclick="window.open(\'/companies/company-1/index.html\', \'_blank\')"><div class="flex items-center gap-3"><div class="text-2xl">' + reports[i].icon + '</div><div><div class="font-bold">' + reports[i].title + '</div><div class="text-xs text-gray-500">' + reports[i].desc + '</div></div></div></div>';
         }
 
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
     },
 
-    // ==================== الإعدادات ====================
     renderSettings: function() {
         var self = this;
-        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
 
         supabase.from('app_settings').select('*').limit(1).single().then(function(res) {
             var settings = res.data || {};
@@ -370,15 +339,14 @@ var App = {
 
             html += '<button onclick="window.open(\'/companies/company-1/index.html\', \'_blank\')" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold text-sm mt-2">فتح النظام الأم للإعدادات المتقدمة</button>';
 
-            safeHTML(byId('mainContent'), html);
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         }).catch(function() {
-            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل الإعدادات</div>');
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل الإعدادات</div>');
         });
     },
 
-    // ==================== التدقيق ====================
     renderAudit: function() {
-        safeHTML(byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
 
         supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(30).then(function(res) {
             var logs = res.data || [];
@@ -397,16 +365,14 @@ var App = {
 
             html += '<button onclick="window.open(\'/companies/company-1/index.html\', \'_blank\')" class="w-full bg-purple-600 text-white py-3 rounded-xl font-bold text-sm mt-4">فتح النظام الأم للتدقيق المتقدم</button>';
 
-            safeHTML(byId('mainContent'), html);
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         }).catch(function() {
-            safeHTML(byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل سجل التدقيق</div>');
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), '<div class="text-center py-10 text-red-500">فشل تحميل سجل التدقيق</div>');
         });
     }
 };
 
-// ============================================================
-// بدء التشغيل
-// ============================================================
+RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded', function() { App.init(); });
 </script>
 <script src="../register-sw.js"></script>
