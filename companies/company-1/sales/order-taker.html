@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Cairo',sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
@@ -108,12 +109,8 @@
 
 <script>
 // ============================================================
-// تهيئة Supabase و Dexie
+// قاعدة البيانات المحلية (Dexie) – خاصة بالتطبيق
 // ============================================================
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 var db = new Dexie('RW_OrderTaker');
 db.version(2).stores({
     customers: 'customer_code, name, area, phone, visit_day',
@@ -124,12 +121,6 @@ db.version(2).stores({
     orders: '++id, status, created_at',
     pending_updates: '++id, type, status'
 });
-
-function byId(id) { return document.getElementById(id); }
-function safeText(el, text) { if (el) el.textContent = text; }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
 // ============================================================
 // التطبيق
@@ -149,79 +140,70 @@ var App = {
     restrictToVisitDay: true,
     todayName: '',
 
+    // ==================== دوال شاشة الدخول (باستخدام core.js) ====================
     togglePass: function() {
-        var passInput = byId('loginPass');
-        var icon = byId('passIcon');
+        var passInput = RW_UI.byId('loginPass');
+        var icon = RW_UI.byId('passIcon');
         if (passInput.type === 'password') { passInput.type = 'text'; icon.className = 'fa-solid fa-eye-slash'; }
         else { passInput.type = 'password'; icon.className = 'fa-solid fa-eye'; }
     },
 
     forgotPassword: function() {
-        var email = byId('loginEmail').value.trim();
-        if (!email) { toast('أدخل بريدك الإلكتروني أولاً', 'warning'); return; }
+        var email = RW_UI.byId('loginEmail').value.trim();
+        if (!email) { RW_UI.toast('أدخل بريدك الإلكتروني أولاً', 'warning'); return; }
         Swal.showLoading();
-        supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + '/reset-password' }).then(function(res) {
+        supabase.auth.resetPasswordForEmail(email).then(function(res) {
             Swal.close();
-            if (res.error) toast(res.error.message, 'error');
-            else toast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك', 'success');
-        }).catch(function() { Swal.close(); toast('فشل الاتصال بالخادم', 'error'); });
+            if (res.error) RW_UI.toast(res.error.message, 'error');
+            else RW_UI.toast('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك', 'success');
+        }).catch(function() { Swal.close(); RW_UI.toast('فشل الاتصال بالخادم', 'error'); });
     },
 
     doLogin: function() {
-        var email = byId('loginEmail').value.trim();
-        var pass = byId('loginPass').value.trim();
-        if (!email || !pass) { byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور'; byId('loginMsg').classList.remove('hidden'); return; }
-        byId('loginMsg').classList.add('hidden');
+        var email = RW_UI.byId('loginEmail').value.trim();
+        var pass = RW_UI.byId('loginPass').value.trim();
+        if (!email || !pass) { RW_UI.byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور'; RW_UI.byId('loginMsg').classList.remove('hidden'); return; }
+        RW_UI.byId('loginMsg').classList.add('hidden');
         var self = this;
-        Swal.showLoading();
-        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res) {
-            Swal.close();
-            if (res.error) { byId('loginMsg').innerText = res.error.message; byId('loginMsg').classList.remove('hidden'); }
-            else { if (byId('rememberMe').checked) localStorage.setItem('ot_remember_email', email); else localStorage.removeItem('ot_remember_email'); self.init(); }
-        }).catch(function() { Swal.close(); byId('loginMsg').innerText = 'فشل الاتصال بالخادم'; byId('loginMsg').classList.remove('hidden'); });
-    },
-
-    init: function() {
-        var self = this;
-        var remembered = localStorage.getItem('ot_remember_email');
-        if (remembered) { byId('loginEmail').value = remembered; byId('rememberMe').checked = true; }
-
-        // حساب اسم اليوم
-        var dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-        this.todayName = dayNames[new Date().getDay()];
-
-        supabase.auth.getSession().then(function(res) {
-            if (res.data && res.data.session) {
-                self.currentUser = res.data.session.user;
-                var meta = self.currentUser.user_metadata || {};
-                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-                var perms = meta.permissions || [];
-                var hasAccess = isOwner || (Array.isArray(perms) && (perms.indexOf('orders') !== -1 || perms.indexOf('*') !== -1));
-
-                if (!hasAccess) { Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية مندوب المبيعات', icon: 'error' }); supabase.auth.signOut(); return; }
-
-                // جلب بيانات المستخدم من users (إذا سمحت RLS)
-                if (!isOwner) {
-                    supabase.from('users').select('allowed_branch_ids, restrict_to_visit_day, allow_all_customers').eq('email', self.currentUser.email).maybeSingle().then(function(uRes) {
-                        var userData = uRes.data || {};
-                        self.restrictToVisitDay = (userData.restrict_to_visit_day !== false);
-                        self.allowAllCustomers = (userData.allow_all_customers === true);
-                        var branches = userData.allowed_branch_ids || [];
-                        self.allowedAreas = Array.isArray(branches) ? branches : (typeof branches === 'string' ? branches.split(',') : []);
-                        self.enterApp();
-                    }).catch(function() { self.enterApp(); });
-                } else {
-                    self.restrictToVisitDay = false;
-                    self.allowAllCustomers = true;
-                    self.enterApp();
-                }
+        RW_UI.showLoader('جاري تسجيل الدخول...');
+        RW_Auth.doLogin(email, pass, function(user, err) {
+            RW_UI.hideLoader();
+            if (err) { RW_UI.byId('loginMsg').innerText = err; RW_UI.byId('loginMsg').classList.remove('hidden'); }
+            else {
+                if (RW_UI.byId('rememberMe').checked) localStorage.setItem('ot_remember_email', email);
+                else localStorage.removeItem('ot_remember_email');
+                self.init();
             }
         });
     },
 
+    // ==================== دوال التطبيق الأساسية (باستخدام core.js) ====================
+    init: function() {
+        var self = this;
+        var remembered = localStorage.getItem('ot_remember_email');
+        if (remembered) { RW_UI.byId('loginEmail').value = remembered; RW_UI.byId('rememberMe').checked = true; }
+
+        var dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+        this.todayName = dayNames[new Date().getDay()];
+
+        RW_Auth.init(function(user, err) {
+            if (err || !user) {
+                if (err === 'NO_SESSION') return;
+                RW_UI.showError('فشل استعادة الجلسة');
+                return;
+            }
+            var isOwner = user.isOwner;
+            var perms = user.permissions;
+            var hasAccess = isOwner || (Array.isArray(perms) && (perms.indexOf('orders') !== -1 || perms.indexOf('*') !== -1));
+            if (!hasAccess) { RW_UI.showError('غير مصرح'); RW_Auth.doLogout(); return; }
+            self.currentUser = user;
+            self.enterApp();
+        });
+    },
+
     enterApp: function() {
-        byId('loginScreen').classList.add('hidden');
-        byId('mainApp').classList.remove('hidden');
+        RW_UI.byId('loginScreen').classList.add('hidden');
+        RW_UI.byId('mainApp').classList.remove('hidden');
         this.updateConnectionStatus();
         window.addEventListener('online', function() { App.updateConnectionStatus(); });
         window.addEventListener('offline', function() { App.updateConnectionStatus(); });
@@ -231,18 +213,16 @@ var App = {
 
     doLogout: function() {
         var self = this;
-        supabase.auth.signOut().then(function() {
+        RW_Auth.doLogout(function() {
             self.cart = []; self.selCust = null;
-            byId('mainApp').classList.add('hidden');
-            byId('loginScreen').classList.remove('hidden');
-            byId('loginEmail').value = ''; byId('loginPass').value = ''; byId('loginMsg').classList.add('hidden');
+            RW_UI.byId('mainApp').classList.add('hidden');
+            RW_UI.byId('loginScreen').classList.remove('hidden');
+            RW_UI.byId('loginEmail').value = ''; RW_UI.byId('loginPass').value = ''; RW_UI.byId('loginMsg').classList.add('hidden');
         });
     },
 
     updateConnectionStatus: function() {
-        var dot = byId('connDot'), label = byId('connLabel');
-        if (navigator.onLine) { dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400'; label.innerText = 'متصل'; }
-        else { dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500'; label.innerText = 'غير متصل'; }
+        RW_UI.updateConnectionStatus('connDot', 'connLabel');
     },
 
     syncDown: function() {
@@ -255,16 +235,16 @@ var App = {
     },
 
     syncData: function() {
-        if (!navigator.onLine) { toast('لا يوجد اتصال', 'warning'); return; }
+        if (!navigator.onLine) { RW_UI.toast('لا يوجد اتصال', 'warning'); return; }
         var self = this;
         Swal.showLoading();
-        this.syncDown().then(function() { Swal.close(); self.loadBranches(); toast('تمت المزامنة', 'success'); }).catch(function() { Swal.close(); toast('فشلت المزامنة', 'error'); });
+        this.syncDown().then(function() { Swal.close(); self.loadBranches(); RW_UI.toast('تمت المزامنة', 'success'); }).catch(function() { Swal.close(); RW_UI.toast('فشلت المزامنة', 'error'); });
     },
 
     showView: function(view) {
         var btns = document.querySelectorAll('#bottomNav button');
         for (var i = 0; i < btns.length; i++) { btns[i].classList.remove('text-purple-600'); btns[i].classList.add('text-gray-400'); }
-        var activeBtn = byId('nav-' + view);
+        var activeBtn = RW_UI.byId('nav-' + view);
         if (activeBtn) { activeBtn.classList.remove('text-gray-400'); activeBtn.classList.add('text-purple-600'); }
         if (view === 'customers') this.renderCustomerView();
         else if (view === 'catalog') this.renderCatalogView();
@@ -278,18 +258,17 @@ var App = {
         html += '<p class="text-xs text-gray-400 mb-4">' + (this.restrictToVisitDay ? 'يوم الزيارة: ' + this.todayName : 'جميع العملاء') + '</p>';
         html += '<input type="text" id="custSearch" oninput="App.searchCustomers(this.value)" placeholder="ابحث باسم، كود، هاتف..." class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-purple-600 outline-none font-bold text-sm mb-4">';
         html += '<div id="custResults" class="space-y-2"></div></div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
     },
 
     searchCustomers: function(q) {
-        if (!q || !q.trim()) { safeHTML(byId('custResults'), ''); return; }
+        if (!q || !q.trim()) { RW_UI.safeHTML(RW_UI.byId('custResults'), ''); return; }
         var s = q.toLowerCase();
         var self = this;
         db.customers.toArray().then(function(all) {
             var filtered = [];
             for (var i = 0; i < all.length; i++) {
                 var c = all[i];
-                // ✅ تصفية: تقييد بيوم الزيارة (إذا كان مفعّلاً)
                 if (self.restrictToVisitDay && c.visit_day && c.visit_day !== self.todayName) continue;
                 if ((c.name || '').toLowerCase().indexOf(s) !== -1 || (c.customer_code || '').toLowerCase().indexOf(s) !== -1 || (c.phone || '').indexOf(s) !== -1 || (c.area || '').toLowerCase().indexOf(s) !== -1) { filtered.push(c); }
                 if (filtered.length >= 15) break;
@@ -305,7 +284,7 @@ var App = {
                     html += '<div class="text-xs ' + debtClass + ' font-bold mt-1">الرصيد: ' + fmtNum(cu.debt) + ' EGP</div></div>';
                 }
             }
-            safeHTML(byId('custResults'), html);
+            RW_UI.safeHTML(RW_UI.byId('custResults'), html);
         });
     },
 
@@ -315,11 +294,11 @@ var App = {
             if (!c) return;
             self.selCust = c;
             var limit = Number(c.credit_limit) || 0, debt = Number(c.debt) || 0, pct = limit > 0 ? (debt / limit) * 100 : 0;
-            var banner = byId('creditBanner');
+            var banner = RW_UI.byId('creditBanner');
             if (pct >= 90) { banner.className = 'text-center py-2 text-sm font-bold credit-red'; banner.innerHTML = '⚠️ تحذير: تجاوز الحد الائتماني (' + fmtNum(debt) + ' / ' + fmtNum(limit) + ')'; banner.classList.remove('hidden'); }
             else if (pct >= 60) { banner.className = 'text-center py-2 text-sm font-bold credit-yellow'; banner.innerHTML = 'تنبيه: اقترب من الحد الائتماني (' + fmtNum(debt) + ' / ' + fmtNum(limit) + ')'; banner.classList.remove('hidden'); }
             else { banner.classList.add('hidden'); }
-            toast('تم اختيار: ' + (c.name || code), 'success');
+            RW_UI.toast('تم اختيار: ' + (c.name || code), 'success');
         });
     },
 
@@ -329,7 +308,7 @@ var App = {
         html += '<div class="mb-3"><select id="branchSel" onchange="App.onBranchChange(this.value)" class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-purple-600 outline-none font-bold text-sm"><option value="">-- اختر الفرع --</option></select></div>';
         html += '<input type="text" id="itemSearch" oninput="App.searchItems(this.value)" placeholder="ابحث بالاسم أو الباركود..." class="w-full p-3 bg-white rounded-xl border-2 border-transparent focus:border-purple-600 outline-none font-bold text-sm mb-4">';
         html += '<div id="itemResults" class="grid grid-cols-2 gap-2"></div></div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         this.loadBranches();
     },
 
@@ -339,11 +318,11 @@ var App = {
             self.branchMap = {};
             var html = '<option value="">-- اختر الفرع --</option>';
             for (var i = 0; i < br.length; i++) { self.branchMap[br[i].branch_code] = br[i].id; html += '<option value="' + br[i].branch_code + '">' + (br[i].name || br[i].branch_code) + '</option>'; }
-            var sel = byId('branchSel'); if (sel) safeHTML(sel, html);
+            var sel = RW_UI.byId('branchSel'); if (sel) RW_UI.safeHTML(sel, html);
         });
     },
 
-    onBranchChange: function(v) { this.selBranch = v || null; this.searchItems(byId('itemSearch') ? byId('itemSearch').value : ''); },
+    onBranchChange: function(v) { this.selBranch = v || null; this.searchItems(RW_UI.byId('itemSearch') ? RW_UI.byId('itemSearch').value : ''); },
 
     getAvail: function(itemId) {
         var self = this;
@@ -355,7 +334,7 @@ var App = {
     },
 
     searchItems: function(q) {
-        if (!this.selBranch) { safeHTML(byId('itemResults'), '<div class="col-span-2 text-center text-amber-500 p-4 bg-white rounded-xl">اختر فرعاً أولاً</div>'); return; }
+        if (!this.selBranch) { RW_UI.safeHTML(RW_UI.byId('itemResults'), '<div class="col-span-2 text-center text-amber-500 p-4 bg-white rounded-xl">اختر فرعاً أولاً</div>'); return; }
         var self = this;
         db.items.toArray().then(function(all) {
             var filtered = all;
@@ -380,7 +359,7 @@ var App = {
                         html += '</div></div>';
                     }
                 }
-                safeHTML(byId('itemResults'), html);
+                RW_UI.safeHTML(RW_UI.byId('itemResults'), html);
             });
         });
     },
@@ -394,18 +373,18 @@ var App = {
                 for (var i = 0; i < self.cart.length; i++) { if (self.cart[i].code === code) { existing = self.cart[i]; break; } }
                 var cur = existing ? existing.qty : 0, nq = cur + 1;
                 var mx = it.max_qty ? Number(it.max_qty) : 0;
-                if (mx > 0 && nq > mx) { toast('الحد الأقصى: ' + mx, 'warning'); return; }
-                if (nq > avail) { toast('المتاح: ' + avail, 'warning'); return; }
+                if (mx > 0 && nq > mx) { RW_UI.toast('الحد الأقصى: ' + mx, 'warning'); return; }
+                if (nq > avail) { RW_UI.toast('المتاح: ' + avail, 'warning'); return; }
                 if (existing) { existing.qty = nq; }
                 else { self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 }); }
-                self.searchItems(byId('itemSearch') ? byId('itemSearch').value : '');
+                self.searchItems(RW_UI.byId('itemSearch') ? RW_UI.byId('itemSearch').value : '');
             });
         });
     },
 
     decCart: function(code) {
         for (var i = 0; i < this.cart.length; i++) { if (this.cart[i].code === code) { this.cart[i].qty--; if (this.cart[i].qty <= 0) this.cart.splice(i, 1); break; } }
-        this.searchItems(byId('itemSearch') ? byId('itemSearch').value : '');
+        this.searchItems(RW_UI.byId('itemSearch') ? RW_UI.byId('itemSearch').value : '');
     },
 
     calcTotals: function() {
@@ -416,13 +395,13 @@ var App = {
         return { sub: sub, del: d, tax: tx, total: beforeTax + tx };
     },
 
-    openCart: function() { this.renderCartContent(); byId('cartSheet').classList.add('open'); byId('cartOverlay').classList.add('show'); },
-    closeCart: function() { byId('cartSheet').classList.remove('open'); byId('cartOverlay').classList.remove('show'); },
+    openCart: function() { this.renderCartContent(); RW_UI.byId('cartSheet').classList.add('open'); RW_UI.byId('cartOverlay').classList.add('show'); },
+    closeCart: function() { RW_UI.byId('cartSheet').classList.remove('open'); RW_UI.byId('cartOverlay').classList.remove('show'); },
 
     renderCartContent: function() {
         var html = '';
         for (var i = 0; i < this.cart.length; i++) { var item = this.cart[i]; html += '<div class="flex justify-between items-center bg-white p-3 rounded-xl border mb-2"><div><div class="font-black text-sm">' + item.name + '</div><div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × ' + item.qty + '</div></div><div class="flex items-center gap-1"><button onclick="App.decCart(\'' + item.code + '\');App.renderCartContent()" class="w-7 h-7 bg-gray-100 rounded-full font-black">-</button><span class="w-5 text-center font-black">' + item.qty + '</span><button onclick="App.addToCart(\'' + item.code + '\');App.renderCartContent()" class="w-7 h-7 bg-purple-600 text-white rounded-full font-black">+</button></div></div>'; }
-        safeHTML(byId('cartBody'), html || '<div class="text-center text-gray-400 p-4">السلة فارغة</div>');
+        RW_UI.safeHTML(RW_UI.byId('cartBody'), html || '<div class="text-center text-gray-400 p-4">السلة فارغة</div>');
     },
 
     goToReview: function() { this.showView('review'); },
@@ -438,44 +417,44 @@ var App = {
         else { for (var i = 0; i < this.cart.length; i++) { var item = this.cart[i]; var lineTotal = item.price * item.qty; html += '<div class="flex items-center justify-between py-3 border-b last:border-b-0"><div class="flex-1 min-w-0"><div class="font-black text-sm text-gray-800">' + item.name + '</div><div class="text-xs text-gray-400">' + fmtNum(item.price) + ' × ' + item.qty + ' = <span class="font-bold text-purple-600">' + fmtNum(lineTotal) + '</span></div></div><div class="flex items-center gap-2 mr-3"><button onclick="App.decCart(\'' + item.code.replace(/'/g, "\\'") + '\');App.renderReviewView();" class="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full font-black text-gray-600 flex items-center justify-center text-sm">−</button><span class="w-6 text-center font-black text-sm">' + item.qty + '</span><button onclick="App.addToCart(\'' + item.code.replace(/'/g, "\\'") + '\');App.renderReviewView();" class="w-8 h-8 bg-purple-600 hover:bg-purple-700 rounded-full font-black text-white flex items-center justify-center text-sm">+</button></div></div>'; } }
         html += '</div><div class="bg-white p-4 rounded-2xl shadow-sm border space-y-2"><div class="flex justify-between"><span>المجموع:</span><span>' + fmtNum(t.sub) + '</span></div><div class="flex justify-between"><span>التوصيل:</span><span class="text-purple-600">' + fmtNum(t.del) + '</span></div><div class="flex justify-between"><span>الضريبة:</span><span class="text-red-600">' + fmtNum(t.tax) + '</span></div><div class="flex justify-between font-black text-lg pt-2 border-t"><span>الإجمالي:</span><span class="text-emerald-600">' + fmtNum(t.total) + '</span></div></div>';
         html += '<button onclick="App.submitOrder()" class="w-full bg-emerald-600 text-white py-4 rounded-xl font-black mt-4">حفظ الأوردر</button></div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
     },
 
     submitOrder: function() {
-        if (!this.selCust) { toast('اختر عميلاً', 'warning'); return; }
-        if (!this.cart.length) { toast('السلة فارغة', 'warning'); return; }
-        if (!this.selBranch) { toast('اختر فرعاً', 'warning'); return; }
+        if (!this.selCust) { RW_UI.toast('اختر عميلاً', 'warning'); return; }
+        if (!this.cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
+        if (!this.selBranch) { RW_UI.toast('اختر فرعاً', 'warning'); return; }
         var t = this.calcTotals();
-        if (this.minAmt > 0 && t.total < this.minAmt) { toast('الحد الأدنى للفاتورة: ' + fmtNum(this.minAmt), 'warning'); return; }
+        if (this.minAmt > 0 && t.total < this.minAmt) { RW_UI.toast('الحد الأدنى للفاتورة: ' + fmtNum(this.minAmt), 'warning'); return; }
         var items = []; for (var i = 0; i < this.cart.length; i++) { items.push({ code: this.cart[i].code, name: this.cart[i].name, price: this.cart[i].price, qty: this.cart[i].qty, unit: this.cart[i].unit }); }
         var hdr = { customer_code: this.selCust.customer_code, custName: this.selCust.name, area: this.selCust.area || '', total: t.total, deliveryFees: t.del, status: 'Confirmed', paymentType: this.selCust.payment_type || 'أجل', taxAmount: t.tax, taxRate: this.taxRate };
         var self = this;
         Swal.showLoading();
-        supabase.auth.getSession().then(function(ses) { var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null; return fetch(SUPABASE_URL + '/functions/v1/save-sales-invoice', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ orderHeader: hdr, itemsList: items, branchCode: self.selBranch }) }); }).then(function(r) { return r.json(); }).then(function(json) { Swal.close(); if (json.success) { toast('تم الحفظ: ' + (json.orderID || ''), 'success'); self.cart = []; self.selCust = null; byId('creditBanner').classList.add('hidden'); self.showView('customers'); } else { toast(json.msg || 'فشل الحفظ', 'error'); } }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); });
+        supabase.auth.getSession().then(function(ses) { var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null; return fetch(SUPABASE_URL + '/functions/v1/save-sales-invoice', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ orderHeader: hdr, itemsList: items, branchCode: self.selBranch }) }); }).then(function(r) { return r.json(); }).then(function(json) { Swal.close(); if (json.success) { RW_UI.toast('تم الحفظ: ' + (json.orderID || ''), 'success'); self.cart = []; self.selCust = null; RW_UI.byId('creditBanner').classList.add('hidden'); self.showView('customers'); } else { RW_UI.toast(json.msg || 'فشل الحفظ', 'error'); } }).catch(function() { Swal.close(); RW_UI.toast('فشل الاتصال', 'error'); });
     },
 
     // ==================== أوردراتي ====================
     renderOrdersView: function() {
         var self = this;
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">أوردراتي</h2>';
-        html += '<div class="bg-white p-3 rounded-2xl shadow-sm border mb-4"><div class="flex gap-2 flex-wrap"><select id="orderStatusFilter" onchange="App.renderOrdersList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><option value="">كل الحالات</option><option value="Draft">مسودة</option><option value="Confirmed">مؤكد</option><option value="Pending">قيد الانتظار</option><option value="Invoiced">مفوتر</option><option value="Delivered">تم التوصيل</option><option value="Cancelled">ملغي</option></select><input type="date" id="orderDateFilter" onchange="App.renderOrdersList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><button onclick="byId(\'orderStatusFilter\').value=\'\';byId(\'orderDateFilter\').value=\'\';App.renderOrdersList();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">إعادة تعيين</button></div></div>';
+        html += '<div class="bg-white p-3 rounded-2xl shadow-sm border mb-4"><div class="flex gap-2 flex-wrap"><select id="orderStatusFilter" onchange="App.renderOrdersList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><option value="">كل الحالات</option><option value="Draft">مسودة</option><option value="Confirmed">مؤكد</option><option value="Pending">قيد الانتظار</option><option value="Invoiced">مفوتر</option><option value="Delivered">تم التوصيل</option><option value="Cancelled">ملغي</option></select><input type="date" id="orderDateFilter" onchange="App.renderOrdersList()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><button onclick="RW_UI.byId(\'orderStatusFilter\').value=\'\';RW_UI.byId(\'orderDateFilter\').value=\'\';App.renderOrdersList();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">إعادة تعيين</button></div></div>';
         html += '<div id="ordersListContainer" class="space-y-3"><div class="text-center text-gray-400 py-8">جاري التحميل...</div></div></div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         this.renderOrdersList();
     },
 
     renderOrdersList: function() {
         var self = this;
-        var container = byId('ordersListContainer'); if (!container) return;
-        safeHTML(container, '<div class="text-center text-gray-400 py-8">جاري التحميل...</div>');
+        var container = RW_UI.byId('ordersListContainer'); if (!container) return;
+        RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8">جاري التحميل...</div>');
         var query = supabase.from('orders').select('*').eq('created_by', this.currentUser.email).order('order_date', { ascending: false }).limit(50);
-        var st = byId('orderStatusFilter') ? byId('orderStatusFilter').value : '';
-        var dt = byId('orderDateFilter') ? byId('orderDateFilter').value : '';
+        var st = RW_UI.byId('orderStatusFilter') ? RW_UI.byId('orderStatusFilter').value : '';
+        var dt = RW_UI.byId('orderDateFilter') ? RW_UI.byId('orderDateFilter').value : '';
         if (st) query = query.eq('order_status', st);
         if (dt) query = query.eq('order_date', dt);
         query.then(function(res) {
             var orders = res.data || [];
-            if (!orders.length) { safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد أوردرات</div>'); return; }
+            if (!orders.length) { RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد أوردرات</div>'); return; }
             var html = '';
             for (var i = 0; i < orders.length; i++) {
                 var o = orders[i]; var sc = '', sl = o.order_status || '';
@@ -491,14 +470,14 @@ var App = {
                 else if (o.order_status === 'Confirmed') { html += '<div class="flex gap-2 mt-2 pt-2 border-t"><button onclick="event.stopPropagation();App.cancelOrder(\'' + o.order_code + '\')" class="flex-1 bg-red-100 text-red-600 text-xs py-1.5 rounded-lg font-bold">إلغاء</button></div>'; }
                 html += '</div>';
             }
-            safeHTML(container, html);
-        }).catch(function() { safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الأوردرات</div>'); });
+            RW_UI.safeHTML(container, html);
+        }).catch(function() { RW_UI.safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الأوردرات</div>'); });
     },
 
     showOrderDetail: function(orderId) {
         Swal.showLoading();
         supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
-            var order = oRes.data; if (!order) { Swal.close(); toast('الأوردر غير موجود', 'error'); return; }
+            var order = oRes.data; if (!order) { Swal.close(); RW_UI.toast('الأوردر غير موجود', 'error'); return; }
             supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
                 Swal.close(); var details = dRes.data || [];
                 var sl = order.order_status || '';
@@ -512,19 +491,19 @@ var App = {
 
     confirmOrder: function(orderCode) {
         var self = this;
-        Swal.fire({ title: 'تأكيد الأوردر', text: 'تحويل ' + orderCode + ' إلى مؤكد؟', icon: 'question', showCancelButton: true, confirmButtonText: 'تأكيد', cancelButtonText: 'إلغاء' }).then(function(cf) { if (!cf.isConfirmed) return; Swal.showLoading(); supabase.auth.getSession().then(function(ses) { var t = ses.data.session && ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/confirm-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: orderCode }) }).then(function(r) { return r.json(); }); }).then(function(json) { Swal.close(); if (json.success) { toast('تم التأكيد', 'success'); self.renderOrdersList(); } else toast(json.msg || 'فشل التأكيد', 'error'); }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); }); });
+        Swal.fire({ title: 'تأكيد الأوردر', text: 'تحويل ' + orderCode + ' إلى مؤكد؟', icon: 'question', showCancelButton: true, confirmButtonText: 'تأكيد', cancelButtonText: 'إلغاء' }).then(function(cf) { if (!cf.isConfirmed) return; Swal.showLoading(); supabase.auth.getSession().then(function(ses) { var t = ses.data.session && ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/confirm-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: orderCode }) }).then(function(r) { return r.json(); }); }).then(function(json) { Swal.close(); if (json.success) { RW_UI.toast('تم التأكيد', 'success'); self.renderOrdersList(); } else RW_UI.toast(json.msg || 'فشل التأكيد', 'error'); }).catch(function() { Swal.close(); RW_UI.toast('فشل الاتصال', 'error'); }); });
     },
 
     cancelOrder: function(orderCode) {
         var self = this;
-        Swal.fire({ title: 'إلغاء الأوردر', text: 'إلغاء ' + orderCode + '؟', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'نعم', cancelButtonText: 'تراجع' }).then(function(cf) { if (!cf.isConfirmed) return; Swal.showLoading(); supabase.auth.getSession().then(function(ses) { var t = ses.data.session && ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/delete-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: orderCode }) }).then(function(r) { return r.json(); }); }).then(function(json) { Swal.close(); if (json.success) { toast('تم الإلغاء', 'success'); self.renderOrdersList(); } else toast(json.msg || 'فشل الإلغاء', 'error'); }).catch(function() { Swal.close(); toast('فشل الاتصال', 'error'); }); });
+        Swal.fire({ title: 'إلغاء الأوردر', text: 'إلغاء ' + orderCode + '؟', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', confirmButtonText: 'نعم', cancelButtonText: 'تراجع' }).then(function(cf) { if (!cf.isConfirmed) return; Swal.showLoading(); supabase.auth.getSession().then(function(ses) { var t = ses.data.session && ses.data.session.access_token; return fetch(SUPABASE_URL + '/functions/v1/delete-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ order_code: orderCode }) }).then(function(r) { return r.json(); }); }).then(function(json) { Swal.close(); if (json.success) { RW_UI.toast('تم الإلغاء', 'success'); self.renderOrdersList(); } else RW_UI.toast(json.msg || 'فشل الإلغاء', 'error'); }).catch(function() { Swal.close(); RW_UI.toast('فشل الاتصال', 'error'); }); });
     }
 };
 
 // ============================================================
-// بدء التشغيل
+// بدء التشغيل (باستخدام core.js)
 // ============================================================
-if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
+RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded', function() { App.init(); });
 </script>
 <script src="../register-sw.js"></script>
