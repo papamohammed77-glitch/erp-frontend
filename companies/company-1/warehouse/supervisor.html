@@ -10,8 +10,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="../core.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Cairo',sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
@@ -63,23 +64,15 @@
 </div>
 
 <script>
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-function byId(id) { return document.getElementById(id); }
-function safeText(el, t) { if(el) el.textContent = t; }
-function safeHTML(el, h) { if(el) el.innerHTML = h; }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t||'info', title: m, showConfirmButton: false, timer: 2000 }); }
-
 var App = {
     currentUser: null, staffList: [], currentTab: 'dashboard', chartInstance: null,
-    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash'}else{p.type='password';i.className='fa-solid fa-eye'}},
-    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden')}else{s.init()}}).catch(function(){Swal.close()})},
-    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||perms.indexOf('warehouse_supervisor')!==-1||perms.indexOf('warehouse')!==-1;if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp()}})},
-    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.loadStaff();this.switchTab('dashboard')},
-    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden')})},
+    togglePass: function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash'}else{p.type='password';i.className='fa-solid fa-eye'}},
+    doLogin: function(){var e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.byId('loginMsg').innerText='أدخل البيانات';RW_UI.byId('loginMsg').classList.remove('hidden');return}RW_UI.byId('loginMsg').classList.add('hidden');var s=this;RW_UI.showLoader('جاري تسجيل الدخول...');RW_Auth.doLogin(e,p,function(user,err){RW_UI.hideLoader();if(err){RW_UI.byId('loginMsg').innerText=err;RW_UI.byId('loginMsg').classList.remove('hidden')}else{s.init()}});},
+    init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return}var isO=user.isOwner,perms=user.permissions,has=isO||perms.indexOf('warehouse_supervisor')!==-1||perms.indexOf('warehouse')!==-1;if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;s.enterApp()})},
+    enterApp: function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.loadStaff();this.switchTab('dashboard')},
+    doLogout: function(){var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden')})},
 
-    switchTab: function(t){this.currentTab=t;['dashboard','roster','live'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-blue-600','text-white');b.classList.add('text-slate-400')}});var a=byId('tab-'+t);if(a){a.classList.add('bg-blue-600','text-white');a.classList.remove('text-slate-400')}if(t==='dashboard')this.renderDashboard();else if(t==='roster')this.renderRoster();else if(t==='live')this.renderLive()},
+    switchTab: function(t){this.currentTab=t;['dashboard','roster','live'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-blue-600','text-white');b.classList.add('text-slate-400')}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-blue-600','text-white');a.classList.remove('text-slate-400')}if(t==='dashboard')this.renderDashboard();else if(t==='roster')this.renderRoster();else if(t==='live')this.renderLive()},
 
     loadStaff: function(){
         var s=this;
@@ -88,9 +81,8 @@ var App = {
         });
     },
 
-    // ==================== لوحة التحكم ====================
     renderDashboard: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="mb-6"><div class="skeleton h-20 w-full mb-4"></div><div class="skeleton h-20 w-full mb-3"></div></div>');
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="mb-6"><div class="skeleton h-20 w-full mb-4"></div><div class="skeleton h-20 w-full mb-3"></div></div>');
         Promise.all([
             supabase.from('purchase_orders').select('id').in('status',['Sent','Partially Received']),
             supabase.from('runsheets').select('id').eq('status','Picking'),
@@ -105,7 +97,7 @@ var App = {
                 returns: (r[3].data||[]).length,
                 unloading: (r[4].data||[]).length
             };
-            var userName = s.currentUser.user_metadata.name||'مشرف';
+            var userName = (s.currentUser && s.currentUser.name) ? s.currentUser.name : 'مشرف';
             var html='<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">'+userName+'</span> 👋</p><p class="text-xs text-slate-400 mt-1">آخر تحديث: '+new Date().toLocaleTimeString('ar-EG')+'</p></div>';
             html+='<h2 class="text-lg font-black mb-4">📊 نظرة عامة</h2>';
             html+='<div class="grid grid-cols-2 gap-3 mb-6">';
@@ -122,13 +114,12 @@ var App = {
             }
             html+='</div>';
             html+='<button onclick="App.switchTab(\'roster\')" class="btn-primary"><i class="fa-solid fa-users ml-2"></i> إدارة الفريق</button>';
-            safeHTML(byId('mainContent'),html);
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
         });
     },
 
-    // ==================== الفريق ====================
     renderRoster: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-400"></i></div>');
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-400"></i></div>');
         var roles=['استلام','تحضير','تحميل','مرتجعات','تفريغ','أذونات','جرد','احتياطي'];
         var icons={'استلام':'📦','تحضير':'📋','تحميل':'🚛','مرتجعات':'↩️','تفريغ':'🔄','أذونات':'📄','جرد':'🔍','احتياطي':'🪑'};
         var html='<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-slate-400 mb-4">اختر دوراً لكل موظف. التغيير فوري.</p>';
@@ -138,7 +129,7 @@ var App = {
             for(var j=0;j<roles.length;j++){html+='<option value="'+roles[j]+'"'+(roles[j]===role?' selected':'')+'>'+(icons[roles[j]]||'')+' '+roles[j]+'</option>'}
             html+='</select></div>';
         }}
-        safeHTML(byId('mainContent'),html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
 
     updateRole: function(userId,newRole){
@@ -150,12 +141,11 @@ var App = {
         });
     },
 
-    // ==================== العرض الحي ====================
     renderLive: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-400"></i></div>');
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-400"></i></div>');
         var html='<h2 class="text-lg font-black mb-4">🔴 مراقبة حية</h2>';
         html+='<div class="grid grid-cols-2 gap-3" id="liveGrid"></div>';
-        safeHTML(byId('mainContent'),html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
         Promise.all([
             supabase.from('purchase_orders').select('po_code,supplier_name').in('status',['Sent','Partially Received']),
             supabase.from('runsheets').select('runsheet_code,picker_id').eq('status','Picking'),
@@ -183,12 +173,12 @@ var App = {
                 if(c.items.length>3) gridHtml+='<div class="text-xs text-blue-500 mt-1">+ '+(c.items.length-3)+' أكثر</div>';
                 gridHtml+='</div>';
             }
-            safeHTML(byId('liveGrid'),gridHtml);
+            RW_UI.safeHTML(RW_UI.byId('liveGrid'),gridHtml);
         });
     }
 };
-if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){})}
-document.addEventListener('DOMContentLoaded',function(){App.init()});
+RW_SW.register('../sw.js');
+document.addEventListener('DOMContentLoaded',function(){App.init();});
 </script>
 <script src="../register-sw.js"></script>
 </body>
