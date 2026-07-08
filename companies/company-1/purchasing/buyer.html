@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Tahoma,sans-serif;background:#f1f5f9}
@@ -48,36 +49,26 @@
 </div>
 
 <script>
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 var db = new Dexie('RW_Buyer'); db.version(1).stores({ orders: 'po_code', suppliers: 'supplier_code', items: 'item_code', cart: '++id', meta: 'key' });
-function byId(id) { return document.getElementById(id); }
-function safeText(el, text) { if (el) el.textContent = text; }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
 var App = {
     currentUser: null, currentTab: 'orders', cart: [], selSupplier: null,
 
-    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
-    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
-    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('purchases')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();}});},
-    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.switchTab('orders');},
-    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
-    switchTab: function(t){this.currentTab=t;['orders','new','suppliers'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-purple-600','text-white');b.classList.add('text-gray-500');}});var a=byId('tab-'+t);if(a){a.classList.add('bg-purple-600','text-white');a.classList.remove('text-gray-500');}if(t==='orders')this.renderOrders();else if(t==='new')this.renderNewOrder();else if(t==='suppliers')this.renderSuppliers();},
+    togglePass: function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
+    doLogin: function(){var e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.byId('loginMsg').innerText='أدخل البيانات';RW_UI.byId('loginMsg').classList.remove('hidden');return;}RW_UI.byId('loginMsg').classList.add('hidden');var s=this;RW_UI.showLoader('جاري تسجيل الدخول...');RW_Auth.doLogin(e,p,function(user,err){RW_UI.hideLoader();if(err){RW_UI.byId('loginMsg').innerText=err;RW_UI.byId('loginMsg').classList.remove('hidden');}else{s.init();}});},
+    init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return;}var isO=user.isOwner,perms=user.permissions,has=isO||(Array.isArray(perms)&&perms.indexOf('purchases')!==-1);if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return;}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;s.enterApp();});},
+    enterApp: function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.switchTab('orders');},
+    doLogout: function(){var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden');});},
+    switchTab: function(t){this.currentTab=t;['orders','new','suppliers'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-purple-600','text-white');b.classList.add('text-gray-500');}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-purple-600','text-white');a.classList.remove('text-gray-500');}if(t==='orders')this.renderOrders();else if(t==='new')this.renderNewOrder();else if(t==='suppliers')this.renderSuppliers();},
 
-    // ==================== أوامر الشراء ====================
     renderOrders: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
         supabase.from('purchase_orders').select('po_code,po_date,supplier_name,status,total_amount').order('po_date',{ascending:false}).limit(30).then(function(r){var orders=r.data||[],html='<h2 class="text-lg font-black mb-4">📋 أوامر الشراء</h2>';
         if(!orders.length){html+='<div class="text-center text-gray-400 py-10">لا توجد أوامر شراء</div>';}else{for(var i=0;i<orders.length;i++){var o=orders[i],sc=o.status==='Received'?'bg-green-100 text-green-700':o.status==='Partially Received'?'bg-orange-100 text-orange-700':o.status==='Sent'?'bg-blue-100 text-blue-700':'bg-amber-100 text-amber-700',sl=o.status==='Received'?'مستلم':o.status==='Partially Received'?'استلام جزئي':o.status==='Sent'?'مُرسل':'مسودة';
         html+='<div class="card mb-2"><div class="flex justify-between items-center"><div><span class="font-bold text-lg">'+o.po_code+'</span><p class="text-xs text-gray-400">'+o.po_date+' | '+o.supplier_name+'</p></div><div><span class="px-2 py-1 rounded-full text-xs font-bold '+sc+'">'+sl+'</span><p class="font-black text-purple-600 mt-1 text-left">'+fmtNum(o.total_amount)+' ج.م</p></div></div></div>';}}
-        safeHTML(byId('mainContent'),html);});
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);});
     },
 
-    // ==================== أمر شراء جديد ====================
     renderNewOrder: function(){
         this.cart=[];
         var html='<h2 class="text-lg font-black mb-4">➕ أمر شراء جديد</h2>';
@@ -85,40 +76,39 @@ var App = {
         html+='<div class="card mb-4"><label class="text-xs font-bold block mb-2">بحث عن صنف</label><input id="poItemSearch" oninput="App.searchItems(this.value)" placeholder="ابحث..." class="w-full p-3 bg-gray-50 rounded-xl border font-bold"><div id="poSearchResults" class="mt-2 max-h-48 overflow-y-auto"></div></div>';
         html+='<div class="card mb-4"><h3 class="font-bold mb-2">أصناف الأمر <span id="poCartCount" class="text-xs text-gray-400">(0)</span></h3><div id="poCartItems"><p class="text-gray-400 text-center py-4">أضف أصنافاً</p></div><div id="poCartTotal" class="text-left font-black text-lg pt-2 border-t mt-2 hidden"></div></div>';
         html+='<button onclick="App.submitPO()" class="btn-primary text-lg py-4"><i class="fa-solid fa-check ml-2"></i> حفظ أمر الشراء</button>';
-        safeHTML(byId('mainContent'),html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
         this.loadSuppliersDropdown();
     },
 
     loadSuppliersDropdown: function(){
-        var s=this;supabase.from('suppliers').select('supplier_code,name').then(function(r){var supp=r.data||[],html='<option value="">اختر مورداً</option>';for(var i=0;i<supp.length;i++){html+='<option value="'+supp[i].supplier_code+'">'+supp[i].name+'</option>';}safeHTML(byId('poSupplier'),html);});
+        var s=this;supabase.from('suppliers').select('supplier_code,name').then(function(r){var supp=r.data||[],html='<option value="">اختر مورداً</option>';for(var i=0;i<supp.length;i++){html+='<option value="'+supp[i].supplier_code+'">'+supp[i].name+'</option>';}RW_UI.safeHTML(RW_UI.byId('poSupplier'),html);});
     },
 
     searchItems: function(q){
-        if(!q||!q.trim()){safeHTML(byId('poSearchResults'),'');return;}
-        supabase.from('items').select('item_code,name,sales_price,unit').or('name.ilike.%'+q+'%,item_code.ilike.%'+q+'%').limit(10).then(function(r){var items=r.data||[],html='';for(var i=0;i<items.length;i++){html+='<div onclick="App.addToCart(\''+items[i].item_code+'\',\''+(items[i].name||'').replace(/'/g,"\\'")+'\','+items[i].sales_price+',\''+(items[i].unit||'حبة')+'\')" class="p-2 hover:bg-purple-50 cursor-pointer border-b font-bold text-sm">'+items[i].name+' ('+items[i].item_code+') - '+fmtNum(items[i].sales_price)+'</div>';}safeHTML(byId('poSearchResults'),html||'<p class="text-gray-400 text-sm p-2">لا توجد نتائج</p>');});
+        if(!q||!q.trim()){RW_UI.safeHTML(RW_UI.byId('poSearchResults'),'');return;}
+        supabase.from('items').select('item_code,name,sales_price,unit').or('name.ilike.%'+q+'%,item_code.ilike.%'+q+'%').limit(10).then(function(r){var items=r.data||[],html='';for(var i=0;i<items.length;i++){html+='<div onclick="App.addToCart(\''+items[i].item_code+'\',\''+(items[i].name||'').replace(/'/g,"\\'")+'\','+items[i].sales_price+',\''+(items[i].unit||'حبة')+'\')" class="p-2 hover:bg-purple-50 cursor-pointer border-b font-bold text-sm">'+items[i].name+' ('+items[i].item_code+') - '+fmtNum(items[i].sales_price)+'</div>';}RW_UI.safeHTML(RW_UI.byId('poSearchResults'),html||'<p class="text-gray-400 text-sm p-2">لا توجد نتائج</p>');});
     },
 
     addToCart: function(code,name,price,unit){var ex=null;for(var i=0;i<this.cart.length;i++){if(this.cart[i].code===code){ex=this.cart[i];break;}}if(ex){ex.qty++;}else{this.cart.push({code:code,name:name,price:price,unit:unit,qty:1});}this.renderCart();},
-    renderCart: function(){if(!this.cart.length){safeHTML(byId('poCartItems'),'<p class="text-gray-400 text-center py-4">أضف أصنافاً</p>');safeText(byId('poCartCount'),'(0)');byId('poCartTotal').classList.add('hidden');return;}var html='',total=0;for(var i=0;i<this.cart.length;i++){var it=this.cart[i],lt=it.price*it.qty;total+=lt;html+='<div class="flex justify-between items-center p-2 border-b"><span class="font-bold text-sm">'+it.name+'</span><div class="flex items-center gap-1"><button onclick="App.decCart('+i+')" class="w-6 h-6 bg-gray-100 rounded-full text-xs">-</button><span class="w-6 text-center font-black">'+it.qty+'</span><button onclick="App.incCart('+i+')" class="w-6 h-6 bg-purple-600 text-white rounded-full text-xs">+</button></div></div>';}safeHTML(byId('poCartItems'),html);safeText(byId('poCartCount'),'('+this.cart.length+')');var tel=byId('poCartTotal');tel.classList.remove('hidden');safeHTML(tel,'الإجمالي: <span class="text-purple-600">'+fmtNum(total)+' ج.م</span>');},
+    renderCart: function(){if(!this.cart.length){RW_UI.safeHTML(RW_UI.byId('poCartItems'),'<p class="text-gray-400 text-center py-4">أضف أصنافاً</p>');RW_UI.safeText(RW_UI.byId('poCartCount'),'(0)');RW_UI.byId('poCartTotal').classList.add('hidden');return;}var html='',total=0;for(var i=0;i<this.cart.length;i++){var it=this.cart[i],lt=it.price*it.qty;total+=lt;html+='<div class="flex justify-between items-center p-2 border-b"><span class="font-bold text-sm">'+it.name+'</span><div class="flex items-center gap-1"><button onclick="App.decCart('+i+')" class="w-6 h-6 bg-gray-100 rounded-full text-xs">-</button><span class="w-6 text-center font-black">'+it.qty+'</span><button onclick="App.incCart('+i+')" class="w-6 h-6 bg-purple-600 text-white rounded-full text-xs">+</button></div></div>';}RW_UI.safeHTML(RW_UI.byId('poCartItems'),html);RW_UI.safeText(RW_UI.byId('poCartCount'),'('+this.cart.length+')');var tel=RW_UI.byId('poCartTotal');tel.classList.remove('hidden');RW_UI.safeHTML(tel,'الإجمالي: <span class="text-purple-600">'+fmtNum(total)+' ج.م</span>');},
     incCart: function(i){this.cart[i].qty++;this.renderCart();},
     decCart: function(i){this.cart[i].qty--;if(this.cart[i].qty<=0)this.cart.splice(i,1);this.renderCart();},
 
     submitPO: function(){
-        var suppCode=byId('poSupplier')?byId('poSupplier').value:'';if(!suppCode){toast('اختر مورداً','warning');return;}if(!this.cart.length){toast('أضف أصنافاً','warning');return;}
+        var suppCode=RW_UI.byId('poSupplier')?RW_UI.byId('poSupplier').value:'';if(!suppCode){RW_UI.toast('اختر مورداً','warning');return;}if(!this.cart.length){RW_UI.toast('أضف أصنافاً','warning');return;}
         var items=[];for(var i=0;i<this.cart.length;i++){items.push({code:this.cart[i].code,name:this.cart[i].name,price:this.cart[i].price,qty:this.cart[i].qty,unit:this.cart[i].unit});}
         var s=this;Swal.showLoading();
-        supabase.auth.getSession().then(function(se){var t=se.data.session?se.data.session.access_token:null;return fetch(SUPABASE_URL+'/functions/v1/save-purchase-order',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({orderHeader:{supplierId:suppCode,supplierName:'',total:0},itemsList:items})});}).then(function(r){return r.json();}).then(function(j){Swal.close();if(j.success){toast('تم الحفظ: '+j.poID,'success');s.cart=[];s.switchTab('orders');}else{toast(j.msg||'فشل','error');}}).catch(function(){Swal.close();toast('فشل الاتصال','error');});
+        supabase.auth.getSession().then(function(se){var t=se.data.session?se.data.session.access_token:null;return fetch(SUPABASE_URL+'/functions/v1/save-purchase-order',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify({orderHeader:{supplierId:suppCode,supplierName:'',total:0},itemsList:items})});}).then(function(r){return r.json();}).then(function(j){Swal.close();if(j.success){RW_UI.toast('تم الحفظ: '+j.poID,'success');s.cart=[];s.switchTab('orders');}else{RW_UI.toast(j.msg||'فشل','error');}}).catch(function(){Swal.close();RW_UI.toast('فشل الاتصال','error');});
     },
 
-    // ==================== الموردين ====================
     renderSuppliers: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
         supabase.from('suppliers').select('supplier_code,name,phone,area,accounts_payable').then(function(r){var supp=r.data||[],html='<h2 class="text-lg font-black mb-4">🏭 الموردين</h2>';
         if(!supp.length){html+='<div class="text-center text-gray-400 py-10">لا يوجد موردين</div>';}else{for(var i=0;i<supp.length;i++){html+='<div class="card mb-2"><div class="flex justify-between"><span class="font-bold">'+supp[i].name+'</span><span class="font-black text-red-600">'+fmtNum(supp[i].accounts_payable)+' ج.م</span></div><p class="text-xs text-gray-400">'+supp[i].supplier_code+' | '+supp[i].phone+' | '+supp[i].area+'</p></div>';}}
-        safeHTML(byId('mainContent'),html);});
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);});
     }
 };
-if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
+RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded',function(){App.init();});
 </script>
 <script src="../register-sw.js"></script>
