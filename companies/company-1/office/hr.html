@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Tahoma,sans-serif;background:#f1f5f9}
@@ -47,37 +48,29 @@
 </div>
 
 <script>
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 var db = new Dexie('RW_HR'); db.version(1).stores({ meta: 'key' });
-function byId(id) { return document.getElementById(id); }
-function safeText(el, text) { if (el) el.textContent = text; }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
 var App = {
     currentUser: null,
-    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
-    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
-    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('users')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();}});},
-    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.switchTab('employees');},
-    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
-    switchTab: function(t){['employees','attendance','salary'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-pink-600','text-white');b.classList.add('text-gray-500');}});var a=byId('tab-'+t);if(a){a.classList.add('bg-pink-600','text-white');a.classList.remove('text-gray-500');}if(t==='employees')this.renderEmployees();else if(t==='attendance')this.renderAttendance();else if(t==='salary')this.renderSalary();},
+    togglePass: function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
+    doLogin: function(){var e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.byId('loginMsg').innerText='أدخل البيانات';RW_UI.byId('loginMsg').classList.remove('hidden');return;}RW_UI.byId('loginMsg').classList.add('hidden');var s=this;RW_UI.showLoader('جاري تسجيل الدخول...');RW_Auth.doLogin(e,p,function(user,err){RW_UI.hideLoader();if(err){RW_UI.byId('loginMsg').innerText=err;RW_UI.byId('loginMsg').classList.remove('hidden');}else{s.init();}});},
+    init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return;}var isO=user.isOwner,perms=user.permissions,has=isO||(Array.isArray(perms)&&perms.indexOf('users')!==-1);if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return;}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;s.enterApp();});},
+    enterApp: function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.switchTab('employees');},
+    doLogout: function(){var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden');});},
+    switchTab: function(t){['employees','attendance','salary'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-pink-600','text-white');b.classList.add('text-gray-500');}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-pink-600','text-white');a.classList.remove('text-gray-500');}if(t==='employees')this.renderEmployees();else if(t==='attendance')this.renderAttendance();else if(t==='salary')this.renderSalary();},
 
     renderEmployees: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
         supabase.from('users').select('name,email,role,status,phone,salary,allowances,deductions').then(function(r){var users=r.data||[],html='<h2 class="text-lg font-black mb-4">👥 الموظفين</h2>';
         for(var i=0;i<users.length;i++){var u=users[i],st=u.status==='Active'?'bg-green-100 text-green-700':'bg-red-100 text-red-700',initials=(u.name||'؟').charAt(0);
         html+='<div class="card mb-3"><div class="flex items-center gap-4 mb-3"><div class="w-12 h-12 bg-pink-500 rounded-xl flex items-center justify-center text-white font-black text-lg">'+initials+'</div><div><span class="font-bold">'+u.name+'</span><p class="text-xs text-gray-400">'+u.role+' | '+u.email+'</p></div><span class="px-2 py-0.5 rounded-full text-xs font-bold mr-auto '+st+'">'+(u.status==='Active'?'نشط':'غير نشط')+'</span></div><div class="grid grid-cols-3 gap-2 text-center text-sm"><div><p class="text-xs text-gray-400">الراتب</p><p class="font-bold">'+fmtNum(u.salary)+'</p></div><div><p class="text-xs text-gray-400">البدلات</p><p class="font-bold text-green-600">'+fmtNum(u.allowances)+'</p></div><div><p class="text-xs text-gray-400">الصافي</p><p class="font-bold text-pink-600">'+fmtNum((u.salary||0)+(u.allowances||0)-(u.deductions||0))+'</p></div></div></div>';}
-        safeHTML(byId('mainContent'),html);});
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);});
     },
 
-    renderAttendance: function(){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-clock text-4xl mb-3"></i><p>الحضور والانصراف – قيد التطوير</p></div>');},
-    renderSalary: function(){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-money-bill-wave text-4xl mb-3"></i><p>مسيرات الرواتب – قيد التطوير</p></div>');}
+    renderAttendance: function(){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-clock text-4xl mb-3"></i><p>الحضور والانصراف – قيد التطوير</p></div>');},
+    renderSalary: function(){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-money-bill-wave text-4xl mb-3"></i><p>مسيرات الرواتب – قيد التطوير</p></div>');}
 };
-if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
+RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded',function(){App.init();});
 </script>
 <script src="../register-sw.js"></script>
