@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Tahoma,sans-serif;background:#f1f5f9}
@@ -48,27 +49,19 @@
 </div>
 
 <script>
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 var db = new Dexie('RW_FinanceMgr'); db.version(1).stores({ meta: 'key' });
-function byId(id) { return document.getElementById(id); }
-function safeText(el, text) { if (el) el.textContent = text; }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
 var App = {
     currentUser: null, charts: {},
-    togglePass: function(){var p=byId('loginPass'),i=byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
-    doLogin: function(){var e=byId('loginEmail').value.trim(),p=byId('loginPass').value.trim();if(!e||!p){byId('loginMsg').innerText='أدخل البيانات';byId('loginMsg').classList.remove('hidden');return;}byId('loginMsg').classList.add('hidden');var s=this;Swal.showLoading();supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();});},
-    init: function(){var s=this;supabase.auth.getSession().then(function(r){if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('reports')!==-1);if(!has){Swal.fire({title:'غير مصرح',icon:'error'});supabase.auth.signOut();return;}safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();}});},
-    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.switchTab('dashboard');},
-    doLogout: function(){supabase.auth.signOut().then(function(){byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');});},
-    switchTab: function(t){['dashboard','reports'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-teal-600','text-white');b.classList.add('text-gray-500');}});var a=byId('tab-'+t);if(a){a.classList.add('bg-teal-600','text-white');a.classList.remove('text-gray-500');}if(t==='dashboard')this.renderDashboard();else if(t==='reports')this.renderReports();},
+    togglePass: function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
+    doLogin: function(){var e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.byId('loginMsg').innerText='أدخل البيانات';RW_UI.byId('loginMsg').classList.remove('hidden');return;}RW_UI.byId('loginMsg').classList.add('hidden');var s=this;RW_UI.showLoader('جاري تسجيل الدخول...');RW_Auth.doLogin(e,p,function(user,err){RW_UI.hideLoader();if(err){RW_UI.byId('loginMsg').innerText=err;RW_UI.byId('loginMsg').classList.remove('hidden');}else{s.init();}});},
+    init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return;}var isO=user.isOwner,perms=user.permissions,has=isO||(Array.isArray(perms)&&perms.indexOf('reports')!==-1);if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return;}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;s.enterApp();});},
+    enterApp: function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.switchTab('dashboard');},
+    doLogout: function(){var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden');});},
+    switchTab: function(t){['dashboard','reports'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-teal-600','text-white');b.classList.add('text-gray-500');}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-teal-600','text-white');a.classList.remove('text-gray-500');}if(t==='dashboard')this.renderDashboard();else if(t==='reports')this.renderReports();},
 
     renderDashboard: function(){
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
         var today=new Date().toISOString().split('T')[0],firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
         Promise.all([supabase.from('orders').select('total_amount').gte('order_date',firstDay).lte('order_date',today),supabase.from('purchase_orders').select('total_amount').gte('po_date',firstDay).lte('order_date',today),supabase.from('treasury').select('current_balance')]).then(function(r){
             var sales=0;for(var i=0;i<(r[0].data||[]).length;i++)sales+=Number(r[0].data[i].total_amount)||0;
@@ -81,13 +74,13 @@ var App = {
             html+='<div class="stat-card"><p class="text-xs text-gray-400">المشتريات</p><p class="text-2xl font-black text-red-600">'+fmtNum(purchases)+' ج.م</p></div>';
             html+='<div class="stat-card"><p class="text-xs text-gray-400">صافي الربح</p><p class="text-2xl font-black '+(profit>=0?'text-teal-600':'text-red-600')+'">'+fmtNum(profit)+' ج.م</p></div>';
             html+='<div class="stat-card"><p class="text-xs text-gray-400">الخزائن</p><p class="text-2xl font-black text-blue-600">'+fmtNum(treasury)+' ج.م</p></div>';
-            html+='</div>';safeHTML(byId('mainContent'),html);
+            html+='</div>';RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
         });
     },
 
-    renderReports: function(){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-file-invoice text-4xl mb-3"></i><p>التقارير المالية – تُدار من النظام الأم</p><p class="text-sm mt-2">استخدم تطبيق المركز الرئيسي للتقارير المتقدمة</p></div>');}
+    renderReports: function(){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-file-invoice text-4xl mb-3"></i><p>التقارير المالية – تُدار من النظام الأم</p><p class="text-sm mt-2">استخدم تطبيق المركز الرئيسي للتقارير المتقدمة</p></div>');}
 };
-if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
+RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded',function(){App.init();});
 </script>
 <script src="../register-sw.js"></script>
