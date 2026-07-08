@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Tahoma,sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
@@ -89,12 +90,8 @@
 
 <script>
 // ============================================================
-// تهيئة Supabase و Dexie
+// قاعدة البيانات المحلية (Dexie) – خاصة بالتطبيق
 // ============================================================
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 var db = new Dexie('RW_VanSales');
 db.version(2).stores({
     customers: 'customer_code, name, area, phone, visit_day',
@@ -107,12 +104,6 @@ db.version(2).stores({
     myCustomers: 'customer_code, name, area, phone, debt, last_order_date',
     myLedger: '++id, entry_date, description, debit, credit, balance'
 });
-
-function byId(id) { return document.getElementById(id); }
-function safeText(el, text) { if (el) el.textContent = text; }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
 // ============================================================
 // التطبيق
@@ -127,10 +118,10 @@ var App = {
     minAmt: 0,
     companyName: 'الروائع',
 
-    // ==================== دوال الدخول ====================
+    // ==================== دوال الدخول (باستخدام core.js) ====================
     togglePass: function() {
-        var passInput = byId('loginPass');
-        var icon = byId('passIcon');
+        var passInput = RW_UI.byId('loginPass');
+        var icon = RW_UI.byId('passIcon');
         if (passInput.type === 'password') {
             passInput.type = 'text';
             icon.className = 'fa-solid fa-eye-slash';
@@ -141,55 +132,51 @@ var App = {
     },
 
     doLogin: function() {
-        var email = byId('loginEmail').value.trim();
-        var pass = byId('loginPass').value.trim();
+        var email = RW_UI.byId('loginEmail').value.trim();
+        var pass = RW_UI.byId('loginPass').value.trim();
         if (!email || !pass) {
-            byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
-            byId('loginMsg').classList.remove('hidden');
+            RW_UI.byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
+            RW_UI.byId('loginMsg').classList.remove('hidden');
             return;
         }
-        byId('loginMsg').classList.add('hidden');
+        RW_UI.byId('loginMsg').classList.add('hidden');
         var self = this;
-        Swal.showLoading();
-        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res) {
-            Swal.close();
-            if (res.error) {
-                byId('loginMsg').innerText = res.error.message;
-                byId('loginMsg').classList.remove('hidden');
+        RW_UI.showLoader('جاري تسجيل الدخول...');
+        RW_Auth.doLogin(email, pass, function(user, err) {
+            RW_UI.hideLoader();
+            if (err) {
+                RW_UI.byId('loginMsg').innerText = err;
+                RW_UI.byId('loginMsg').classList.remove('hidden');
             } else {
                 self.init();
             }
-        }).catch(function() {
-            Swal.close();
-            byId('loginMsg').innerText = 'فشل الاتصال بالخادم';
-            byId('loginMsg').classList.remove('hidden');
         });
     },
 
     init: function() {
         var self = this;
-        supabase.auth.getSession().then(function(res) {
-            if (res.data && res.data.session) {
-                self.currentUser = res.data.session.user;
-                var meta = self.currentUser.user_metadata || {};
-                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-                var perms = meta.permissions || [];
-                var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('orders') !== -1);
-
-                if (!hasAccess) {
-                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية المبيعات', icon: 'error' });
-                    supabase.auth.signOut();
-                    return;
-                }
-
-                self.enterApp();
+        RW_Auth.init(function(user, err) {
+            if (err || !user) {
+                if (err === 'NO_SESSION') return;
+                RW_UI.showError('فشل استعادة الجلسة');
+                return;
             }
+            var isOwner = user.isOwner;
+            var perms = user.permissions;
+            var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('orders') !== -1);
+            if (!hasAccess) {
+                RW_UI.showError('غير مصرح');
+                RW_Auth.doLogout();
+                return;
+            }
+            self.currentUser = user;
+            self.enterApp();
         });
     },
 
     enterApp: function() {
-        byId('loginScreen').classList.add('hidden');
-        byId('mainApp').classList.remove('hidden');
+        RW_UI.byId('loginScreen').classList.add('hidden');
+        RW_UI.byId('mainApp').classList.remove('hidden');
         this.loadSettings();
         this.updateConnectionStatus();
         window.addEventListener('online', function() { App.updateConnectionStatus(); });
@@ -202,27 +189,19 @@ var App = {
 
     doLogout: function() {
         var self = this;
-        supabase.auth.signOut().then(function() {
+        RW_Auth.doLogout(function() {
             self.cart = [];
             self.selCust = null;
-            byId('mainApp').classList.add('hidden');
-            byId('loginScreen').classList.remove('hidden');
-            byId('loginEmail').value = '';
-            byId('loginPass').value = '';
-            byId('loginMsg').classList.add('hidden');
+            RW_UI.byId('mainApp').classList.add('hidden');
+            RW_UI.byId('loginScreen').classList.remove('hidden');
+            RW_UI.byId('loginEmail').value = '';
+            RW_UI.byId('loginPass').value = '';
+            RW_UI.byId('loginMsg').classList.add('hidden');
         });
     },
 
     updateConnectionStatus: function() {
-        var dot = byId('connDot');
-        var label = byId('connLabel');
-        if (navigator.onLine) {
-            dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
-            label.innerText = 'متصل';
-        } else {
-            dot.className = 'w-2.5 h-2.5 rounded-full bg-red-500';
-            label.innerText = 'غير متصل';
-        }
+        RW_UI.updateConnectionStatus('connDot', 'connLabel');
     },
 
     syncDown: function() {
@@ -246,17 +225,17 @@ var App = {
     },
 
     syncData: function() {
-        if (!navigator.onLine) { toast('لا يوجد اتصال', 'warning'); return; }
+        if (!navigator.onLine) { RW_UI.toast('لا يوجد اتصال', 'warning'); return; }
         var self = this;
         Swal.showLoading();
         this.syncDown().then(function() {
             Swal.close();
             self.loadVanBranch();
             self.loadSettings();
-            toast('تمت المزامنة', 'success');
+            RW_UI.toast('تمت المزامنة', 'success');
         }).catch(function() {
             Swal.close();
-            toast('فشلت المزامنة', 'error');
+            RW_UI.toast('فشلت المزامنة', 'error');
         });
     },
 
@@ -301,7 +280,7 @@ var App = {
         html += '<button onclick="App.showView(\'customers\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-customers"><i class="fa-solid fa-users text-lg mb-1"></i><span>عملائي</span></button>';
         html += '<button onclick="App.showView(\'invoices\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-invoices"><i class="fa-solid fa-file-invoice text-lg mb-1"></i><span>فواتيري</span></button>';
         html += '<button onclick="App.showView(\'balance\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-balance"><i class="fa-solid fa-scale-balanced text-lg mb-1"></i><span>رصيدي</span></button>';
-        safeHTML(byId('bottomNav'), html);
+        RW_UI.safeHTML(RW_UI.byId('bottomNav'), html);
     },
 
     showView: function(view) {
@@ -310,7 +289,7 @@ var App = {
             btns[i].classList.remove('text-orange-600');
             btns[i].classList.add('text-gray-400');
         }
-        var activeBtn = byId('nav-' + view);
+        var activeBtn = RW_UI.byId('nav-' + view);
         if (activeBtn) {
             activeBtn.classList.remove('text-gray-400');
             activeBtn.classList.add('text-orange-600');
@@ -393,7 +372,7 @@ var App = {
         html += '</div>';
 
         html += '</div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
 
         this.loadHomeStockSummary();
         this.loadHomeSalesSummary();
@@ -412,7 +391,7 @@ var App = {
                 }
             }
             if (myStock.length === 0) {
-                safeHTML(byId('homeStockSummary'), '<p class="text-gray-400">لا توجد عهدة حالياً</p>');
+                RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">لا توجد عهدة حالياً</p>');
                 return;
             }
             var summary = '';
@@ -428,9 +407,9 @@ var App = {
             }
             if (myStock.length > 5) summary += '<span class="text-xs text-gray-400">... وأكثر</span>';
             setTimeout(function() {
-                safeHTML(byId('homeStockSummary'), summary || '<p class="text-gray-400">اضغط للتفاصيل</p>');
+                RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), summary || '<p class="text-gray-400">اضغط للتفاصيل</p>');
             }, 500);
-            safeText(byId('homeStockLastUpdate'), '🟢 آخر تحديث: الآن');
+            RW_UI.safeText(RW_UI.byId('homeStockLastUpdate'), '🟢 آخر تحديث: الآن');
         });
     },
 
@@ -449,9 +428,9 @@ var App = {
             }
             var html = '<div class="text-2xl font-black text-orange-600">' + fmtNum(total) + ' ج.م</div>';
             html += '<div class="text-xs text-gray-500 mt-1">' + orders.length + ' فواتير | 💵 نقدي: ' + fmtNum(totalCash) + ' | 📋 آجل: ' + fmtNum(totalCredit) + '</div>';
-            safeHTML(byId('homeSalesSummary'), html);
+            RW_UI.safeHTML(RW_UI.byId('homeSalesSummary'), html);
         }).catch(function() {
-            safeHTML(byId('homeSalesSummary'), '<p class="text-gray-400">تعذر تحميل المبيعات</p>');
+            RW_UI.safeHTML(RW_UI.byId('homeSalesSummary'), '<p class="text-gray-400">تعذر تحميل المبيعات</p>');
         });
     },
 
@@ -470,9 +449,9 @@ var App = {
             var badgeText = balance <= 0 ? '🟢 أنا ملتزم' : (balance < 5000 ? '🟡 عليّ بعض المستحقات' : '🔴 عليّ مستحقات');
             var html = '<div class="text-2xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(balance)) + ' ج.م</div>';
             html += '<div class="text-xs mt-1"><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + badgeClass + '">' + badgeText + '</span></div>';
-            safeHTML(byId('homeBalanceSummary'), html);
+            RW_UI.safeHTML(RW_UI.byId('homeBalanceSummary'), html);
         }).catch(function() {
-            safeHTML(byId('homeBalanceSummary'), '<p class="text-gray-400">تعذر تحميل الرصيد</p>');
+            RW_UI.safeHTML(RW_UI.byId('homeBalanceSummary'), '<p class="text-gray-400">تعذر تحميل الرصيد</p>');
         });
     },
 
@@ -482,17 +461,17 @@ var App = {
         html += '<input type="text" id="myCustSearch" oninput="App.filterMyCustomers()" placeholder="🔍 ابحث عن عميل..." class="w-full p-3 bg-white rounded-xl border mb-4">';
         html += '<div id="myCustomersList" class="space-y-2"><div class="text-center text-gray-400 py-8">جاري تحميل العملاء...</div></div>';
         html += '</div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         this.renderMyCustomersList();
     },
 
     renderMyCustomersList: function() {
         var self = this;
-        var container = byId('myCustomersList');
+        var container = RW_UI.byId('myCustomersList');
         if (!container) return;
         db.myCustomers.toArray().then(function(list) {
             if (!list.length) {
-                safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا يوجد عملاء بعد</div>');
+                RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا يوجد عملاء بعد</div>');
                 return;
             }
             var html = '';
@@ -510,13 +489,13 @@ var App = {
                 html += '<div class="text-left"><span class="font-black text-sm">' + fmtNum(c.totalDebt) + ' ج.م</span><br><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + debtClass + '">' + (c.totalDebt > 0 ? 'مديونية' : 'لا توجد') + '</span></div>';
                 html += '</div></div>';
             }
-            safeHTML(container, html);
+            RW_UI.safeHTML(container, html);
         });
     },
 
     filterMyCustomers: function() {
-        var q = (byId('myCustSearch') ? byId('myCustSearch').value : '').toLowerCase();
-        var container = byId('myCustomersList');
+        var q = (RW_UI.byId('myCustSearch') ? RW_UI.byId('myCustSearch').value : '').toLowerCase();
+        var container = RW_UI.byId('myCustomersList');
         if (!container) return;
         db.myCustomers.toArray().then(function(list) {
             var filtered = list;
@@ -526,7 +505,7 @@ var App = {
                 });
             }
             if (!filtered.length) {
-                safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد نتائج</div>');
+                RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد نتائج</div>');
                 return;
             }
             var html = '';
@@ -535,7 +514,7 @@ var App = {
                 html += '<div class="card cursor-pointer hover:bg-orange-50 transition" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\', \'' + (c.name || '').replace(/'/g, "\\'") + '\')">';
                 html += '<div class="flex justify-between items-center"><div><span class="font-bold">' + (c.name || '') + '</span></div><span class="font-black text-sm">' + fmtNum(c.totalDebt) + ' ج.م</span></div></div>';
             }
-            safeHTML(container, html);
+            RW_UI.safeHTML(container, html);
         });
     },
 
@@ -564,7 +543,7 @@ var App = {
             Swal.fire({ title: 'تفاصيل العميل', html: html, width: '600px', showCloseButton: true, showConfirmButton: false });
         }).catch(function() {
             Swal.close();
-            toast('فشل تحميل التفاصيل', 'error');
+            RW_UI.toast('فشل تحميل التفاصيل', 'error');
         });
     },
 
@@ -603,14 +582,14 @@ var App = {
             }).then(function(res) { return res.json(); }).then(function(json) {
                 Swal.close();
                 if (json.success) {
-                    toast('تم تسجيل التحصيل', 'success');
+                    RW_UI.toast('تم تسجيل التحصيل', 'success');
                     App.loadMyCustomers();
                 } else {
-                    toast(json.error || 'فشل', 'error');
+                    RW_UI.toast(json.error || 'فشل', 'error');
                 }
             }).catch(function() {
                 Swal.close();
-                toast('فشل الاتصال', 'error');
+                RW_UI.toast('فشل الاتصال', 'error');
             });
         });
     },
@@ -631,17 +610,17 @@ var App = {
         html += '<div class="bg-white p-4 rounded-2xl border mb-4"><h3 class="font-bold mb-2">السلة</h3><div id="quickCartItems"><p class="text-gray-400 text-center">السلة فارغة</p></div></div>';
         html += '<button onclick="App.submitQuickSale()" class="btn-orange text-lg py-4">حفظ الفاتورة</button>';
         html += '</div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         
         db.myCustomers.toArray().then(function(list) {
-            var sel = byId('quickCustSelect');
+            var sel = RW_UI.byId('quickCustSelect');
             if (sel) {
                 var opts = '<option value="">-- اختر عميلاً --</option>';
                 for (var i = 0; i < list.length; i++) {
                     var selAttr = (list[i].customer_code === customerCode) ? ' selected' : '';
                     opts += '<option value="' + list[i].customer_code + '"' + selAttr + '>' + list[i].name + '</option>';
                 }
-                safeHTML(sel, opts);
+                RW_UI.safeHTML(sel, opts);
                 if (customerCode) {
                     self.selCust = { customer_code: customerCode, name: list.find(function(c) { return c.customer_code === customerCode; })?.name || '' };
                 }
@@ -651,9 +630,9 @@ var App = {
 
     searchQuickItems: function(q) {
         var self = this;
-        var container = byId('quickItemResults');
+        var container = RW_UI.byId('quickItemResults');
         if (!container) return;
-        if (!q || !q.trim()) { safeHTML(container, ''); return; }
+        if (!q || !q.trim()) { RW_UI.safeHTML(container, ''); return; }
         db.items.toArray().then(function(all) {
             var s = q.toLowerCase();
             var filtered = [];
@@ -670,7 +649,7 @@ var App = {
                 html += '<div onclick="App.addToQuickCart(\'' + it.item_code + '\')" class="bg-white p-3 rounded-xl border cursor-pointer hover:bg-orange-50"><div class="font-bold text-sm">' + it.name + '</div><div class="text-orange-600 font-black text-sm">' + fmtNum(it.sales_price) + '</div></div>';
             }
             if (!html) html = '<div class="col-span-2 text-center text-gray-400 p-4">لا توجد نتائج</div>';
-            safeHTML(container, html);
+            RW_UI.safeHTML(container, html);
         });
     },
 
@@ -689,10 +668,10 @@ var App = {
     },
 
     renderQuickCart: function() {
-        var container = byId('quickCartItems');
+        var container = RW_UI.byId('quickCartItems');
         if (!container) return;
         if (!this.cart.length) {
-            safeHTML(container, '<p class="text-gray-400 text-center">السلة فارغة</p>');
+            RW_UI.safeHTML(container, '<p class="text-gray-400 text-center">السلة فارغة</p>');
             return;
         }
         var html = '';
@@ -704,7 +683,7 @@ var App = {
             html += '<div class="flex justify-between items-center py-2 border-b"><span class="font-bold text-sm">' + item.name + ' × ' + item.qty + '</span><div class="flex items-center gap-1"><button onclick="App.decQuickCart(\'' + item.code + '\')" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black">-</button><span class="w-5 text-center font-black text-sm">' + item.qty + '</span><button onclick="App.addToQuickCart(\'' + item.code + '\')" class="w-6 h-6 bg-orange-600 text-white rounded-full text-xs font-black">+</button></div></div>';
         }
         html += '<div class="flex justify-between font-black text-lg pt-2 border-t mt-2"><span>الإجمالي:</span><span class="text-orange-600">' + fmtNum(total) + '</span></div>';
-        safeHTML(container, html);
+        RW_UI.safeHTML(container, html);
     },
 
     decQuickCart: function(code) {
@@ -715,12 +694,12 @@ var App = {
     },
 
     submitQuickSale: function() {
-        var custCode = byId('quickCustSelect') ? byId('quickCustSelect').value : '';
-        if (!custCode) { toast('اختر عميلاً', 'warning'); return; }
-        if (!this.cart.length) { toast('السلة فارغة', 'warning'); return; }
+        var custCode = RW_UI.byId('quickCustSelect') ? RW_UI.byId('quickCustSelect').value : '';
+        if (!custCode) { RW_UI.toast('اختر عميلاً', 'warning'); return; }
+        if (!this.cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
         var self = this;
         db.customers.get(custCode).then(function(c) {
-            if (!c) { toast('العميل غير موجود', 'error'); return; }
+            if (!c) { RW_UI.toast('العميل غير موجود', 'error'); return; }
             var items = [];
             var sub = 0;
             for (var i = 0; i < self.cart.length; i++) {
@@ -750,16 +729,16 @@ var App = {
             }).then(function(r) { return r.json(); }).then(function(json) {
                 Swal.close();
                 if (json.success) {
-                    toast('تم الحفظ: ' + (json.orderID || ''), 'success');
+                    RW_UI.toast('تم الحفظ: ' + (json.orderID || ''), 'success');
                     self.cart = [];
                     self.loadMyCustomers();
                     self.showView('home');
                 } else {
-                    toast(json.msg || 'فشل', 'error');
+                    RW_UI.toast(json.msg || 'فشل', 'error');
                 }
             }).catch(function() {
                 Swal.close();
-                toast('فشل الاتصال', 'error');
+                RW_UI.toast('فشل الاتصال', 'error');
             });
         });
     },
@@ -771,7 +750,7 @@ var App = {
         html += '<div id="invItems"><div class="text-center text-gray-400 py-8">جاري تحميل العهدة...</div></div>';
         html += '<button onclick="App.submitQuickInventory()" class="bg-amber-600 text-white w-full py-4 rounded-xl font-black mt-4">حفظ الجرد</button>';
         html += '</div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         
         var branchCode = this.vanBranch ? (this.vanBranch.branch_code || 'MAIN') : 'MAIN';
         var branchId = this.vanBranch ? this.vanBranch.id : null;
@@ -783,7 +762,7 @@ var App = {
                 }
             }
             if (myStock.length === 0) {
-                safeHTML(byId('invItems'), '<p class="text-gray-400 text-center">لا توجد عهدة</p>');
+                RW_UI.safeHTML(RW_UI.byId('invItems'), '<p class="text-gray-400 text-center">لا توجد عهدة</p>');
                 return;
             }
             var promises = [];
@@ -801,7 +780,7 @@ var App = {
                     html += '<input type="number" id="inv_qty_' + k + '" value="' + st.qty + '" class="w-20 p-2 border rounded-lg text-center font-bold" min="0">';
                     html += '</div>';
                 }
-                safeHTML(byId('invItems'), html);
+                RW_UI.safeHTML(RW_UI.byId('invItems'), html);
             });
         });
     },
@@ -816,7 +795,7 @@ var App = {
             if (qty > 0) allZero = false;
             items.push({ itemCode: '', itemName: '', qty: qty, unit: 'حبة', unitPrice: 0, notes: '' });
         }
-        if (allZero) { toast('أدخل كميات الجرد', 'warning'); return; }
+        if (allZero) { RW_UI.toast('أدخل كميات الجرد', 'warning'); return; }
         Swal.showLoading();
         supabase.auth.getSession().then(function(ses) {
             var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
@@ -833,14 +812,14 @@ var App = {
         }).then(function(r) { return r.json(); }).then(function(json) {
             Swal.close();
             if (json.success) {
-                toast('تم حفظ الجرد', 'success');
+                RW_UI.toast('تم حفظ الجرد', 'success');
                 self.showView('home');
             } else {
-                toast(json.msg || 'فشل', 'error');
+                RW_UI.toast(json.msg || 'فشل', 'error');
             }
         }).catch(function() {
             Swal.close();
-            toast('فشل الاتصال', 'error');
+            RW_UI.toast('فشل الاتصال', 'error');
         });
     },
 
@@ -848,23 +827,23 @@ var App = {
     renderInvoicesView: function() {
         var today = new Date().toISOString().split('T')[0];
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">📄 فواتيري</h2>';
-        html += '<div class="bg-white p-3 rounded-2xl border mb-4"><div class="flex gap-2"><input type="date" id="invDateFilter" value="' + today + '" onchange="App.loadMyInvoices()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><button onclick="byId(\'invDateFilter\').value=\'' + today + '\';App.loadMyInvoices();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">اليوم</button></div></div>';
+        html += '<div class="bg-white p-3 rounded-2xl border mb-4"><div class="flex gap-2"><input type="date" id="invDateFilter" value="' + today + '" onchange="App.loadMyInvoices()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><button onclick="RW_UI.byId(\'invDateFilter\').value=\'' + today + '\';App.loadMyInvoices();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">اليوم</button></div></div>';
         html += '<div id="myInvoicesList" class="space-y-3"><div class="text-center text-gray-400 py-8">جاري التحميل...</div></div></div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         this.loadMyInvoices();
     },
 
     loadMyInvoices: function() {
         var self = this;
-        var container = byId('myInvoicesList');
+        var container = RW_UI.byId('myInvoicesList');
         if (!container) return;
-        safeHTML(container, '<div class="text-center text-gray-400 py-8">جاري التحميل...</div>');
-        var dateFilter = byId('invDateFilter') ? byId('invDateFilter').value : new Date().toISOString().split('T')[0];
+        RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8">جاري التحميل...</div>');
+        var dateFilter = RW_UI.byId('invDateFilter') ? RW_UI.byId('invDateFilter').value : new Date().toISOString().split('T')[0];
         if (!this.currentUser) return;
         supabase.from('orders').select('*').eq('created_by', this.currentUser.email).eq('order_date', dateFilter).order('order_date', { ascending: false }).then(function(res) {
             var invoices = res.data || [];
             if (!invoices.length) {
-                safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد فواتير لهذا اليوم</div>');
+                RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد فواتير لهذا اليوم</div>');
                 return;
             }
             var html = '';
@@ -873,9 +852,9 @@ var App = {
                 var paymentClass = inv.payment_type === 'نقدي' ? 'badge-green' : 'badge-yellow';
                 html += '<div class="card"><div class="flex justify-between items-start"><div><span class="font-black text-orange-600 text-sm">' + (inv.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (inv.order_date || '') + '</span></div><span class="font-black text-orange-600">' + fmtNum(inv.total_amount) + ' ج.م</span></div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold">' + (inv.customer_name || '') + '</span><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + paymentClass + '">' + (inv.payment_type || '') + '</span></div></div>';
             }
-            safeHTML(container, html);
+            RW_UI.safeHTML(container, html);
         }).catch(function() {
-            safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الفواتير</div>');
+            RW_UI.safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الفواتير</div>');
         });
     },
 
@@ -884,13 +863,13 @@ var App = {
         var self = this;
         var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">⚖️ رصيدي</h2>';
         html += '<div id="balanceDetail"><div class="text-center text-gray-400 py-8">جاري تحميل الرصيد...</div></div></div>';
-        safeHTML(byId('mainContent'), html);
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         this.loadBalanceDetail();
     },
 
     loadBalanceDetail: function() {
         var self = this;
-        var container = byId('balanceDetail');
+        var container = RW_UI.byId('balanceDetail');
         if (!container) return;
         if (!this.currentUser) return;
         supabase.from('driver_ledger').select('*').eq('driver_email', this.currentUser.email).order('entry_date', { ascending: false }).then(function(res) {
@@ -932,19 +911,17 @@ var App = {
                 html += '<div class="flex justify-between font-black text-lg pt-3 border-t mt-3"><span>📋 صافي المستحق:</span><span class="' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(balance)) + ' ج.م</span></div>';
             }
             html += '</div>';
-            safeHTML(container, html);
+            RW_UI.safeHTML(container, html);
         }).catch(function() {
-            safeHTML(container, '<div class="card text-center text-red-400">فشل تحميل الرصيد</div>');
+            RW_UI.safeHTML(container, '<div class="card text-center text-red-400">فشل تحميل الرصيد</div>');
         });
     }
 };
 
 // ============================================================
-// تهيئة التطبيق
+// تهيئة التطبيق (باستخدام core.js)
 // ============================================================
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('../sw.js').catch(function() {});
-}
+RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded', function() {
     App.init();
 });
