@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Tahoma,sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
@@ -67,139 +68,74 @@
 </div>
 
 <script>
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 var db = new Dexie('RW_SalesSupervisor'); db.version(1).stores({ meta: 'key', cache: 'key' });
-function byId(id) { return document.getElementById(id); }
-function safeText(el, text) { if (el) el.textContent = text; }
-function safeHTML(el, html) { if (el) el.innerHTML = html; }
-function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
-function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'info', title: m, showConfirmButton: false, timer: 2000 }); }
 
 var App = {
     currentUser: null, currentTab: 'dashboard', charts: {},
 
-    togglePass: function() {
-        var p=byId('loginPass'), i=byId('passIcon');
-        if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}
-        else{p.type='password';i.className='fa-solid fa-eye';}
-    },
-    doLogin: function() {
-        var e=byId('loginEmail').value.trim(), p=byId('loginPass').value.trim();
-        if(!e||!p){byId('loginMsg').innerText='أدخل البريد الإلكتروني وكلمة المرور';byId('loginMsg').classList.remove('hidden');return;}
-        byId('loginMsg').classList.add('hidden'); var s=this; Swal.showLoading();
-        supabase.auth.signInWithPassword({email:e,password:p}).then(function(r){Swal.close();if(r.error){byId('loginMsg').innerText=r.error.message;byId('loginMsg').classList.remove('hidden');}else{s.init();}}).catch(function(){Swal.close();byId('loginMsg').innerText='فشل الاتصال';byId('loginMsg').classList.remove('hidden');});
-    },
-    init: function() {
-        var s=this; supabase.auth.getSession().then(function(r){
-            if(r.data&&r.data.session){s.currentUser=r.data.session.user;var m=s.currentUser.user_metadata||{},isO=(m.isOwner===true||m.isOwner==='true'||m.role==='owner'||m.role==='مالك'),perms=m.permissions||[],has=isO||(Array.isArray(perms)&&perms.indexOf('sales_supervisor')!==-1);
-            if(!has){Swal.fire({title:'غير مصرح',text:'ليس لديك صلاحية مشرف مبيعات',icon:'error'});supabase.auth.signOut();return;}
-            safeText(byId('headerUserName'),m.name||s.currentUser.email);s.enterApp();}
-        });
-    },
-    enterApp: function(){byId('loginScreen').classList.add('hidden');byId('mainApp').classList.remove('hidden');this.switchTab('dashboard');},
-    doLogout: function(){var s=this;supabase.auth.signOut().then(function(){s.currentUser=null;byId('mainApp').classList.add('hidden');byId('loginScreen').classList.remove('hidden');byId('loginEmail').value='';byId('loginPass').value='';byId('loginMsg').classList.add('hidden');});},
-    switchTab: function(t){this.currentTab=t;['dashboard','team','live'].forEach(function(x){var b=byId('tab-'+x);if(b){b.classList.remove('bg-indigo-600','text-white');b.classList.add('text-gray-500');}});var a=byId('tab-'+t);if(a){a.classList.add('bg-indigo-600','text-white');a.classList.remove('text-gray-500');}if(t==='dashboard')this.renderDashboard();else if(t==='team')this.renderTeam();else if(t==='live')this.renderLive();},
+    togglePass: function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
+    doLogin: function(){var e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.byId('loginMsg').innerText='أدخل البريد الإلكتروني وكلمة المرور';RW_UI.byId('loginMsg').classList.remove('hidden');return;}RW_UI.byId('loginMsg').classList.add('hidden');var s=this;RW_UI.showLoader('جاري تسجيل الدخول...');RW_Auth.doLogin(e,p,function(user,err){RW_UI.hideLoader();if(err){RW_UI.byId('loginMsg').innerText=err;RW_UI.byId('loginMsg').classList.remove('hidden');}else{s.init();}});},
+    init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return;}var isO=user.isOwner,perms=user.permissions,has=isO||(Array.isArray(perms)&&perms.indexOf('sales_supervisor')!==-1);if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return;}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;s.enterApp();});},
+    enterApp: function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.switchTab('dashboard');},
+    doLogout: function(){var s=this;RW_Auth.doLogout(function(){s.currentUser=null;RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden');RW_UI.byId('loginEmail').value='';RW_UI.byId('loginPass').value='';RW_UI.byId('loginMsg').classList.add('hidden');});},
+    switchTab: function(t){this.currentTab=t;['dashboard','team','live'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-indigo-600','text-white');b.classList.add('text-gray-500');}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-indigo-600','text-white');a.classList.remove('text-gray-500');}if(t==='dashboard')this.renderDashboard();else if(t==='team')this.renderTeam();else if(t==='live')this.renderLive();},
     destroyCharts: function(){for(var k in this.charts){if(this.charts.hasOwnProperty(k)&&this.charts[k]){this.charts[k].destroy();this.charts[k]=null;}}},
 
-    // 🆕 KPI - لوحة تحكم متقدمة
-    renderDashboard: function() {
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
-        var today=new Date().toISOString().split('T')[0];
-        var firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
-        var prevFirst=new Date(new Date().getFullYear(),new Date().getMonth()-1,1).toISOString().split('T')[0];
-        var prevLast=new Date(new Date().getFullYear(),new Date().getMonth(),0).toISOString().split('T')[0];
-
-        Promise.all([
-            supabase.from('orders').select('total_amount,payment_type,order_status,order_date').gte('order_date',firstDay).lte('order_date',today),
-            supabase.from('orders').select('total_amount').gte('order_date',prevFirst).lte('order_date',prevLast)
-        ]).then(function(r){
-            var orders=r[0].data||[], prevOrders=r[1].data||[];
-            var total=0,cash=0,credit=0,pending=0,invoiced=0;
+    renderDashboard: function(){
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+        var today=new Date().toISOString().split('T')[0],firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0],prevFirst=new Date(new Date().getFullYear(),new Date().getMonth()-1,1).toISOString().split('T')[0],prevLast=new Date(new Date().getFullYear(),new Date().getMonth(),0).toISOString().split('T')[0];
+        Promise.all([supabase.from('orders').select('total_amount,payment_type,order_status,order_date').gte('order_date',firstDay).lte('order_date',today),supabase.from('orders').select('total_amount').gte('order_date',prevFirst).lte('order_date',prevLast)]).then(function(r){
+            var orders=r[0].data||[], prevOrders=r[1].data||[];var total=0,cash=0,credit=0,pending=0,invoiced=0;
             for(var i=0;i<orders.length;i++){total+=Number(orders[i].total_amount)||0;if(orders[i].payment_type==='نقدي')cash++;else credit++;if(orders[i].order_status==='Pending')pending++;if(orders[i].order_status==='Invoiced')invoiced++;}
             var prevTotal=0;for(var j=0;j<prevOrders.length;j++)prevTotal+=Number(prevOrders[j].total_amount)||0;
-            var growth=prevTotal>0?Math.round(((total-prevTotal)/prevTotal)*100):0;
-            var avgOrder=orders.length>0?Math.round(total/orders.length):0;
-            var convRate=orders.length>0?Math.round((invoiced/orders.length)*100):0;
-            var daysInMonth=new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate();
-            var todayDay=new Date().getDate();
-            var projected=Math.round((total/todayDay)*daysInMonth);
-            var dailyAvg=Math.round(total/todayDay);
-
+            var growth=prevTotal>0?Math.round(((total-prevTotal)/prevTotal)*100):0,avgOrder=orders.length>0?Math.round(total/orders.length):0,convRate=orders.length>0?Math.round((invoiced/orders.length)*100):0,daysInMonth=new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate(),todayDay=new Date().getDate(),projected=Math.round((total/todayDay)*daysInMonth),dailyAvg=Math.round(total/todayDay);
             s.destroyCharts();
-
-            var html='<h2 class="text-lg font-black mb-2">📊 مؤشرات الأداء – الشهر الحالي</h2>';
-            html+='<p class="text-xs text-gray-400 mb-4">مقارنة بالشهر السابق</p>';
-
-            // صف KPI رئيسي
+            var html='<h2 class="text-lg font-black mb-2">📊 مؤشرات الأداء – الشهر الحالي</h2><p class="text-xs text-gray-400 mb-4">مقارنة بالشهر السابق</p>';
             html+='<div class="grid grid-cols-2 gap-3 mb-4">';
             html+='<div class="stat-card"><p class="text-xs text-gray-400">إجمالي المبيعات</p><p class="text-2xl font-black text-indigo-600">'+fmtNum(total)+' ج.م</p><p class="text-xs mt-1 '+(growth>=0?'kpi-up':'kpi-down')+'"><i class="fa-solid fa-'+(growth>=0?'arrow-up':'arrow-down')+' ml-1"></i> '+(growth>=0?'+':'')+growth+'% عن الشهر الماضي</p></div>';
             html+='<div class="stat-card"><p class="text-xs text-gray-400">عدد الأوردرات</p><p class="text-2xl font-black text-emerald-600">'+orders.length+'</p><p class="text-xs text-gray-400 mt-1">'+fmtNum(avgOrder)+' ج.م متوسط</p></div>';
             html+='<div class="stat-card"><p class="text-xs text-gray-400">معدل التحويل</p><p class="text-2xl font-black text-amber-600">'+convRate+'%</p><div class="heat-bar mt-1"><div class="heat-fill bg-amber-500" style="width:'+convRate+'%"></div></div></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">توقعات الشهر</p><p class="text-2xl font-black text-purple-600">'+fmtNum(projected)+' ج.م</p><p class="text-xs text-gray-400 mt-1">'+fmtNum(dailyAvg)+' ج.م/يومياً</p></div>';
-            html+='</div>';
-
-            // صف ثانوي
+            html+='<div class="stat-card"><p class="text-xs text-gray-400">توقعات الشهر</p><p class="text-2xl font-black text-purple-600">'+fmtNum(projected)+' ج.م</p><p class="text-xs text-gray-400 mt-1">'+fmtNum(dailyAvg)+' ج.م/يومياً</p></div></div>';
             html+='<div class="grid grid-cols-2 gap-3 mb-4">';
             html+='<div class="stat-card text-center"><p class="text-xs text-gray-400">💵 نقدي</p><p class="text-xl font-black text-green-600">'+cash+'</p><p class="text-xs text-gray-400">'+fmtNum(cash>0?Math.round((cash/orders.length)*100):0)+'%</p></div>';
             html+='<div class="stat-card text-center"><p class="text-xs text-gray-400">📋 آجل</p><p class="text-xl font-black text-orange-600">'+credit+'</p><p class="text-xs text-gray-400">'+fmtNum(credit>0?Math.round((credit/orders.length)*100):0)+'%</p></div>';
             html+='<div class="stat-card text-center"><p class="text-xs text-gray-400">⏳ معلقة</p><p class="text-xl font-black text-red-600">'+pending+'</p></div>';
-            html+='<div class="stat-card text-center"><p class="text-xs text-gray-400">✅ مكتملة</p><p class="text-xl font-black text-emerald-600">'+invoiced+'</p></div>';
-            html+='</div>';
-
-            // تريند المبيعات اليومية
+            html+='<div class="stat-card text-center"><p class="text-xs text-gray-400">✅ مكتملة</p><p class="text-xl font-black text-emerald-600">'+invoiced+'</p></div></div>';
             html+='<div class="card mb-4"><h3 class="font-bold mb-3">📈 تريند المبيعات اليومية</h3><div style="height:250px"><canvas id="chart-trend"></canvas></div></div>';
             html+='<button onclick="App.switchTab(\'team\')" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black text-lg"><i class="fa-solid fa-users ml-2"></i> أداء الفريق</button>';
-            safeHTML(byId('mainContent'),html);
-
-            setTimeout(function(){
-                var days={},labels=[],data=[];
-                for(var i=0;i<orders.length;i++){var d=orders[i].order_date||'';days[d]=(days[d]||0)+(Number(orders[i].total_amount)||0);}
-                var st=new Date(firstDay),en=new Date(today);
-                for(var dt=new Date(st);dt<=en;dt.setDate(dt.getDate()+1)){labels.push(dt.toISOString().split('T')[0]);data.push(days[labels[labels.length-1]]||0);}
-                var ctx=byId('chart-trend');if(ctx&&typeof Chart!=='undefined'){s.charts['trend']=new Chart(ctx.getContext('2d'),{type:'line',data:{labels:labels,datasets:[{label:'المبيعات (ج.م)',data:data,borderColor:'#4f46e5',backgroundColor:'rgba(79,70,229,0.1)',fill:true,tension:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top'}}}});}
-            },300);
-        }).catch(function(){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');});
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+            setTimeout(function(){var days={},labels=[],data=[];for(var i=0;i<orders.length;i++){var d=orders[i].order_date||'';days[d]=(days[d]||0)+(Number(orders[i].total_amount)||0);}var st=new Date(firstDay),en=new Date(today);for(var dt=new Date(st);dt<=en;dt.setDate(dt.getDate()+1)){labels.push(dt.toISOString().split('T')[0]);data.push(days[labels[labels.length-1]]||0);}var ctx=RW_UI.byId('chart-trend');if(ctx&&typeof Chart!=='undefined'){s.charts['trend']=new Chart(ctx.getContext('2d'),{type:'line',data:{labels:labels,datasets:[{label:'المبيعات (ج.م)',data:data,borderColor:'#4f46e5',backgroundColor:'rgba(79,70,229,0.1)',fill:true,tension:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top'}}}});}},300);
+        }).catch(function(){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');});
     },
 
-    // 🆕 الفريق مع KPIs فردية
-    renderTeam: function() {
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
-        var today=new Date().toISOString().split('T')[0];
-        var firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
-        supabase.from('users').select('email,name,role').in('role',['مندوب مبيعات','مندوب بيع مباشر','كاشير','تلي سيلز']).then(function(uR){
-            var users=uR.data||[];
-            supabase.from('orders').select('created_by,total_amount,payment_type,order_status').gte('order_date',firstDay).lte('order_date',today).then(function(oR){
-                var orders=oR.data||[],stats={};
+    renderTeam: function(){
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+        var today=new Date().toISOString().split('T')[0],firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
+        supabase.from('users').select('email,name,role').in('role',['مندوب مبيعات','مندوب بيع مباشر','كاشير','تلي سيلز']).then(function(uR){var users=uR.data||[];
+            supabase.from('orders').select('created_by,total_amount,payment_type,order_status').gte('order_date',firstDay).lte('order_date',today).then(function(oR){var orders=oR.data||[],stats={};
                 for(var i=0;i<orders.length;i++){var o=orders[i],by=o.created_by||'غير معروف';if(!stats[by])stats[by]={orders:0,total:0,cash:0,credit:0,invoiced:0};stats[by].orders++;stats[by].total+=Number(o.total_amount)||0;if(o.payment_type==='نقدي')stats[by].cash++;else stats[by].credit++;if(o.order_status==='Invoiced')stats[by].invoiced++;}
-                // ترتيب تنازلي
                 users.sort(function(a,b){return(stats[b.email]?stats[b.email].total:0)-(stats[a.email]?stats[a.email].total:0);});
                 var html='<h2 class="text-lg font-black mb-4">👥 أداء الفريق – الشهر الحالي</h2>';
                 if(!users.length){html+='<div class="card text-center text-gray-500">لا يوجد مندوبون</div>';}
                 else{for(var j=0;j<users.length;j++){var u=users[j],st=stats[u.email]||{orders:0,total:0,cash:0,credit:0,invoiced:0},has=st.orders>0,conv=st.orders>0?Math.round((st.invoiced/st.orders)*100):0,target=50000,pct=Math.min(100,Math.round((st.total/target)*100)),barC=pct>=100?'bg-emerald-500':pct>=50?'bg-blue-500':'bg-red-400';
-                html+='<div class="card mb-3 '+(has?'border-indigo-200':'border-gray-100 bg-gray-50')+'">';
-                html+='<div class="flex justify-between items-center mb-3"><div><span class="font-bold text-lg">'+(u.name||u.email)+'</span><p class="text-xs text-gray-400">'+(u.role||'')+'</p></div>'+(has?'<span class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold pulse">🟢 نشط</span>':'<span class="px-3 py-1 bg-gray-100 text-gray-400 rounded-full text-xs font-bold">⚪ غير نشط</span>')+'</div>';
+                html+='<div class="card mb-3 '+(has?'border-indigo-200':'border-gray-100 bg-gray-50')+'"><div class="flex justify-between items-center mb-3"><div><span class="font-bold text-lg">'+(u.name||u.email)+'</span><p class="text-xs text-gray-400">'+(u.role||'')+'</p></div>'+(has?'<span class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold pulse">🟢 نشط</span>':'<span class="px-3 py-1 bg-gray-100 text-gray-400 rounded-full text-xs font-bold">⚪ غير نشط</span>')+'</div>';
                 html+='<div class="grid grid-cols-4 gap-2 text-center mb-2"><div><p class="text-xs text-gray-400">أوردرات</p><p class="font-black">'+st.orders+'</p></div><div><p class="text-xs text-gray-400">الإجمالي</p><p class="font-black text-indigo-600">'+fmtNum(st.total)+'</p></div><div><p class="text-xs text-gray-400">نقدي</p><p class="font-bold text-green-600">'+st.cash+'</p></div><div><p class="text-xs text-gray-400">تحويل</p><p class="font-bold text-amber-600">'+conv+'%</p></div></div>';
-                html+='<div class="flex justify-between text-xs font-bold mb-1"><span>'+fmtNum(st.total)+' ج.م</span><span>الهدف: '+fmtNum(target)+' ج.م</span></div>';
-                html+='<div class="heat-bar mb-1"><div class="heat-fill '+barC+'" style="width:'+pct+'%"></div></div><p class="text-xs text-gray-400">'+pct+'% من الهدف</p></div>';}}
-                safeHTML(byId('mainContent'),html);
+                html+='<div class="flex justify-between text-xs font-bold mb-1"><span>'+fmtNum(st.total)+' ج.م</span><span>الهدف: '+fmtNum(target)+' ج.م</span></div><div class="heat-bar mb-1"><div class="heat-fill '+barC+'" style="width:'+pct+'%"></div></div><p class="text-xs text-gray-400">'+pct+'% من الهدف</p></div>';}}
+                RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
             });
-        }).catch(function(){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');});
+        }).catch(function(){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-red-500">فشل تحميل بيانات الفريق</div>');});
     },
 
-    renderLive: function() {
-        var s=this; safeHTML(byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
-        supabase.from('orders').select('order_code,customer_name,total_amount,created_by,order_status,order_date').order('order_date',{ascending:false}).limit(30).then(function(r){
-            var orders=r.data||[],html='<h2 class="text-lg font-black mb-4">🔴 أحدث الأوردرات</h2>';
-            if(!orders.length){html+='<div class="card text-center text-gray-500">لا توجد أوردرات</div>';}
-            else{for(var i=0;i<orders.length;i++){var o=orders[i],sc=o.order_status==='Invoiced'?'bg-green-100 text-green-700':o.order_status==='Confirmed'?'bg-blue-100 text-blue-700':o.order_status==='Pending'?'bg-amber-100 text-amber-700':o.order_status==='Cancelled'?'bg-red-100 text-red-700':'bg-gray-100 text-gray-700',sl=o.order_status==='Invoiced'?'مفوتر':o.order_status==='Confirmed'?'مؤكد':o.order_status==='Pending'?'معلق':o.order_status==='Cancelled'?'ملغي':(o.order_status||'---');
-            html+='<div class="card mb-2"><div class="flex justify-between items-center"><div><span class="font-bold">'+(o.order_code||'')+'</span><span class="text-xs text-gray-400 mr-2">'+(o.customer_name||'')+'</span></div><span class="px-2 py-0.5 rounded-full text-xs font-bold '+sc+'">'+sl+'</span></div><div class="flex justify-between items-center mt-2"><span class="text-xs text-gray-500"><i class="fa-solid fa-user ml-1"></i> '+(o.created_by||'---')+'</span><span class="font-bold text-indigo-600">'+fmtNum(o.total_amount)+' ج.م</span></div></div>';}}
-            safeHTML(byId('mainContent'),html);
-        }).catch(function(){safeHTML(byId('mainContent'),'<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');});
+    renderLive: function(){
+        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
+        supabase.from('orders').select('order_code,customer_name,total_amount,created_by,order_status,order_date').order('order_date',{ascending:false}).limit(30).then(function(r){var orders=r.data||[],html='<h2 class="text-lg font-black mb-4">🔴 أحدث الأوردرات</h2>';
+        if(!orders.length){html+='<div class="card text-center text-gray-500">لا توجد أوردرات</div>';}
+        else{for(var i=0;i<orders.length;i++){var o=orders[i],sc=o.order_status==='Invoiced'?'bg-green-100 text-green-700':o.order_status==='Confirmed'?'bg-blue-100 text-blue-700':o.order_status==='Pending'?'bg-amber-100 text-amber-700':o.order_status==='Cancelled'?'bg-red-100 text-red-700':'bg-gray-100 text-gray-700',sl=o.order_status==='Invoiced'?'مفوتر':o.order_status==='Confirmed'?'مؤكد':o.order_status==='Pending'?'معلق':o.order_status==='Cancelled'?'ملغي':(o.order_status||'---');
+        html+='<div class="card mb-2"><div class="flex justify-between items-center"><div><span class="font-bold">'+(o.order_code||'')+'</span><span class="text-xs text-gray-400 mr-2">'+(o.customer_name||'')+'</span></div><span class="px-2 py-0.5 rounded-full text-xs font-bold '+sc+'">'+sl+'</span></div><div class="flex justify-between items-center mt-2"><span class="text-xs text-gray-500"><i class="fa-solid fa-user ml-1"></i> '+(o.created_by||'---')+'</span><span class="font-bold text-indigo-600">'+fmtNum(o.total_amount)+' ج.م</span></div></div>';}}
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);}).catch(function(){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');});
     }
 };
-if('serviceWorker' in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}
+RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded',function(){App.init();});
 </script>
 <script src="../register-sw.js"></script>
