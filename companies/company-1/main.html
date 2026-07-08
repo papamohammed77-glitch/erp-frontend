@@ -6171,40 +6171,48 @@ var RW_Warehouse = (function() {
         } catch(e) { hideLoader(); showToast('فشل تحميل البيانات', 'error'); }
     }
 
-    async function _saveSettlement() {
+    function _saveSettlement() {
         var data = window._settlementData;
         if (!data) { showToast('اختر رانشيتاً أولاً', 'warning'); return; }
         var rs = data.rs;
-        var totalShortageValue = data.totalShortageValue || 0;
+        if (!rs || !rs.runsheet_code) { showToast('بيانات الرانشيت غير مكتملة', 'error'); return; }
+        
         showLoader('جاري حفظ التسوية...');
-        try {
-            var ses = await supabase.auth.getSession(), token = ses.data.session ? ses.data.session.access_token : null;
-            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/save-daily-settlement', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ rsId: rs.runsheet_code, driverEmail: rs.driver_id, driverName: rs.driver_id, vehicleId: rs.vehicle_id, items: Object.values(data.items), totalShortage: data.totalShortage, totalShortageValue: totalShortageValue, notes: '' }) });
-            var json = await res.json(); hideLoader();
-            if (json.success) { showToast('تم حفظ التسوية: ' + json.settlementId, 'success'); byId('settlement-details-container').classList.add('hidden'); }
-            else showToast(json.msg || 'فشل الحفظ', 'error');
-        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
-    }
-
-    // ==================== دوال إجرائية (Start) لأزرار الرانشيتات ====================
-    async function _startPicking(code) { await _changeStatus(code, 'start-picking'); }
-    async function _startLoading(code) { await _changeStatus(code, 'start-loading'); }
-    async function _startDelivery(code) { await _changeStatus(code, 'start-delivery'); }
-    async function _startReturn(code) { await _changeStatus(code, 'start-return'); }
-    async function _confirmUnload(code) {
-        var cf = await Swal.fire({ title: 'تأكيد التفريغ', text: 'إعادة جميع الكميات للمخزون؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم', cancelButtonText: 'لا' });
-        if (!cf.isConfirmed) return;
-        await _changeStatus(code, 'unload-runsheet');
-    }
-    async function _changeStatus(code, funcName) {
-        showLoader('جاري تحديث الحالة...');
-        var ses = await supabase.auth.getSession(), t = ses.data.session?.access_token;
-        try {
-            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/' + funcName, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ runsheet_code: code }) });
-            var json = await res.json(); hideLoader();
-            if (json.success) showToast('تم بنجاح', 'success');
-            else showToast(json.msg || 'فشل', 'error');
-        } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
+        
+        supabase.auth.getSession().then(function(ses) {
+            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+            if (!token) { hideLoader(); showToast('انتهت الجلسة', 'error'); return; }
+            
+            return fetch(RW_SUPABASE_URL + '/functions/v1/save-daily-settlement', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    runsheet_code: rs.runsheet_code,
+                    notes: 'تسوية يومية للرانشيت ' + rs.runsheet_code
+                })
+            });
+        }).then(function(res) {
+            if (!res) return;
+            return res.json();
+        }).then(function(json) {
+            hideLoader();
+            if (json && json.success) {
+                showToast('تم حفظ التسوية: ' + json.settlement_code, 'success');
+                var container = byId('settlement-details-container');
+                if (container) container.classList.add('hidden');
+                var sel = byId('settlement-rs-select');
+                if (sel) sel.value = '';
+            } else {
+                showToast((json && json.msg) || 'فشل الحفظ', 'error');
+            }
+        }).catch(function(e) {
+            hideLoader();
+            showToast('فشل الاتصال', 'error');
+            console.error(e);
+        });
     }
 function _openPickingModal(rsCode) {
     if (!rsCode) { showToast('رقم الرانشيت غير صالح', 'error'); return; }
