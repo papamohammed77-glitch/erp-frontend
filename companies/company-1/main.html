@@ -253,14 +253,28 @@ function RW_Audit_log(action, tableName, recordId, oldData, newData) {
             old_data: oldData || null,
             new_data: newData || null
         };
-        // استخدام Edge Function بصمت
-        if (typeof supabase !== 'undefined' && supabase && supabase.functions) {
-            supabase.functions.invoke('log-action', { body: payload }).then(function(res) {
-                if (res.error) {
-                    console.warn('Audit log failed:', res.error.message);
-                }
+        // استخدام fetch اليدوي بصمت (المادة ٦ من الدستور)
+        if (typeof supabase !== 'undefined' && supabase && supabase.auth) {
+            supabase.auth.getSession().then(function(sessionRes) {
+                var token = (sessionRes && sessionRes.data && sessionRes.data.session) ? sessionRes.data.session.access_token : null;
+                if (!token) return;
+                
+                fetch(RW_SUPABASE_URL + '/functions/v1/log-action', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify(payload)
+                }).then(function(res) {
+                    if (!res.ok) {
+                        console.warn('Audit log failed: HTTP ' + res.status);
+                    }
+                }).catch(function(e) {
+                    console.warn('Audit log fetch error:', e);
+                });
             }).catch(function(e) {
-                console.warn('Audit log error:', e);
+                console.warn('Audit log session error:', e);
             });
         }
     } catch (e) {
