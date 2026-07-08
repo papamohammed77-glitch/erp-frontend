@@ -12,20 +12,24 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
         .auth-bg{background:linear-gradient(135deg,#164e63 0%,#155e75 40%,#0891b2 100%)}
         .card{background:#fff;border-radius:24px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.02),0 8px 24px rgba(0,0,0,0.03);transition:all 0.2s ease}
-        .card:active{transform:scale(0.985)}
-        .btn-primary{background:linear-gradient(135deg,#0891b2,#06b6d4);color:#fff;padding:1rem 1.5rem;border-radius:16px;font-weight:700;border:none;cursor:pointer;width:100%;box-shadow:0 4px 12px rgba(8,145,178,0.25)}
-        .btn-primary:active{transform:scale(0.97)}
-        .tab-btn{transition:all 0.2s ease}
+        .card:active{transform:scale(0.985);background:#fafafa}
+        .btn-primary{background:linear-gradient(135deg,#0891b2,#06b6d4);color:#fff;padding:1rem 1.5rem;border-radius:16px;font-weight:700;border:none;cursor:pointer;width:100%;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(8,145,178,0.25);font-size:1.1rem}
+        .btn-primary:active{transform:scale(0.97);box-shadow:0 2px 6px rgba(8,145,178,0.15)}
+        .tab-btn{transition:all 0.2s ease;padding:0.9rem 1.2rem;font-weight:800;font-size:0.85rem;border-bottom:3px solid transparent;color:#94a3b8;cursor:pointer;background:transparent;border-top:none;border-left:none;border-right:none}
+        .tab-btn.active{border-bottom-color:#0891b2;color:#0f172a}
+        .progress-bar{transition:width 0.6s ease}
         .slide-in{animation:slideIn 0.3s ease}
-        @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-        .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
+        @keyframes slideIn{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:translateY(0)}}
+        .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:16px}
         @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-        .search-dropdown{max-height:60vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.12)}
+        .grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1rem}
+        @media(min-width:768px){.grid-cards{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -54,15 +58,16 @@
     <header class="bg-gradient-to-r from-cyan-700 to-cyan-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
         <span class="font-black text-base">🔄 مسؤول التفريغ</span>
         <div class="flex items-center gap-2">
-            <span class="text-xs font-bold" id="headerUserName"></span>
+            <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+            <span id="connLabel" class="text-xs font-bold">متصل</span>
             <button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
         </div>
     </header>
 
     <div class="flex gap-1.5 p-2 bg-white border-b border-slate-100 overflow-x-auto flex-shrink-0">
-        <button onclick="App.switchTab('pending')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm bg-cyan-600 text-white shadow-sm shadow-cyan-200" id="tab-pending">🔄 قيد التفريغ</button>
-        <button onclick="App.switchTab('completed')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-completed">✅ مكتملة</button>
-        <button onclick="App.switchTab('account')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-account">⚙️ حسابي</button>
+        <button onclick="App.switchTab('pending')" class="tab-btn active" id="tab-pending">🔄 قيد التفريغ</button>
+        <button onclick="App.switchTab('completed')" class="tab-btn" id="tab-completed">✅ مكتملة</button>
+        <button onclick="App.switchTab('account')" class="tab-btn" id="tab-account">⚙️ حسابي</button>
     </div>
 
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
@@ -78,30 +83,20 @@ var App = {
     searchResults: [],
 
     togglePass: function(){
-        var p = RW_UI.byId('loginPass');
-        var i = RW_UI.byId('passIcon');
+        var p = RW_UI.byId('loginPass'); var i = RW_UI.byId('passIcon');
         if(p.type === 'password'){ p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; }
         else { p.type = 'password'; i.className = 'fa-solid fa-eye'; }
     },
 
     doLogin: function(){
-        var email = RW_UI.byId('loginEmail').value.trim();
-        var pass = RW_UI.byId('loginPass').value.trim();
-        if(!email || !pass){
-            RW_UI.byId('loginMsg').innerText = 'أدخل البيانات';
-            RW_UI.byId('loginMsg').classList.remove('hidden');
-            return;
-        }
+        var email = RW_UI.byId('loginEmail').value.trim(); var pass = RW_UI.byId('loginPass').value.trim();
+        if(!email || !pass){ RW_UI.byId('loginMsg').innerText = 'أدخل البيانات'; RW_UI.byId('loginMsg').classList.remove('hidden'); return; }
         RW_UI.byId('loginMsg').classList.add('hidden');
         RW_UI.showLoader('جاري تسجيل الدخول...');
         RW_Auth.doLogin(email, pass, function(user, err) {
             RW_UI.hideLoader();
-            if (err) {
-                RW_UI.byId('loginMsg').innerText = err;
-                RW_UI.byId('loginMsg').classList.remove('hidden');
-            } else {
-                App.init();
-            }
+            if (err) { RW_UI.byId('loginMsg').innerText = err; RW_UI.byId('loginMsg').classList.remove('hidden'); }
+            else { App.init(); }
         });
     },
 
@@ -109,16 +104,15 @@ var App = {
         var self = this;
         RW_Auth.init(function(user, err) {
             if (err || !user) {
+                if (err === 'NO_SESSION') return;
                 RW_UI.showError('انتهت الجلسة. يرجى إعادة التحميل.', function() { location.reload(); });
                 return;
             }
             self.currentUser = user;
-            
             if (!user.isOwner && user.activeWarehouseRole !== 'تفريغ') {
                 RW_UI.showError('دورك النشط هو "' + (user.activeWarehouseRole || 'غير محدد') + '". الرجاء التواصل مع مشرف المخازن.', function() { RW_Auth.doLogout(); });
                 return;
             }
-
             RW_UI.safeText(RW_UI.byId('headerUserName'), user.name);
             self.enterApp();
         });
@@ -142,21 +136,19 @@ var App = {
         var tabs = ['pending', 'completed', 'account'];
         for (var i = 0; i < tabs.length; i++) {
             var btn = RW_UI.byId('tab-' + tabs[i]);
-            if (btn) { btn.classList.remove('bg-cyan-600', 'text-white', 'shadow-sm', 'shadow-cyan-200'); btn.classList.add('text-slate-400'); }
+            if (btn) { btn.classList.remove('active'); }
         }
         var activeBtn = RW_UI.byId('tab-' + tab);
-        if (activeBtn) { activeBtn.classList.add('bg-cyan-600', 'text-white', 'shadow-sm', 'shadow-cyan-200'); activeBtn.classList.remove('text-slate-400'); }
+        if (activeBtn) { activeBtn.classList.add('active'); }
         
         if (tab === 'pending') this.loadRunsheets();
         else if (tab === 'completed') this.loadCompleted();
         else if (tab === 'account') this.renderAccount();
     },
 
-    // ==================== تحميل الرانشيتات المحملة ====================
     loadRunsheets: function(){
         var self = this;
         RW_UI.showSkeleton('mainContent', 3, 'card');
-
         supabase.from('runsheets').select('runsheet_code, run_date, driver_id, status').in('status', ['Loaded', 'Delivering']).order('run_date', { ascending: false }).limit(30).then(function(res) {
             self.runsheets = res.data || [];
             self.renderList();
@@ -169,13 +161,14 @@ var App = {
         var self = this;
         var html = '';
         html += '<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">' + (this.currentUser.name || 'زميل') + '</span> 👋</p></div>';
+        
         html += '<div class="relative mb-4">';
         html += '<input type="text" id="searchRS" placeholder="🔍 ابحث عن رقم رانشيت..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-cyan-400 outline-none font-semibold text-sm shadow-sm" oninput="App.onSearchInput(this.value)">';
-        html += '<div id="searchDropdown" class="search-dropdown absolute top-full left-0 right-0 bg-white rounded-2xl mt-2 hidden z-40 shadow-lg max-h-60 overflow-y-auto border border-slate-100"></div>';
+        html += '<div id="searchDropdown" class="absolute top-full left-0 right-0 bg-white rounded-2xl mt-2 hidden z-40 shadow-lg max-h-60 overflow-y-auto border border-slate-100"></div>';
         html += '</div>';
+        
         html += '<h2 class="text-lg font-black mb-4">🔄 رانشيتات جاهزة للتفريغ</h2>';
         
-        // ✅ إصلاح: فلترة محلية بسيطة
         var filtered = this.runsheets;
         var searchInput = RW_UI.byId('searchRS');
         var searchDropdown = RW_UI.byId('searchDropdown');
@@ -191,13 +184,26 @@ var App = {
         if (filtered.length === 0) {
             html += '<div class="text-center py-12"><div class="text-6xl mb-4">☕</div><p class="text-slate-400 font-bold">لا توجد رانشيتات للتفريغ.</p><p class="text-slate-300 text-sm mt-1">استمتع بقهوتك حتى تأتي مهمة جديدة!</p></div>';
         } else {
+            html += '<div class="grid-cards">';
             for (var i = 0; i < filtered.length; i++) {
                 var rs = filtered[i];
                 var isLoaded = rs.status === 'Loaded';
-                var statusColor = isLoaded ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600';
-                var statusLabel = isLoaded ? '📦 جاهز للتفريغ' : '🚚 قيد التوصيل';
-                html += '<div class="card mb-3 cursor-pointer slide-in hover:shadow-md transition" onclick="App.viewDetails(\'' + rs.runsheet_code + '\')"><div class="flex justify-between items-center"><div><span class="font-black text-lg text-slate-800">' + rs.runsheet_code + '</span><p class="text-xs text-slate-400">' + rs.run_date + ' | السائق: ' + (rs.driver_id || '---') + '</p></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span><i class="fa-solid fa-chevron-left text-slate-300 text-xs"></i></div></div></div>';
+                var statusColor = isLoaded ? 'bg-cyan-50 text-cyan-600 border-cyan-200' : 'bg-amber-50 text-amber-600 border-amber-200';
+                var statusIcon = isLoaded ? '📦' : '🚚';
+                var statusLabel = isLoaded ? 'جاهز للتفريغ' : 'قيد التوصيل';
+                var borderColor = isLoaded ? 'border-cyan-300' : 'border-amber-300';
+                
+                html += '<div class="card cursor-pointer slide-in border-2 ' + borderColor + ' hover:shadow-md transition" onclick="App.viewDetails(\'' + rs.runsheet_code + '\')">';
+                html += '<div class="flex flex-col items-center text-center">';
+                html += '<span class="text-3xl mb-2">' + statusIcon + '</span>';
+                html += '<span class="font-black text-lg text-slate-800">' + rs.runsheet_code + '</span>';
+                html += '<p class="text-xs text-slate-400 mt-1">' + rs.run_date + '</p>';
+                html += '<p class="text-xs text-slate-500 mt-1">السائق: ' + (rs.driver_id || '---') + '</p>';
+                html += '<span class="mt-2 px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span>';
+                html += '<button class="btn-primary mt-3 text-sm py-2"><i class="fa-solid fa-eye ml-1"></i> معاينة</button>';
+                html += '</div></div>';
             }
+            html += '</div>';
         }
         RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
     },
@@ -240,7 +246,6 @@ var App = {
         dd.classList.remove('hidden');
     },
 
-    // ✅ نافذة معاينة تفاصيل الرانشيت قبل التفريغ
     viewDetails: function(code) {
         var self = this;
         var dd = RW_UI.byId('searchDropdown'); if (dd) dd.classList.add('hidden');
@@ -251,31 +256,27 @@ var App = {
             supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id).then(function(detRes) {
                 RW_UI.hideLoader();
                 var items = detRes.data || [];
-                if (items.length === 0) {
-                    RW_UI.toast('لا توجد أصناف في هذا الرانشيت', 'info');
-                    return;
-                }
-                var html = '<div class="text-right space-y-4" style="max-height:70vh;overflow-y:auto;">';
-                html += '<div class="bg-cyan-50 p-4 rounded-2xl"><h3 class="font-black text-xl text-cyan-800">' + code + '</h3><p class="text-xs text-slate-500">التاريخ: ' + (rs.run_date || '') + ' | السائق: ' + (rs.driver_id || '---') + ' | الحالة: ' + rs.status + '</p></div>';
+                if (items.length === 0) { RW_UI.toast('لا توجد أصناف في هذا الرانشيت', 'info'); return; }
                 
                 var totalItems = 0, totalQty = 0, totalValue = 0;
-                html += '<div class="overflow-x-auto"><table class="w-full text-sm border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية المحمّلة</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                var itemsHtml = '<div class="overflow-x-auto"><table class="w-full text-sm border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية المحمّلة</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
                 for (var i = 0; i < items.length; i++) {
                     var it = items[i];
                     var qty = Number(it.qty_loaded) || 0;
                     var price = Number(it.unit_price) || 0;
                     var lineTotal = qty * price;
-                    totalItems++;
-                    totalQty += qty;
-                    totalValue += lineTotal;
-                    html += '<tr class="border-t"><td class="p-2 font-semibold">' + (it.item_name || '') + '</td><td class="p-2 text-center">' + (it.unit || 'حبة') + '</td><td class="p-2 text-center font-bold">' + qty + '</td><td class="p-2 text-center">' + RW_UI.formatNumber(price) + '</td><td class="p-2 text-center font-bold">' + RW_UI.formatNumber(lineTotal) + '</td></tr>';
+                    totalItems++; totalQty += qty; totalValue += lineTotal;
+                    itemsHtml += '<tr class="border-t"><td class="p-2 font-semibold">' + (it.item_name || '') + '</td><td class="p-2 text-center">' + (it.unit || 'حبة') + '</td><td class="p-2 text-center font-bold">' + qty + '</td><td class="p-2 text-center">' + RW_UI.formatNumber(price) + '</td><td class="p-2 text-center font-bold">' + RW_UI.formatNumber(lineTotal) + '</td></tr>';
                 }
-                html += '</tbody></table></div>';
+                itemsHtml += '</tbody></table></div>';
                 
-                html += '<div class="bg-slate-50 rounded-2xl p-4 mt-3"><div class="grid grid-cols-2 gap-3 text-sm"><div><span class="text-slate-400">عدد الأصناف</span><p class="font-bold">' + totalItems + '</p></div><div><span class="text-slate-400">إجمالي الكمية</span><p class="font-bold">' + totalQty + '</p></div><div><span class="text-slate-400">القيمة التقديرية</span><p class="font-bold text-cyan-600">' + RW_UI.formatNumber(totalValue) + ' EGP</p></div></div></div>';
-                
+                var summaryHtml = '<div class="bg-slate-50 rounded-2xl p-4 mt-3"><div class="grid grid-cols-2 gap-3 text-sm"><div><span class="text-slate-400">عدد الأصناف</span><p class="font-bold">' + totalItems + '</p></div><div><span class="text-slate-400">إجمالي الكمية</span><p class="font-bold">' + totalQty + '</p></div><div><span class="text-slate-400">القيمة التقديرية</span><p class="font-bold text-cyan-600">' + RW_UI.formatNumber(totalValue) + ' EGP</p></div></div></div>';
+
+                var html = '<div class="text-right space-y-4" style="max-height:70vh;overflow-y:auto;">';
+                html += '<div class="bg-cyan-50 p-4 rounded-2xl"><h3 class="font-black text-xl text-cyan-800">' + code + '</h3><p class="text-xs text-slate-500">التاريخ: ' + (rs.run_date || '') + ' | السائق: ' + (rs.driver_id || '---') + ' | الحالة: ' + rs.status + '</p></div>';
+                html += itemsHtml;
+                html += summaryHtml;
                 html += '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 mt-3"><p class="text-sm font-bold text-amber-700"><i class="fa-solid fa-triangle-exclamation ml-1"></i> تنبيه: سيتم إعادة جميع هذه الكميات إلى المخزون.</p></div>';
-                
                 html += '<button onclick="App.unloadFromDetails(\'' + code + '\', ' + totalQty + ', \'' + (RW_UI.formatNumber(totalValue) || '0') + '\')" class="btn-primary mt-4"><i class="fa-solid fa-check ml-2"></i> تأكيد التفريغ وإعادة المخزون</button>';
                 html += '</div>';
                 
@@ -307,7 +308,6 @@ var App = {
         });
     },
 
-    // ==================== تبويب المكتملة ====================
     loadCompleted: function(){
         var self = this;
         RW_UI.showSkeleton('mainContent', 3, 'card');
@@ -328,7 +328,7 @@ var App = {
     renderCompletedList: function(){
         var html = '<h2 class="text-lg font-black mb-4">✅ سجل التفريغ المكتمل</h2>';
         if (!this.completedRunsheets.length) {
-            html += '<div class="text-center py-12"><div class="text-6xl mb-4">🏆</div><p class="text-slate-400 font-bold">لا توجد عمليات تفريغ مكتملة بعد.</p></div>';
+            html += '<div class="text-center py-16"><div class="text-5xl mb-4">🏆</div><p class="text-slate-400 font-bold">لا توجد عمليات تفريغ مكتملة بعد.</p><p class="text-slate-300 text-sm mt-1">كل ما تفرغه سيظهر هنا.</p></div>';
         } else {
             html += '<div class="space-y-2">';
             for (var i = 0; i < this.completedRunsheets.length; i++) {
@@ -356,6 +356,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+RW_SW.register('../sw.js');
+window.addEventListener('online', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
+window.addEventListener('offline', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
 </script>
 <script src="../register-sw.js"></script>
 </body>
