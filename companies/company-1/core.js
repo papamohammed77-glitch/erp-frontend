@@ -1,5 +1,5 @@
 // ============================================================
-// core.js – النواة المشتركة لنظام الروائع ERP (الإصدار 1.0)
+// core.js – النواة المشتركة لنظام الروائع ERP (الإصدار 1.1)
 // التزم بـ var و function فقط. لا تستخدم const أو let أو () =>
 // هذا الملف يُحمّل مرة واحدة في كل تطبيق PWA
 // ============================================================
@@ -200,6 +200,83 @@ var RW_DB = (function() {
         });
     }
 
+    function syncUp(appName, callback) {
+        var db = getDB(appName);
+        if (!db) {
+            if (callback) callback(false, 'Dexie غير مهيأ');
+            return;
+        }
+        db.pending_updates.where('status').equals('pending').toArray().then(function(pendingOps) {
+            if (!pendingOps || pendingOps.length === 0) {
+                if (callback) callback(true, null, 0);
+                return;
+            }
+            var totalOps = pendingOps.length;
+            var completedOps = 0;
+            var hasError = false;
+            var lastError = null;
+
+            for (var i = 0; i < pendingOps.length; i++) {
+                var op = pendingOps[i];
+                (function(operation) {
+                    // operation.type يجب أن يكون اسم Edge Function بالضبط (مثل 'save-sales-invoice')
+                    var token = RW_Auth.getToken();
+                    if (!token) {
+                        hasError = true;
+                        lastError = 'انتهت الجلسة';
+                        completedOps++;
+                        checkDone();
+                        return;
+                    }
+                    var bodyData = operation.data || operation.body || {};
+                    fetch(SUPABASE_URL + '/functions/v1/' + operation.type, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + token
+                        },
+                        body: JSON.stringify(bodyData)
+                    }).then(function(res) {
+                        if (!res.ok) {
+                            return res.json().then(function(err) {
+                                throw new Error(err.msg || err.error || 'خطأ في الخادم');
+                            });
+                        }
+                        return res.json();
+                    }).then(function(json) {
+                        if (json.success) {
+                            db.pending_updates.delete(operation.id).then(function() {
+                                completedOps++;
+                                checkDone();
+                            }).catch(function() {
+                                completedOps++;
+                                checkDone();
+                            });
+                        } else {
+                            hasError = true;
+                            lastError = json.msg || 'فشل المزامنة';
+                            completedOps++;
+                            checkDone();
+                        }
+                    }).catch(function(e) {
+                        hasError = true;
+                        lastError = e.message || 'فشل الاتصال';
+                        completedOps++;
+                        checkDone();
+                    });
+                })(op);
+            }
+
+            function checkDone() {
+                if (completedOps >= totalOps) {
+                    if (callback) callback(!hasError, hasError ? lastError : null, totalOps);
+                }
+            }
+        }).catch(function(e) {
+            if (callback) callback(false, e.message);
+        });
+    }
+
     function getItems(appName, callback) {
         var db = getDB(appName);
         if (!db) {
@@ -242,6 +319,7 @@ var RW_DB = (function() {
     return {
         getDB: getDB,
         syncDown: syncDown,
+        syncUp: syncUp,
         getItems: getItems,
         getCustomers: getCustomers,
         getBranches: getBranches
