@@ -346,7 +346,6 @@ var App = {
     },
 
     renderBalanceTab: function() {
-        // ✅ إصلاح: حماية (مراد)
         if (!this.activeRunsheet) { this.renderNoRunsheet(); return; }
         var totalLoaded = this.activeRunsheet ? (Number(this.activeRunsheet.total_amount) || 0) : 0;
         var totalDelivered = 0;
@@ -354,10 +353,28 @@ var App = {
             if (this.orders[i].order_status === 'Delivered') totalDelivered += Number(this.orders[i].total_amount) || 0;
         }
         var remaining = totalLoaded - totalDelivered;
+        
         var html = '<div class="slide-in space-y-4">';
-        html += '<div class="bg-gradient-to-br from-amber-400 to-amber-500 text-white rounded-3xl p-6 text-center shadow-xl shadow-amber-200"><p class="text-sm opacity-80">المبلغ المطلوب مني</p><p class="text-5xl font-black mt-2">' + RW_UI.formatNumber(remaining) + ' EGP</p></div>';
-        html += '<div class="card"><div class="flex justify-between"><span>قيمة الرانشيت</span><span class="font-bold">' + RW_UI.formatNumber(totalLoaded) + ' EGP</span></div></div>';
-        html += '<div class="card"><div class="flex justify-between"><span>تم تحصيله</span><span class="font-bold text-emerald-600">' + RW_UI.formatNumber(totalDelivered) + ' EGP</span></div></div>';
+        
+        // البطاقة الرئيسية
+        var statusColor = remaining <= 0 ? 'from-emerald-500 to-emerald-600 shadow-emerald-200' : 'from-red-500 to-red-600 shadow-red-200';
+        var statusIcon = remaining <= 0 ? '✅' : '⚠️';
+        var statusText = remaining <= 0 ? 'لا يوجد عليك مبلغ. أنت ملتزم.' : 'هذا هو المبلغ المطلوب منك الآن';
+        
+        html += '<div class="bg-gradient-to-br ' + statusColor + ' text-white rounded-3xl p-6 text-center shadow-xl">';
+        html += '<p class="text-sm opacity-80">' + statusIcon + ' ' + statusText + '</p>';
+        html += '<p class="text-5xl font-black mt-3">' + RW_UI.formatNumber(Math.abs(remaining)) + ' EGP</p>';
+        html += '</div>';
+        
+        // بطاقات التفاصيل
+        html += '<div class="grid grid-cols-2 gap-3">';
+        html += '<div class="card text-center"><p class="text-xs text-slate-400">📦 قيمة الحمولة</p><p class="text-2xl font-black text-blue-700 mt-1">' + RW_UI.formatNumber(totalLoaded) + '</p></div>';
+        html += '<div class="card text-center"><p class="text-xs text-slate-400">💰 تم تحصيله</p><p class="text-2xl font-black text-emerald-600 mt-1">' + RW_UI.formatNumber(totalDelivered) + '</p></div>';
+        html += '<div class="card text-center"><p class="text-xs text-slate-400">📋 مرتجع للمخزن</p><p class="text-2xl font-black text-amber-600 mt-1">' + RW_UI.formatNumber(totalLoaded - totalDelivered - remaining) + '</p></div>';
+        html += '<div class="card text-center"><p class="text-xs text-slate-400">⚖️ العجز</p><p class="text-2xl font-black ' + (remaining > 0 ? 'text-red-600' : 'text-emerald-600') + ' mt-1">' + RW_UI.formatNumber(remaining) + '</p></div>';
+        html += '</div>';
+        
+        html += '<p class="text-xs text-slate-400 text-center mt-2">⚙️ التسوية النهائية تتم من قبل المحاسب في النظام الأم.</p>';
         html += '</div>';
         RW_UI.safeHTML(document.getElementById('mainContent'), html);
     },
@@ -399,9 +416,27 @@ var App = {
 
     completeDelivery: function() {
         var self = this;
-        RW_UI.showConfirm('إنهاء الرحلة بالكامل؟ تأكد من تسليم جميع الأوردرات.', function() {
+        // ✅ إصلاح: طلب قراءة العداد النهائية قبل إنهاء الرحلة
+        Swal.fire({
+            title: 'إنهاء الرحلة',
+            html: '<div class="text-right"><label class="block text-sm font-bold text-slate-600 mb-2">عداد المسافة النهائي (كم) - إلزامي</label><input type="number" id="meterEnd" class="swal2-input w-full p-4 bg-slate-50 rounded-2xl border-2 border-blue-100 focus:border-blue-500 outline-none font-bold text-xl text-center" placeholder="أدخل قراءة العداد"></div>',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'تأكيد وإنهاء',
+            cancelButtonText: 'إلغاء',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600', cancelButton: '!rounded-xl' },
+            preConfirm: function() {
+                var meter = document.getElementById('meterEnd').value;
+                if (!meter) { Swal.showValidationMessage('أدخل قراءة العداد'); return false; }
+                return meter;
+            }
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
             RW_UI.showLoader();
-            RW_API.call('complete-delivery', { runsheet_code: self.activeRunsheet.runsheet_code }, function(json) {
+            RW_API.call('complete-delivery', { 
+                runsheet_code: self.activeRunsheet.runsheet_code, 
+                meter_end: parseFloat(result.value) 
+            }, function(json) {
                 RW_UI.hideLoader();
                 if (json.success) {
                     Swal.fire({ icon: 'success', title: '🏁 تم إنهاء الرحلة', text: 'عمل رائع! يمكنك العودة للمخزن.', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600' } });
