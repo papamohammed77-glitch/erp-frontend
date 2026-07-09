@@ -1,11 +1,20 @@
 // ============================================================
-// core.js – النواة المشتركة لنظام الروائع ERP (الإصدار 1.1)
+// core.js – النواة المشتركة لنظام الروائع ERP (الإصدار 1.2)
 // التزم بـ var و function فقط. لا تستخدم const أو let أو () =>
 // هذا الملف يُحمّل مرة واحدة في كل تطبيق PWA
 // ============================================================
 
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+
+// ✅ إنشاء عميل Supabase الموحد (إصلاح الخطأ القاتل)
+var supabase = (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function')
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+    : null;
+
+if (!supabase) {
+    console.error('❌ فشل إنشاء عميل Supabase. تأكد من تحميل مكتبة supabase أولاً.');
+}
 
 // ============================================================
 // الوحدة ١: RW_Auth – المصادقة والجلسة والصلاحيات
@@ -16,14 +25,10 @@ var RW_Auth = (function() {
     var pubUserId = null;
 
     function init(callback) {
-        if (typeof supabase === 'undefined') {
-            if (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function') {
-                window.supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-            } else {
-                console.error('❌ Supabase SDK غير محمّل');
-                if (callback) callback(null, 'Supabase SDK غير محمّل');
-                return;
-            }
+        if (!supabase) {
+            console.error('❌ Supabase غير مهيأ');
+            if (callback) callback(null, 'Supabase غير مهيأ');
+            return;
         }
         supabase.auth.getSession().then(function(res) {
             if (res.data && res.data.session) {
@@ -219,7 +224,6 @@ var RW_DB = (function() {
             for (var i = 0; i < pendingOps.length; i++) {
                 var op = pendingOps[i];
                 (function(operation) {
-                    // operation.type يجب أن يكون اسم Edge Function بالضبط (مثل 'save-sales-invoice')
                     var token = RW_Auth.getToken();
                     if (!token) {
                         hasError = true;
