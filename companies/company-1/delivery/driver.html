@@ -8,6 +8,8 @@
     <meta name="theme-color" content="#1e3a8a">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
@@ -20,8 +22,9 @@
         .card:active{transform:scale(0.98);background:#fafbfc}
         .btn-primary{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;padding:1rem 1.5rem;border-radius:16px;font-weight:700;border:none;cursor:pointer;width:100%;box-shadow:0 8px 20px rgba(37,99,235,0.25);transition:all 0.2s ease;font-size:1.1rem}
         .btn-primary:active{transform:scale(0.97);box-shadow:0 4px 10px rgba(37,99,235,0.2)}
+        .btn-success{background:linear-gradient(135deg,#10b981,#34d399);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(16,185,129,0.2)}
         .btn-outline{background:#fff;color:#2563eb;border:2px solid #2563eb;padding:0.75rem 1.5rem;border-radius:14px;font-weight:700;cursor:pointer;transition:all 0.2s ease}
-        .tab-btn{padding:0.9rem 1.2rem;font-weight:800;font-size:0.85rem;border-bottom:3px solid transparent;color:#94a3b8;cursor:pointer;background:transparent;border-top:none;border-left:none;border-right:none;transition:all 0.2s}
+        .tab-btn{padding:0.9rem 0.6rem;font-weight:800;font-size:0.75rem;border-bottom:3px solid transparent;color:#94a3b8;cursor:pointer;background:transparent;border-top:none;border-left:none;border-right:none;transition:all 0.2s}
         .tab-btn.active{border-bottom-color:#2563eb;color:#1e293b}
         .progress-bar{transition:width 0.6s ease}
         .slide-in{animation:slideIn 0.3s ease}
@@ -31,6 +34,9 @@
         .order-card{border-right:5px solid #2563eb;transition:all 0.2s}
         .order-card.delivered{border-right-color:#10b981;background:#f0fdf4}
         .order-card.pending{border-right-color:#f59e0b}
+        .map-pin{width:12px;height:12px;border-radius:50%;background:#0284c7;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
+        .map-pin.done{background:#10b981}
+        .map-pin.active{background:#f59e0b;width:16px;height:16px}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -65,11 +71,13 @@
         </div>
     </header>
 
-    <div class="flex gap-0 px-2 bg-white border-b border-slate-100 flex-shrink-0 overflow-x-auto">
+    <div class="flex gap-0 px-1 bg-white border-b border-slate-100 flex-shrink-0 overflow-x-auto">
         <button onclick="switchTab('runsheet')" class="tab-btn active" id="tab-runsheet">📋 الرانشيت</button>
         <button onclick="switchTab('orders')" class="tab-btn" id="tab-orders">📦 الأوردرات</button>
+        <button onclick="switchTab('map')" class="tab-btn" id="tab-map">🗺️ الخريطة</button>
         <button onclick="switchTab('vehicle')" class="tab-btn" id="tab-vehicle">🚛 السيارة</button>
         <button onclick="switchTab('balance')" class="tab-btn" id="tab-balance">⚖️ رصيدي</button>
+        <button onclick="switchTab('account')" class="tab-btn" id="tab-account">👤 حسابي</button>
     </div>
 
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
@@ -77,12 +85,13 @@
 
 <script>
 // ============================================================
-// التطبيق الرئيسي – driver.html (الإصدار الذهبي النهائي)
+// التطبيق الرئيسي – driver.html (الإصدار الذهبي الماسي النهائي)
 // مبني على core.js. يلتزم بالدستور.
 // ============================================================
 var db = new Dexie('RW_Driver');
 db.version(2).stores({ session: 'key', ordersCache: 'order_code', meta: 'key' });
 
+var ITEMS_IMAGE_CACHE = {};
 var App = {
     currentUser: null,
     activeRunsheet: null,
@@ -91,6 +100,12 @@ var App = {
     currentTab: 'runsheet',
     timerInterval: null,
     sessionStart: null,
+    mapObj: null,
+    mapMarkers: [],
+    pubUserId: null,
+    orderSession: null,
+    orderTimerInterval: null,
+    settings: { tax_rate: 0, delivery_fee: 0, currency: 'SAR' },
 
     init: function() {
         var self = this;
@@ -105,11 +120,33 @@ var App = {
             var hasAccess = isOwner || (perms && perms.indexOf('delivery') !== -1);
             if (!hasAccess) { RW_UI.showError('غير مصرح'); RW_Auth.doLogout(); return; }
             self.currentUser = user;
+            self.pubUserId = user.id;
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('mainApp').classList.remove('hidden');
-            RW_ImageCache.loadAll();
+            RW_ImageCache.loadAll(function() {
+                var items = window._rwAllItems || [];
+                for (var j = 0; j < items.length; j++) {
+                    if (items[j].item_code) {
+                        ITEMS_IMAGE_CACHE[items[j].item_code] = items[j].image_url || '';
+                    }
+                }
+            });
+            self.loadSettings();
             self.loadActiveRunsheet();
             RW_UI.updateConnectionStatus('connDot', 'connLabel');
+            self.checkForNewRunsheet();
+            setInterval(function() { self.checkForNewRunsheet(); }, 60000);
+        });
+    },
+
+    loadSettings: function() {
+        var self = this;
+        supabase.from('app_settings').select('tax_rate, delivery_fee, currency').single().then(function(sRes) {
+            if (sRes.data) {
+                self.settings.tax_rate = Number(sRes.data.tax_rate) || 0;
+                self.settings.delivery_fee = Number(sRes.data.delivery_fee) || 0;
+                self.settings.currency = sRes.data.currency || 'SAR';
+            }
         });
     },
 
@@ -120,7 +157,7 @@ var App = {
         supabase.from('runsheets')
             .select('*')
             .eq('driver_id', userId)
-            .in('status', ['Loaded', 'Delivering'])
+            .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning', 'Returned'])
             .order('run_date', { ascending: false })
             .limit(1)
             .maybeSingle()
@@ -141,9 +178,7 @@ var App = {
 
     loadDetailsForRunsheet: function() {
         var self = this;
-        // ✅ إصلاح: حماية من الاستدعاء بدون رانشيت نشط (اقتراح حسين - وافق مراد)
         if (!this.activeRunsheet) { this.renderNoRunsheet(); return; }
-        
         var rsId = this.activeRunsheet.id;
         Promise.all([
             supabase.from('orders').select('*').eq('runsheet_id', rsId).order('order_code'),
@@ -151,11 +186,12 @@ var App = {
         ]).then(function(results) {
             self.orders = results[0].data || [];
             self.vehicleStock = results[1].data || [];
-            // ✅ إصلاح: عرض التبويب النشط فقط (مراد)
             if (self.currentTab === 'runsheet') self.renderRunsheetTab();
             else if (self.currentTab === 'orders') self.renderOrdersTab();
+            else if (self.currentTab === 'map') self.renderMap();
             else if (self.currentTab === 'vehicle') self.renderVehicleTab();
             else if (self.currentTab === 'balance') self.renderBalanceTab();
+            else if (self.currentTab === 'account') self.renderAccountTab();
         }).catch(function() {
             RW_UI.showError('فشل تحميل تفاصيل الرانشيت');
         });
@@ -176,207 +212,57 @@ var App = {
         if (!rs) { this.renderNoRunsheet(); return; }
         var self = this;
         var html = '<div class="slide-in space-y-6">';
+        var status = rs.status;
+        var isLoaded = status === 'Loaded';
+        var isDelivering = status === 'Delivering';
+        var isDelivered = status === 'Delivered';
+        var isReturning = status === 'Returning';
+        var isReturned = status === 'Returned';
+        var icon, label;
+        if (isLoaded) { icon = '📦'; label = 'جاهز للتوصيل'; }
+        else if (isDelivering) { icon = '🚀'; label = 'جاري التوصيل'; }
+        else if (isDelivered) { icon = '✅'; label = 'تم التوصيل'; }
+        else if (isReturning) { icon = '↩️'; label = 'جاري المرتجعات'; }
+        else { icon = '🏁'; label = 'مكتملة'; }
         
         html += '<div class="bg-gradient-to-br from-blue-700 to-blue-600 text-white rounded-3xl p-6 shadow-xl shadow-blue-200">';
         html += '<div class="flex justify-between items-start mb-4">';
         html += '<div><span class="text-sm opacity-80">الرانشيت</span><h2 class="text-3xl font-black">' + (rs.runsheet_code || '') + '</h2></div>';
-        html += '<span class="px-3 py-1 rounded-full text-xs font-bold bg-white/20 backdrop-blur-sm">' + (rs.status === 'Delivering' ? '🚀 جاري التوصيل' : '📦 جاهز') + '</span>';
+        html += '<span class="px-3 py-1 rounded-full text-xs font-bold bg-white/20 backdrop-blur-sm">' + icon + ' ' + label + '</span>';
         html += '</div>';
         html += '<div class="grid grid-cols-2 gap-3 text-sm bg-white/10 rounded-2xl p-4">';
         html += '<div><p class="opacity-70 text-xs">الأوردرات</p><p class="font-black text-2xl">' + self.orders.length + '</p></div>';
         html += '<div><p class="opacity-70 text-xs">القيمة</p><p class="font-black text-2xl">' + RW_UI.formatNumber(rs.total_amount) + ' EGP</p></div>';
         html += '</div>';
-
-        if (rs.status === 'Delivering') {
+        if (isDelivering) {
             var deliveredCount = 0;
             for (var i = 0; i < self.orders.length; i++) { if (self.orders[i].order_status === 'Delivered') deliveredCount++; }
             var progress = self.orders.length > 0 ? Math.round((deliveredCount / self.orders.length) * 100) : 0;
             var elapsed = self.sessionStart ? self.getElapsedTime() : '00:00';
             html += '<div class="mt-4 bg-white/10 rounded-2xl p-3">';
-            // ✅ إصلاح المؤقت: id ثابت (مراد)
             html += '<div class="flex justify-between text-xs font-bold mb-1"><span>تقدم التسليم (' + deliveredCount + '/' + self.orders.length + ')</span><span id="timerDisplay">⏱️ ' + elapsed + '</span></div>';
             html += '<div class="w-full h-2 bg-white/20 rounded-full overflow-hidden"><div class="progress-bar h-full bg-emerald-400 rounded-full" style="width:' + progress + '%"></div></div>';
             html += '</div>';
         }
         html += '</div>';
 
-        if (rs.status === 'Loaded') {
-            html += '<div class="card"><label class="text-sm font-bold text-slate-600 block mb-3">عداد المسافة (كم) - إلزامي</label><input type="number" id="meterStart" class="w-full p-4 bg-slate-50 rounded-2xl border-2 border-blue-100 focus:border-blue-500 outline-none font-bold text-xl text-center" placeholder="أدخل قراءة العداد"></div>';
-            html += '<button onclick="App.startDelivery()" class="btn-primary"><i class="fa-solid fa-play ml-2"></i>بدء الرحلة</button>';
-        } else if (rs.status === 'Delivering') {
-            html += '<div class="grid grid-cols-2 gap-3">';
-            html += '<button onclick="App.completeDelivery()" class="btn-primary !bg-emerald-600 !shadow-emerald-200"><i class="fa-solid fa-flag-checkered ml-2"></i>إنهاء الرحلة</button>';
-            html += '<button onclick="App.cancelDelivery()" class="btn-outline !border-red-400 !text-red-500"><i class="fa-solid fa-xmark ml-1"></i>إلغاء</button>';
-            html += '</div>';
+        if (isLoaded) {
+            html += '<button onclick="App.showStartTripMeter()" class="btn-primary"><i class="fa-solid fa-play ml-2"></i>بدء الرحلة</button>';
+        } else if (isDelivering) {
+            html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary mb-3"><i class="fa-solid fa-list-check ml-2"></i>عرض الأوردرات</button>';
+            html += '<button onclick="App.showEndTripMeter()" class="btn-success w-full mt-2"><i class="fa-solid fa-flag-checkered ml-2"></i>إنهاء الرحلة</button>';
+        } else if (isDelivered) {
+            html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary"><i class="fa-solid fa-list-check ml-2"></i>عرض الأوردرات</button>';
+            html += '<p class="text-center text-sm text-slate-400 mt-4">✅ تم إنهاء الرحلة. الأوردرات للأرشيف فقط.</p>';
+        } else if (isReturning) {
+            html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary"><i class="fa-solid fa-list-check ml-2"></i>عرض الأوردرات</button>';
+            html += '<p class="text-center text-sm text-amber-500 mt-4">↩️ المرتجعات قيد المعالجة في المخزن.</p>';
+        } else if (isReturned) {
+            html += '<button onclick="App.switchTab(\'orders\')" class="btn-primary"><i class="fa-solid fa-list-check ml-2"></i>عرض الأوردرات</button>';
+            html += '<p class="text-center text-sm text-slate-400 mt-4">🏁 تمت المرتجعات. الأوردرات للأرشيف فقط.</p>';
         }
         RW_UI.safeHTML(document.getElementById('mainContent'), html);
-        if (rs.status === 'Delivering') this.startTimer();
-    },
-
-    renderOrdersTab: function() {
-        // ✅ إصلاح: حماية (مراد)
-        if (!this.activeRunsheet) { this.renderNoRunsheet(); return; }
-        if (!this.orders.length) {
-            var html = '<div class="flex flex-col items-center justify-center h-full text-center py-20 slide-in"><div class="text-6xl mb-4">📋</div><p class="text-slate-400 font-bold">لا توجد أوردرات</p></div>';
-            RW_UI.safeHTML(document.getElementById('mainContent'), html);
-            return;
-        }
-        var html = '<div class="slide-in space-y-3">';
-        for (var i = 0; i < this.orders.length; i++) {
-            var o = this.orders[i];
-            var isDelivered = o.order_status === 'Delivered';
-            var cardClass = isDelivered ? 'card order-card delivered' : 'card order-card pending';
-            html += '<div class="' + cardClass + '" onclick="App.openOrderModal(\'' + o.order_code + '\')">';
-            html += '<div class="flex justify-between items-start"><div><span class="font-black text-slate-800 text-lg">' + (o.customer_name || '') + '</span><p class="text-xs text-slate-400">' + (o.order_code || '') + ' | ' + (o.area || '') + '</p></div>';
-            html += '<div class="text-left"><span class="font-black text-lg ' + (isDelivered ? 'text-emerald-600' : 'text-amber-600') + '">' + RW_UI.formatNumber(o.total_amount) + ' EGP</span><br><span class="text-xs font-bold ' + (isDelivered ? 'text-emerald-500' : 'text-amber-500') + '">' + (isDelivered ? '✅ مسلّم' : '⏳ معلق') + '</span></div></div>';
-            html += '<div class="flex gap-2 mt-3"><a href="tel:' + (o.customer_phone || '') + '" class="flex-1 bg-green-50 text-green-700 font-bold py-2 rounded-xl text-sm text-center"><i class="fa-solid fa-phone ml-1"></i>اتصال</a><a href="https://wa.me/' + (o.customer_phone || '').replace(/\D/g,'') + '" target="_blank" class="flex-1 bg-emerald-50 text-emerald-700 font-bold py-2 rounded-xl text-sm text-center"><i class="fa-brands fa-whatsapp ml-1"></i>واتساب</a></div>';
-            html += '</div>';
-        }
-        html += '</div>';
-        RW_UI.safeHTML(document.getElementById('mainContent'), html);
-    },
-
-    openOrderModal: function(orderCode) {
-        var self = this;
-        // ✅ إصلاح: حماية إضافية (مراد)
-        if (!this.activeRunsheet || this.activeRunsheet.status !== 'Delivering') {
-            RW_UI.showError('لا يمكن تسليم أوردر بدون رحلة نشطة');
-            return;
-        }
-        RW_UI.showLoader();
-        supabase.from('orders').select('*').eq('order_code', orderCode).maybeSingle().then(function(oRes) {
-            var order = oRes.data;
-            if (!order) { RW_UI.hideLoader(); return; }
-            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
-                RW_UI.hideLoader();
-                var items = dRes.data || [];
-                window._currentOrderItems = items;
-                
-                var html = '<div class="text-right space-y-4" style="max-height:70vh;overflow-y:auto;">';
-                html += '<div class="bg-blue-50 p-4 rounded-2xl"><h3 class="font-black text-xl">' + (order.customer_name || '') + '</h3><p class="text-slate-500">' + (order.order_code || '') + ' | ' + (order.area || '') + '</p></div>';
-
-                for (var i = 0; i < items.length; i++) {
-                    var it = items[i];
-                    var loaded = Number(it.qty_loaded) || 0;
-                    var delivered = Number(it.qty_delivered) || 0;
-                    var imgHtml = RW_ImageCache.getImageHTML(it.item_code, 'w-20', 'h-20');
-                    
-                    html += '<div class="bg-white border rounded-2xl p-4 flex items-center gap-4">';
-                    html += '<div class="flex-shrink-0">' + imgHtml + '</div>';
-                    html += '<div class="flex-1"><p class="font-black text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + (it.unit || 'حبة') + '</p>';
-                    html += '<div class="grid grid-cols-2 gap-2 mt-2"><div><span class="text-xs text-slate-400">محمّل</span><p class="font-bold">' + loaded + '</p></div><div><span class="text-xs text-slate-400">مسلّم</span><p class="font-bold text-emerald-600">' + delivered + '</p></div></div>';
-                    // ✅ إصلاح: data-item-code لتحديد الصنف بدقة (حسين)
-                    html += '<div class="mt-2">';
-                    html += '<input type="number" id="delivered_' + i + '" class="swal-delivered-input w-full p-2 bg-slate-50 border rounded-xl text-center font-bold" value="' + delivered + '" placeholder="مسلّم" data-item-code="' + (it.item_code || '') + '">';
-                    html += '</div>';
-                    html += '</div></div>';
-                }
-
-                html += '<button onclick="App.saveOrderDelivery(\'' + orderCode + '\', ' + items.length + ')" class="btn-primary"><i class="fa-solid fa-save ml-2"></i>حفظ التسليم</button>';
-                html += '</div>';
-                Swal.fire({ title: 'تفاصيل الأوردر', html: html, width: '650px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl' } });
-            });
-        });
-    },
-
-    saveOrderDelivery: function(orderCode, itemCount) {
-        var self = this;
-        var items = [];
-        var orderItems = window._currentOrderItems || [];
-        
-        // ✅ إصلاح: الوصول للعناصر داخل Swal (مراد)
-        var popup = Swal.getPopup();
-        if (!popup) { RW_UI.showError('انتهت الجلسة. أعد فتح الأوردر.'); return; }
-        
-        for (var i = 0; i < itemCount; i++) {
-            var deliveredEl = popup.querySelector('#delivered_' + i);
-            var deliveredQty = deliveredEl ? (parseInt(deliveredEl.value) || 0) : 0;
-            // ✅ إصلاح: استخراج item_code من data attribute (حسين)
-            var itemCode = deliveredEl ? deliveredEl.getAttribute('data-item-code') : '';
-            if (!itemCode && orderItems[i]) { itemCode = orderItems[i].item_code || ''; }
-            items.push({ itemCode: itemCode, deliveredQty: deliveredQty, reason: '' });
-        }
-        
-        if (!self.activeRunsheet) { RW_UI.showError('لا يوجد رانشيت نشط'); return; }
-        
-        RW_UI.showLoader('جاري حفظ التسليم...');
-        RW_API.call('complete-order-delivery', { 
-            runsheet_code: self.activeRunsheet.runsheet_code, 
-            order_code: orderCode, 
-            items: items 
-        }, function(json) {
-            RW_UI.hideLoader();
-            if (json.success) {
-                Swal.close();
-                RW_UI.toast('تم حفظ التسليم بنجاح', 'success');
-                window._currentOrderItems = null;
-                // ✅ إصلاح: تحديث محلي لتجنب الوميض (مراد)
-                for (var k = 0; k < self.orders.length; k++) {
-                    if (self.orders[k].order_code === orderCode) {
-                        self.orders[k].order_status = 'Delivered';
-                        break;
-                    }
-                }
-                // إعادة عرض التبويب الحالي فقط
-                if (self.currentTab === 'runsheet') self.renderRunsheetTab();
-                else if (self.currentTab === 'orders') self.renderOrdersTab();
-                else if (self.currentTab === 'vehicle') self.renderVehicleTab();
-                else if (self.currentTab === 'balance') self.renderBalanceTab();
-            } else {
-                RW_UI.showError(json.msg || 'فشل الحفظ');
-            }
-        });
-    },
-
-    renderVehicleTab: function() {
-        // ✅ إصلاح: حماية (مراد)
-        if (!this.activeRunsheet) { this.renderNoRunsheet(); return; }
-        var html = '<div class="slide-in space-y-3">';
-        if (!this.vehicleStock.length) {
-            html += '<div class="text-center py-16"><div class="text-6xl mb-4">🚛</div><p class="text-slate-400 font-bold">السيارة فارغة</p></div>';
-        } else {
-            for (var i = 0; i < this.vehicleStock.length; i++) {
-                var it = this.vehicleStock[i];
-                var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
-                html += '<div class="card flex items-center gap-4"><div class="flex-shrink-0">' + RW_ImageCache.getImageHTML(it.item_code) + '</div><div class="flex-1"><p class="font-bold">' + (it.item_name || '') + '</p><div class="flex justify-between text-xs mt-1"><span>محمّل: ' + (it.qty_loaded || 0) + '</span><span class="font-bold text-blue-600">متبقي: ' + remaining + '</span></div></div></div>';
-            }
-        }
-        html += '</div>';
-        RW_UI.safeHTML(document.getElementById('mainContent'), html);
-    },
-
-    renderBalanceTab: function() {
-        if (!this.activeRunsheet) { this.renderNoRunsheet(); return; }
-        var totalLoaded = this.activeRunsheet ? (Number(this.activeRunsheet.total_amount) || 0) : 0;
-        var totalDelivered = 0;
-        for (var i = 0; i < this.orders.length; i++) {
-            if (this.orders[i].order_status === 'Delivered') totalDelivered += Number(this.orders[i].total_amount) || 0;
-        }
-        var remaining = totalLoaded - totalDelivered;
-        
-        var html = '<div class="slide-in space-y-4">';
-        
-        // البطاقة الرئيسية
-        var statusColor = remaining <= 0 ? 'from-emerald-500 to-emerald-600 shadow-emerald-200' : 'from-red-500 to-red-600 shadow-red-200';
-        var statusIcon = remaining <= 0 ? '✅' : '⚠️';
-        var statusText = remaining <= 0 ? 'لا يوجد عليك مبلغ. أنت ملتزم.' : 'هذا هو المبلغ المطلوب منك الآن';
-        
-        html += '<div class="bg-gradient-to-br ' + statusColor + ' text-white rounded-3xl p-6 text-center shadow-xl">';
-        html += '<p class="text-sm opacity-80">' + statusIcon + ' ' + statusText + '</p>';
-        html += '<p class="text-5xl font-black mt-3">' + RW_UI.formatNumber(Math.abs(remaining)) + ' EGP</p>';
-        html += '</div>';
-        
-        // بطاقات التفاصيل
-        html += '<div class="grid grid-cols-2 gap-3">';
-        html += '<div class="card text-center"><p class="text-xs text-slate-400">📦 قيمة الحمولة</p><p class="text-2xl font-black text-blue-700 mt-1">' + RW_UI.formatNumber(totalLoaded) + '</p></div>';
-        html += '<div class="card text-center"><p class="text-xs text-slate-400">💰 تم تحصيله</p><p class="text-2xl font-black text-emerald-600 mt-1">' + RW_UI.formatNumber(totalDelivered) + '</p></div>';
-        html += '<div class="card text-center"><p class="text-xs text-slate-400">📋 مرتجع للمخزن</p><p class="text-2xl font-black text-amber-600 mt-1">' + RW_UI.formatNumber(totalLoaded - totalDelivered - remaining) + '</p></div>';
-        html += '<div class="card text-center"><p class="text-xs text-slate-400">⚖️ العجز</p><p class="text-2xl font-black ' + (remaining > 0 ? 'text-red-600' : 'text-emerald-600') + ' mt-1">' + RW_UI.formatNumber(remaining) + '</p></div>';
-        html += '</div>';
-        
-        html += '<p class="text-xs text-slate-400 text-center mt-2">⚙️ التسوية النهائية تتم من قبل المحاسب في النظام الأم.</p>';
-        html += '</div>';
-        RW_UI.safeHTML(document.getElementById('mainContent'), html);
+        if (isDelivering) this.startTimer();
     },
 
     getElapsedTime: function() {
@@ -390,57 +276,85 @@ var App = {
         var self = this;
         if (this.timerInterval) clearInterval(this.timerInterval);
         this.timerInterval = setInterval(function() {
-            // ✅ إصلاح المؤقت: استخدام id بدلاً من محدد CSS هش (مراد)
             var timerDisplay = document.getElementById('timerDisplay');
-            if (timerDisplay) {
-                timerDisplay.innerText = '⏱️ ' + self.getElapsedTime();
-            }
+            if (timerDisplay) { timerDisplay.innerText = '⏱️ ' + self.getElapsedTime(); }
         }, 1000);
     },
 
-    startDelivery: function() {
-        var meter = document.getElementById('meterStart') ? document.getElementById('meterStart').value : '';
-        if (!meter) { RW_UI.toast('أدخل قراءة العداد', 'warning'); return; }
+    checkForNewRunsheet: function() {
+        var self = this;
+        if (!self.pubUserId) return;
+        var lastRunsheetCode = localStorage.getItem('driver_last_runsheet') || '';
+        supabase.from('runsheets')
+            .select('runsheet_code, run_date')
+            .eq('driver_id', self.pubUserId)
+            .eq('status', 'Loaded')
+            .order('run_date', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+            .then(function(res) {
+                var rs = res.data;
+                if (!rs || rs.runsheet_code === lastRunsheetCode || rs.runsheet_code === '') return;
+                localStorage.setItem('driver_last_runsheet', rs.runsheet_code);
+                if (window.navigator && window.navigator.vibrate) { window.navigator.vibrate([200, 100, 200]); }
+                try {
+                    var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    var oscillator = audioCtx.createOscillator();
+                    var gainNode = audioCtx.createGain();
+                    oscillator.connect(gainNode); gainNode.connect(audioCtx.destination);
+                    oscillator.type = 'sine';
+                    oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime + 0.1);
+                    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                    oscillator.start(audioCtx.currentTime);
+                    oscillator.stop(audioCtx.currentTime + 0.5);
+                } catch(e) {}
+                var Toast = Swal.mixin({
+                    toast: true, position: 'top', showConfirmButton: true, confirmButtonText: 'عرض',
+                    timer: 10000, timerProgressBar: true,
+                    customClass: { popup: '!rounded-2xl !shadow-xl !p-4 !bg-sky-600 !text-white' }
+                });
+                Toast.fire({ title: '📦 رحلة جديدة!', text: 'تم تعيين رانشيت جديد لك: ' + rs.runsheet_code, icon: 'success' }).then(function(result) { if (result.isConfirmed) self.switchTab('runsheet'); });
+            }).catch(function() {});
+    },
+
+    showStartTripMeter: function() {
+        var self = this, rs = this.activeRunsheet; if (!rs) return;
+        Swal.fire({ title: 'عداد المسافة - بدء الرحلة', html: '<div class="text-right space-y-4"><p class="text-sm text-slate-600">أدخل قراءة عداد السيارة لبدء الرحلة <strong>' + rs.runsheet_code + '</strong></p><div><label class="block text-xs font-bold text-slate-500 mb-2">قراءة العداد (كم)</label><input id="meterStartInput" type="number" class="swal2-input w-full text-right rounded-xl" placeholder="مثال: 125000" min="0"></div><p class="text-xs text-amber-600 font-bold">⚠️ هذا الإجراء إلزامي ولا يمكن تخطيه.</p></div>', showCancelButton: true, confirmButtonText: 'تأكيد وبدء الرحلة', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-sky-600 !px-6', cancelButton: '!rounded-xl' }, preConfirm: function() { var v = document.getElementById('meterStartInput').value.trim(); if (!v || isNaN(parseInt(v)) || parseInt(v) <= 0) { Swal.showValidationMessage('يرجى إدخال قراءة عداد صحيحة'); return false; } return { meter_reading: parseInt(v) }; } }).then(function(result) { if (result.isConfirmed) self.startDeliveryWithMeter(rs.runsheet_code, result.value.meter_reading); });
+    },
+
+    startDeliveryWithMeter: function(code, meterReading) {
         var self = this;
         RW_UI.showLoader();
-        RW_API.call('start-delivery', { runsheet_code: this.activeRunsheet.runsheet_code, meter_start: parseFloat(meter) }, function(json) {
+        RW_API.call('start-delivery', { runsheet_code: code, meter_start: meterReading }, function(json) {
             RW_UI.hideLoader();
             if (json.success) {
-                Swal.fire({ icon: 'success', title: '🚀 تم بدء الرحلة!', text: 'بالتوفيق في مهامك اليوم.', confirmButtonText: 'انطلق', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-blue-600' } });
                 self.activeRunsheet.status = 'Delivering';
+                self.activeRunsheet.delivery_start = new Date().toISOString();
                 self.sessionStart = new Date();
                 self.renderRunsheetTab();
+                RW_UI.toast('تم بدء الرحلة بنجاح', 'success');
             } else { RW_UI.showError(json.msg); }
         });
     },
 
-    completeDelivery: function() {
+    showEndTripMeter: function() {
+        var self = this, rs = this.activeRunsheet; if (!rs || rs.status !== 'Delivering') { RW_UI.toast('لا توجد رحلة نشطة', 'warning'); return; }
+        Swal.fire({ title: 'عداد المسافة - إنهاء الرحلة', html: '<div class="text-right space-y-4"><p class="text-sm text-slate-600">أدخل قراءة عداد السيارة لإنهاء الرحلة <strong>' + rs.runsheet_code + '</strong></p><div><label class="block text-xs font-bold text-slate-500 mb-2">قراءة العداد (كم)</label><input id="meterEndInput" type="number" class="swal2-input w-full text-right rounded-xl" placeholder="مثال: 125150" min="0"></div><p class="text-xs text-amber-600 font-bold">⚠️ هذا الإجراء إلزامي ولا يمكن تخطيه.</p></div>', showCancelButton: true, confirmButtonText: 'تأكيد وإنهاء الرحلة', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600 !px-6', cancelButton: '!rounded-xl' }, preConfirm: function() { var v = document.getElementById('meterEndInput').value.trim(); if (!v || isNaN(parseInt(v)) || parseInt(v) <= 0) { Swal.showValidationMessage('يرجى إدخال قراءة عداد صحيحة'); return false; } return { meter_reading: parseInt(v) }; } }).then(function(result) { if (result.isConfirmed) self.completeDeliveryWithMeter(rs.runsheet_code, result.value.meter_reading); });
+    },
+
+    completeDeliveryWithMeter: function(code, meterReading) {
         var self = this;
-        // ✅ إصلاح: طلب قراءة العداد النهائية قبل إنهاء الرحلة
-        Swal.fire({
-            title: 'إنهاء الرحلة',
-            html: '<div class="text-right"><label class="block text-sm font-bold text-slate-600 mb-2">عداد المسافة النهائي (كم) - إلزامي</label><input type="number" id="meterEnd" class="swal2-input w-full p-4 bg-slate-50 rounded-2xl border-2 border-blue-100 focus:border-blue-500 outline-none font-bold text-xl text-center" placeholder="أدخل قراءة العداد"></div>',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'تأكيد وإنهاء',
-            cancelButtonText: 'إلغاء',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600', cancelButton: '!rounded-xl' },
-            preConfirm: function() {
-                var meter = document.getElementById('meterEnd').value;
-                if (!meter) { Swal.showValidationMessage('أدخل قراءة العداد'); return false; }
-                return meter;
-            }
-        }).then(function(result) {
-            if (!result.isConfirmed) return;
+        RW_UI.showConfirm('سيتم إنهاء الرحلة ' + code + ' بشكل نهائي.', function() {
             RW_UI.showLoader();
-            RW_API.call('complete-delivery', { 
-                runsheet_code: self.activeRunsheet.runsheet_code, 
-                meter_end: parseFloat(result.value) 
-            }, function(json) {
+            RW_API.call('complete-delivery', { runsheet_code: code, meter_end: meterReading }, function(json) {
                 RW_UI.hideLoader();
                 if (json.success) {
                     Swal.fire({ icon: 'success', title: '🏁 تم إنهاء الرحلة', text: 'عمل رائع! يمكنك العودة للمخزن.', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600' } });
                     self.activeRunsheet = null;
+                    self.sessionStart = null;
+                    if (self.timerInterval) clearInterval(self.timerInterval);
                     self.loadActiveRunsheet();
                 } else { RW_UI.showError(json.msg); }
             });
@@ -460,6 +374,222 @@ var App = {
                 } else { RW_UI.showError(json.msg); }
             });
         });
+    },
+
+    renderOrdersTab: function() {
+        if (!this.activeRunsheet) { this.renderNoRunsheet(); return; }
+        var self = this;
+        var rs = this.activeRunsheet;
+        var isDelivering = rs.status === 'Delivering';
+        var deliveredCount = 0;
+        for (var i = 0; i < this.orders.length; i++) { if (this.orders[i].order_status === 'Delivered') deliveredCount++; }
+        var progress = this.orders.length > 0 ? Math.round((deliveredCount / this.orders.length) * 100) : 0;
+        var elapsed = self.sessionStart ? self.getElapsedTime() : '00:00';
+        var html = '<div class="slide-in space-y-3">';
+        html += '<div class="bg-sky-50 rounded-3xl p-5 mb-6"><div class="flex items-center justify-between mb-4"><span class="font-black text-2xl text-slate-800">' + rs.runsheet_code + '</span><span id="timerDisplay">⏱️ ' + elapsed + '</span></div><div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>تقدم التوصيل</span><span>' + deliveredCount + ' / ' + this.orders.length + ' أوردر</span></div><div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-sky-500 to-blue-500 rounded-full" style="width:' + progress + '%"></div></div></div></div>';
+        if (isDelivering) {
+            html += '<div class="flex gap-2 mb-4"><button onclick="App.showEndTripMeter()" class="btn-success flex-1"><i class="fa-solid fa-flag-checkered ml-1"></i>إنهاء الرحلة</button></div>';
+        }
+        if (!this.orders.length) {
+            html += '<div class="text-center py-10 text-slate-400">لا توجد أوردرات</div>';
+        } else {
+            for (var j = 0; j < this.orders.length; j++) {
+                var o = this.orders[j];
+                var isDone = o.order_status === 'Delivered';
+                var cardClass = isDone ? 'card order-card delivered' : 'card order-card pending';
+                html += '<div class="' + cardClass + '" onclick="App.openOrderModal(\'' + o.order_code + '\')">';
+                html += '<div class="flex justify-between items-start"><div><span class="font-black text-slate-800 text-lg">' + (o.customer_name || '') + '</span><p class="text-xs text-slate-400">' + (o.order_code || '') + ' | ' + (o.area || '') + '</p></div><div class="text-left"><span class="font-black text-lg ' + (isDone ? 'text-emerald-600' : 'text-amber-600') + '">' + RW_UI.formatNumber(o.total_amount) + ' EGP</span><br><span class="text-xs font-bold ' + (isDone ? 'text-emerald-500' : 'text-amber-500') + '">' + (isDone ? '✅ مسلّم' : '⏳ معلق') + '</span></div></div>';
+                html += '<div class="flex gap-2 mt-3"><a href="tel:' + (o.customer_phone || '') + '" class="flex-1 bg-green-50 text-green-700 font-bold py-2 rounded-xl text-sm text-center"><i class="fa-solid fa-phone ml-1"></i>اتصال</a><a href="https://wa.me/' + (o.customer_phone || '').replace(/\D/g,'') + '" target="_blank" class="flex-1 bg-emerald-50 text-emerald-700 font-bold py-2 rounded-xl text-sm text-center"><i class="fa-brands fa-whatsapp ml-1"></i>واتساب</a><a href="https://www.google.com/maps?q=' + encodeURIComponent(o.customer_name || '') + '" target="_blank" class="flex-1 bg-sky-50 text-sky-700 font-bold py-2 rounded-xl text-sm text-center"><i class="fa-solid fa-map-location-dot ml-1"></i>خرائط</a></div>';
+                html += '</div>';
+            }
+        }
+        html += '</div>';
+        RW_UI.safeHTML(document.getElementById('mainContent'), html);
+        if (isDelivering) this.startTimer();
+    },
+
+    openOrderModal: function(orderCode) {
+        var self = this;
+        if (!this.activeRunsheet || this.activeRunsheet.status !== 'Delivering') { RW_UI.showError('لا يمكن تسليم أوردر بدون رحلة نشطة'); return; }
+        RW_UI.showLoader();
+        supabase.from('orders').select('*').eq('order_code', orderCode).maybeSingle().then(function(oRes) {
+            var order = oRes.data;
+            if (!order) { RW_UI.hideLoader(); return; }
+            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
+                RW_UI.hideLoader();
+                var items = dRes.data || [];
+                window._currentOrderItems = items;
+                var html = '<div class="text-right space-y-4" style="max-height:70vh;overflow-y:auto;">';
+                html += '<div class="bg-blue-50 p-4 rounded-2xl"><h3 class="font-black text-xl">' + (order.customer_name || '') + '</h3><p class="text-slate-500">' + (order.order_code || '') + ' | ' + (order.area || '') + '</p></div>';
+                for (var i = 0; i < items.length; i++) {
+                    var it = items[i];
+                    var loaded = Number(it.qty_loaded) || 0;
+                    var delivered = Number(it.qty_delivered) || 0;
+                    var imgHtml = RW_ImageCache.getImageHTML(it.item_code, 'w-20', 'h-20');
+                    html += '<div class="bg-white border rounded-2xl p-4 flex items-center gap-4"><div class="flex-shrink-0">' + imgHtml + '</div><div class="flex-1"><p class="font-black text-slate-700">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + (it.unit || 'حبة') + '</p><div class="grid grid-cols-2 gap-2 mt-2"><div><span class="text-xs text-slate-400">محمّل</span><p class="font-bold">' + loaded + '</p></div><div><span class="text-xs text-slate-400">مسلّم</span><p class="font-bold text-emerald-600">' + delivered + '</p></div></div><div class="mt-2"><input type="number" id="delivered_' + i + '" class="swal-delivered-input w-full p-2 bg-slate-50 border rounded-xl text-center font-bold" value="' + delivered + '" placeholder="مسلّم" data-item-code="' + (it.item_code || '') + '"></div></div></div>';
+                }
+                html += '<button onclick="App.saveOrderDelivery(\'' + orderCode + '\', ' + items.length + ')" class="btn-primary"><i class="fa-solid fa-save ml-2"></i>حفظ التسليم</button></div>';
+                Swal.fire({ title: 'تفاصيل الأوردر', html: html, width: '650px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl' } });
+            });
+        });
+    },
+
+    saveOrderDelivery: function(orderCode, itemCount) {
+        var self = this;
+        var items = [];
+        var orderItems = window._currentOrderItems || [];
+        var popup = Swal.getPopup();
+        if (!popup) { RW_UI.showError('انتهت الجلسة. أعد فتح الأوردر.'); return; }
+        for (var i = 0; i < itemCount; i++) {
+            var deliveredEl = popup.querySelector('#delivered_' + i);
+            var deliveredQty = deliveredEl ? (parseInt(deliveredEl.value) || 0) : 0;
+            var itemCode = deliveredEl ? deliveredEl.getAttribute('data-item-code') : '';
+            if (!itemCode && orderItems[i]) { itemCode = orderItems[i].item_code || ''; }
+            items.push({ itemCode: itemCode, deliveredQty: deliveredQty, reason: '' });
+        }
+        if (!self.activeRunsheet) { RW_UI.showError('لا يوجد رانشيت نشط'); return; }
+        RW_UI.showLoader('جاري حفظ التسليم...');
+        RW_API.call('complete-order-delivery', { runsheet_code: self.activeRunsheet.runsheet_code, order_code: orderCode, items: items }, function(json) {
+            RW_UI.hideLoader();
+            if (json.success) {
+                Swal.close();
+                RW_UI.toast('تم حفظ التسليم بنجاح', 'success');
+                window._currentOrderItems = null;
+                for (var k = 0; k < self.orders.length; k++) { if (self.orders[k].order_code === orderCode) { self.orders[k].order_status = 'Delivered'; break; } }
+                if (self.currentTab === 'runsheet') self.renderRunsheetTab();
+                else if (self.currentTab === 'orders') self.renderOrdersTab();
+            } else { RW_UI.showError(json.msg || 'فشل الحفظ'); }
+        });
+    },
+
+    renderVehicleTab: function() {
+        if (!this.activeRunsheet) { this.renderNoRunsheet(); return; }
+        var html = '<div class="slide-in space-y-3">';
+        if (!this.vehicleStock.length) {
+            html += '<div class="text-center py-16"><div class="text-6xl mb-4">🚛</div><p class="text-slate-400 font-bold">السيارة فارغة</p></div>';
+        } else {
+            for (var i = 0; i < this.vehicleStock.length; i++) {
+                var it = this.vehicleStock[i];
+                var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
+                html += '<div class="card flex items-center gap-4"><div class="flex-shrink-0">' + RW_ImageCache.getImageHTML(it.item_code) + '</div><div class="flex-1"><p class="font-bold">' + (it.item_name || '') + '</p><div class="flex justify-between text-xs mt-1"><span>محمّل: ' + (it.qty_loaded || 0) + '</span><span class="font-bold text-blue-600">متبقي: ' + remaining + '</span></div></div></div>';
+            }
+        }
+        html += '</div>';
+        RW_UI.safeHTML(document.getElementById('mainContent'), html);
+    },
+
+    renderBalanceTab: function() {
+        if (!this.activeRunsheet) { this.renderNoRunsheet(); return; }
+        var totalLoaded = this.activeRunsheet ? (Number(this.activeRunsheet.total_amount) || 0) : 0;
+        var totalDelivered = 0;
+        for (var i = 0; i < this.orders.length; i++) { if (this.orders[i].order_status === 'Delivered') totalDelivered += Number(this.orders[i].total_amount) || 0; }
+        var remaining = totalLoaded - totalDelivered;
+        var html = '<div class="slide-in space-y-4">';
+        var statusColor = remaining <= 0 ? 'from-emerald-500 to-emerald-600 shadow-emerald-200' : 'from-red-500 to-red-600 shadow-red-200';
+        html += '<div class="bg-gradient-to-br ' + statusColor + ' text-white rounded-3xl p-6 text-center shadow-xl"><p class="text-sm opacity-80">' + (remaining <= 0 ? '✅ لا يوجد عليك مبلغ' : '⚠️ المبلغ المطلوب منك الآن') + '</p><p class="text-5xl font-black mt-3">' + RW_UI.formatNumber(Math.abs(remaining)) + ' EGP</p></div>';
+        html += '<div class="grid grid-cols-2 gap-3"><div class="card text-center"><p class="text-xs text-slate-400">📦 قيمة الحمولة</p><p class="text-2xl font-black text-blue-700 mt-1">' + RW_UI.formatNumber(totalLoaded) + '</p></div><div class="card text-center"><p class="text-xs text-slate-400">💰 تم تحصيله</p><p class="text-2xl font-black text-emerald-600 mt-1">' + RW_UI.formatNumber(totalDelivered) + '</p></div><div class="card text-center"><p class="text-xs text-slate-400">⚖️ العجز</p><p class="text-2xl font-black ' + (remaining > 0 ? 'text-red-600' : 'text-emerald-600') + ' mt-1">' + RW_UI.formatNumber(remaining) + '</p></div></div>';
+        html += '<p class="text-xs text-slate-400 text-center mt-2">⚙️ التسوية النهائية تتم من قبل المحاسب في النظام الأم.</p></div>';
+        RW_UI.safeHTML(document.getElementById('mainContent'), html);
+    },
+
+    renderMap: function() {
+        var self = this;
+        var html = '<div class="relative h-full flex flex-col"><div id="leafletMap" class="flex-1 w-full rounded-2xl overflow-hidden" style="min-height:350px;"></div></div>';
+        RW_UI.safeHTML(document.getElementById('mainContent'), html);
+        setTimeout(function() { self.initMap(); }, 300);
+    },
+
+    initMap: function() {
+        var self = this; var mapEl = document.getElementById('leafletMap'); if (!mapEl) return;
+        if (this.mapObj) { this.mapObj.remove(); this.mapObj = null; } this.mapMarkers = [];
+        this.mapObj = L.map('leafletMap', { attributionControl: false, zoomControl: false }).setView([30.0444, 31.2357], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.mapObj);
+        L.control.zoom({ position: 'bottomright' }).addTo(this.mapObj);
+        if (this.activeRunsheet) { this.loadOrdersForMap(this.activeRunsheet.id); }
+        setTimeout(function() { if (self.mapObj) self.mapObj.invalidateSize(); }, 500);
+    },
+
+    loadOrdersForMap: function(runsheetId) {
+        var self = this;
+        supabase.from('orders').select('order_code, customer_name, customer_phone, area, total_amount, order_status, customers(location_lat, location_lng)').eq('runsheet_id', runsheetId).neq('order_status', 'Cancelled').then(function(res) {
+            var orders = res.data || [], bounds = [];
+            for (var i = 0; i < orders.length; i++) {
+                var o = orders[i], cust = o.customers || {}, lat = Number(cust.location_lat) || null, lng = Number(cust.location_lng) || null;
+                if (lat && lng) {
+                    var isDone = o.order_status === 'Delivered', isActive = o.order_status === 'Delivering';
+                    var icon = L.divIcon({ className: '', html: '<div class="map-pin ' + (isDone ? 'done' : (isActive ? 'active' : '')) + '"></div>', iconSize: [isActive ? 16 : 12, isActive ? 16 : 12], iconAnchor: [isActive ? 8 : 6, isActive ? 8 : 6] });
+                    var marker = L.marker([lat, lng], { icon: icon }).addTo(self.mapObj);
+                    marker.bindPopup('<div class="text-right"><strong>' + o.customer_name + '</strong><br><span class="text-xs">' + o.order_code + ' | ' + RW_UI.formatNumber(o.total_amount) + ' ج.م</span><br><a href="tel:' + (o.customer_phone || '') + '" class="text-sky-600 text-xs">📞</a></div>');
+                    self.mapMarkers.push(marker); bounds.push([lat, lng]);
+                }
+            }
+            if (bounds.length > 0 && self.mapObj) { self.mapObj.fitBounds(bounds, { padding: [50, 50] }); }
+        });
+    },
+
+    renderAccountTab: function() {
+        var self = this;
+        var userName = (this.currentUser && this.currentUser.name) || '';
+        var userInitial = userName ? userName.charAt(0) : '?';
+        var html = '<div class="p-4 text-center">';
+        html += '<div class="w-20 h-20 bg-gradient-to-br from-sky-400 to-sky-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-sky-200 mb-4 mt-8">' + userInitial + '</div>';
+        html += '<h2 class="font-black text-xl text-slate-800">' + userName + '</h2><p class="text-sm text-slate-400">مندوب توصيل</p>';
+        html += '<div class="card mt-4 text-right"><p class="text-xs text-slate-400">البريد</p><p class="font-bold">' + (this.currentUser ? this.currentUser.email : '') + '</p></div>';
+        html += '<div class="card mt-4 text-right"><h3 class="font-bold text-sm text-slate-700 mb-3"><i class="fa-solid fa-clipboard-list ml-1"></i> 📝 شكاويّ وبلاغاتي</h3><div id="accountComplaints" class="text-center py-4 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div><button onclick="App.showNewComplaint()" class="w-full bg-sky-50 text-sky-700 py-2 rounded-xl font-bold text-xs hover:bg-sky-100 transition"><i class="fa-solid fa-plus ml-1"></i> تقديم شكوى أو بلاغ</button></div>';
+        html += '<button onclick="doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold text-sm hover:bg-red-50 transition-all mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button></div>';
+        RW_UI.safeHTML(document.getElementById('mainContent'), html);
+        if (self.pubUserId) {
+            supabase.from('service_complaints').select('complaint_code, source_type, status, description, created_at, complaint_types(type_name), driver_liabilities(amount, item_name)').eq('employee_id', self.pubUserId).order('created_at', { ascending: false }).limit(10).then(function(res) {
+                var complaints = res.data || [];
+                var container = document.getElementById('accountComplaints');
+                if (!container) return;
+                if (complaints.length === 0) { container.innerHTML = '<p class="text-slate-400">لا توجد شكاوى أو بلاغات</p>'; return; }
+                var statusLabels = { 'open': '🟡 مفتوحة', 'under_review': '🔵 قيد المراجعة', 'accepted': '🟢 مقبولة', 'rejected': '🔴 مرفوضة', 'closed': '⚫ مغلقة' };
+                var html2 = '<div class="space-y-2 max-h-60 overflow-y-auto">';
+                for (var i = 0; i < complaints.length; i++) {
+                    var c = complaints[i];
+                    var stLabel = statusLabels[c.status] || c.status;
+                    var typeName = (c.complaint_types && c.complaint_types.type_name) ? c.complaint_types.type_name : '---';
+                    var amountStr = (c.driver_liabilities && c.driver_liabilities.amount) ? ' - ' + RW_UI.formatNumber(c.driver_liabilities.amount) + ' ج.م' : '';
+                    var dateStr = c.created_at ? new Date(c.created_at).toLocaleDateString('ar-EG') : '';
+                    html2 += '<div class="bg-slate-50 rounded-xl p-3 text-sm cursor-pointer hover:bg-sky-50 transition" onclick="App.editComplaint(\'' + c.complaint_code + '\')"><div class="flex justify-between items-start mb-1"><span class="font-bold text-slate-700">' + (c.complaint_code || '') + '</span><span class="text-xs">' + stLabel + '</span></div><p class="text-xs text-slate-500">' + typeName + amountStr + '</p><p class="text-xs text-slate-400 mt-1">' + dateStr + '</p></div>';
+                }
+                html2 += '</div>'; container.innerHTML = html2;
+            }).catch(function() { document.getElementById('accountComplaints').innerHTML = '<p class="text-slate-400">تعذر تحميل البيانات</p>'; });
+        }
+    },
+
+    showNewComplaint: function() {
+        var self = this;
+        supabase.from('complaint_types').select('id, type_name').eq('is_active', true).then(function(typesRes) {
+            var types = typesRes.data || [];
+            var typeOptions = '';
+            for (var t = 0; t < types.length; t++) { typeOptions += '<option value="' + types[t].id + '">' + types[t].type_name + '</option>'; }
+            var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl"><div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع الشكوى</label><select id="complaintTypeId" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + typeOptions + '</select></div><div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">وصف الشكوى</label><textarea id="complaintDescription" rows="3" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b" placeholder="اشرح المشكلة بالتفصيل..."></textarea></div></div>';
+            Swal.fire({ title: 'تقديم شكوى أو بلاغ', html: html, width: '500px', showCancelButton: true, confirmButtonText: 'تقديم', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl !p-5', confirmButton: '!rounded-xl !bg-amber-600 !px-8', cancelButton: '!rounded-xl !px-8' }, preConfirm: function() { var typeId = document.getElementById('complaintTypeId').value; var description = document.getElementById('complaintDescription').value.trim(); if (!typeId) { Swal.showValidationMessage('يرجى اختيار نوع الشكوى'); return false; } if (!description) { Swal.showValidationMessage('يرجى كتابة وصف للشكوى'); return false; } return { typeId: typeId, description: description }; } }).then(function(result) {
+                if (!result.isConfirmed) return; var d = result.value; Swal.showLoading();
+                supabase.from('service_complaints').select('complaint_code').order('created_at', { ascending: false }).limit(1).then(function(codeRes) {
+                    var lastCode = (codeRes.data && codeRes.data.length > 0) ? codeRes.data[0].complaint_code : 'COMP-000';
+                    var num = parseInt(lastCode.replace('COMP-', '')) || 0;
+                    var newCode = 'COMP-' + String(num + 1).padStart(3, '0');
+                    return supabase.from('service_complaints').insert({ complaint_code: newCode, company_id: '00000000-0000-0000-0000-000000000001', source_type: 'driver_app', employee_id: self.pubUserId, runsheet_id: (self.activeRunsheet ? self.activeRunsheet.id : null), complaint_type_id: d.typeId, status: 'open', description: d.description });
+                }).then(function(insertRes) { Swal.close(); if (insertRes.error) { RW_UI.toast('فشل تقديم الشكوى', 'error'); } else { RW_UI.toast('✅ تم تقديم الشكوى بنجاح', 'success'); self.renderAccountTab(); } }).catch(function(err) { Swal.close(); RW_UI.toast('فشل الاتصال', 'error'); });
+            });
+        });
+    },
+
+    editComplaint: function(complaintCode) {
+        var self = this;
+        supabase.from('service_complaints').select('*').eq('complaint_code', complaintCode).maybeSingle().then(function(compRes) {
+            var complaint = compRes.data; if (!complaint) { RW_UI.toast('الشكوى غير موجودة', 'error'); return; }
+            if (complaint.status !== 'open' && complaint.status !== 'disputed') { RW_UI.toast('لا يمكن تعديل شكوى تم البت فيها', 'warning'); return; }
+            supabase.from('complaint_types').select('id, type_name').eq('is_active', true).then(function(typesRes) {
+                var types = typesRes.data || []; var typeOptions = '';
+                for (var t = 0; t < types.length; t++) { var sel = (complaint.complaint_type_id === types[t].id) ? ' selected' : ''; typeOptions += '<option value="' + types[t].id + '"' + sel + '>' + types[t].type_name + '</option>'; }
+                var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl"><div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع الشكوى</label><select id="editComplaintTypeId" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">' + typeOptions + '</select></div><div style="margin-bottom:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">وصف الشكوى</label><textarea id="editComplaintDescription" rows="3" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;font-family:sans-serif;color:#1e293b">' + (complaint.description || '') + '</textarea></div></div>';
+                Swal.fire({ title: 'تعديل الشكوى: ' + complaintCode, html: html, width: '500px', showCancelButton: true, confirmButtonText: '💾 تحديث', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl !p-5', confirmButton: '!rounded-xl !bg-blue-600 !px-8', cancelButton: '!rounded-xl !px-8' }, preConfirm: function() { var typeId = document.getElementById('editComplaintTypeId').value; var description = document.getElementById('editComplaintDescription').value.trim(); if (!typeId) { Swal.showValidationMessage('يرجى اختيار نوع الشكوى'); return false; } if (!description) { Swal.showValidationMessage('يرجى كتابة وصف للشكوى'); return false; } return { typeId: typeId, description: description }; } }).then(function(result) { if (!result.isConfirmed) return; var d = result.value; Swal.showLoading(); supabase.from('service_complaints').update({ complaint_type_id: d.typeId, description: d.description, updated_at: new Date().toISOString() }).eq('complaint_code', complaintCode).then(function(updateRes) { Swal.close(); if (updateRes.error) { RW_UI.toast('فشل تحديث الشكوى', 'error'); } else { RW_UI.toast('✅ تم تحديث الشكوى بنجاح', 'success'); self.renderAccountTab(); } }); });
+            });
+        });
     }
 };
 
@@ -467,23 +597,20 @@ var App = {
 // دوال مساعدة عامة
 // ============================================================
 function togglePass() { var p = document.getElementById('loginPass'); var i = document.getElementById('passIcon'); if (p.type === 'password') { p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; } else { p.type = 'password'; i.className = 'fa-solid fa-eye'; } }
-function doLogin() { var email = document.getElementById('loginEmail').value.trim(); var pass = document.getElementById('loginPass').value.trim(); if (!email || !pass) { document.getElementById('loginMsg').innerText = 'أدخل البيانات'; document.getElementById('loginMsg').classList.remove('hidden'); return; } document.getElementById('loginMsg').classList.add('hidden'); RW_Auth.doLogin(email, pass, function(user, err) { if (err) { document.getElementById('loginMsg').innerText = err; document.getElementById('loginMsg').classList.remove('hidden'); } else { App.init(); } }); }
-function doLogout() { RW_Auth.doLogout(function() { document.getElementById('mainApp').classList.add('hidden'); document.getElementById('loginScreen').classList.remove('hidden'); }); }
-function switchTab(tab) { 
-    App.currentTab = tab; 
-    var tabs = ['runsheet', 'orders', 'vehicle', 'balance']; 
-    for (var i = 0; i < tabs.length; i++) { 
-        var btn = document.getElementById('tab-' + tabs[i]); 
-        if (btn) btn.classList.remove('active'); 
-    } 
-    var act = document.getElementById('tab-' + tab); 
-    if (act) act.classList.add('active'); 
-    // ✅ إصلاح: حماية من استدعاء دوال غير موجودة (مراد)
+function doLogin() { var email = document.getElementById('loginEmail').value.trim(); var pass = document.getElementById('loginPass').value.trim(); if (!email || !pass) { document.getElementById('loginMsg').innerText = 'أدخل البيانات'; document.getElementById('loginMsg').classList.remove('hidden'); return; } document.getElementById('loginMsg').classList.add('hidden'); RW_UI.showLoader('جاري تسجيل الدخول...'); RW_Auth.doLogin(email, pass, function(user, err) { RW_UI.hideLoader(); if (err) { document.getElementById('loginMsg').innerText = err; document.getElementById('loginMsg').classList.remove('hidden'); } else { App.init(); } }); }
+function doLogout() { if (App.timerInterval) clearInterval(App.timerInterval); if (App.orderTimerInterval) clearInterval(App.orderTimerInterval); if (App.mapObj) { App.mapObj.remove(); App.mapObj = null; } RW_Auth.doLogout(function() { document.getElementById('mainApp').classList.add('hidden'); document.getElementById('loginScreen').classList.remove('hidden'); }); }
+function switchTab(tab) {
+    App.currentTab = tab;
+    var tabs = ['runsheet', 'orders', 'map', 'vehicle', 'balance', 'account'];
+    for (var i = 0; i < tabs.length; i++) { var btn = document.getElementById('tab-' + tabs[i]); if (btn) btn.classList.remove('active'); }
+    var act = document.getElementById('tab-' + tab); if (act) act.classList.add('active');
     if (!App.activeRunsheet) { App.renderNoRunsheet(); return; }
     if (tab === 'runsheet') App.renderRunsheetTab();
     else if (tab === 'orders') App.renderOrdersTab();
+    else if (tab === 'map') App.renderMap();
     else if (tab === 'vehicle') App.renderVehicleTab();
     else if (tab === 'balance') App.renderBalanceTab();
+    else if (tab === 'account') App.renderAccountTab();
 }
 
 RW_SW.register('../sw.js');
@@ -491,5 +618,6 @@ document.addEventListener('DOMContentLoaded', function() { App.init(); });
 window.addEventListener('online', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
 window.addEventListener('offline', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
 </script>
+<script src="../register-sw.js"></script>
 </body>
 </html>
