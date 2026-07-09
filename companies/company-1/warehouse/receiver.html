@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
+    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
@@ -22,6 +23,7 @@
         .btn-primary:active{transform:scale(0.97)}
         .btn-danger{background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(239,68,68,0.2)}
         .tab-btn{transition:all 0.2s ease}
+        .tab-btn.active{border-bottom-color:#059669;color:#0f172a}
         .accordion-content{max-height:0;overflow:hidden;transition:max-height 0.3s ease-out}
         .accordion-content.open{max-height:2000px}
         .slide-in{animation:slideIn 0.3s ease}
@@ -32,7 +34,6 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-<!-- شاشة الدخول -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
     <div class="bg-white rounded-[36px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
         <div class="text-center mb-6">
@@ -51,18 +52,18 @@
     </div>
 </div>
 
-<!-- التطبيق الرئيسي -->
 <div id="mainApp" class="hidden flex flex-col h-full">
     <header class="bg-gradient-to-r from-emerald-700 to-emerald-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
         <span class="font-black text-base">📦 مسؤول الاستلام</span>
         <div class="flex items-center gap-2">
-            <span class="text-xs font-bold" id="headerUserName"></span>
+            <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+            <span id="connLabel" class="text-xs font-bold">متصل</span>
             <button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
         </div>
     </header>
 
     <div class="flex gap-1.5 p-2 bg-white border-b border-slate-100 overflow-x-auto flex-shrink-0">
-        <button onclick="App.switchTab('pending')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm bg-emerald-600 text-white shadow-sm shadow-emerald-200" id="tab-pending">📋 قيد الاستلام</button>
+        <button onclick="App.switchTab('pending')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm active" id="tab-pending">📋 قيد الاستلام</button>
         <button onclick="App.switchTab('completed')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-completed">✅ مكتملة</button>
         <button onclick="App.switchTab('account')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-account">⚙️ حسابي</button>
     </div>
@@ -71,9 +72,6 @@
 </div>
 
 <script>
-// ============================================================
-// التطبيق الرئيسي – receiver.html (النموذج الذهبي - النسخة النهائية 100%)
-// ============================================================
 var App = {
     currentUser: null,
     pubUserId: null,
@@ -118,7 +116,6 @@ var App = {
             }
             self.currentUser = user;
             
-            // التحقق من الصلاحية والدور النشط
             if (!user.isOwner && user.activeWarehouseRole !== 'استلام') {
                 RW_UI.showError('دورك النشط هو "' + (user.activeWarehouseRole || 'غير محدد') + '". الرجاء التواصل مع مشرف المخازن.', function() { RW_Auth.doLogout(); });
                 return;
@@ -132,6 +129,9 @@ var App = {
     enterApp: function(){
         RW_UI.byId('loginScreen').classList.add('hidden');
         RW_UI.byId('mainApp').classList.remove('hidden');
+        RW_UI.updateConnectionStatus('connDot', 'connLabel');
+        window.addEventListener('online', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
+        window.addEventListener('offline', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
         this.switchTab('pending');
     },
 
@@ -147,20 +147,18 @@ var App = {
         var tabs = ['pending', 'completed', 'account'];
         for (var i = 0; i < tabs.length; i++) {
             var btn = RW_UI.byId('tab-' + tabs[i]);
-            if (btn) { btn.classList.remove('bg-emerald-600', 'text-white', 'shadow-sm', 'shadow-emerald-200'); btn.classList.add('text-slate-400'); }
+            if (btn) { btn.classList.remove('active'); btn.classList.add('text-slate-400'); }
         }
         var activeBtn = RW_UI.byId('tab-' + tab);
-        if (activeBtn) { activeBtn.classList.add('bg-emerald-600', 'text-white', 'shadow-sm', 'shadow-emerald-200'); activeBtn.classList.remove('text-slate-400'); }
+        if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-slate-400'); }
         
         if (tab === 'pending') this.loadPurchaseOrders();
         else if (tab === 'completed') this.renderCompleted();
         else if (tab === 'account') this.renderAccount();
     },
 
-    // ==================== تحميل أوامر الشراء المعلقة ====================
     loadPurchaseOrders: function(){
         var self = this;
-        var container = RW_UI.byId('mainContent');
         RW_UI.showSkeleton('mainContent', 3, 'card');
 
         supabase.from('purchase_orders').select('po_code, po_date, supplier_name, status, total_amount').in('status', ['Sent', 'Partially Received']).order('po_date', { ascending: false }).limit(50).then(function(res) {
@@ -219,7 +217,6 @@ var App = {
             var html = '';
             for (var j = 0; j < items.length; j++) {
                 var it = items[j];
-                // ✅ تم التصحيح: استخدام data-item-code attribute
                 html += '<div class="flex justify-between items-center p-3 border-b"><div><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + it.item_code + ' | مطلوب: ' + it.qty_ordered + ' ' + (it.unit || 'حبة') + '</p></div><input type="number" id="qty-' + i + '-' + j + '" value="' + it.qty_ordered + '" min="0" max="' + it.qty_ordered + '" class="w-20 p-2 border rounded-xl text-center font-bold text-sm" data-item-code="' + it.item_code + '"></div>';
             }
             RW_UI.safeHTML(RW_UI.byId('details-' + i), html || '<p class="text-slate-400 text-center py-4">لا توجد أصناف.</p>');
@@ -234,13 +231,11 @@ var App = {
         var qtyInputs = document.querySelectorAll('#details-' + i + ' input[type="number"]');
         for (var j = 0; j < qtyInputs.length; j++) {
             var q = parseInt(qtyInputs[j].value) || 0;
-            // ✅ تم التصحيح: استخراج itemCode من data-item-code
             var itemCode = qtyInputs[j].getAttribute('data-item-code') || '';
             items.push({ itemCode: itemCode, itemName: '', receivedQty: q, reason: '' });
         }
         
         RW_UI.showConfirm('اعتماد استلام ' + code + '؟', function() {
-            // ✅ منع اللمس المتعدد
             var confirmBtn = document.querySelector('.swal2-confirm');
             if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerText = 'جارٍ...'; }
             
@@ -250,20 +245,23 @@ var App = {
                 if (err || !json.success) {
                     RW_UI.showError(json.msg || err || 'فشل الحفظ');
                 } else {
-                    RW_UI.toast('تم الاستلام بنجاح', 'success');
+                    Swal.fire({
+                        icon: 'success',
+                        title: '✅ تم الاستلام بنجاح',
+                        html: '<div class="text-right"><p>تم استلام أمر الشراء <strong>' + code + '</strong>.</p><p>تم تحديث المخزون.</p></div>',
+                        confirmButtonText: 'حسناً',
+                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600' }
+                    });
                     self.loadPurchaseOrders();
                 }
             });
         });
     },
 
-    // ==================== تبويب المكتملة (مُفعل) ====================
     renderCompleted: function() {
         var self = this;
-        var container = RW_UI.byId('mainContent');
         RW_UI.showSkeleton('mainContent', 3, 'card');
         
-        // ✅ تم التصحيح: تفعيل التبويب ببيانات حقيقية
         supabase.from('purchase_orders')
             .select('po_code, po_date, supplier_name, status, total_amount')
             .in('status', ['Received', 'Partially Received'])
@@ -275,7 +273,7 @@ var App = {
                 html += '<h2 class="text-lg font-black mb-4">✅ أوامر الشراء المستلمة</h2>';
                 
                 if (orders.length === 0) {
-                    html += '<div class="text-center py-12"><div class="text-6xl mb-4">📭</div><p class="text-slate-400 font-bold">لا توجد استلامات مكتملة بعد.</p><p class="text-slate-300 text-sm mt-1">كل ما تستلمه سيظهر هنا.</p></div>';
+                    html += '<div class="text-center py-12"><div class="text-6xl mb-4">☕</div><p class="text-slate-400 font-bold">لا توجد استلامات مكتملة بعد.</p><p class="text-slate-300 text-sm mt-1">كل ما تستلمه سيظهر هنا.</p></div>';
                 } else {
                     for (var i = 0; i < orders.length; i++) {
                         var po = orders[i];
@@ -284,7 +282,7 @@ var App = {
                         html += '<div class="card mb-3 slide-in"><div class="flex justify-between items-center"><div><span class="font-black">' + po.po_code + '</span><p class="text-xs text-slate-400">' + po.po_date + ' | ' + (po.supplier_name || '---') + '</p></div><div><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span><p class="font-black text-emerald-600 mt-1 text-left">' + RW_UI.formatNumber(po.total_amount) + ' EGP</p></div></div></div>';
                     }
                 }
-                RW_UI.safeHTML(container, html);
+                RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
             })
             .catch(function() {
                 RW_UI.showEmptyState('mainContent', 'فشل تحميل البيانات.', '📡');
@@ -298,12 +296,8 @@ var App = {
     }
 };
 
-// ============================================================
-// بدء التشغيل
-// ============================================================
 if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
 document.addEventListener('DOMContentLoaded', function() {
-    // التحقق من وجود جلسة سابقة
     RW_Auth.init(function(user, err) {
         if (user) {
             App.currentUser = user;
