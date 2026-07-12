@@ -5220,29 +5220,112 @@ var RW_OnlineStore = (function() {
     if(!it)return;
     Swal.fire({ imageUrl:it.image_url||'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E', imageWidth:200, title:it.name, text:it.description||'', showCancelButton:true, confirmButtonText:(cart[code]||0)>0?'الكمية: '+(cart[code]||0):'إضافة للسلة', cancelButtonText:'إغلاق' }).then(function(r){ if(r.isConfirmed&&(cart[code]||0)===0) addToCart(code); });
   }
-  function showCart(){
-    var items=RW_STATE.data.items||[], arr=[], subtotal=0;
-    for(var code in cart){ var it=null; for(var i=0;i<items.length;i++){ if(items[i].item_code===code){ it=items[i]; break; } } if(!it)continue; var q=cart[code], p=Number(it.sales_price)||0, ln=p*q; subtotal+=ln; arr.push({ code:code, name:it.name, qty:q, price:p }); }
-    if(!arr.length){ showToast('السلة فارغة','info'); return; }
-    var del=deliveryFee||0, beforeTax=subtotal+del, taxAmt=Math.round(beforeTax*taxRate)/100, total=beforeTax+taxAmt;
-    var itemsH=''; for(var j=0;j<arr.length;j++){ var ci=arr[j]; itemsH+='<div class="flex justify-between p-3 bg-slate-50 rounded-xl mb-2"><span>'+ci.name+'</span><span>'+ci.qty+' × '+ci.price.toLocaleString()+' = '+(ci.qty*ci.price).toLocaleString()+' EGP</span></div>'; }
-    var h='<div class="text-right">'+itemsH+'<div class="border-t pt-3 mt-3"><div class="flex justify-between mb-2"><span>المجموع:</span><span>'+subtotal.toLocaleString()+' EGP</span></div>'+(del>0?'<div class="flex justify-between mb-2"><span>رسوم التوصيل:</span><span>'+del.toLocaleString()+' EGP</span></div>':'')+(taxRate>0?'<div class="flex justify-between mb-2"><span>الضريبة ('+taxRate+'%):</span><span>'+taxAmt.toLocaleString()+' EGP</span></div>':'')+'<div class="flex justify-between mb-4"><span class="font-black text-lg">الإجمالي:</span><span class="font-black text-lg text-emerald-600">'+total.toLocaleString()+' EGP</span></div></div><input id="oc-name" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="الاسم الكامل"><input id="oc-phone" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="رقم الهاتف"><input id="oc-area" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="العنوان / المنطقة"></div>';
-    Swal.fire({ title:'سلة التسوق', html:h, width:'600px', showCancelButton:true, confirmButtonText:'إرسال الطلب', cancelButtonText:'متابعة التسوق',
-      preConfirm:function(){
-        var nm=document.getElementById('oc-name').value.trim(), ph=document.getElementById('oc-phone').value.trim(), ar=document.getElementById('oc-area').value.trim();
-        if(!nm||!ph||!ar){ Swal.showValidationMessage('الرجاء إكمال البيانات'); return false; }
-        return { name:nm, phone:ph, area:ar };
-      }
-    }).then(function(r){ if(!r.isConfirmed)return;
-      showLoader('جاري إرسال الطلب...');
-      var user={ name:r.value.name, area:r.value.area, phone:r.value.phone, notes:'' };
-      supabase.functions.invoke('submit-online-order',{ body:{ user:user, cartItems:arr, total:total, delivery:del, taxRate:taxRate } }).then(function(res){
-        hideLoader();
-        if(!res.error){ showToast('تم إرسال الطلب بنجاح','success'); cart={}; renderCards(); }
-        else showToast('فشل الإرسال','error');
-      }).catch(function(){ hideLoader(); showToast('فشل الاتصال','error'); });
+_showCart: function(){
+    var self = this;
+    var items = RW_STATE.data.items || [];
+    var arr = [];
+    var subtotal = 0;
+    for (var code in self.cart) {
+        if (!self.cart.hasOwnProperty(code)) continue;
+        var it = null;
+        for (var i = 0; i < items.length; i++) { if (items[i].item_code === code) { it = items[i]; break; } }
+        if (!it) continue;
+        var q = self.cart[code];
+        var p = Number(it.sales_price) || 0;
+        var ln = p * q;
+        subtotal += ln;
+        arr.push({ code: code, name: it.name, qty: q, price: p });
+    }
+    if (!arr.length) { RW_UI.toast('السلة فارغة', 'info'); return; }
+    var del = deliveryFee || 0;
+    var beforeTax = subtotal + del;
+    var taxAmt = Math.round(beforeTax * taxRate) / 100;
+    var total = beforeTax + taxAmt;
+
+    var itemsH = '';
+    for (var j = 0; j < arr.length; j++) {
+        var ci = arr[j];
+        itemsH += '<div class="flex justify-between p-3 bg-slate-50 rounded-xl mb-2"><span>' + ci.name + '</span><span>' + ci.qty + ' × ' + ci.price.toLocaleString() + ' = ' + (ci.qty * ci.price).toLocaleString() + ' EGP</span></div>';
+    }
+
+    var h = '<div class="text-right">' + itemsH +
+        '<div class="border-t pt-3 mt-3">' +
+        '<div class="flex justify-between mb-2"><span>المجموع:</span><span>' + subtotal.toLocaleString() + ' EGP</span></div>' +
+        (del > 0 ? '<div class="flex justify-between mb-2"><span>رسوم التوصيل:</span><span>' + del.toLocaleString() + ' EGP</span></div>' : '') +
+        (taxRate > 0 ? '<div class="flex justify-between mb-2"><span>الضريبة (' + taxRate + '%):</span><span>' + taxAmt.toLocaleString() + ' EGP</span></div>' : '') +
+        '<div class="flex justify-between mb-4"><span class="font-black text-lg">الإجمالي:</span><span class="font-black text-lg text-emerald-600">' + total.toLocaleString() + ' EGP</span></div>' +
+        '</div>' +
+        '<input id="oc-name" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="الاسم الكامل">' +
+        '<input id="oc-phone" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="رقم الهاتف">' +
+        '<input id="oc-area" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="العنوان / المنطقة">' +
+        '</div>';
+
+    Swal.fire({
+        title: 'سلة التسوق',
+        html: h,
+        width: '600px',
+        showCancelButton: true,
+        confirmButtonText: 'إرسال الطلب',
+        cancelButtonText: 'متابعة التسوق',
+        preConfirm: function() {
+            var nm = document.getElementById('oc-name').value.trim();
+            var ph = document.getElementById('oc-phone').value.trim();
+            var ar = document.getElementById('oc-area').value.trim();
+            if (!nm || !ph || !ar) { Swal.showValidationMessage('الرجاء إكمال البيانات'); return false; }
+            return { name: nm, phone: ph, area: ar };
+        }
+    }).then(function(r) {
+        if (!r.isConfirmed) return;
+        showLoader('جاري إرسال الطلب...');
+
+        var user = { name: r.value.name, area: r.value.area, phone: r.value.phone, notes: '' };
+
+        // المادة 1: fetch اليدوي بدلاً من supabase.functions.invoke
+        supabase.auth.getSession().then(function(ses) {
+            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+            if (!token) {
+                hideLoader();
+                Swal.fire({ icon: 'error', title: 'انتهت الجلسة', text: 'يرجى إعادة تحميل الصفحة.' });
+                return;
+            }
+            return fetch(SUPABASE_URL + '/functions/v1/submit-online-order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    user: user,
+                    cartItems: arr,
+                    total: total,
+                    delivery: del,
+                    taxRate: taxRate
+                })
+            });
+        }).then(function(res) {
+            if (!res) return;
+            if (!res.ok) {
+                return res.json().then(function(err) {
+                    throw new Error(err.msg || err.error || 'خطأ في الخادم');
+                });
+            }
+            return res.json();
+        }).then(function(json) {
+            hideLoader();
+            if (json && json.success) {
+                showToast('تم إرسال الطلب بنجاح', 'success');
+                self.cart = {};
+                self.renderCards();
+            } else {
+                var errorMsg = (json && json.msg) ? json.msg : 'فشل إرسال الطلب';
+                Swal.fire({ icon: 'error', title: 'خطأ', text: errorMsg });
+            }
+        }).catch(function(err) {
+            hideLoader();
+            Swal.fire({ icon: 'error', title: 'فشل الاتصال', text: err.message || 'حدث خطأ غير معروف.' });
+        });
     });
-  }
+},
   async function trackOrder(){
     var input=await Swal.fire({ title:'تتبع حالة الطلب', input:'text', inputLabel:'أدخل رقم الطلب', inputPlaceholder:'مثلاً: ORD-...', showCancelButton:true, confirmButtonText:'استعلام', cancelButtonText:'إلغاء' });
     if(!input.value)return;
@@ -5285,37 +5368,94 @@ var RW_Purchases = (function() {
     data.forEach(function(o){ h+='<tr class="border-b hover:bg-gray-50"><td class="p-3 font-bold text-emerald-700">'+(o.po_code||'')+'</td><td class="p-3">'+(o.po_date||'')+'</td><td class="p-3">'+(o.supplier_name||'')+'</td><td class="p-3 text-center font-bold">'+Number(o.total_amount||0).toLocaleString()+' EGP</td><td class="p-3 text-center">'+(o.status||'')+'</td><td class="p-3 text-center"><button onclick="RW_Purchases._openReceive(\''+o.po_code+'\')" class="text-blue-600"><i class="fa-solid fa-truck-loading"></i></button></td></tr>'; });
     h+='</tbody></table>'; safeHTML(w,h);
   }
-  async function openReceive(poCode){
+_openReceive: async function(poCode) {
     showLoader('جاري جلب التفاصيل...');
-    var poRes=await supabase.from('purchase_orders').select('*').eq('po_code',poCode).maybeSingle();
-    var itemsRes=await supabase.from('purchase_order_details').select('*').eq('po_id',poRes.data?poRes.data.id:null);
+    var poRes = await supabase.from('purchase_orders').select('*').eq('po_code', poCode).maybeSingle();
+    var itemsRes = await supabase.from('purchase_order_details').select('*').eq('po_id', poRes.data ? poRes.data.id : null);
     hideLoader();
-    if(!poRes.data){ showToast('أمر الشراء غير موجود','error'); return; }
-    var items=itemsRes.data||[];
-    var itemsH='';
-    if(items.length){
-      itemsH='<table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">المطلوب</th><th class="p-2 text-center">المستلم الآن</th></tr></thead><tbody>';
-      items.forEach(function(it,idx){ itemsH+='<tr><td class="p-2 font-semibold">'+(it.item_name||'')+'</td><td class="p-2 text-center font-bold">'+(it.qty_ordered||0)+'</td><td class="p-2 text-center"><input type="number" id="rec-qty-'+idx+'" value="'+(it.qty_ordered||0)+'" class="w-20 p-1 border rounded text-center" min="0"></td></tr>'; });
-      itemsH+='</tbody></table>';
+
+    if (!poRes.data) { showToast('أمر الشراء غير موجود', 'error'); return; }
+    var items = itemsRes.data || [];
+    var itemsH = '';
+    if (items.length) {
+        itemsH = '<table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">المطلوب</th><th class="p-2 text-center">المستلم الآن</th></tr></thead><tbody>';
+        for (var idx = 0; idx < items.length; idx++) {
+            var it = items[idx];
+            itemsH += '<tr><td class="p-2 font-semibold">' + (it.item_name || '') + '</td><td class="p-2 text-center font-bold">' + (it.qty_ordered || 0) + '</td><td class="p-2 text-center"><input type="number" id="rec-qty-' + idx + '" value="' + (it.qty_ordered || 0) + '" class="w-20 p-1 border rounded text-center" min="0"></td></tr>';
+        }
+        itemsH += '</tbody></table>';
     }
-    var h='<div class="text-right">'+itemsH+'<div class="mt-4"><textarea id="rec-notes" class="w-full p-2 border rounded-lg" placeholder="ملاحظات الاستلام..." rows="2"></textarea></div></div>';
-    Swal.fire({ title:'استلام بضاعة: '+poCode, html:h, width:'700px', showCancelButton:true, confirmButtonText:'اعتماد الاستلام', confirmButtonColor:'#10b981', cancelButtonText:'إلغاء',
-      preConfirm:function(){
-        var received=[];
-        items.forEach(function(it,idx){ var q=parseFloat(document.getElementById('rec-qty-'+idx).value)||0; if(q>0) received.push({ itemCode:it.item_code, itemName:it.item_name, unit:it.unit, receivedQty:q, orderedQty:it.qty_ordered }); });
-        return received;
-      }
-    }).then(function(r){
-      if(!r.isConfirmed||!r.value.length)return;
-      showLoader('جاري حفظ الاستلام...');
-      var notes=document.getElementById('rec-notes')?document.getElementById('rec-notes').value:'';
-      supabase.functions.invoke('receive-purchase',{ body:{ po_code:poCode, itemsReceived:r.value, notes:notes } }).then(function(res){
-        hideLoader();
-        if(!res.error){ showToast('تم الاستلام','success'); supabase.from('purchase_orders').select('*').then(function(d){ poData=d.data||[]; renderPOTable(poData); }); }
-        else showToast(res.error.message||'فشل','error');
-      }).catch(function(){ hideLoader(); showToast('فشل الاتصال','error'); });
+
+    var h = '<div class="text-right">' + itemsH + '<div class="mt-4"><textarea id="rec-notes" class="w-full p-2 border rounded-lg" placeholder="ملاحظات الاستلام..." rows="2"></textarea></div></div>';
+
+    Swal.fire({
+        title: 'استلام بضاعة: ' + poCode,
+        html: h,
+        width: '700px',
+        showCancelButton: true,
+        confirmButtonText: 'اعتماد الاستلام',
+        confirmButtonColor: '#10b981',
+        cancelButtonText: 'إلغاء',
+        preConfirm: function() {
+            var received = [];
+            for (var idx2 = 0; idx2 < items.length; idx2++) {
+                var it2 = items[idx2];
+                var q = parseFloat(document.getElementById('rec-qty-' + idx2).value) || 0;
+                if (q > 0) received.push({ itemCode: it2.item_code, itemName: it2.item_name, unit: it2.unit, receivedQty: q, orderedQty: it2.qty_ordered });
+            }
+            return received;
+        }
+    }).then(function(r) {
+        if (!r.isConfirmed || !r.value.length) return;
+        showLoader('جاري حفظ الاستلام...');
+        var notes = document.getElementById('rec-notes') ? document.getElementById('rec-notes').value : '';
+
+        // المادة 1: fetch اليدوي بدلاً من supabase.functions.invoke
+        supabase.auth.getSession().then(function(ses) {
+            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+            if (!token) {
+                hideLoader();
+                showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
+                return;
+            }
+            return fetch(SUPABASE_URL + '/functions/v1/receive-purchase', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    po_code: poCode,
+                    itemsReceived: r.value,
+                    notes: notes
+                })
+            });
+        }).then(function(res) {
+            if (!res) return;
+            if (!res.ok) {
+                return res.json().then(function(err) {
+                    throw new Error(err.msg || err.error || 'خطأ في الخادم');
+                });
+            }
+            return res.json();
+        }).then(function(json) {
+            hideLoader();
+            if (json && json.success) {
+                showToast('تم الاستلام', 'success');
+                supabase.from('purchase_orders').select('*').then(function(d) {
+                    poData = d.data || [];
+                    renderPOTable(poData);
+                });
+            } else {
+                var errorMsg = (json && json.msg) ? json.msg : 'فشل الاستلام';
+                Swal.fire({ icon: 'error', title: 'خطأ', text: errorMsg });
+            }
+        }).catch(function(err) {
+            hideLoader();
+            Swal.fire({ icon: 'error', title: 'فشل الاتصال', text: err.message || 'حدث خطأ غير معروف.' });
+        });
     });
-  }
+},
   async function renderPOS(){
     var c=byId('rw-page-container'); if(!c)return;
     safeText(byId('rw-header-title'),'نقطة شراء');
