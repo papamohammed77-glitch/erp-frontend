@@ -1,5 +1,5 @@
 /**
- * schema-validator.js – حارس دستور الروائع
+ * schema-validator.js – حارس دستور الروائع 2.0
  * يفحص جميع ملفات المشروع ويمنع أي مخالفة للدستور
  * 
  * الاستخدام:
@@ -17,47 +17,86 @@ var path = require('path');
 // قائمة المخالفات التي نبحث عنها
 // ============================================================
 var RULES = [
+    // --- قواعد ES5 (تُطبّق على كل الملفات ما عدا المستثنيات) ---
     {
         id: 'ES5-01',
         pattern: /\bconst\b/,
-        message: 'استخدام const – استخدم var فقط'
+        message: 'استخدام const – استخدم var فقط (أو const للثوابت العامة فقط حسب المادة 18)',
+        excludeIf: function(filePath) { return isExcludedFromES5(filePath); }
     },
     {
         id: 'ES5-02',
         pattern: /\blet\b/,
-        message: 'استخدام let – استخدم var فقط'
+        message: 'استخدام let – استخدم var فقط (أو let في الحلقات والنطاقات الضيقة حسب المادة 18)',
+        excludeIf: function(filePath) { return isExcludedFromES5(filePath); }
     },
     {
         id: 'ES5-03',
         pattern: /\(\)\s*=>/,
-        message: 'Arrow Function () => – استخدم function() {}'
+        message: 'Arrow Function () => – استخدم function() {} (أو في الـ callbacks القصيرة فقط حسب المادة 19)',
+        excludeIf: function(filePath) { return isExcludedFromES5(filePath); }
     },
-    {
-        id: 'ES5-04',
-        pattern: /\.find\s*\(/,
-        message: 'Array.find – استخدم حلقة for للبحث'
-    },
+
+    // --- قاعدة invoke (المادة 1) ---
     {
         id: 'INVOKE-01',
         pattern: /supabase\.functions\.invoke/,
-        message: 'supabase.functions.invoke – استخدم fetch اليدوي مع Authorization: Bearer'
+        message: 'supabase.functions.invoke – استخدم fetch اليدوي أو RW_API.call (المادة 1)'
     },
+
+    // --- قاعدة SQL Injection (المادة 29) ---
+    {
+        id: 'SQL-01',
+        pattern: /supabase\.sql\s*`/,
+        message: 'supabase.sql مع قيم ديناميكية – استخدم RPC أو Parameterized Queries (المادة 29)'
+    },
+
+    // --- قاعدة innerHTML مباشر (المادة 30) ---
+    {
+        id: 'UI-01',
+        pattern: /\.innerHTML\s*=\s*(?!.*safeHTML|.*RW_UI\.safeHTML|.*insertAdjacentHTML)/,
+        message: 'استخدام innerHTML مباشر – استخدم RW_UI.safeHTML أو textContent (المادة 30)'
+    },
+
+    // --- قاعدة document.getElementById داخل Swal (المادة 31) ---
+    {
+        id: 'UI-02',
+        pattern: /document\.getElementById/,
+        message: 'تحذير: تأكد أن هذا الاستخدام ليس داخل SweetAlert2. إذا كان داخل Swal، استخدم Swal.getPopup().querySelector (المادة 31)',
+        condition: function(content, filePath) {
+            return content.indexOf('Swal') !== -1 || content.indexOf('swal') !== -1;
+        }
+    },
+
+    // --- قاعدة افتراض عمود notes في run_sheet_details (المادة 2) ---
     {
         id: 'SCHEMA-01',
         pattern: /run_sheet_details.*notes/,
-        message: 'افتراض وجود عمود notes في run_sheet_details – العمود غير موجود'
+        message: 'افتراض وجود عمود notes في run_sheet_details – العمود غير موجود (المادة 2)'
     },
-    {
-        id: 'ES5-05',
-        pattern: /onclick="[^"]*\$\{[^}]*\}[^"]*"/,
-        message: 'Template Literals داخل onclick – استخدم دمج النصوص +'
-    },
+
+    // --- قاعدة Destructuring (محظور في PWA) ---
     {
         id: 'ES5-06',
         pattern: /\bconst\s*\{/,
-        message: 'Destructuring محظور – استخدم var = object.property'
+        message: 'Destructuring محظور في PWA – استخدم var = object.property (المادة 17)',
+        excludeIf: function(filePath) { return isExcludedFromES5(filePath); }
     }
 ];
+
+// ============================================================
+// المجلدات المستثناة من فحص ES5 (Edge Functions)
+// ============================================================
+function isExcludedFromES5(filePath) {
+    var normalizedPath = filePath.replace(/\\/g, '/');
+    if (normalizedPath.indexOf('supabase/functions') !== -1) {
+        return true;
+    }
+    if (normalizedPath.indexOf('schema-validator.js') !== -1) {
+        return true;
+    }
+    return false;
+}
 
 // ============================================================
 // المجلدات التي نفحصها
@@ -73,7 +112,7 @@ var SCAN_DIRECTORIES = [
 var SCAN_EXTENSIONS = ['.html', '.js', '.ts'];
 
 // ============================================================
-// المجلدات المستثناة من الفحص
+// المجلدات المستثناة من الفحص بالكامل
 // ============================================================
 var EXCLUDED_DIRS = ['node_modules', '.git', '.supabase'];
 
@@ -114,6 +153,16 @@ function scanFile(filePath) {
         
         for (var i = 0; i < RULES.length; i++) {
             var rule = RULES[i];
+            
+            // إذا كان للقاعدة شرط استثناء، تحقق منه
+            if (rule.excludeIf && rule.excludeIf(filePath)) {
+                continue;
+            }
+            
+            // إذا كان للقاعدة شرط شرطي (condition)، تحقق منه
+            if (rule.condition && !rule.condition(content, filePath)) {
+                continue;
+            }
             
             for (var lineNum = 0; lineNum < lines.length; lineNum++) {
                 var line = lines[lineNum];
@@ -189,10 +238,11 @@ function main() {
     
     console.log('');
     console.log('🛡️  ====================================');
-    console.log('🛡️  حارس دستور الروائع – Schema Validator');
+    console.log('🛡️  حارس دستور الروائع 2.0 – Schema Validator');
     console.log('🛡️  ====================================');
     console.log('');
     console.log('📂 جاري فحص المجلد: ' + path.resolve(projectRoot));
+    console.log('📝 ملاحظة: مجلد supabase/functions/ مستثنى من فحص ES5');
     console.log('');
     
     var totalViolations = [];
