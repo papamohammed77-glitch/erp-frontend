@@ -33,6 +33,12 @@ function isHTMLRequest(request) {
     return accept.indexOf('text/html') !== -1;
 }
 
+function isAPIRequest(url) {
+    if (url.hostname.indexOf('supabase.co') !== -1) return true;
+    if (url.pathname.indexOf('/functions/v1/') !== -1) return true;
+    return false;
+}
+
 function isStaticAsset(pathname) {
     for (var i = 0; i < STATIC_EXTENSIONS.length; i++) {
         if (pathname.indexOf(STATIC_EXTENSIONS[i]) !== -1) return true;
@@ -43,26 +49,15 @@ function isStaticAsset(pathname) {
 self.addEventListener('fetch', function(event) {
     var request = event.request;
     var url = new URL(request.url);
-
     if (request.method !== 'GET') return;
 
-    if (url.hostname.indexOf('supabase.co') !== -1 || url.origin !== self.location.origin) {
+    if (isAPIRequest(url)) {
         event.respondWith(fetch(request));
         return;
     }
 
     if (isHTMLRequest(request)) {
-        event.respondWith(
-            fetch(request).then(function(networkResponse) {
-                var copy = networkResponse.clone();
-                caches.open(SHELL_CACHE).then(function(cache) {
-                    cache.put(request, copy);
-                });
-                return networkResponse;
-            }).catch(function() {
-                return caches.match(request);
-            })
-        );
+        event.respondWith(fetch(request));
         return;
     }
 
