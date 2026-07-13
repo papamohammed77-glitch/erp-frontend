@@ -5176,184 +5176,248 @@ window.RW_Runsheets = RW_Runsheets;
 // RW_OnlineStore – المتجر الإلكتروني
 // ============================================================
 var RW_OnlineStore = (function() {
-  var cart={}, activeCat='الكل', deliveryFee=0, taxRate=0;
-  function esc(s){ return String(s||'').replace(/[&<>]/g, function(m){ return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'; }); }
-  async function render(){
-    var c=byId('rw-page-container'); if(!c)return;
-    safeText(byId('rw-header-title'),'المتجر الإلكتروني');
-    cart={};
-    try{ var sRes=await supabase.from('app_settings').select('*').limit(1).single(); if(!sRes.error&&sRes.data){ deliveryFee=Number(sRes.data.delivery_fee)||0; taxRate=Number(sRes.data.tax_rate)||0; } }catch(e){}
-    if (!RW_STATE.data.items || !RW_STATE.data.items.length) { showLoader('جاري تحميل المنتجات...'); await RW_Data.loadItems(); hideLoader(); }
-    safeHTML(c,'<div class="p-4"><div class="flex flex-wrap justify-between items-center mb-4 gap-3"><div class="flex overflow-x-auto gap-2 pb-2" id="store-cats"></div><div class="flex gap-2"><button onclick="RW_OnlineStore._trackOrder()" class="bg-white border border-blue-200 text-blue-600 px-4 py-2 rounded-xl font-bold text-sm"><i class="fa-solid fa-magnifying-glass ml-1"></i> تتبع الطلب</button><button onclick="RW_OnlineStore._showCart()" class="bg-slate-100 px-4 py-2 rounded-xl font-bold relative">🛒 <span id="store-cart-badge">0</span></button></div></div><input type="text" id="store-search" class="w-full p-3 bg-white rounded-xl border mb-4" placeholder="ابحث عن منتج..." oninput="RW_OnlineStore._renderCards()"><div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="store-grid"></div></div>');
-    buildCats(); renderCards();
+  var cart = {};
+  var activeCat = 'الكل';
+  var deliveryFee = 0;
+  var taxRate = 0;
+
+  function esc(s) {
+    return String(s || '').replace(/[&<>]/g, function(m) {
+      return m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;';
+    });
   }
-  function buildCats(){
-    var bar=byId('store-cats'); if(!bar)return;
-    var cats=['الكل'], items=RW_STATE.data.items||[];
-    for(var i=0;i<items.length;i++){ if(items[i].category&&cats.indexOf(items[i].category)===-1) cats.push(items[i].category); }
-    var h=''; for(var j=0;j<cats.length;j++) h+='<button class="sub-tab-btn '+(activeCat===cats[j]?'active-sub':'')+'" onclick="RW_OnlineStore._setCat(\''+esc(cats[j])+'\')">'+cats[j]+'</button>';
-    safeHTML(bar,h);
-  }
-  function setCat(cat){ activeCat=cat; renderCards(); }
-  function renderCards(){
-    var grid=byId('store-grid'); if(!grid)return;
-    var items=RW_STATE.data.items||[], q=(byId('store-search')?.value||'').toLowerCase();
-    var filtered=items.filter(function(i){ var mc=activeCat==='الكل'||i.category===activeCat; var ms=!q||(i.name||'').toLowerCase().indexOf(q)!==-1||(i.item_code||'').toLowerCase().indexOf(q)!==-1; var show=i.show_in_store!==false&&i.is_active!==false; return mc&&ms&&show; });
-    if(!filtered.length){ safeHTML(grid,'<div class="col-span-full text-center py-10 text-gray-400">لا توجد منتجات</div>'); return; }
-    var h='';
-    for(var i=0;i<filtered.length;i++){
-      var it=filtered[i], qty=cart[it.item_code]||0, img=it.image_url||'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E';
-      h+='<div class="bg-white rounded-xl p-3 border cursor-pointer shadow-sm hover:shadow-md" onclick="RW_OnlineStore._showProduct(\''+it.item_code+'\')"><img src="'+img+'" class="w-full h-35 object-cover rounded-lg mb-2" onerror="this.src=\'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E\'"><div class="font-bold text-sm">'+(it.name||'')+'</div><div class="font-black text-blue-600 mb-2">'+Number(it.sales_price||0).toLocaleString()+' EGP</div>';
-      if(qty===0) h+='<button onclick="event.stopPropagation();RW_OnlineStore._addToCart(\''+it.item_code+'\')" class="bg-blue-600 text-white w-full py-1 rounded-lg text-sm font-bold">إضافة للسلة</button>';
-      else h+='<div class="flex items-center justify-between bg-slate-100 rounded-lg px-2 py-1"><button onclick="event.stopPropagation();RW_OnlineStore._updateCart(\''+it.item_code+'\',-1)" class="text-lg font-bold text-gray-500">-</button><span class="font-black text-blue-600">'+qty+'</span><button onclick="event.stopPropagation();RW_OnlineStore._updateCart(\''+it.item_code+'\',1)" class="text-lg font-bold text-gray-500">+</button></div>';
-      h+='</div>';
+
+  async function render() {
+    var c = byId('rw-page-container');
+    if (!c) return;
+    safeText(byId('rw-header-title'), 'المتجر الإلكتروني');
+    cart = {};
+    try {
+      var sRes = await supabase.from('app_settings').select('*').limit(1).single();
+      if (!sRes.error && sRes.data) {
+        deliveryFee = Number(sRes.data.delivery_fee) || 0;
+        taxRate = Number(sRes.data.tax_rate) || 0;
+      }
+    } catch(e) {}
+    if (!RW_STATE.data.items || !RW_STATE.data.items.length) {
+      showLoader('جاري تحميل المنتجات...');
+      await RW_Data.loadItems();
+      hideLoader();
     }
-    safeHTML(grid,h); updateBadge();
+    safeHTML(c, '<div class="p-4"><div class="flex flex-wrap justify-between items-center mb-4 gap-3"><div class="flex overflow-x-auto gap-2 pb-2" id="store-cats"></div><div class="flex gap-2"><button onclick="RW_OnlineStore._trackOrder()" class="bg-white border border-blue-200 text-blue-600 px-4 py-2 rounded-xl font-bold text-sm"><i class="fa-solid fa-magnifying-glass ml-1"></i> تتبع الطلب</button><button onclick="RW_OnlineStore._showCart()" class="bg-slate-100 px-4 py-2 rounded-xl font-bold relative">🛒 <span id="store-cart-badge">0</span></button></div></div><input type="text" id="store-search" class="w-full p-3 bg-white rounded-xl border mb-4" placeholder="ابحث عن منتج..." oninput="RW_OnlineStore._renderCards()"><div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="store-grid"></div></div>');
+    buildCats();
+    renderCards();
   }
-  function addToCart(code){ cart[code]=(cart[code]||0)+1; renderCards(); }
-  function updateCart(code,d){ var n=(cart[code]||0)+d; if(n<=0) delete cart[code]; else cart[code]=n; renderCards(); }
-  function updateBadge(){ var t=0; for(var k in cart) t+=cart[k]; var b=byId('store-cart-badge'); if(b)safeText(b,t); }
-  function showProduct(code){
-    var items=RW_STATE.data.items||[], it=null;
-    for(var i=0;i<items.length;i++){ if(items[i].item_code===code){ it=items[i]; break; } }
-    if(!it)return;
-    Swal.fire({ imageUrl:it.image_url||'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E', imageWidth:200, title:it.name, text:it.description||'', showCancelButton:true, confirmButtonText:(cart[code]||0)>0?'الكمية: '+(cart[code]||0):'إضافة للسلة', cancelButtonText:'إغلاق' }).then(function(r){ if(r.isConfirmed&&(cart[code]||0)===0) addToCart(code); });
+
+  function buildCats() {
+    var bar = byId('store-cats');
+    if (!bar) return;
+    var cats = ['الكل'];
+    var items = RW_STATE.data.items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].category && cats.indexOf(items[i].category) === -1) cats.push(items[i].category);
+    }
+    var h = '';
+    for (var j = 0; j < cats.length; j++) {
+      h += '<button class="sub-tab-btn ' + (activeCat === cats[j] ? 'active-sub' : '') + '" onclick="RW_OnlineStore._setCat(\'' + esc(cats[j]) + '\')">' + cats[j] + '</button>';
+    }
+    safeHTML(bar, h);
   }
-_showCart: function(){
-    var self = this;
+
+  function setCat(cat) {
+    activeCat = cat;
+    renderCards();
+  }
+
+  function renderCards() {
+    var grid = byId('store-grid');
+    if (!grid) return;
+    var items = RW_STATE.data.items || [];
+    var q = (byId('store-search') ? byId('store-search').value : '').toLowerCase();
+    var filtered = items.filter(function(i) {
+      var mc = activeCat === 'الكل' || i.category === activeCat;
+      var ms = !q || (i.name || '').toLowerCase().indexOf(q) !== -1 || (i.item_code || '').toLowerCase().indexOf(q) !== -1;
+      var show = i.show_in_store !== false && i.is_active !== false;
+      return mc && ms && show;
+    });
+    if (!filtered.length) {
+      safeHTML(grid, '<div class="col-span-full text-center py-10 text-gray-400">لا توجد منتجات</div>');
+      return;
+    }
+    var h = '';
+    for (var i = 0; i < filtered.length; i++) {
+      var it = filtered[i];
+      var qty = cart[it.item_code] || 0;
+      var img = it.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22%3E📦%3C/text%3E%3C/svg%3E';
+      h += '<div class="bg-white rounded-xl p-3 border cursor-pointer shadow-sm hover:shadow-md" onclick="RW_OnlineStore._showProduct(\'' + it.item_code + '\')"><img src="' + img + '" class="w-full h-35 object-cover rounded-lg mb-2" onerror="this.src=\'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22%3E📦%3C/text%3E%3C/svg%3E\'"><div class="font-bold text-sm">' + (it.name || '') + '</div><div class="font-black text-blue-600 mb-2">' + Number(it.sales_price || 0).toLocaleString() + ' EGP</div>';
+      if (qty === 0) h += '<button onclick="event.stopPropagation();RW_OnlineStore._addToCart(\'' + it.item_code + '\')" class="bg-blue-600 text-white w-full py-1 rounded-lg text-sm font-bold">إضافة للسلة</button>';
+      else h += '<div class="flex items-center justify-between bg-slate-100 rounded-lg px-2 py-1"><button onclick="event.stopPropagation();RW_OnlineStore._updateCart(\'' + it.item_code + '\',-1)" class="text-lg font-bold text-gray-500">-</button><span class="font-black text-blue-600">' + qty + '</span><button onclick="event.stopPropagation();RW_OnlineStore._updateCart(\'' + it.item_code + '\',1)" class="text-lg font-bold text-gray-500">+</button></div>';
+      h += '</div>';
+    }
+    safeHTML(grid, h);
+    updateBadge();
+  }
+
+  function addToCart(code) {
+    cart[code] = (cart[code] || 0) + 1;
+    renderCards();
+  }
+
+  function updateCart(code, d) {
+    var n = (cart[code] || 0) + d;
+    if (n <= 0) delete cart[code];
+    else cart[code] = n;
+    renderCards();
+  }
+
+  function updateBadge() {
+    var t = 0;
+    for (var k in cart) t += cart[k];
+    var b = byId('store-cart-badge');
+    if (b) safeText(b, t);
+  }
+
+  function showProduct(code) {
+    var items = RW_STATE.data.items || [];
+    var it = null;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].item_code === code) { it = items[i]; break; }
+    }
+    if (!it) return;
+    Swal.fire({
+      imageUrl: it.image_url || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22150%22 height=%22150%22%3E%3Crect fill=%22%23e2e8f0%22 width=%22150%22 height=%22150%22/%3E%3Ctext fill=%22%2394a3b8%22 font-size=%2214%22 x=%2250%25%22 y=%2250%25%22%3E📦%3C/text%3E%3C/svg%3E',
+      imageWidth: 200,
+      title: it.name,
+      text: it.description || '',
+      showCancelButton: true,
+      confirmButtonText: (cart[code] || 0) > 0 ? 'الكمية: ' + (cart[code] || 0) : 'إضافة للسلة',
+      cancelButtonText: 'إغل'
+    }).then(function(r) {
+      if (r.isConfirmed && (cart[code] || 0) === 0) addToCart(code);
+    });
+  }
+
+  function showCart() {
     var items = RW_STATE.data.items || [];
     var arr = [];
     var subtotal = 0;
-
-    for (var code in self.cart) {
-        if (!self.cart.hasOwnProperty(code)) continue;
-        var it = null;
-        for (var i = 0; i < items.length; i++) {
-            if (items[i].item_code === code) { it = items[i]; break; }
-        }
-        if (!it) continue;
-        var q = self.cart[code];
-        var p = Number(it.sales_price) || 0;
-        var ln = p * q;
-        subtotal += ln;
-        arr.push({ code: code, name: it.name, qty: q, price: p });
+    for (var code in cart) {
+      var it = null;
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].item_code === code) { it = items[i]; break; }
+      }
+      if (!it) continue;
+      var q = cart[code];
+      var p = Number(it.sales_price) || 0;
+      var ln = p * q;
+      subtotal += ln;
+      arr.push({ code: code, name: it.name, qty: q, price: p });
     }
-
-    if (!arr.length) {
-        showToast('السلة فارغة', 'info');
-        return;
-    }
-
-    var del = self.deliveryFee || 0;
+    if (!arr.length) { showToast('السلة فارغة', 'info'); return; }
+    var del = deliveryFee || 0;
     var beforeTax = subtotal + del;
-    var taxAmt = Math.round(beforeTax * self.taxRate) / 100;
+    var taxAmt = Math.round(beforeTax * taxRate) / 100;
     var total = beforeTax + taxAmt;
-
     var itemsH = '';
     for (var j = 0; j < arr.length; j++) {
-        var ci = arr[j];
-        itemsH += '<div class="flex justify-between p-3 bg-slate-50 rounded-xl mb-2"><span>' + ci.name + '</span><span>' + ci.qty + ' × ' + ci.price.toLocaleString() + ' = ' + (ci.qty * ci.price).toLocaleString() + ' EGP</span></div>';
+      var ci = arr[j];
+      itemsH += '<div class="flex justify-between p-3 bg-slate-50 rounded-xl mb-2"><span>' + ci.name + '</span><span>' + ci.qty + ' × ' + ci.price.toLocaleString() + ' = ' + (ci.qty * ci.price).toLocaleString() + ' EGP</span></div>';
     }
-
-    var h = '<div class="text-right">' + itemsH +
-        '<div class="border-t pt-3 mt-3">' +
-        '<div class="flex justify-between mb-2"><span>المجموع:</span><span>' + subtotal.toLocaleString() + ' EGP</span></div>' +
-        (del > 0 ? '<div class="flex justify-between mb-2"><span>رسوم التوصيل:</span><span>' + del.toLocaleString() + ' EGP</span></div>' : '') +
-        (self.taxRate > 0 ? '<div class="flex justify-between mb-2"><span>الضريبة (' + self.taxRate + '%):</span><span>' + taxAmt.toLocaleString() + ' EGP</span></div>' : '') +
-        '<div class="flex justify-between mb-4"><span class="font-black text-lg">الإجمالي:</span><span class="font-black text-lg text-emerald-600">' + total.toLocaleString() + ' EGP</span></div>' +
-        '</div>' +
-        '<input id="oc-name" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="الاسم الكامل">' +
-        '<input id="oc-phone" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="رقم الهاتف">' +
-        '<input id="oc-area" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="العنوان / المنطقة">' +
-        '</div>';
-
+    var h = '<div class="text-right">' + itemsH + '<div class="border-t pt-3 mt-3"><div class="flex justify-between mb-2"><span>المجموع:</span><span>' + subtotal.toLocaleString() + ' EGP</span></div>' + (del > 0 ? '<div class="flex justify-between mb-2"><span>رسوم التوصيل:</span><span>' + del.toLocaleString() + ' EGP</span></div>' : '') + (taxRate > 0 ? '<div class="flex justify-between mb-2"><span>الضريبة (' + taxRate + '%):</span><span>' + taxAmt.toLocaleString() + ' EGP</span></div>' : '') + '<div class="flex justify-between mb-4"><span class="font-black text-lg">الإجمالي:</span><span class="font-black text-lg text-emerald-600">' + total.toLocaleString() + ' EGP</span></div></div><input id="oc-name" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="الاسم الكامل"><input id="oc-phone" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="رقم الهاتف"><input id="oc-area" class="w-full p-3 bg-slate-50 rounded-xl border mb-2" placeholder="العنوان / المنطقة"></div>';
     Swal.fire({
-        title: 'سلة التسوق',
-        html: h,
-        width: '600px',
-        showCancelButton: true,
-        confirmButtonText: 'إرسال الطلب',
-        cancelButtonText: 'متابعة التسوق',
-        preConfirm: function() {
-            var nm = document.getElementById('oc-name').value.trim();
-            var ph = document.getElementById('oc-phone').value.trim();
-            var ar = document.getElementById('oc-area').value.trim();
-            if (!nm || !ph || !ar) {
-                Swal.showValidationMessage('الرجاء إكمال البيانات');
-                return false;
-            }
-            return { name: nm, phone: ph, area: ar };
-        }
+      title: 'سلة التسوق',
+      html: h,
+      width: '600px',
+      showCancelButton: true,
+      confirmButtonText: 'إرسال الطلب',
+      cancelButtonText: 'متابعة التسوق',
+      preConfirm: function() {
+        var nm = document.getElementById('oc-name').value.trim();
+        var ph = document.getElementById('oc-phone').value.trim();
+        var ar = document.getElementById('oc-area').value.trim();
+        if (!nm || !ph || !ar) { Swal.showValidationMessage('الرجاء إكمال البيانات'); return false; }
+        return { name: nm, phone: ph, area: ar };
+      }
     }).then(function(r) {
-        if (!r.isConfirmed) return;
-        showLoader('جاري إرسال الطلب...');
-        var user = { name: r.value.name, area: r.value.area, phone: r.value.phone, notes: '' };
-
-        // ✅ إرجاع وعد fetch للحفاظ على سلسلة الوعود
-        return supabase.auth.getSession().then(function(ses) {
-            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-            if (!token) {
-                throw new Error('انتهت الجلسة');
-            }
-            return fetch(SUPABASE_URL + '/functions/v1/submit-online-order', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + token
-                },
-                body: JSON.stringify({
-                    user: user,
-                    cartItems: arr,
-                    total: total,
-                    delivery: del,
-                    taxRate: self.taxRate
-                })
-            }).then(function(res) {
-                if (!res.ok) {
-                    return res.json().then(function(err) {
-                        throw new Error(err.msg || err.error || 'خطأ في الخادم');
-                    });
-                }
-                return res.json();
-            });
+      if (!r.isConfirmed) return;
+      showLoader('جاري إرسال الطلب...');
+      var user = { name: r.value.name, area: r.value.area, phone: r.value.phone, notes: '' };
+      supabase.auth.getSession().then(function(ses) {
+        var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+        if (!token) { hideLoader(); showToast('انتهت الجلسة', 'error'); return; }
+        return fetch(SUPABASE_URL + '/functions/v1/submit-online-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ user: user, cartItems: arr, total: total, delivery: del })
         });
-    }).then(function(json) {
+      }).then(function(res) {
+        if (!res) return;
+        if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || 'خطأ'); });
+        return res.json();
+      }).then(function(json) {
         hideLoader();
-        if (json.success) {
-            showToast('تم إرسال الطلب بنجاح', 'success');
-            self.cart = {};
-            self.renderCards();
-        } else {
-            showToast(json.msg || json.error || 'فشل الإرسال', 'error');
-        }
-    }).catch(function(err) {
-        hideLoader();
-        showToast(err.message || 'فشل الاتصال', 'error');
+        if (json && json.success) { showToast('تم إرسال الطلب بنجاح', 'success'); cart = {}; renderCards(); }
+        else { showToast((json && json.msg) || 'فشل', 'error'); }
+      }).catch(function(err) { hideLoader(); showToast('فشل الاتصال', 'error'); });
     });
-},
-  async function trackOrder(){
-    var input=await Swal.fire({ title:'تتبع حالة الطلب', input:'text', inputLabel:'أدخل رقم الطلب', inputPlaceholder:'مثلاً: ORD-...', showCancelButton:true, confirmButtonText:'استعلام', cancelButtonText:'إلغاء' });
-    if(!input.value)return;
-    showLoader('جاري جلب حالة الطلب...');
-    try{
-      var o=await supabase.from('orders').select('*').eq('order_code',input.value).maybeSingle();
-      if(o.error||!o.data){ hideLoader(); Swal.fire({ title:'الطلب غير موجود', text:'لم يتم العثور على طلب بهذا الرقم', icon:'error' }); return; }
-      var it=await supabase.from('order_details').select('*').eq('order_code',input.value);
-      hideLoader();
-      var order=o.data, statusLabel='', statusColor='';
-      switch(order.order_status){ case 'Pending':statusLabel='قيد الانتظار';statusColor='text-yellow-600';break; case 'Confirmed':statusLabel='مؤكد';statusColor='text-blue-600';break; case 'Invoiced':statusLabel='تمت الفوترة';statusColor='text-green-600';break; case 'Delivered':statusLabel='تم التوصيل';statusColor='text-green-700';break; case 'Cancelled':statusLabel='ملغي';statusColor='text-red-600';break; default:statusLabel=order.order_status;statusColor='text-gray-600'; }
-      var itemsH='', total=0;
-      if(it.data&&it.data.length){ itemsH='<table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-        it.data.forEach(function(i){ var lt=Number(i.line_amount)||(Number(i.qty)*Number(i.unit_price)); total+=lt; itemsH+='<tr><td class="p-2">'+(i.item_name||'')+'</td><td class="p-2 text-center">'+i.qty+'</td><td class="p-2 text-center">'+Number(i.unit_price).toLocaleString()+'</td><td class="p-2 text-center font-bold">'+lt.toLocaleString()+'</td></tr>'; });
-        itemsH+='</tbody></table>'; }
-      var detailH='<div class="text-right"><p class="mb-3"><strong>حالة الطلب:</strong> <span class="font-bold '+statusColor+'">'+statusLabel+'</span></p><p class="mb-2"><strong>العميل:</strong> '+(order.customer_name||'غير محدد')+'</p><p class="mb-2"><strong>المنطقة:</strong> '+(order.area||'-')+'</p>'+itemsH+'<div class="mt-4 font-bold text-lg">الإجمالي: '+Number(order.total_amount||0).toLocaleString()+' EGP</div></div>';
-      Swal.fire({ title:'تفاصيل الطلب: '+input.value, html:detailH, width:'700px', showCloseButton:true, showConfirmButton:false });
-    }catch(e){ hideLoader(); showToast('فشل جلب البيانات','error'); }
   }
-  return { render:render, _setCat:setCat, _renderCards:renderCards, _addToCart:addToCart, _updateCart:updateCart, _showCart:showCart, _showProduct:showProduct, _trackOrder:trackOrder };
+
+  async function trackOrder() {
+    var input = await Swal.fire({
+      title: 'تتبع حالة الطلب',
+      input: 'text',
+      inputLabel: 'أدخل رقم الطلب',
+      inputPlaceholder: 'مثلاً: ORD-...',
+      showCancelButton: true,
+      confirmButtonText: 'استعلام',
+      cancelButtonText: 'إلغاء'
+    });
+    if (!input.value) return;
+    showLoader('جاري جلب حالة الطلب...');
+    try {
+      var o = await supabase.from('orders').select('*').eq('order_code', input.value).maybeSingle();
+      if (o.error || !o.data) { hideLoader(); Swal.fire({ title: 'الطلب غير موجود', text: 'لم يتم العثور على طلب بهذا الرقم', icon: 'error' }); return; }
+      var it = await supabase.from('order_details').select('*').eq('order_code', input.value);
+      hideLoader();
+      var order = o.data;
+      var statusLabel = '';
+      var statusColor = '';
+      switch(order.order_status) {
+        case 'Pending': statusLabel = 'قيد الانتظار'; statusColor = 'text-yellow-600'; break;
+        case 'Confirmed': statusLabel = 'مؤكد'; statusColor = 'text-blue-600'; break;
+        case 'Invoiced': statusLabel = 'تمت الفوترة'; statusColor = 'text-green-600'; break;
+        case 'Delivered': statusLabel = 'تم التوصيل'; statusColor = 'text-green-700'; break;
+        case 'Cancelled': statusLabel = 'ملغي'; statusColor = 'text-red-600'; break;
+        default: statusLabel = order.order_status; statusColor = 'text-gray-600';
+      }
+      var itemsH = '';
+      var total = 0;
+      if (it.data && it.data.length) {
+        itemsH = '<table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية</th><th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+        it.data.forEach(function(i) {
+          var lt = Number(i.line_amount) || (Number(i.qty) * Number(i.unit_price));
+          total += lt;
+          itemsH += '<tr><td class="p-2">' + (i.item_name || '') + '</td><td class="p-2 text-center">' + i.qty + '</td><td class="p-2 text-center">' + Number(i.unit_price).toLocaleString() + '</td><td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
+        });
+        itemsH += '</tbody></table>';
+      }
+      var detailH = '<div class="text-right"><p class="mb-3"><strong>حالة الطلب:</strong> <span class="font-bold ' + statusColor + '">' + statusLabel + '</span></p><p class="mb-2"><strong>العميل:</strong> ' + (order.customer_name || 'غير محدد') + '</p><p class="mb-2"><strong>المنطقة:</strong> ' + (order.area || '-') + '</p>' + itemsH + '<div class="mt-4 font-bold text-lg">الإجمالي: ' + Number(order.total_amount || 0).toLocaleString() + ' EGP</div></div>';
+      Swal.fire({ title: 'تفاصيل الطلب: ' + input.value, html: detailH, width: '700px', showCloseButton: true, showConfirmButton: false });
+    } catch(e) { hideLoader(); showToast('فشل جلب البيانات', 'error'); }
+  }
+
+  return {
+    render: render,
+    _setCat: setCat,
+    _renderCards: renderCards,
+    _addToCart: addToCart,
+    _updateCart: updateCart,
+    _showCart: showCart,
+    _showProduct: showProduct,
+    _trackOrder: trackOrder
+  };
 })();
 window.RW_OnlineStore = RW_OnlineStore;
-
 // ============================================================
 // RW_Purchases – المشتريات (أمر شراء + استلام)
 // ============================================================
