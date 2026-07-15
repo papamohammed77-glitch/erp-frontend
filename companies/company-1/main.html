@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-06 01:50 UTC -->
+<!-- 2026-07-14 01:50 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -6755,6 +6755,27 @@ function _confirmUnload(code) {
                 showToast(json.msg || 'فشل التفريغ', 'error');
             }
         }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+    });
+}
+function _changeStatus(code, funcName) {
+    showLoader('جاري تحديث الحالة...');
+    supabase.auth.getSession().then(function(ses) {
+        var t = ses.data.session ? ses.data.session.access_token : null;
+        return fetch(SUPABASE_URL + '/functions/v1/' + funcName, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+            body: JSON.stringify({ runsheet_code: code })
+        });
+    }).then(function(res) { return res.json(); }).then(function(json) {
+        hideLoader();
+        if (json.success) {
+            showToast('تم بنجاح', 'success');
+        } else {
+            showToast(json.msg || 'فشل', 'error');
+        }
+    }).catch(function(e) {
+        hideLoader();
+        showToast('فشل الاتصال', 'error');
     });
 }
 
