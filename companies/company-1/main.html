@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-17 00:23 UTC -->
+<!-- 2026-07-17 00:50 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -1773,45 +1773,46 @@ var RW_Items = (function() {
 	        var hasNewImage = fileInput && fileInput.files.length > 0;
 
 	        // الدالة المضمونة لحل مشكلة undefined وانتظار الرفع
-	        function resolveImageUrlAndSave(item, fileInput, callback) {
-	            var file = (fileInput && fileInput.files.length > 0) ? fileInput.files[0] : null;
-	            
-	            // لا صورة جديدة: استخدم القديمة أو null صريح
-	            if (!file) {
-	                var existingUrl = (item && item.image_url != null) ? item.image_url : null;
-	                console.log('📸 لا توجد صورة جديدة. استخدام:', existingUrl);
-	                callback(existingUrl);
-	                return;
-	            }
-	            
-	            console.log('📤 بدء رفع الصورة:', file.name, file.size);
-	            
-	            var fileName = Date.now() + '-' + file.name.replace(/\s+/g, '-');
-	            
-	            supabase.storage.from('product-images').upload(fileName, file, { upsert: true })
-	                .then(function(res) {
-	                    if (res.error) {
-	                        console.error('❌ فشل الرفع:', res.error.message);
-	                        showToast('فشل رفع الصورة: ' + res.error.message, 'error');
-	                        // في حال الفشل، نستخدم القديمة أو null
-	                        var fallbackUrl = (item && item.image_url != null) ? item.image_url : null;
-	                        callback(fallbackUrl);
-	                        return;
-	                    }
-	                    
-	                    console.log('✅ رفع ناجح. جاري توليد الرابط العام...');
-	                    var publicUrl = supabase.storage.from('product-images').getPublicUrl(fileName).data.publicUrl;
-	                    console.log('✅ الرابط العام:', publicUrl);
-	                    callback(publicUrl);
-	                })
-	                .catch(function(err) {
-	                    console.error('❌ خطأ شبكة:', err.message);
-	                    showToast('فشل رفع الصورة: ' + err.message, 'error');
-	                    var fallbackUrl = (item && item.image_url != null) ? item.image_url : null;
-	                    callback(fallbackUrl);
-	                });
-	        }
-
+function resolveImageUrlAndSave(item, fileInput, callback) {
+    var file = (fileInput && fileInput.files.length > 0) ? fileInput.files[0] : null;
+    
+    if (!file) {
+        var existingUrl = (item && item.image_url != null) ? item.image_url : null;
+        console.log('📸 لا توجد صورة جديدة. استخدام:', existingUrl);
+        callback(existingUrl);
+        return;
+    }
+    
+    console.log('📤 بدء رفع الصورة:', file.name, file.size);
+    
+    // ✅ اسم ملف آمن – ASCII فقط مع الحفاظ على الامتداد
+    var lastDot = file.name.lastIndexOf('.');
+    var fileExt = lastDot > -1 ? file.name.substring(lastDot) : '.jpg';
+    var safeName = encodeURIComponent(file.name.substring(0, lastDot > -1 ? lastDot : file.name.length));
+    var fileName = Date.now() + '-' + safeName + fileExt;
+    
+    supabase.storage.from('product-images').upload(fileName, file, { upsert: true })
+        .then(function(res) {
+            if (res.error) {
+                console.error('❌ فشل الرفع:', res.error.message);
+                showToast('فشل رفع الصورة: ' + res.error.message, 'error');
+                var fallbackUrl = (item && item.image_url != null) ? item.image_url : null;
+                callback(fallbackUrl);
+                return;
+            }
+            
+            console.log('✅ رفع ناجح. جاري توليد الرابط العام...');
+            var publicUrl = supabase.storage.from('product-images').getPublicUrl(fileName).data.publicUrl;
+            console.log('✅ الرابط العام:', publicUrl);
+            callback(publicUrl);
+        })
+        .catch(function(err) {
+            console.error('❌ خطأ شبكة:', err.message);
+            showToast('فشل رفع الصورة: ' + err.message, 'error');
+            var fallbackUrl = (item && item.image_url != null) ? item.image_url : null;
+            callback(fallbackUrl);
+        });
+}
 	        // دالة الحفظ الفعلية – تستقبل imageUrl كمعامل
 	        function executeSave(imageUrl) {
 	            // نضمن أن imageUrl ليست undefined أبداً
