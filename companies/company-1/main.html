@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-16 05:00 UTC -->
+<!-- 2026-07-16 06:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -1418,13 +1418,15 @@ var RW_Items = (function() {
         }
         var html = '';
         html += '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">';
-        html += '<div class="grid grid-cols-2 md:grid-cols-5 gap-2">';
+        html += '<div class="grid grid-cols-2 md:grid-cols-4 gap-2">';
         html += '<input type="text" id="items-search" placeholder="🔍 بحث بالاسم، الكود، الباركود..." class="p-2.5 bg-gray-50 border rounded-lg text-sm" oninput="RW_Items._applyFilters()">';
         html += '<select id="items-cat-filter" class="p-2.5 bg-gray-50 border rounded-lg text-sm" onchange="RW_Items._applyFilters()">' + catOptions + '</select>';
         html += '<select id="items-status-filter" class="p-2.5 bg-gray-50 border rounded-lg text-sm" onchange="RW_Items._applyFilters()"><option value="">كل الحالات</option><option value="low">🔴 منخفض</option><option value="normal">🟢 متوفر</option><option value="overstock">🟣 متكدس</option><option value="critical">⚫ نافد</option></select>';
         html += '<button onclick="RW_Items._resetFilters()" class="p-2.5 bg-gray-100 border rounded-lg text-sm font-bold hover:bg-gray-200">إعادة تعيين</button>';
-        html += '<button onclick="RW_Items._openCategoryModal()" class="p-2.5 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold hover:bg-indigo-200"><i class="fa-solid fa-layer-group ml-1"></i> تصنيفات</button>';
+        html += '</div>';
+        html += '<div class="flex gap-2 mt-2">';
         html += '<button id="btn-add-item-main" class="p-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-plus ml-1"></i> صنف جديد</button>';
+        html += '<button onclick="RW_Items._openCategoryModal()" class="p-2.5 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold hover:bg-indigo-200"><i class="fa-solid fa-layer-group ml-1"></i> تصنيفات</button>';
         html += '</div></div>';
         html += '<div class="bg-white rounded-2xl shadow-sm border overflow-auto" id="items-table-wrapper" style="max-height:60vh"></div>';
         safeHTML(content, html);
@@ -1858,9 +1860,8 @@ var RW_Items = (function() {
             hideLoader(); Swal.fire({title:'حركة المخزون',html:html,width:'800px',showCloseButton:true,showConfirmButton:false});
         } catch(e) { hideLoader(); console.error(e); showToast('فشل التحميل','error'); }
     }
+
     function _openCategoryModal() {
-      var self = this;
-      
       supabase.from('categories').select('id, category_name').order('category_name').then(function(res) {
         var categories = res.data || [];
         
@@ -1872,19 +1873,19 @@ var RW_Items = (function() {
         } else {
           html += '<div class="max-h-48 overflow-y-auto mb-4 space-y-1">';
           for (var i = 0; i < categories.length; i++) {
-            html += '<div class="flex justify-between items-center p-2 bg-gray-50 rounded-lg">';
-            html += '<span class="font-bold text-sm">' + categories[i].category_name + '</span>';
-            html += '<div class="flex gap-1">';
-            html += '<button onclick="RW_Items._editCategory(\'' + categories[i].id + '\', \'' + (categories[i].category_name || '').replace(/'/g, "\\'") + '\')" class="text-blue-500 text-xs px-2 py-1"><i class="fa-solid fa-pen"></i></button>';
-            html += '<button onclick="RW_Items._deleteCategory(\'' + categories[i].id + '\', \'' + (categories[i].category_name || '').replace(/'/g, "\\'") + '\')" class="text-red-500 text-xs px-2 py-1"><i class="fa-solid fa-trash"></i></button>';
-            html += '</div></div>';
+            var catId = categories[i].id;
+            var catName = categories[i].category_name || '';
+            html += '<div class="flex justify-between items-center p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-indigo-50" onclick="RW_Items._editCategory(\'' + catId + '\', \'' + catName.replace(/'/g, "\\'") + '\')">';
+            html += '<span class="font-bold text-sm">' + catName + '</span>';
+            html += '<button onclick="event.stopPropagation(); RW_Items._deleteCategory(\'' + catId + '\', \'' + catName.replace(/'/g, "\\'") + '\')" class="text-red-500 text-xs px-2 py-1" title="حذف"><i class="fa-solid fa-trash"></i></button>';
+            html += '</div>';
           }
           html += '</div>';
         }
         
         html += '<div class="flex gap-2 mt-3">';
         html += '<input type="text" id="new-category-name" class="flex-1 p-2.5 border rounded-lg text-sm" placeholder="اسم التصنيف الجديد">';
-        html += '<button onclick="RW_Items._addCategory()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm">إضافة</button>';
+        html += '<button onclick="RW_Items._addCategory()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap">إضافة</button>';
         html += '</div>';
         html += '</div>';
         
@@ -1904,47 +1905,74 @@ var RW_Items = (function() {
       if (!popup) return;
       var nameInput = popup.querySelector('#new-category-name');
       var name = nameInput ? nameInput.value.trim() : '';
-      if (!name) { RW_UI.toast('أدخل اسم التصنيف', 'warning'); return; }
+      if (!name) { showToast('أدخل اسم التصنيف', 'warning'); return; }
       
-      RW_UI.showLoader();
-      RW_API.call('save-category', { action: 'create', category_name: name }, function(json) {
-        RW_UI.hideLoader();
+      showLoader('جاري الإضافة...');
+      supabase.auth.getSession().then(function(ses) {
+        var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+        return fetch(RW_SUPABASE_URL + '/functions/v1/save-category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ action: 'create', category_name: name })
+        });
+      }).then(function(res) { return res.json(); }).then(function(json) {
+        hideLoader();
         if (json.success) {
-          RW_UI.toast('تمت الإضافة', 'success');
+          showToast('تمت الإضافة', 'success');
           Swal.close();
           RW_Items._openCategoryModal();
         } else {
-          RW_UI.toast(json.msg || 'فشل', 'error');
+          showToast(json.msg || 'فشل', 'error');
         }
+      }).catch(function(e) {
+        hideLoader();
+        showToast('فشل الاتصال', 'error');
       });
     }
 
     function _editCategory(id, currentName) {
       Swal.fire({
         title: 'تعديل التصنيف',
-        input: 'text',
-        inputValue: currentName,
-        inputLabel: 'الاسم الجديد',
+        html: '<div class="text-right"><label class="block text-sm font-bold mb-2">الاسم</label><input id="swal-edit-cat-name" class="swal2-input w-full text-right rounded-xl" value="' + (currentName || '') + '"></div>',
         showCancelButton: true,
         confirmButtonText: 'حفظ',
         cancelButtonText: 'إلغاء',
-        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-indigo-600' },
-        preConfirm: function(newName) {
-          if (!newName || !newName.trim()) { Swal.showValidationMessage('الاسم مطلوب'); return false; }
-          return newName.trim();
+        showDenyButton: true,
+        denyButtonText: '🗑️ حذف',
+        denyButtonColor: '#ef4444',
+        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-indigo-600', cancelButton: '!rounded-xl', denyButton: '!rounded-xl' },
+        preConfirm: function() {
+          var popup = Swal.getPopup();
+          var input = popup ? popup.querySelector('#swal-edit-cat-name') : null;
+          var newName = input ? input.value.trim() : '';
+          if (!newName) { Swal.showValidationMessage('الاسم مطلوب'); return false; }
+          return newName;
         }
       }).then(function(result) {
-        if (!result.isConfirmed) return;
-        RW_UI.showLoader();
-        RW_API.call('save-category', { action: 'update', category_id: id, category_name: result.value }, function(json) {
-          RW_UI.hideLoader();
-          if (json.success) {
-            RW_UI.toast('تم التعديل', 'success');
-            RW_Items._openCategoryModal();
-          } else {
-            RW_UI.toast(json.msg || 'فشل', 'error');
-          }
-        });
+        if (result.isConfirmed) {
+          showLoader('جاري الحفظ...');
+          supabase.auth.getSession().then(function(ses) {
+            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+            return fetch(RW_SUPABASE_URL + '/functions/v1/save-category', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({ action: 'update', category_id: id, category_name: result.value })
+            });
+          }).then(function(res) { return res.json(); }).then(function(json) {
+            hideLoader();
+            if (json.success) {
+              showToast('تم التعديل', 'success');
+              RW_Items._openCategoryModal();
+            } else {
+              showToast(json.msg || 'فشل', 'error');
+            }
+          }).catch(function(e) {
+            hideLoader();
+            showToast('فشل الاتصال', 'error');
+          });
+        } else if (result.isDenied) {
+          RW_Items._deleteCategory(id, currentName);
+        }
       });
     }
 
@@ -1994,42 +2022,67 @@ var RW_Items = (function() {
     }
 
     function _executeDeleteCategory(id, replacementId) {
-      RW_UI.showLoader();
+      showLoader('جاري الحذف...');
       var payload = { action: 'delete', category_id: id };
       if (replacementId) payload.replacement_category_id = replacementId;
       
-      RW_API.call('save-category', payload, function(json) {
-        RW_UI.hideLoader();
+      supabase.auth.getSession().then(function(ses) {
+        var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+        return fetch(RW_SUPABASE_URL + '/functions/v1/save-category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify(payload)
+        });
+      }).then(function(res) { return res.json(); }).then(function(json) {
+        hideLoader();
         if (json.success) {
-          RW_UI.toast('تم الحذف', 'success');
+          showToast('تم الحذف', 'success');
           RW_Items._openCategoryModal();
           RW_Items.render();
         } else {
-          RW_UI.toast(json.msg || 'فشل', 'error');
+          showToast(json.msg || 'فشل', 'error');
         }
+      }).catch(function(e) {
+        hideLoader();
+        showToast('فشل الاتصال', 'error');
       });
     }
-
+    
     return {
+        // الدوال الأساسية
         render: render,
+        _openModal: openItemPage,
+        openItemPage: openItemPage,
+
+        // تبويبات الصنف والفرز
+        _switchItemTab: _switchItemTab,
         _sort: _sort,
+
+        // إدارة التصنيفات
         _openCategoryModal: _openCategoryModal,
         _addCategory: _addCategory,
         _editCategory: _editCategory,
         _deleteCategory: _deleteCategory,
         _executeDeleteCategory: _executeDeleteCategory,
-        _openModal: openItemPage,
-        openItemPage: openItemPage,
-        _switchItemTab: _switchItemTab,
+
+        // حفظ وحذف الصنف
         _handleSaveFromPage: _handleSaveFromPage,
         _handleDeleteFromPage: _handleDeleteFromPage,
+
+        // عرض الصور وحركة المخزون
         _viewImage: _viewImage,
         _showBranchStockMovement: _showBranchStockMovement,
+
+        // التبويبات الفرعية والفلاتر
         _switchSubTab: _switchSubTab,
         _applyFilters: _applyFilters,
         _resetFilters: _resetFilters,
+
+        // تقارير حركة الصنف
         _renderStockMovementReport: _renderStockMovementReport,
         _loadMovementReport: _loadMovementReport,
+
+        // مصفوفة الفروع
         _filterMatrix: _filterMatrix
     };
 })();
