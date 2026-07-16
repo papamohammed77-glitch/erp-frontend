@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-15 01:50 UTC -->
+<!-- 2026-07-16 07:55 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -1772,7 +1772,7 @@ var RW_Items = (function() {
         var fileInput = byId('item-image-file');
         var hasNewImage = fileInput && fileInput.files.length > 0;
 
-        // تحديد imageUrl النهائي بشكل صريح قبل الحفظ
+        // 🆕 تحديد imageUrl النهائي بشكل صريح قبل الحفظ
         function resolveImageUrlAndSave() {
             var finalImageUrl = item ? item.image_url : null;
 
@@ -1790,20 +1790,23 @@ var RW_Items = (function() {
                     .then(function(res) {
                         if (!res.error) {
                             var ud = supabase.storage.from('product-images').getPublicUrl(fileName);
-                            finalImageUrl = ud.data.publicUrl; // ✅ السبب الجذري: ud.publicUrl خطأ، والصحيح ud.data.publicUrl
+                            finalImageUrl = ud.publicUrl;
                         }
+                        // ✅ نمرر الصورة النهائية (الجديدة أو القديمة) إلى دالة الحفظ
                         executeSave(finalImageUrl);
                     })
                     .catch(function(err) {
                         console.error('فشل رفع الصورة:', err.message);
+                        // ✅ حتى لو فشل الرفع، نمرر الصورة القديمة (أو null)
                         executeSave(finalImageUrl);
                     });
             } else {
+                // ✅ لا توجد صورة جديدة – نمرر الصورة الحالية مباشرة
                 executeSave(finalImageUrl);
             }
         }
 
-        // دالة الحفظ الفعلية – تستقبل imageUrl كمعامل
+        // 🆕 دالة الحفظ الفعلية – تستقبل imageUrl كمعامل (وليس من Closure)
         function executeSave(imageUrl) {
             var payload = {
                 name: name,
@@ -1831,6 +1834,9 @@ var RW_Items = (function() {
                 is_daily_deal: byId('item-is-daily-deal') ? byId('item-is-daily-deal').checked : false,
                 badge_text: (byId('item-badge-text') ? byId('item-badge-text').value : '').trim() || null
             };
+
+            console.log('📤 الصورة المُرسلة:', payload.image_url);
+console.log('📤 البيانات الكاملة:', JSON.stringify(payload)); // 🆕 تتبع قيمة الصورة
 
             supabase.auth.getSession().then(function(ses) {
                 var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
@@ -1866,7 +1872,6 @@ var RW_Items = (function() {
         // بدء العملية
         resolveImageUrlAndSave();
     }
-
 
     function _handleDeleteFromPage() {
         var item = window._currentEditItem; if (!item) { showToast('الصنف غير محدد', 'error'); return; }
