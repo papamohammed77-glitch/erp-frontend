@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-16 06:20 UTC -->
+<!-- 2026-07-16 06:35 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -1804,9 +1804,31 @@ var RW_Items = (function() {
                 else{hideLoader();showToast((json&&json.error)||'فشل الحفظ','error');}
             }).catch(function(e){hideLoader();console.error(e);showToast('فشل الاتصال','error');});
         }
-        var fileInput=byId('item-image-file');
-        if(fileInput&&fileInput.files.length>0){var file=fileInput.files[0];var fileName='items/'+Date.now()+'-'+file.name;supabase.storage.from('product-images').upload(fileName,file,{upsert:true}).then(function(res){if(!res.error){var ud=supabase.storage.from('product-images').getPublicUrl(fileName);imageUrl=ud.publicUrl;}uploadAndSave();}).catch(function(){uploadAndSave();});}
-        else{uploadAndSave();}
+        var fileInput = byId('item-image-file');
+        if (fileInput && fileInput.files.length > 0) {
+          var file = fileInput.files[0];
+          // 🆕 تنظيف اسم الملف: إزالة الأحرف العربية والمسافات، والاحتفاظ فقط بالأحرف اللاتينية والأرقام والشرطات
+          var originalName = file.name;
+          var lastDot = originalName.lastIndexOf('.');
+          var ext = lastDot > -1 ? originalName.substring(lastDot) : '.jpg';
+          var baseName = lastDot > -1 ? originalName.substring(0, lastDot) : originalName;
+          // إزالة جميع الأحرف غير الآمنة (غير اللاتينية، المسافات، الأحرف الخاصة)
+          var safeName = baseName.replace(/[^a-zA-Z0-9_-]/g, '').substring(0, 50);
+          if (!safeName) { safeName = 'item-image'; }
+          var fileName = Date.now() + '-' + safeName + ext;
+          
+          supabase.storage.from('product-images').upload(fileName, file, { upsert: true }).then(function(res) {
+            if (!res.error) {
+              var ud = supabase.storage.from('product-images').getPublicUrl(fileName);
+              imageUrl = ud.publicUrl;
+            }
+            uploadAndSave();
+          }).catch(function() {
+            uploadAndSave();
+          });
+        } else {
+          uploadAndSave();
+        }
     }
 
     function _handleDeleteFromPage() {
