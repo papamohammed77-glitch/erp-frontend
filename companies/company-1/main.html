@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-16 08:10 UTC -->
+<!-- 2026-07-14 01:50 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -1772,7 +1772,7 @@ var RW_Items = (function() {
         var fileInput = byId('item-image-file');
         var hasNewImage = fileInput && fileInput.files.length > 0;
 
-        // 🆕 تحديد imageUrl النهائي بشكل صريح قبل الحفظ
+        // تحديد imageUrl النهائي بشكل صريح قبل الحفظ
         function resolveImageUrlAndSave() {
             var finalImageUrl = item ? item.image_url : null;
 
@@ -1790,21 +1790,82 @@ var RW_Items = (function() {
                     .then(function(res) {
                         if (!res.error) {
                             var ud = supabase.storage.from('product-images').getPublicUrl(fileName);
-                           finalImageUrl = ud.data.publicUrl;
+                            finalImageUrl = ud.data.publicUrl; // ✅ السبب الجذري: ud.publicUrl خطأ، والصحيح ud.data.publicUrl
                         }
-                        // ✅ نمرر الصورة النهائية (الجديدة أو القديمة) إلى دالة الحفظ
                         executeSave(finalImageUrl);
                     })
                     .catch(function(err) {
                         console.error('فشل رفع الصورة:', err.message);
-                        // ✅ حتى لو فشل الرفع، نمرر الصورة القديمة (أو null)
                         executeSave(finalImageUrl);
                     });
             } else {
-                // ✅ لا توجد صورة جديدة – نمرر الصورة الحالية مباشرة
                 executeSave(finalImageUrl);
             }
         }
+
+        // دالة الحفظ الفعلية – تستقبل imageUrl كمعامل
+        function executeSave(imageUrl) {
+            var payload = {
+                name: name,
+                barcode: (byId('item-barcode') ? byId('item-barcode').value : '').trim(),
+                category: (byId('item-cat') ? byId('item-cat').value : '').trim(),
+                category_id: (byId('item-cat') ? byId('item-cat').value : '') || null,
+                unit: (byId('item-unit') ? byId('item-unit').value : '').trim(),
+                alt_unit: (byId('item-altunit') ? byId('item-altunit').value : '').trim(),
+                alt_unit_qty: parseFloat(byId('item-altqty') ? byId('item-altqty').value : 0) || 0,
+                sales_price: parseFloat(byId('item-price') ? byId('item-price').value : 0) || 0,
+                old_price: parseFloat(byId('item-oprice') ? byId('item-oprice').value : 0) || 0,
+                reorder_point: parseFloat(byId('item-reorder') ? byId('item-reorder').value : 5) || 5,
+                max_qty: parseFloat(byId('item-maxqty') ? byId('item-maxqty').value : 0) || 0,
+                max_qty_per_order: parseFloat(byId('item-maxqty-per-order') ? byId('item-maxqty-per-order').value : 0) || 0,
+                sort_order: parseFloat(byId('item-sort-order') ? byId('item-sort-order').value : 0) || 0,
+                weight_kg: parseFloat(byId('item-weight') ? byId('item-weight').value : 0) || 0,
+                volume_m3: parseFloat(byId('item-vol') ? byId('item-vol').value : 0) || 0,
+                description: (byId('item-desc') ? byId('item-desc').value : '').trim(),
+                image_url: imageUrl,
+                is_active: byId('item-is-active') ? byId('item-is-active').checked : true,
+                show_in_store: byId('item-show-in-store') ? byId('item-show-in-store').checked : true,
+                discount_percent: parseFloat(byId('item-discount-percent') ? byId('item-discount-percent').value : 0) || 0,
+                discount_start: (byId('item-discount-start') ? byId('item-discount-start').value : '') || null,
+                discount_end: (byId('item-discount-end') ? byId('item-discount-end').value : '') || null,
+                is_daily_deal: byId('item-is-daily-deal') ? byId('item-is-daily-deal').checked : false,
+                badge_text: (byId('item-badge-text') ? byId('item-badge-text').value : '').trim() || null
+            };
+
+            supabase.auth.getSession().then(function(ses) {
+                var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+                if (!token) { hideLoader(); showToast('جلسة غير صالحة', 'error'); return; }
+                return fetch(RW_SUPABASE_URL + '/functions/v1/save-item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                    body: JSON.stringify({
+                        item: payload,
+                        isEdit: isEditFlag,
+                        item_code: item ? item.item_code : null,
+                        openingBranch: (byId('item-opening-branch') ? byId('item-opening-branch').value : '') || null,
+                        openingQty: parseFloat(byId('item-opening-qty') ? byId('item-opening-qty').value : 0) || 0
+                    })
+                });
+            }).then(function(res) { if (!res) return; return res.json(); }).then(function(json) {
+                if (json && json.success) {
+                    RW_Audit_log(isEditFlag ? 'update' : 'create', 'items', json.item_code || (item ? item.item_code : ''), isEditFlag ? item : null, payload);
+                    hideLoader();
+                    showToast(isEditFlag ? 'تم التعديل' : 'تمت الإضافة', 'success');
+                    RW_Data.loadItems().then(function(nd) {
+                        itemsData = nd;
+                        _loadStockData().then(function() { if (currentSubTab === 'list') _applyFilters(); });
+                    });
+                    RW_Items.render();
+                } else {
+                    hideLoader();
+                    showToast((json && json.error) || 'فشل الحفظ', 'error');
+                }
+            }).catch(function(e) { hideLoader(); console.error(e); showToast('فشل الاتصال', 'error'); });
+        }
+
+        // بدء العملية
+        resolveImageUrlAndSave();
+    }
 
         // 🆕 دالة الحفظ الفعلية – تستقبل imageUrl كمعامل (وليس من Closure)
         function executeSave(imageUrl) {
