@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-17 05:25 UTC -->
+<!-- 2026-07-17 07:35 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}body{font-family:'Cairo',sans-serif;background:#f8fafc;overflow-x:hidden;color:#111827}:root{--rw-primary:#2563eb;--rw-primary-dark:#1d4ed8;--rw-primary-light:#eff6ff;--rw-success:#10b981;--rw-warning:#f59e0b;--rw-danger:#ef4444;--rw-info:#06b6d4;--rw-dark:#111827;--rw-dark-2:#1f2937;--rw-gray:#6b7280;--rw-gray-light:#e5e7eb;--rw-bg:#f8fafc;--rw-card:#ffffff;--rw-sidebar:#ffffff;--rw-sidebar-hover:#f1f5f9;--rw-radius:22px;--rw-shadow:0 10px 30px rgba(0,0,0,0.06);--transition-speed:0.3s}
@@ -1385,6 +1386,10 @@ var RW_Items = (function() {
             { id: 'movement', label: '📊 حركة صنف' },
             { id: 'matrix', label: '📍 الأرصدة حسب الفروع' }
         ];
+        var isOwner = (RW_STATE.app.currentUser && RW_STATE.app.currentUser.isOwner === true);
+        if (isOwner || RW_Permissions_check('warehouse_manager') || RW_Permissions_check('stock_adjustment')) {
+            tabs.push({ id: 'upload', label: '📤 تحديث الأرصدة' });
+        }
         for (var t = 0; t < tabs.length; t++) {
             var activeClass = currentSubTab === tabs[t].id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200';
             html += '<button onclick="RW_Items._switchSubTab(\'' + tabs[t].id + '\')" class="px-4 py-2 rounded-xl font-bold text-sm transition ' + activeClass + '">' + tabs[t].label + '</button>';
@@ -1401,6 +1406,7 @@ var RW_Items = (function() {
         if (tabId === 'list') _renderListView();
         else if (tabId === 'movement') _renderStockMovementReport(null, null, null);
         else if (tabId === 'matrix') _renderBranchStockMatrix();
+        else if (tabId === 'upload') _renderUploadTab();
     }
 
     // ==================== قائمة الأصناف ====================
@@ -2184,7 +2190,187 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
             safeHTML(sel, html);
         });
     }
+    // ==================== تبويب تحديث الأرصدة ====================
+    var _uploadFileData = []; // تخزين بيانات الملف بعد التحليل
 
+    function _renderUploadTab() {
+        var content = byId('items-sub-content');
+        if (!content) return;
+        var branches = window._itemsBranches || RW_STATE.data.branches || [];
+        var branchOpts = '<option value="">-- اختر الفرع --</option>';
+        for (var i = 0; i < branches.length; i++) {
+            branchOpts += '<option value="' + branches[i].id + '">' + (branches[i].name || branches[i].branch_code) + '</option>';
+        }
+
+        var html = '<div class="bg-white rounded-2xl shadow-sm border p-6">';
+        html += '<h3 class="text-xl font-black mb-4"><i class="fa-solid fa-file-import ml-2 text-indigo-600"></i>تحديث الأرصدة عبر ملف</h3>';
+        html += '<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">';
+        html += '<div><label class="text-xs font-bold block mb-1">الفرع *</label><select id="upload-branch" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm">' + branchOpts + '</select></div>';
+        html += '<div><label class="text-xs font-bold block mb-1">نوع التسوية *</label><select id="upload-type" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"><option value="replace">استبدال كامل</option><option value="add">إضافة (+)</option><option value="deduct">خصم (-)</option></select></div>';
+        html += '<div><label class="text-xs font-bold block mb-1">سبب التسوية *</label><input type="text" id="upload-reason" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm" placeholder="مثال: جرد دوري ربع سنوي"></div>';
+        html += '<div class="flex items-end"><button id="btn-upload-file" class="w-full p-2.5 bg-indigo-600 text-white rounded-lg text-sm font-bold"><i class="fa-solid fa-folder-open ml-1"></i> اختر ملف</button><input type="file" id="upload-file-input" accept=".csv,.xlsx,.xls" class="hidden" onchange="RW_Items._handleFileSelect(this)"></div>';
+        html += '</div>';
+        html += '<div id="upload-preview-area" class="hidden mt-6"><h4 class="font-bold text-lg mb-3">معاينة البيانات</h4><div class="overflow-auto max-h-96 border rounded-lg" id="upload-preview-table"></div><div class="mt-3 flex justify-between items-center"><span id="upload-summary" class="text-sm text-gray-500"></span><button id="btn-execute-upload" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold disabled:opacity-50" disabled onclick="RW_Items._executeUpload()"><i class="fa-solid fa-check ml-1"></i> تنفيذ التحديث</button></div></div>';
+        html += '</div>';
+        safeHTML(content, html);
+
+        var btn = byId('btn-upload-file');
+        if (btn) btn.addEventListener('click', function() { var inp = byId('upload-file-input'); if (inp) inp.click(); });
+    }
+
+    function _handleFileSelect(input) {
+        var file = input.files[0];
+        if (!file) return;
+
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                var data = new Uint8Array(e.target.result);
+                var workbook = XLSX.read(data, { type: 'array' });
+                var sheet = workbook.Sheets[workbook.SheetNames[0]];
+                var rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                if (rows.length < 2) { showToast('الملف فارغ أو لا يحتوي على بيانات', 'warning'); return; }
+                
+                // البحث عن الأعمدة الصحيحة (باركود وكمية)
+                var headers = rows[0];
+                var barcodeCol = -1, qtyCol = -1;
+                for (var h = 0; h < headers.length; h++) {
+                    var headerStr = String(headers[h] || '').toLowerCase().trim();
+                    if (headerStr === 'barcode' || headerStr === 'item_code' || headerStr === 'باركود' || headerStr === 'الكود') barcodeCol = h;
+                    if (headerStr === 'qty' || headerStr === 'quantity' || headerStr === 'كمية' || headerStr === 'الكمية') qtyCol = h;
+                }
+                if (barcodeCol === -1 || qtyCol === -1) { showToast('لم يتم التعرف على أعمدة الباركود والكمية. تأكد من وجود ترويسات Barcode و Qty', 'error'); return; }
+
+                _uploadFileData = [];
+                for (var r = 1; r < rows.length; r++) {
+                    var row = rows[r];
+                    var barcode = String(row[barcodeCol] || '').trim();
+                    var qty = parseFloat(String(row[qtyCol] || '').replace(/[^\d.]/g, ''));
+                    if (barcode && !isNaN(qty)) {
+                        // تجميع الباركودات المتكررة
+                        var found = false;
+                        for (var f = 0; f < _uploadFileData.length; f++) {
+                            if (_uploadFileData[f].barcode === barcode) { _uploadFileData[f].qty += qty; found = true; break; }
+                        }
+                        if (!found) _uploadFileData.push({ barcode: barcode, qty: qty });
+                    }
+                }
+                _renderUploadPreview();
+            } catch (err) { showToast('فشل قراءة الملف: ' + err.message, 'error'); console.error(err); }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function _renderUploadPreview() {
+        var previewArea = byId('upload-preview-area');
+        var previewTable = byId('upload-preview-table');
+        var summary = byId('upload-summary');
+        var executeBtn = byId('btn-execute-upload');
+        if (!previewArea || !previewTable) return;
+
+        previewArea.classList.remove('hidden');
+        if (_uploadFileData.length === 0) {
+            safeHTML(previewTable, '<div class="text-center py-8 text-gray-500">لا توجد بيانات صالحة في الملف</div>');
+            safeText(summary, '');
+            if (executeBtn) executeBtn.disabled = true;
+            return;
+        }
+
+        safeHTML(previewTable, '<div class="text-center py-8 text-gray-500"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحقق من الأصناف...</div>');
+
+        var barcodes = [];
+        for (var b = 0; b < _uploadFileData.length; b++) { barcodes.push(_uploadFileData[b].barcode); }
+
+        var branchId = byId('upload-branch') ? byId('upload-branch').value : '';
+        if (!branchId) { safeHTML(previewTable, '<div class="text-center py-8 text-red-500">يرجى اختيار الفرع أولاً</div>'); if (executeBtn) executeBtn.disabled = true; return; }
+
+        // جلب الأصناف
+        supabase.from('items').select('id, item_code, barcode, name').in('barcode', barcodes).then(function(itemsRes) {
+            var itemMap = {};
+            var itemCodes = [];
+            for (var im = 0; im < (itemsRes.data || []).length; im++) {
+                var it = itemsRes.data[im];
+                if (it.barcode) itemMap[it.barcode] = it;
+                itemCodes.push(it.item_code);
+            }
+
+            // جلب الأرصدة الحالية
+            supabase.from('stock_branches').select('item_id, qty').eq('branch_id', branchId).in('item_id', (itemsRes.data || []).map(function(x) { return x.id; })).then(function(stockRes) {
+                var stockMap = {};
+                for (var st = 0; st < (stockRes.data || []).length; st++) { stockMap[stockRes.data[st].item_id] = stockRes.data[st].qty; }
+
+                var html = '<table class="w-full text-sm border"><thead class="bg-gray-100 sticky top-0"><tr><th class="p-2">الباركود</th><th class="p-2">الصنف</th><th class="p-2 text-center">الرصيد الحالي</th><th class="p-2 text-center">الكمية المدخلة</th><th class="p-2 text-center">الرصيد الجديد</th><th class="p-2 text-center">الحالة</th></tr></thead><tbody>';
+                var validCount = 0, invalidCount = 0;
+                var adjType = byId('upload-type') ? byId('upload-type').value : 'replace';
+
+                for (var d = 0; d < _uploadFileData.length; d++) {
+                    var entry = _uploadFileData[d];
+                    var item = itemMap[entry.barcode];
+                    var currentQty = item ? (Number(stockMap[item.id]) || 0) : 0;
+                    var inputQty = Number(entry.qty) || 0;
+                    var newQty = currentQty;
+                    var status = '', statusClass = '';
+
+                    if (!item) { status = '❌ باركود غير موجود'; statusClass = 'bg-red-50'; invalidCount++; }
+                    else {
+                        if (adjType === 'replace') newQty = inputQty;
+                        else if (adjType === 'add') newQty = currentQty + inputQty;
+                        else if (adjType === 'deduct') { newQty = currentQty - inputQty; if (newQty < 0) { status = '⚠️ سيصبح الرصيد سالباً'; statusClass = 'bg-yellow-50'; } }
+                        if (!status) { status = '✅ صالح'; statusClass = 'bg-green-50'; validCount++; }
+                    }
+                    html += '<tr class="' + statusClass + '"><td class="p-2 font-mono">' + entry.barcode + '</td><td class="p-2">' + (item ? item.name : '---') + '</td><td class="p-2 text-center font-bold">' + currentQty + '</td><td class="p-2 text-center font-bold text-indigo-600">' + inputQty + '</td><td class="p-2 text-center font-bold">' + newQty + '</td><td class="p-2 text-center text-xs">' + status + '</td></tr>';
+                }
+                html += '</tbody></table>';
+                safeHTML(previewTable, html);
+                safeText(summary, 'صالح: ' + validCount + ' | أخطاء: ' + invalidCount + ' | إجمالي: ' + _uploadFileData.length);
+                if (executeBtn) executeBtn.disabled = (validCount === 0);
+            }).catch(function(err) { safeHTML(previewTable, '<div class="text-center py-8 text-red-500">فشل جلب الأرصدة: ' + err.message + '</div>'); });
+        }).catch(function(err) { safeHTML(previewTable, '<div class="text-center py-8 text-red-500">فشل جلب الأصناف: ' + err.message + '</div>'); });
+    }
+
+    function _executeUpload() {
+        var branchId = byId('upload-branch') ? byId('upload-branch').value : '';
+        var adjType = byId('upload-type') ? byId('upload-type').value : 'replace';
+        var reason = byId('upload-reason') ? byId('upload-reason').value.trim() : '';
+        if (!branchId) { showToast('يرجى اختيار الفرع', 'warning'); return; }
+        if (!reason) { showToast('يرجى إدخال سبب التسوية', 'warning'); return; }
+        if (_uploadFileData.length === 0) { showToast('لا توجد بيانات للتنفيذ', 'warning'); return; }
+
+        var items = [];
+        for (var u = 0; u < _uploadFileData.length; u++) {
+            items.push({ item_code: _uploadFileData[u].barcode, qty: _uploadFileData[u].qty });
+        }
+
+        var voucherCode = 'ADJ-' + new Date().toISOString().split('T')[0].replace(/-/g, '') + '-' + Math.floor(Math.random() * 1000);
+        var payload = { branch_id: branchId, adjustment_type: adjType, voucher_code: voucherCode, reason: reason, items: items };
+
+        var executeBtn = byId('btn-execute-upload');
+        if (executeBtn) { executeBtn.disabled = true; executeBtn.innerText = 'جارٍ...'; }
+        showLoader('جاري تحديث الأرصدة...');
+
+        supabase.auth.getSession().then(function(ses) {
+            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
+            if (!token) { hideLoader(); showToast('جلسة غير صالحة', 'error'); if (executeBtn) { executeBtn.disabled = false; executeBtn.innerText = 'تنفيذ التحديث'; } return; }
+            return fetch(RW_SUPABASE_URL + '/functions/v1/bulk-stock-adjustment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify(payload)
+            });
+        }).then(function(res) {
+            if (!res) return;
+            if (!res.ok) return res.json().then(function(err) { throw new Error(err.msg || err.error || 'خطأ في الخادم'); });
+            return res.json();
+        }).then(function(json) {
+            hideLoader();
+            if (json && json.success) {
+                var successCount = 0, failCount = 0;
+                for (var r = 0; r < (json.results || []).length; r++) { if (json.results[r].status === 'success') successCount++; else failCount++; }
+                showToast('تم تحديث ' + successCount + ' صنف بنجاح' + (failCount > 0 ? ' (فشل ' + failCount + ')' : ''), successCount > 0 ? 'success' : 'warning');
+                _renderUploadTab();
+            } else { showToast((json && json.msg) || 'فشل التحديث', 'error'); if (executeBtn) { executeBtn.disabled = false; executeBtn.innerText = 'تنفيذ التحديث'; } }
+        }).catch(function(e) { hideLoader(); showToast('فشل الاتصال: ' + e.message, 'error'); if (executeBtn) { executeBtn.disabled = false; executeBtn.innerText = 'تنفيذ التحديث'; } });
+    }
+    
     return {
         // الدوال الأساسية
         render: render,
@@ -2220,7 +2406,11 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
         _loadMovementReport: _loadMovementReport,
 
         // مصفوفة الفروع
-        _filterMatrix: _filterMatrix
+        _filterMatrix: _filterMatrix,
+
+        // تحديث الأرصدة عبر ملف
+        _handleFileSelect: _handleFileSelect,
+        _executeUpload: _executeUpload
     };
 })();
 window.RW_Items = RW_Items;
