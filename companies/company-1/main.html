@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-17 07:35 UTC -->
+<!-- 2026-07-17 08:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -1627,7 +1627,14 @@ var RW_Items = (function() {
             else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
             return (va < vb ? -1 : va > vb ? 1 : 0) * (sortAsc ? 1 : -1);
         });
-        var html = '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="text-xl font-black mb-4"><i class="fa-solid fa-table ml-2 text-emerald-600"></i>الأرصدة حسب الفروع</h3><div class="mb-4"><input type="text" id="matrix-search" placeholder="🔍 بحث عن صنف..." class="p-2.5 bg-gray-50 border rounded-lg text-sm w-full md:w-80" oninput="RW_Items._filterMatrix()"></div><div class="overflow-auto" style="max-height:55vh"><table class="w-full text-sm border"><thead class="sticky top-0 bg-gray-100"><tr><th class="p-3 cursor-pointer font-bold" onclick="RW_Items._sort(\'name\')">الصنف</th><th class="p-3 cursor-pointer font-bold text-center" onclick="RW_Items._sort(\'totalStock\')">إجمالي المخزون</th>';
+        // بناء قائمة منسدلة للفروع
+        var branchSelectHTML = '<select id="matrix-branch-select" class="p-2.5 bg-gray-50 border rounded-lg text-sm w-full md:w-60" onchange="RW_Items._filterMatrix()"><option value="">جميع الفروع</option>';
+        for (var bi = 0; bi < branches.length; bi++) {
+            branchSelectHTML += '<option value="' + branches[bi].id + '">' + (branches[bi].name || branches[bi].branch_code) + '</option>';
+        }
+        branchSelectHTML += '</select>';
+
+        var html = '<div class="bg-white rounded-2xl shadow-sm border p-6"><h3 class="text-xl font-black mb-4"><i class="fa-solid fa-table ml-2 text-emerald-600"></i>الأرصدة حسب الفروع</h3><div class="flex flex-wrap items-center gap-3 mb-4"><input type="text" id="matrix-search" placeholder="🔍 بحث عن صنف..." class="p-2.5 bg-gray-50 border rounded-lg text-sm w-full md:w-80" oninput="RW_Items._filterMatrix()">' + branchSelectHTML + '<button onclick="RW_Items._exportMatrixToExcel()" class="p-2.5 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700"><i class="fa-solid fa-file-excel ml-1"></i> تحميل Excel</button></div><div class="overflow-auto" style="max-height:55vh"><table class="w-full text-sm border" id="matrix-table"><thead class="sticky top-0 bg-gray-100"><tr><th class="p-3 cursor-pointer font-bold" onclick="RW_Items._sort(\'name\')">الصنف</th><th class="p-3 cursor-pointer font-bold text-center" onclick="RW_Items._sort(\'totalStock\')">إجمالي المخزون</th>';
         for (var b = 0; b < branchIds.length; b++) {
             var bid = branchIds[b]; var branchName = '';
             for (var bn = 0; bn < branches.length; bn++) { if ((branches[bn].id || branches[bn].branch_code) === bid) { branchName = branches[bn].name || bid; break; } }
@@ -1648,10 +1655,20 @@ var RW_Items = (function() {
         });
     }
 
+
     function _filterMatrix() {
         var q = (byId('matrix-search') ? byId('matrix-search').value : '').toLowerCase();
+        var selectedBranch = (byId('matrix-branch-select') ? byId('matrix-branch-select').value : '');
         var filtered = itemsData;
         if (q) { filtered = itemsData.filter(function(i) { return (i.name||'').toLowerCase().indexOf(q) !== -1 || (i.item_code||'').toLowerCase().indexOf(q) !== -1; }); }
+        
+        // فلترة حسب الفرع (إظهار الأصناف التي لها رصيد في هذا الفرع فقط)
+        if (selectedBranch) {
+            filtered = filtered.filter(function(item) {
+                var bs = item._branchStock || {};
+                return bs.hasOwnProperty(selectedBranch) && (bs[selectedBranch].qty > 0);
+            });
+        }
         _renderBranchStockMatrixFiltered(filtered);
     }
 
@@ -2370,7 +2387,34 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
             } else { showToast((json && json.msg) || 'فشل التحديث', 'error'); if (executeBtn) { executeBtn.disabled = false; executeBtn.innerText = 'تنفيذ التحديث'; } }
         }).catch(function(e) { hideLoader(); showToast('فشل الاتصال: ' + e.message, 'error'); if (executeBtn) { executeBtn.disabled = false; executeBtn.innerText = 'تنفيذ التحديث'; } });
     }
-    
+    // دالة تصدير جدول الأرصدة إلى ملف Excel
+    function _exportMatrixToExcel() {
+        // 1. نحصل على عنصر الجدول الذي تم بناؤه في دالة _renderBranchStockMatrix
+        var table = byId('matrix-table');
+        
+        // 2. التحقق من وجود الجدول
+        if (!table) {
+            showToast('لا توجد بيانات للتصدير', 'warning');
+            return;
+        }
+
+        try {
+            // 3. استخدام مكتبة SheetJS (التي أضفناها سابقاً) لتحويل الجدول إلى ملف Excel
+            // XLSX.utils.table_to_book هي دالة جاهزة من المكتبة تقرأ الـ HTML Table مباشرة وتحوله إلى Workbook
+            var workbook = XLSX.utils.table_to_book(table, { sheet: "الأرصدة", raw: true });
+            
+            // 4. حفظ الملف على جهاز المستخدم باسم يحتوي على التاريخ
+            XLSX.writeFile(workbook, "ارصدة_الفروع_" + new Date().toISOString().split('T')[0] + ".xlsx");
+            
+            // 5. إظهار رسالة نجاح للمستخدم
+            showToast('تم تحميل الملف بنجاح', 'success');
+        } catch (e) {
+            // 6. في حالة حدوث أي خطأ (مثلاً المكتبة لم تُحمل)، نعرض رسالة خطأ
+            console.error('فشل تصدير Excel:', e);
+            showToast('فشل التصدير', 'error');
+        }
+    }
+
     return {
         // الدوال الأساسية
         render: render,
@@ -2407,6 +2451,7 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
 
         // مصفوفة الفروع
         _filterMatrix: _filterMatrix,
+        _exportMatrixToExcel: _exportMatrixToExcel,
 
         // تحديث الأرصدة عبر ملف
         _handleFileSelect: _handleFileSelect,
