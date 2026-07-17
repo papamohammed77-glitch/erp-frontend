@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-17 02:50 UTC -->
+<!-- 2026-07-17 05:25 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -1407,20 +1407,11 @@ var RW_Items = (function() {
     function _renderListView() {
         var content = byId('items-sub-content');
         if (!content) return;
-        var categories = [];
-        for (var i = 0; i < itemsData.length; i++) {
-            var cat = itemsData[i].category || '';
-            if (cat && categories.indexOf(cat) === -1) categories.push(cat);
-        }
-        var catOptions = '<option value="">كل التصنيفات</option>';
-        for (var c = 0; c < categories.length; c++) {
-            catOptions += '<option value="' + _esc(categories[c]) + '">' + categories[c] + '</option>';
-        }
         var html = '';
         html += '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">';
         html += '<div class="grid grid-cols-2 md:grid-cols-4 gap-2">';
         html += '<input type="text" id="items-search" placeholder="🔍 بحث بالاسم، الكود، الباركود..." class="p-2.5 bg-gray-50 border rounded-lg text-sm" oninput="RW_Items._applyFilters()">';
-        html += '<select id="items-cat-filter" class="p-2.5 bg-gray-50 border rounded-lg text-sm" onchange="RW_Items._applyFilters()">' + catOptions + '</select>';
+        html += '<select id="items-cat-filter" class="p-2.5 bg-gray-50 border rounded-lg text-sm" onchange="RW_Items._applyFilters()"><option value="">كل التصنيفات</option></select>';
         html += '<select id="items-status-filter" class="p-2.5 bg-gray-50 border rounded-lg text-sm" onchange="RW_Items._applyFilters()"><option value="">كل الحالات</option><option value="low">🔴 منخفض</option><option value="normal">🟢 متوفر</option><option value="overstock">🟣 متكدس</option><option value="critical">⚫ نافد</option></select>';
         html += '<button onclick="RW_Items._resetFilters()" class="p-2.5 bg-gray-100 border rounded-lg text-sm font-bold hover:bg-gray-200">إعادة تعيين</button>';
         html += '</div>';
@@ -1432,6 +1423,7 @@ var RW_Items = (function() {
         safeHTML(content, html);
         var addBtn = byId('btn-add-item-main');
         if (addBtn) addBtn.addEventListener('click', function() { openItemPage(null); });
+        _buildCategoryFilterFromDB();
         _applyFilters();
     }
 
@@ -2012,6 +2004,7 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
         hideLoader();
         if (json && json.success) {
           showToast('تمت الإضافة', 'success');
+                     _buildCategoryFilterFromDB(); // <-- أضف هذا السطر هنا
           Swal.close();
           RW_Items._openCategoryModal();
         } else {
@@ -2073,6 +2066,7 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
             hideLoader();
             if (json && json.success) {
               showToast('تم التعديل', 'success');
+                  _buildCategoryFilterFromDB(); // <-- أضف هذا السطر هنا
               RW_Items._openCategoryModal();
             } else {
               showToast((json && json.msg) || 'فشل', 'error');
@@ -2165,6 +2159,7 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
         hideLoader();
         if (json && json.success) {
           showToast('تم الحذف', 'success');
+              _buildCategoryFilterFromDB(); // <-- أضف هذا السطر هنا
           RW_Items._openCategoryModal();
           RW_Items.render();
         } else {
@@ -2176,6 +2171,20 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
       });
     }
     
+        // دالة بناء قائمة التصنيفات من جدول categories مباشرة
+    function _buildCategoryFilterFromDB() {
+        var sel = byId('items-cat-filter');
+        if (!sel) return;
+        supabase.from('categories').select('id, category_name').order('category_name').then(function(res) {
+            var categories = res.data || [];
+            var html = '<option value="">كل التصنيفات</option>';
+            for (var i = 0; i < categories.length; i++) {
+                html += '<option value="' + _esc(categories[i].category_name) + '">' + categories[i].category_name + '</option>';
+            }
+            safeHTML(sel, html);
+        });
+    }
+
     return {
         // الدوال الأساسية
         render: render,
