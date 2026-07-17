@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-17 08:30 UTC -->
+<!-- 2026-07-17 12:40 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -2310,7 +2310,13 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
                 if (it.barcode) itemMap[it.barcode] = it;
                 itemCodes.push(it.item_code);
             }
-
+            // ✅ تحديث _uploadFileData بـ item_code الحقيقي من قاعدة البيانات
+            for (var f = 0; f < _uploadFileData.length; f++) {
+                var mappedItem = itemMap[_uploadFileData[f].barcode];
+                if (mappedItem) {
+                    _uploadFileData[f].item_code = mappedItem.item_code;
+                }
+            }
             // جلب الأرصدة الحالية
             supabase.from('stock_branches').select('item_id, qty').eq('branch_id', branchId).in('item_id', (itemsRes.data || []).map(function(x) { return x.id; })).then(function(stockRes) {
                 var stockMap = {};
@@ -2355,7 +2361,7 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
 
         var items = [];
         for (var u = 0; u < _uploadFileData.length; u++) {
-            items.push({ item_code: _uploadFileData[u].barcode, qty: _uploadFileData[u].qty });
+            items.push({ item_code: _uploadFileData[u].item_code || _uploadFileData[u].barcode, qty: _uploadFileData[u].qty });
         }
 
         var voucherCode = 'ADJ-' + new Date().toISOString().split('T')[0].replace(/-/g, '') + '-' + Math.floor(Math.random() * 1000);
