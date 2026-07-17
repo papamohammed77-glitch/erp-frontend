@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-17 08:00 UTC -->
+<!-- 2026-07-17 08:30 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -2389,28 +2389,78 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
     }
     // دالة تصدير جدول الأرصدة إلى ملف Excel
     function _exportMatrixToExcel() {
-        // 1. نحصل على عنصر الجدول الذي تم بناؤه في دالة _renderBranchStockMatrix
-        var table = byId('matrix-table');
+        // 1. جلب البيانات المطلوبة
+        var branches = window._itemsBranches || [];
+        var branchIds = window._itemsBranchIds || [];
         
-        // 2. التحقق من وجود الجدول
-        if (!table) {
+        // قراءة الفلاتر الحالية
+        var q = (byId('matrix-search') ? byId('matrix-search').value : '').toLowerCase();
+        var selectedBranch = (byId('matrix-branch-select') ? byId('matrix-branch-select').value : '');
+        
+        // تصفية البيانات (نسخة طبق الأصل من _filterMatrix)
+        var filtered = itemsData.slice();
+        if (q) {
+            filtered = filtered.filter(function(i) {
+                return (i.name||'').toLowerCase().indexOf(q) !== -1 || (i.item_code||'').toLowerCase().indexOf(q) !== -1;
+            });
+        }
+        if (selectedBranch) {
+            filtered = filtered.filter(function(item) {
+                var bs = item._branchStock || {};
+                return bs.hasOwnProperty(selectedBranch) && (bs[selectedBranch].qty > 0);
+            });
+        }
+
+        if (filtered.length === 0) {
             showToast('لا توجد بيانات للتصدير', 'warning');
             return;
         }
 
+        // 2. بناء مصفوفة التصدير (Array of Arrays)
+        var exportData = [];
+        
+        // صف الرؤوس
+        var headers = ['الباركود', 'كود الصنف', 'اسم الصنف', 'إجمالي المخزون'];
+        for (var h = 0; h < branchIds.length; h++) {
+            var branchName = '';
+            for (var bn = 0; bn < branches.length; bn++) {
+                if ((branches[bn].id || branches[bn].branch_code) === branchIds[h]) {
+                    branchName = branches[bn].name || branches[bn].branch_code || branchIds[h];
+                    break;
+                }
+            }
+            headers.push(branchName);
+        }
+        exportData.push(headers);
+
+        // صفوف البيانات
+        for (var i = 0; i < filtered.length; i++) {
+            var item = filtered[i];
+            var row = [
+                item.barcode || '', // الباركود
+                item.item_code || '', // كود الصنف
+                item.name || '', // اسم الصنف
+                item._totalStock || 0 // إجمالي المخزون
+            ];
+            
+            var branchStock = item._branchStock || {};
+            for (var j = 0; j < branchIds.length; j++) {
+                var bid = branchIds[j];
+                var st = branchStock[bid] || { qty: 0 };
+                row.push(st.qty);
+            }
+            exportData.push(row);
+        }
+
+        // 3. إنشاء ملف Excel
         try {
-            // 3. استخدام مكتبة SheetJS (التي أضفناها سابقاً) لتحويل الجدول إلى ملف Excel
-            // XLSX.utils.table_to_book هي دالة جاهزة من المكتبة تقرأ الـ HTML Table مباشرة وتحوله إلى Workbook
-            var workbook = XLSX.utils.table_to_book(table, { sheet: "الأرصدة", raw: true });
-            
-            // 4. حفظ الملف على جهاز المستخدم باسم يحتوي على التاريخ
-            XLSX.writeFile(workbook, "ارصدة_الفروع_" + new Date().toISOString().split('T')[0] + ".xlsx");
-            
-            // 5. إظهار رسالة نجاح للمستخدم
+            var ws = XLSX.utils.aoa_to_sheet(exportData);
+            var wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "ارصدة الفروع");
+            XLSX.writeFile(wb, "ارصدة_الفروع_" + new Date().toISOString().split('T')[0] + ".xlsx");
             showToast('تم تحميل الملف بنجاح', 'success');
         } catch (e) {
-            // 6. في حالة حدوث أي خطأ (مثلاً المكتبة لم تُحمل)، نعرض رسالة خطأ
-            console.error('فشل تصدير Excel:', e);
+            console.error(e);
             showToast('فشل التصدير', 'error');
         }
     }
