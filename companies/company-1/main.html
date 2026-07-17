@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-17 12:40 UTC -->
+<!-- 2026-07-18 00:50 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -2389,7 +2389,24 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
                 var successCount = 0, failCount = 0;
                 for (var r = 0; r < (json.results || []).length; r++) { if (json.results[r].status === 'success') successCount++; else failCount++; }
                 showToast('تم تحديث ' + successCount + ' صنف بنجاح' + (failCount > 0 ? ' (فشل ' + failCount + ')' : ''), successCount > 0 ? 'success' : 'warning');
-                _renderUploadTab();
+                
+                // ✅ إعادة تحميل الأصناف والمخزون فوراً بعد التحديث
+                showLoader('جاري تحديث البيانات...');
+                RW_Data.loadItems().then(function(newData) {
+                    itemsData = newData;
+                    return _loadStockData();
+                }).then(function() {
+                    hideLoader();
+                    // تحديث التبويب الحالي (إذا كان مفتوحاً على الأرصدة أو القائمة)
+                    if (currentSubTab === 'matrix') {
+                        _renderBranchStockMatrix();
+                    } else {
+                        _renderListView();
+                    }
+                }).catch(function() {
+                    hideLoader();
+                    _renderUploadTab();
+                });
             } else { showToast((json && json.msg) || 'فشل التحديث', 'error'); if (executeBtn) { executeBtn.disabled = false; executeBtn.innerText = 'تنفيذ التحديث'; } }
         }).catch(function(e) { hideLoader(); showToast('فشل الاتصال: ' + e.message, 'error'); if (executeBtn) { executeBtn.disabled = false; executeBtn.innerText = 'تنفيذ التحديث'; } });
     }
