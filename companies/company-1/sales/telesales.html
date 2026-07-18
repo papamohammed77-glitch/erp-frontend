@@ -105,6 +105,9 @@
 </div>
 
 <script>
+// ============================================================
+// دوال مساعدة
+// ============================================================
 function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
 
 var App = (function() {
@@ -116,6 +119,7 @@ var App = (function() {
     var productsCache = [], customersCache = [];
     var _todayInterval = null;
 
+    // ==================== دوال المصادقة ====================
     self.togglePass = function() {
         var p = RW_UI.byId('loginPass'), i = RW_UI.byId('passIcon');
         if (p.type === 'password') { p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; }
@@ -257,7 +261,6 @@ var App = (function() {
     // ==================== شاشة أوردر جديد ====================
     self.renderNewOrderView = function() {
         var c = RW_UI.byId('mainContent'); if (!c) return;
-        // ✅ إصلاح: Skeleton Loading
         RW_UI.showSkeleton('mainContent', 4, 'card');
         var h = '<div class="flex-1 flex flex-col overflow-hidden">';
         h += '<div class="bg-white p-3 shadow-sm flex-shrink-0"><div id="recentCustomersRow" class="flex gap-2 overflow-x-auto pb-2 mb-2 no-scrollbar"></div><div class="relative"><input type="text" id="custSearch" oninput="App.searchCustomers(this.value)" onfocus="App.showRecentCustomers()" placeholder="🔍 ابحث عن عميل..." class="w-full p-2.5 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:border-blue-500 outline-none"><i class="fa-solid fa-magnifying-glass absolute right-3 top-3 text-gray-400"></i></div><div id="custResults" class="mt-1 space-y-1 max-h-48 overflow-y-auto no-scrollbar"></div></div>';
@@ -342,33 +345,51 @@ var App = (function() {
         });
     };
 
+    // ✅ دالة عرض المنتج – مُصلحة بالكامل
     self._renderProductCard = function(it, avail, useListView) {
-        var inCart = 0; for (var x = 0; x < cart.length; x++) { if (cart[x].code === it.item_code) { inCart = cart[x].qty; break; } }
+        var ic = it.item_code || '';
+        var nm = it.name || '';
+        var pr = Number(it.sales_price) || 0;
+        var inCart = 0;
+        for (var x = 0; x < cart.length; x++) { if (cart[x].code === ic) { inCart = cart[x].qty; break; } }
         var sc = avail > 10 ? 'bg-green-500' : avail > 0 ? 'bg-yellow-500' : 'bg-red-500';
         var st = avail > 10 ? 'متوفر' : avail > 0 ? 'باقي ' + avail : 'نافد';
-        var ic = it.item_code || '', nm = it.name || '', pr = Number(it.sales_price) || 0;
+        
         if (useListView) {
             var imgL = RW_ImageCache.getImageHTML(ic, 'w-12', 'h-12');
-            var h = '<div class="bg-white p-3 rounded-xl shadow-sm border flex items-center gap-3">' + imgL + '<div class="flex-1 min-w-0"><div class="font-bold text-sm truncate">' + nm + '</div><div class="text-xs text-gray-400">' + ic + '</div><div class="flex items-center gap-1 mt-1"><span class="w-2 h-2 rounded-full ' + sc + '"></span><span class="text-[10px] text-gray-500">' + st + '</span></div></div><div class="text-left"><div class="font-black text-blue-700 text-sm">' + fmtNum(pr) + '</div>';
-            if (inCart > 0) h += '<div class="flex items-center gap-1 mt-1"><button onclick="event.stopPropagation();App.decCart(\'' + ic + '\')" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black">-</button><span class="text-xs font-black w-5 text-center">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-black">+</button></div>';
-            else h += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="mt-1 w-8 h-8 bg-blue-600 text-white rounded-full text-xs flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>';
-            h += '</div></div>'; return h;
+            var h = '<div class="bg-white p-3 rounded-xl shadow-sm border flex items-center gap-3">' + imgL;
+            h += '<div class="flex-1 min-w-0"><div class="font-bold text-sm truncate">' + nm + '</div><div class="text-xs text-gray-400">' + ic + '</div><div class="flex items-center gap-1 mt-1"><span class="w-2 h-2 rounded-full ' + sc + '"></span><span class="text-[10px] text-gray-500">' + st + '</span></div></div>';
+            h += '<div class="text-left"><div class="font-black text-blue-700 text-sm">' + fmtNum(pr) + '</div>';
+            if (inCart > 0) { h += '<div class="flex items-center gap-1 mt-1"><button onclick="event.stopPropagation();App.decCart(\'' + ic + '\')" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black">-</button><span class="text-xs font-black w-5 text-center">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-black">+</button></div>'; }
+            else { h += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="mt-1 w-8 h-8 bg-blue-600 text-white rounded-full text-xs flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>'; }
+            h += '</div></div>';
+            return h;
         } else {
-            var iu = RW_ImageCache.getImageUrl ? RW_ImageCache.getImageUrl(ic) : '';
-            var imgG = iu ? '<img src="' + iu + '" alt="' + nm + '" class="absolute inset-0 w-full h-full object-contain p-3 hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.style.display=\'none\'">' : '<div class="absolute inset-0 w-full h-full flex items-center justify-center text-slate-400"><i class="fa-solid fa-box text-4xl"></i></div>';
-            var h2 = '<div class="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col"><div class="relative pt-[100%] bg-gray-50 overflow-hidden">' + imgG + '<span class="absolute top-2 right-2 w-3 h-3 rounded-full ' + sc + ' border-2 border-white shadow-sm"></span>';
-            if (Number(it.discount_percent) > 0) h2 += '<span class="absolute bottom-2 left-2 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">-' + it.discount_percent + '%</span>';
-            h2 += '</div><div class="p-2 flex flex-col flex-1"><div class="font-bold text-xs truncate mb-1">' + nm + '</div><div class="mt-auto flex justify-between items-center"><span class="font-black text-blue-700 text-xs">' + fmtNum(pr) + '</span>';
-            if (inCart > 0) h2 += '<div class="flex items-center gap-1"><button onclick="event.stopPropagation();App.decCart(\'' + ic + '\')" class="w-5 h-5 bg-gray-100 rounded-full text-[10px] font-black">-</button><span class="text-[10px] font-black">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-5 h-5 bg-blue-600 text-white rounded-full text-[10px] font-black">+</button></div>';
-            else h2 += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-[10px] flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>';
-            h2 += '</div></div></div>'; return h2;
+            // ✅ إصلاح الصور: استخدام getImageURL (بالأحرف الكبيرة URL)
+            var iu = RW_ImageCache.getImageURL(ic);
+            var imgG = '';
+            if (iu) {
+                imgG = '<img src="' + iu + '" alt="' + nm + '" class="absolute inset-0 w-full h-full object-contain p-3 hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.style.display=\'none\'">';
+            } else {
+                imgG = '<div class="absolute inset-0 w-full h-full flex items-center justify-center text-slate-400"><i class="fa-solid fa-box text-4xl"></i></div>';
+            }
+            // ✅ إضافة onclick على البطاقة
+            var h2 = '<div class="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col" onclick="App.addToCart(\'' + ic + '\')">';
+            h2 += '<div class="relative pt-[100%] bg-gray-50 overflow-hidden">' + imgG;
+            h2 += '<span class="absolute top-2 right-2 w-3 h-3 rounded-full ' + sc + ' border-2 border-white shadow-sm"></span>';
+            if (Number(it.discount_percent) > 0) { h2 += '<span class="absolute bottom-2 left-2 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">-' + it.discount_percent + '%</span>'; }
+            h2 += '</div><div class="p-2 flex flex-col flex-1"><div class="font-bold text-xs truncate mb-1">' + nm + '</div>';
+            h2 += '<div class="mt-auto flex justify-between items-center"><span class="font-black text-blue-700 text-xs">' + fmtNum(pr) + '</span>';
+            if (inCart > 0) { h2 += '<div class="flex items-center gap-1"><button onclick="event.stopPropagation();App.decCart(\'' + ic + '\')" class="w-5 h-5 bg-gray-100 rounded-full text-[10px] font-black">-</button><span class="text-[10px] font-black">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-5 h-5 bg-blue-600 text-white rounded-full text-[10px] font-black">+</button></div>'; }
+            else { h2 += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-[10px] flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>'; }
+            h2 += '</div></div></div>';
+            return h2;
         }
     };
 
-    // ==================== تبويب "المنتجات" (كتالوج) ====================
+    // ==================== تبويب "المنتجات" (كتالوج) – مع إصلاح التصنيفات ====================
     self.renderProductsView = function() {
         var c = RW_UI.byId('mainContent'); if (!c) return;
-        // ✅ إصلاح: Skeleton Loading
         RW_UI.showSkeleton('mainContent', 4, 'grid');
         var h = '<div class="flex-1 flex flex-col overflow-hidden"><div class="bg-white p-3 shadow-sm flex-shrink-0"><div class="relative mb-2"><input type="text" id="productSearch" oninput="App.renderCatalogProducts(this.value)" placeholder="🔍 ابحث عن منتج..." class="w-full p-2.5 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:border-blue-500 outline-none"><i class="fa-solid fa-magnifying-glass absolute right-3 top-3 text-gray-400"></i></div><div id="productCategories" class="flex gap-2 overflow-x-auto pb-2 no-scrollbar"></div><div class="flex items-center gap-2 mt-2"><select id="catalogBranchSel" onchange="App.onCatalogBranchChange(this.value)" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold flex-1"><option value="">-- اختر الفرع --</option></select><button onclick="App.toggleCatalogViewMode()" class="p-2 bg-gray-100 border rounded-lg text-gray-500"><i id="catalogViewModeIcon" class="fa-solid fa-grip"></i></button></div></div><div id="catalogProductsContainer" class="flex-1 overflow-y-auto p-3 no-scrollbar"><div class="text-center text-gray-400 py-10">اختر فرعاً لتصفح المنتجات</div></div></div>';
         setTimeout(function() { RW_UI.safeHTML(c, h); self.loadCatalogBranches(); self.loadCatalogCategories(); }, 200);
@@ -378,11 +399,54 @@ var App = (function() {
         db.branches.toArray().then(function(br) { var h = '<option value="">-- اختر الفرع --</option>'; for (var i = 0; i < br.length; i++) h += '<option value="' + br[i].branch_code + '">' + (br[i].name || br[i].branch_code) + '</option>'; var s = RW_UI.byId('catalogBranchSel'); if (s) RW_UI.safeHTML(s, h); });
     };
 
+    // ✅ إصلاح التصنيفات – جلب من جدول categories مع fallback إلى items.category
     self.loadCatalogCategories = function() {
-        var cd = RW_UI.byId('productCategories'); if (!cd) return;
-        function _build(items) { var cats = {}; for (var i = 0; i < items.length; i++) { var cat = items[i].category || 'أخرى'; cats[cat] = true; } var keys = ['الكل']; for (var k in cats) { if (cats.hasOwnProperty(k)) keys.push(k); } var h = ''; for (var j = 0; j < keys.length; j++) { var isA = (keys[j] === catalogActiveCat); h += '<button onclick="App.filterCatalogProducts(\'' + keys[j].replace(/'/g, "\\'") + '\')" class="whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold ' + (isA ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600') + '">' + keys[j] + '</button>'; } RW_UI.safeHTML(cd, h); }
-        if (productsCache.length > 0) { _build(productsCache); return; }
-        db.items.toArray().then(function(fresh) { productsCache = fresh || []; if (productsCache.length > 0) _build(productsCache); }).catch(function() { RW_UI.safeHTML(cd, '<span class="text-xs text-gray-400">تعذر تحميل التصنيفات</span>'); });
+        var cd = RW_UI.byId('productCategories');
+        if (!cd) return;
+        RW_UI.showSkeleton('productCategories', 1, 'card');
+        
+        // أولاً: محاولة جلب التصنيفات من جدول categories
+        supabase.from('categories').select('category_name').order('category_name').then(function(res) {
+            if (res.data && res.data.length > 0) {
+                var catNames = [];
+                for (var i = 0; i < res.data.length; i++) {
+                    catNames.push(res.data[i].category_name);
+                }
+                _renderCategoryButtons(catNames);
+            } else {
+                _buildCategoriesFromItems();
+            }
+        }).catch(function() {
+            _buildCategoriesFromItems();
+        });
+        
+        function _buildCategoriesFromItems() {
+            db.items.toArray().then(function(items) {
+                if (!items || !items.length) {
+                    RW_UI.safeHTML(cd, '<span class="text-xs text-gray-400">لا توجد تصنيفات</span>');
+                    return;
+                }
+                var cats = {};
+                for (var i = 0; i < items.length; i++) {
+                    var cat = items[i].category || 'أخرى';
+                    cats[cat] = true;
+                }
+                var keys = ['الكل'];
+                for (var k in cats) { if (cats.hasOwnProperty(k)) keys.push(k); }
+                _renderCategoryButtons(keys);
+            }).catch(function() {
+                RW_UI.safeHTML(cd, '<span class="text-xs text-gray-400">تعذر تحميل التصنيفات</span>');
+            });
+        }
+        
+        function _renderCategoryButtons(catNames) {
+            var h = '';
+            for (var j = 0; j < catNames.length; j++) {
+                var isA = (catNames[j] === catalogActiveCat);
+                h += '<button onclick="App.filterCatalogProducts(\'' + catNames[j].replace(/'/g, "\\'") + '\')" class="whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold ' + (isA ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600') + '">' + catNames[j] + '</button>';
+            }
+            RW_UI.safeHTML(cd, h);
+        }
     };
 
     self.toggleCatalogViewMode = function() { catalogListView = !catalogListView; var i = RW_UI.byId('catalogViewModeIcon'); if (i) i.className = 'fa-solid ' + (catalogListView ? 'fa-list' : 'fa-grip'); self.renderCatalogProducts(); };
@@ -496,7 +560,6 @@ var App = (function() {
     };
 
     self.repeatOrder = function(orderId) {
-        // ✅ إصلاح: Skeleton Loading
         RW_UI.showLoader('جاري نسخ الأوردر...');
         if (currentTab === 'new-order') RW_UI.showSkeleton('productsContainer', 4, 'card');
         supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
@@ -514,7 +577,6 @@ var App = (function() {
     self.searchCustomersModal = function(q) {
         var c = RW_UI.byId('customerModalBody'); if (!c) return;
         if (!q || !q.trim()) { RW_UI.safeHTML(c, '<div class="text-center text-gray-400 py-8">اكتب للبحث عن عميل...</div>'); return; }
-        // ✅ إصلاح: مؤشر تحميل
         RW_UI.safeHTML(c, '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i> جاري البحث...</div>');
         var s = q.toLowerCase();
         db.customers.toArray().then(function(all) {
