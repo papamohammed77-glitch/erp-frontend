@@ -92,7 +92,7 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
-    // 3. الموارد الثابتة: Cache First مع حماية من تجاوز الحصة
+// 3. الموارد الثابتة: Cache First مع حماية من تجاوز الحصة
     if (isStaticAsset(url.pathname)) {
         event.respondWith(
             caches.open(STATIC_CACHE).then(function(cache) {
