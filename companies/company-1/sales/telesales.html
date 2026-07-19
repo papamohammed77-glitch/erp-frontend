@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-19 22:00 UTC -->
+<!-- 2026-07-19 10:55 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -34,15 +34,17 @@
         .fab:active{transform:scale(0.92);box-shadow:0 2px 8px rgba(37,99,235,0.3)}
         .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
         @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-        .search-dropdown{max-height:60vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.08);border-radius:16px}
     </style>
 </head>
 <body class="h-full flex flex-col overflow-hidden">
 
+<!-- شاشة الدخول -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
     <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
         <div class="text-center mb-6">
-            <div class="w-20 h-20 bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4"><i class="fa-solid fa-headset text-white text-3xl"></i></div>
+            <div class="w-20 h-20 bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
+                <i class="fa-solid fa-headset text-white text-3xl"></i>
+            </div>
             <h1 class="font-black text-2xl text-gray-800">الروائع</h1>
             <p class="text-xs text-gray-400 font-bold mt-1">التلي سيلز</p>
         </div>
@@ -57,6 +59,7 @@
     </div>
 </div>
 
+<!-- التطبيق الرئيسي -->
 <div id="mainApp" class="hidden flex flex-col h-full bg-gray-100">
     <header class="bg-blue-700 text-white px-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0" style="padding-top:max(12px,var(--sat));min-height:56px">
         <div class="flex items-center gap-2"><i class="fa-solid fa-headset"></i><span class="font-black text-sm">التلي سيلز</span></div>
@@ -77,6 +80,7 @@
     </nav>
 </div>
 
+<!-- مودال السلة -->
 <div id="cartModal" class="fixed inset-0 z-50 hidden flex flex-col justify-end">
     <div class="absolute inset-0 bg-black/50" onclick="App.closeCartModal()"></div>
     <div class="bg-white rounded-t-3xl flex flex-col animate-slide-up" style="max-height:85vh">
@@ -89,6 +93,7 @@
     </div>
 </div>
 
+<!-- مودال العملاء -->
 <div id="customerModal" class="fixed inset-0 z-50 hidden flex flex-col justify-end">
     <div class="absolute inset-0 bg-black/50" onclick="App.closeCustomerModal()"></div>
     <div class="bg-white rounded-t-3xl flex flex-col animate-slide-up" style="max-height:85vh">
@@ -109,9 +114,9 @@ var App = (function() {
     var catalogListView = false, catalogActiveCat = 'الكل';
     var productsCache = [], customersCache = [];
     var _todayInterval = null;
-    var _branchSearchCache = null;
-    var _searchTimer = null;
+    var _quickSearchTimer = null;
 
+    // ==================== دوال المصادقة ====================
     self.togglePass = function() {
         var p = RW_UI.byId('loginPass'), i = RW_UI.byId('passIcon');
         if (p.type === 'password') { p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; }
@@ -191,6 +196,7 @@ var App = (function() {
         self.syncDown().then(function() { RW_UI.hideLoader(); self.loadBranches(); self.syncPendingOrders(); RW_UI.toast('تمت المزامنة', 'success'); }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشلت المزامنة', 'error'); });
     };
 
+    // ==================== التنقل بين التبويبات ====================
     self.switchTab = function(tab) {
         currentTab = tab;
         var btns = document.querySelectorAll('.tab-btn');
@@ -221,6 +227,7 @@ var App = (function() {
         self.renderNewOrderView();
     };
 
+    // ==================== تبويب "اليوم" – Call Planner ====================
     self.renderTodayView = function() {
         var c = RW_UI.byId('mainContent'); if (!c) return;
         var h = '<div class="flex-1 overflow-y-auto p-4 no-scrollbar">';
@@ -274,7 +281,14 @@ var App = (function() {
         h += '<div class="bg-white p-3 shadow-sm flex-shrink-0"><div id="recentCustomersRow" class="flex gap-2 overflow-x-auto pb-2 mb-2 no-scrollbar"></div><div class="relative"><input type="text" id="custSearch" oninput="App.searchCustomers(this.value)" onfocus="App.showRecentCustomers()" placeholder="🔍 ابحث عن عميل..." class="w-full p-2.5 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold focus:border-blue-500 outline-none"><i class="fa-solid fa-magnifying-glass absolute right-3 top-3 text-gray-400"></i></div><div id="custResults" class="mt-1 space-y-1 max-h-48 overflow-y-auto no-scrollbar"></div></div>';
         h += '<div id="selectedCustInfo" class="hidden bg-blue-50 p-3 border-b border-blue-100 flex-shrink-0"></div>';
         h += '<div class="bg-white px-3 py-2 border-b flex items-center gap-2 flex-shrink-0"><select id="branchSel" onchange="App.onBranchChange(this.value)" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold flex-1"><option value="">-- اختر الفرع --</option></select><button onclick="App.toggleViewMode()" class="p-2 bg-gray-100 border rounded-lg text-gray-500"><i id="viewModeIcon" class="fa-solid fa-list"></i></button></div>';
-        h += '<div class="relative mx-3 mt-2"><input type="text" id="quickSearchInput" oninput="App.quickSearch(this.value)" placeholder="🔍 بحث سريع عن منتج..." class="w-full p-2.5 bg-white border-2 border-blue-100 rounded-xl text-sm font-bold focus:border-blue-500 outline-none"><div id="quickSearchResults" class="search-dropdown absolute top-full left-0 right-0 bg-white rounded-2xl mt-1 hidden z-50 border shadow-lg max-h-64 overflow-y-auto"></div></div>';
+        // ✅ حقل البحث السريع
+        h += '<div id="quickSearchWrapper" class="hidden mt-3 px-3 relative">';
+        h += '  <div class="relative">';
+        h += '    <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">🔍</span>';
+        h += '    <input type="text" id="quickItemSearch" oninput="App.onQuickSearch(this.value)" placeholder="بحث سريع عن صنف بالاسم أو الكود..." class="w-full p-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all shadow-sm">';
+        h += '  </div>';
+        h += '  <div id="quickSearchResults" class="absolute top-full left-3 right-3 bg-white rounded-xl mt-1 shadow-2xl z-50 max-h-60 overflow-y-auto border border-slate-100 hidden"></div>';
+        h += '</div>';
         h += '<div id="productsContainer" class="flex-1 overflow-y-auto p-3 no-scrollbar"><div class="text-center text-gray-400 py-10">اختر فرعاً ثم ابحث عن المنتجات</div></div>';
         h += '</div>';
         setTimeout(function() {
@@ -314,6 +328,7 @@ var App = (function() {
         });
     };
 
+    // ==================== اختيار العميل ====================
     self.selectCustomer = function(code) {
         db.customers.get(code).then(function(c) {
             if (!c) return;
@@ -353,13 +368,19 @@ var App = (function() {
         cart = []; self.updateFloatingCart();
     };
 
+    // ==================== الفروع ====================
     self.loadBranches = function() {
         db.branches.toArray().then(function(br) { branchMap = {}; var h = '<option value="">-- اختر الفرع --</option>'; for (var i = 0; i < br.length; i++) { branchMap[br[i].branch_code] = br[i].id; h += '<option value="' + br[i].branch_code + '">' + (br[i].name || br[i].branch_code) + '</option>'; } var sel = RW_UI.byId('branchSel'); if (sel) RW_UI.safeHTML(sel, h); });
     };
 
     self.onBranchChange = function(v) {
         selBranch = v || null;
-        self.prepareQuickSearch(selBranch);
+        var wrapper = RW_UI.byId('quickSearchWrapper');
+        var searchInput = RW_UI.byId('quickItemSearch');
+        var resultsDiv = RW_UI.byId('quickSearchResults');
+        if (selBranch && wrapper) { wrapper.classList.remove('hidden'); if (searchInput) searchInput.value = ''; }
+        else if (wrapper) { wrapper.classList.add('hidden'); }
+        if (resultsDiv) { resultsDiv.classList.add('hidden'); resultsDiv.innerHTML = ''; }
         self.renderAllProducts();
     };
 
@@ -371,74 +392,7 @@ var App = (function() {
         });
     };
 
-    // ==================== البحث السريع بعد اختيار الفرع ====================
-    self.prepareQuickSearch = function(branchCode) {
-        var branchId = branchCode ? branchMap[branchCode] : null;
-        if (!branchId) { _branchSearchCache = null; return; }
-        RW_UI.showLoader('جاري تجهيز الأصناف...');
-        db.items.toArray().then(function(items) {
-            if (!items.length) { RW_UI.hideLoader(); return; }
-            db.stock.where('branch_id').equals(branchId).toArray().then(function(stockRows) {
-                RW_UI.hideLoader();
-                var stockMap = {};
-                for (var s = 0; s < stockRows.length; s++) {
-                    stockMap[stockRows[s].item_id] = (Number(stockRows[s].qty) || 0) - (Number(stockRows[s].allocated_qty) || 0);
-                }
-                _branchSearchCache = { items: [], indexed: {} };
-                for (var i = 0; i < items.length; i++) {
-                    var it = items[i];
-                    var avail = stockMap[it.id] || 0;
-                    _branchSearchCache.items.push({
-                        code: it.item_code,
-                        name: it.name,
-                        price: Number(it.sales_price) || 0,
-                        unit: it.unit || 'حبة',
-                        avail: avail,
-                        img: it.image_url || '',
-                        desc: it.description || '',
-                        maxQty: Number(it.max_qty) || 0,
-                        discount: Number(it.discount_percent) || 0
-                    });
-                    _branchSearchCache.indexed[it.item_code] = true;
-                }
-            });
-        });
-    };
-
-    self.quickSearch = function(query) {
-        var c = document.getElementById('quickSearchResults');
-        if (!c) return;
-        if (_searchTimer) clearTimeout(_searchTimer);
-        if (!query || !query.trim()) { c.innerHTML = ''; c.classList.add('hidden'); return; }
-        _searchTimer = setTimeout(function() {
-            if (!_branchSearchCache) { c.innerHTML = '<div class="p-4 text-center text-slate-400">اختر فرعاً أولاً</div>'; c.classList.remove('hidden'); return; }
-            var q = query.trim().toLowerCase();
-            var results = [];
-            var items = _branchSearchCache.items;
-            for (var i = 0; i < items.length; i++) {
-                var it = items[i];
-                if (it.name.toLowerCase().indexOf(q) !== -1 || it.code.toLowerCase().indexOf(q) !== -1) { results.push(it); }
-                if (results.length >= 20) break;
-            }
-            if (!results.length) { c.innerHTML = '<div class="p-4 text-center text-slate-400">لا توجد نتائج</div>'; c.classList.remove('hidden'); return; }
-            var h = '';
-            for (var j = 0; j < results.length; j++) {
-                var r = results[j];
-                var availColor = r.avail > 10 ? '#10b981' : r.avail > 0 ? '#f59e0b' : '#ef4444';
-                var availText = r.avail > 10 ? '' : (r.avail > 0 ? ' (متبقي ' + r.avail + ')' : ' (نافد)');
-                var dimClass = r.avail <= 0 ? 'opacity-50' : '';
-                h += '<div onclick="App.addToCart(\'' + r.code + '\')" class="p-3 border-b hover:bg-blue-50 cursor-pointer flex justify-between items-center ' + dimClass + '">';
-                h += '<div class="flex-1 min-w-0"><div class="font-bold text-sm truncate">' + r.name + '</div><div class="text-xs text-slate-400">' + r.code + ' | ' + r.unit + availText + '</div></div>';
-                h += '<div class="text-left mr-3"><div class="font-black text-blue-700">' + fmtNum(r.price) + ' EGP</div>';
-                if (r.avail > 0) h += '<button onclick="event.stopPropagation();App.addToCart(\'' + r.code + '\')" class="mt-1 bg-blue-600 text-white w-8 h-8 rounded-full text-xs flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>';
-                h += '</div></div>';
-            }
-            c.innerHTML = h;
-            c.classList.remove('hidden');
-        }, 300);
-    };
-
-    // ==================== عرض المنتجات ====================
+    // ==================== عرض المنتجات (أوردر جديد) ====================
     self.renderAllProducts = function() {
         var c = RW_UI.byId('productsContainer'); if (!c) return;
         if (!selBranch) { RW_UI.safeHTML(c, '<div class="text-center text-amber-500 py-10 bg-white rounded-xl">اختر فرعاً أولاً</div>'); return; }
@@ -448,12 +402,47 @@ var App = (function() {
             var promises = []; for (var i = 0; i < items.length; i++) promises.push(self.getAvail(items[i].id));
             Promise.all(promises).then(function(avails) {
                 var h = isListView ? '<div class="space-y-2">' : '<div class="grid grid-cols-2 gap-2">';
-                for (var k = 0; k < items.length; k++) h += self._renderProductCard(items[k], avails[k], isListView);
+                for (var k = 0; k < items.length; k++) h += self._renderProductCard(items[k], avails[k], isListView, false);
                 h += '</div>'; RW_UI.safeHTML(c, h);
             });
         });
     };
 
+    // ==================== البحث السريع ====================
+    self.onQuickSearch = function(query) {
+        if (_quickSearchTimer) clearTimeout(_quickSearchTimer);
+        var resultsDiv = RW_UI.byId('quickSearchResults');
+        if (!resultsDiv) return;
+        if (!query || !query.trim()) { resultsDiv.classList.add('hidden'); return; }
+        _quickSearchTimer = setTimeout(function() {
+            var q = query.trim().toLowerCase();
+            db.items.toArray().then(function(allItems) {
+                var filtered = [];
+                for (var i = 0; i < allItems.length; i++) {
+                    var it = allItems[i];
+                    var name = (it.name || '').toLowerCase();
+                    var code = (it.item_code || '').toLowerCase();
+                    var barcode = (it.barcode || '').toLowerCase();
+                    if (name.indexOf(q) !== -1 || code.indexOf(q) !== -1 || barcode.indexOf(q) !== -1) { filtered.push(it); if (filtered.length >= 15) break; }
+                }
+                if (!filtered.length) { RW_UI.safeHTML(resultsDiv, '<div class="p-4 text-center text-slate-400 text-sm font-bold">🔍 لا توجد أصناف مطابقة</div>'); resultsDiv.classList.remove('hidden'); return; }
+                var h = '';
+                for (var j = 0; j < filtered.length; j++) {
+                    var it = filtered[j];
+                    var imgHtml = RW_ImageCache.getImageHTML(it.item_code, 'w-10', 'h-10');
+                    var onClickAction = "App.addToCart('" + it.item_code + "'); document.getElementById('quickSearchResults').classList.add('hidden'); document.getElementById('quickItemSearch').value='';";
+                    h += '<div onclick="' + onClickAction + '" class="p-3 border-b border-slate-50 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition-colors">';
+                    h += '  <div class="flex-shrink-0">' + imgHtml + '</div>';
+                    h += '  <div class="flex-1"><div class="font-bold text-sm text-slate-800">' + (it.name || '') + '</div><div class="text-xs text-slate-400 mt-1">' + (it.item_code || '') + ' | ' + (it.unit || 'حبة') + '</div></div>';
+                    h += '  <div class="text-left"><span class="font-black text-blue-600 text-sm">' + fmtNum(it.sales_price) + ' EGP</span></div>';
+                    h += '</div>';
+                }
+                RW_UI.safeHTML(resultsDiv, h); resultsDiv.classList.remove('hidden');
+            });
+        }, 300);
+    };
+
+    // ==================== بطاقة المنتج (موحدة) ====================
     self._renderProductCard = function(it, avail, useListView, forceDetail) {
         var ic = it.item_code || '', nm = it.name || '', pr = Number(it.sales_price) || 0;
         var unit = it.unit || 'حبة', desc = it.description || '', imgUrl = it.image_url || '';
@@ -477,8 +466,7 @@ var App = (function() {
             } else {
                 h += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="mt-1 w-8 h-8 bg-blue-600 text-white rounded-full text-xs flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>';
             }
-            h += '</div></div>';
-            return h;
+            h += '</div></div>'; return h;
         } else {
             var imgG = imgUrl ? '<img src="' + imgUrl + '" alt="' + nm + '" class="absolute inset-0 w-full h-full object-contain p-3 hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.style.display=\'none\'">' : '<div class="absolute inset-0 w-full h-full flex items-center justify-center text-slate-400"><i class="fa-solid fa-box text-4xl"></i></div>';
             var h2 = '<div class="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col cursor-pointer active:scale-[0.98] transition" ' + cardOnClick + '>';
@@ -492,12 +480,11 @@ var App = (function() {
             } else {
                 h2 += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-[10px] flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>';
             }
-            h2 += '</div></div></div>';
-            return h2;
+            h2 += '</div></div></div>'; return h2;
         }
     };
 
-    // ==================== تبويب المنتجات (كتالوج) ====================
+    // ==================== تبويب "المنتجات" (كتالوج) ====================
     self.renderProductsView = function() {
         var c = RW_UI.byId('mainContent'); if (!c) return;
         RW_UI.showSkeleton('mainContent', 4, 'grid');
@@ -539,9 +526,7 @@ var App = (function() {
         var stockColor = avail > 10 ? '#10b981' : avail > 0 ? '#f59e0b' : '#ef4444';
         var stockText = avail > 10 ? 'متوفر بكمية كبيرة' : avail > 0 ? 'الكمية محدودة (' + avail + ')' : 'نفد المخزون';
         var inCart = 0; for (var x = 0; x < cart.length; x++) { if (cart[x].code === code) { inCart = cart[x].qty; break; } }
-        var isCatalog = (currentTab === 'products');
-        var h = '<div style="text-align:right;font-family:Cairo,sans-serif;direction:rtl">';
-        h += imgHtml;
+        var h = '<div style="text-align:right;font-family:Cairo,sans-serif;direction:rtl">' + imgHtml;
         h += '<h3 style="font-size:20px;font-weight:800;color:#1e293b;margin-bottom:4px">' + name + '</h3>';
         h += '<p style="font-size:13px;color:#64748b;margin-bottom:12px">الكود: ' + code + ' | الوحدة: ' + unit + '</p>';
         if (desc) h += '<div style="background:#f8fafc;padding:12px;border-radius:12px;margin-bottom:16px;font-size:13px;color:#475569">📝 ' + desc + '</div>';
@@ -551,14 +536,12 @@ var App = (function() {
             if (inCart > 0) {
                 h += '<div style="display:flex;align-items:center;gap:12px"><button onclick="App.decCart(\'' + code + '\');App.showProductDetail(\'' + code + '\',\'' + name.replace(/'/g,"\\'") + '\',\'' + unit + '\',' + price + ',' + avail + ',\'' + desc.replace(/'/g,"\\'") + '\',\'' + imgUrl + '\')" style="width:36px;height:36px;border-radius:50%;background:#f1f5f9;border:2px solid #e2e8f0;font-weight:700;font-size:18px;cursor:pointer;color:#1e293b;display:flex;align-items:center;justify-content:center">-</button><span style="font-weight:800;font-size:18px;color:#1e293b;min-width:24px;text-align:center">' + inCart + '</span><button onclick="App.addToCart(\'' + code + '\');App.showProductDetail(\'' + code + '\',\'' + name.replace(/'/g,"\\'") + '\',\'' + unit + '\',' + price + ',' + avail + ',\'' + desc.replace(/'/g,"\\'") + '\',\'' + imgUrl + '\')" style="width:36px;height:36px;border-radius:50%;background:#2563eb;border:none;font-weight:700;font-size:18px;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center">+</button></div>';
             } else {
-                h += '<button onclick="App._addFromDetail(\'' + code + '\',' + isCatalog + ');App.showProductDetail(\'' + code + '\',\'' + name.replace(/'/g,"\\'") + '\',\'' + unit + '\',' + price + ',' + avail + ',\'' + desc.replace(/'/g,"\\'") + '\',\'' + imgUrl + '\')" style="background:#2563eb;color:#fff;padding:10px 24px;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer"><i class="fa-solid fa-cart-plus" style="margin-left:6px"></i> أضف للسلة</button>';
+                h += '<button onclick="App.addToCart(\'' + code + '\');App.showProductDetail(\'' + code + '\',\'' + name.replace(/'/g,"\\'") + '\',\'' + unit + '\',' + price + ',' + avail + ',\'' + desc.replace(/'/g,"\\'") + '\',\'' + imgUrl + '\')" style="background:#2563eb;color:#fff;padding:10px 24px;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer"><i class="fa-solid fa-cart-plus" style="margin-left:6px"></i> أضف للسلة</button>';
             }
         } else { h += '<span style="color:#ef4444;font-weight:700">غير متوفر حالياً</span>'; }
         h += '</div></div>';
         Swal.fire({ html: h, width: '450px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-400 !text-lg' } });
     };
-
-    self._addFromDetail = function(code, isCatalog) { self.addToCart(code); if (isCatalog) RW_UI.toast('✅ تمت إضافة الصنف للسلة. يمكنك إكمال الأوردر من أيقونة + الرئيسية.', 'success'); };
 
     self.toggleCatalogViewMode = function() { catalogListView = !catalogListView; var i = RW_UI.byId('catalogViewModeIcon'); if (i) i.className = 'fa-solid ' + (catalogListView ? 'fa-list' : 'fa-grip'); self.renderCatalogProducts(); };
     self.onCatalogBranchChange = function(v) { selBranch = v || null; self.renderCatalogProducts(); };
@@ -732,6 +715,16 @@ var App = (function() {
 
 RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded', function() { App.init(); });
+// إغلاق قائمة البحث السريع عند النقر خارجها
+document.addEventListener('click', function(e) {
+    var resultsDiv = document.getElementById('quickSearchResults');
+    var searchInput = document.getElementById('quickItemSearch');
+    if (resultsDiv && !resultsDiv.classList.contains('hidden')) {
+        if (e.target !== searchInput && !resultsDiv.contains(e.target)) {
+            resultsDiv.classList.add('hidden');
+        }
+    }
+});
 </script>
 <script src="../register-sw.js"></script>
 </body>
