@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!-- 2026-07-19 03:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -30,8 +29,6 @@
         .animate-slide-up{animation:slideUp 0.3s ease-out}
         @keyframes pulse-badge{0%{transform:scale(1)}50%{transform:scale(1.3)}100%{transform:scale(1)}}
         .pulse-badge{animation:pulse-badge 0.3s ease-in-out}
-        .bottom-sheet{transform:translateY(100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1)}
-        .bottom-sheet.open{transform:translateY(0)}
         .fab{box-shadow:0 4px 15px rgba(37,99,235,0.4);transition:transform 0.2s ease,box-shadow 0.2s ease}
         .fab:active{transform:scale(0.92);box-shadow:0 2px 8px rgba(37,99,235,0.3)}
         .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
@@ -163,7 +160,10 @@ var App = (function() {
             if (!isOwner && perms.indexOf('orders') === -1 && perms.indexOf('telesales') === -1) { RW_UI.showError('غير مصرح – ليس لديك صلاحية التلي سيلز'); RW_Auth.doLogout(); return; }
             currentUser = u; pubUserId = u.id;
             supabase.from('app_settings').select('*').limit(1).single().then(function(sRes) { if (sRes.data) { delFee = Number(sRes.data.delivery_fee) || 0; taxRate = Number(sRes.data.tax_rate) || 0; minAmt = Number(sRes.data.min_invoice_amount) || 0; } });
-            self.enterApp();
+            // ✅ إصلاح الصور: تحميل كاش الصور أولاً
+            RW_ImageCache.loadAll(function() {
+                self.enterApp();
+            });
         }
         if (user) _setup(user);
         else RW_Auth.init(function(u, err) { if (err || !u) { if (err === 'NO_SESSION') return; RW_UI.showError('فشل استعادة الجلسة'); return; } _setup(u); });
@@ -204,7 +204,12 @@ var App = (function() {
         currentTab = tab;
         var btns = document.querySelectorAll('.tab-btn');
         for (var i = 0; i < btns.length; i++) { btns[i].classList.remove('text-blue-600'); btns[i].classList.add('text-gray-400'); if (btns[i].getAttribute('data-tab') === tab) { btns[i].classList.remove('text-gray-400'); btns[i].classList.add('text-blue-600'); } }
-        var fc = RW_UI.byId('floatingCart'); if (fc) fc.classList.add('hidden');
+        var fc = RW_UI.byId('floatingCart');
+        if (tab === 'new-order' || tab === 'products') {
+            if (fc && cart.length > 0) fc.classList.remove('hidden');
+        } else {
+            if (fc) fc.classList.add('hidden');
+        }
         if (tab === 'today') self.renderTodayView();
         else if (tab === 'products') self.renderProductsView();
         else if (tab === 'my-orders') self.renderOrdersView();
@@ -269,7 +274,13 @@ var App = (function() {
         h += '<div class="bg-white px-3 py-2 border-b flex items-center gap-2 flex-shrink-0"><select id="branchSel" onchange="App.onBranchChange(this.value)" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold flex-1"><option value="">-- اختر الفرع --</option></select><button onclick="App.toggleViewMode()" class="p-2 bg-gray-100 border rounded-lg text-gray-500"><i id="viewModeIcon" class="fa-solid fa-list"></i></button></div>';
         h += '<div id="productsContainer" class="flex-1 overflow-y-auto p-3 no-scrollbar"><div class="text-center text-gray-400 py-10">اختر فرعاً ثم ابحث عن المنتجات</div></div>';
         h += '</div>';
-        setTimeout(function() { RW_UI.safeHTML(c, h); self.loadBranches(); self.showRecentCustomers(); self.updateFloatingCart(); }, 200);
+        setTimeout(function() {
+            RW_UI.safeHTML(c, h);
+            self.loadBranches();
+            self.showRecentCustomers();
+            // ✅ إصلاح السلة: تأخير التحديث حتى يتم رسم DOM
+            setTimeout(function() { self.updateFloatingCart(); }, 100);
+        }, 200);
     };
 
     self.toggleViewMode = function() { isListView = !isListView; var i = RW_UI.byId('viewModeIcon'); if (i) i.className = 'fa-solid ' + (isListView ? 'fa-list' : 'fa-grip'); self.renderAllProducts(); };
@@ -346,7 +357,7 @@ var App = (function() {
         });
     };
 
-    // ✅ دالة عرض المنتج – مُصلحة بالكامل
+    // ✅ دالة عرض المنتج – مُصلحة بالكامل (الصور + onclick)
     self._renderProductCard = function(it, avail, useListView) {
         var ic = it.item_code || '';
         var nm = it.name || '';
@@ -366,7 +377,7 @@ var App = (function() {
             h += '</div></div>';
             return h;
         } else {
-            // ✅ إصلاح الصور: استخدام getImageURL (بالأحرف الكبيرة URL)
+            // ✅ إصلاح الصور: استخدام getImageUrl (بحرف u صغير)
             var iu = RW_ImageCache.getImageUrl(ic);
             var imgG = '';
             if (iu) {
@@ -400,44 +411,29 @@ var App = (function() {
         db.branches.toArray().then(function(br) { var h = '<option value="">-- اختر الفرع --</option>'; for (var i = 0; i < br.length; i++) h += '<option value="' + br[i].branch_code + '">' + (br[i].name || br[i].branch_code) + '</option>'; var s = RW_UI.byId('catalogBranchSel'); if (s) RW_UI.safeHTML(s, h); });
     };
 
-    // ✅ إصلاح التصنيفات – جلب من جدول categories مع fallback إلى items.category
+    // ✅ إصلاح التصنيفات – جلب من جدول categories مع fallback
     self.loadCatalogCategories = function() {
         var cd = RW_UI.byId('productCategories');
         if (!cd) return;
         RW_UI.showSkeleton('productCategories', 1, 'card');
         
-        // أولاً: محاولة جلب التصنيفات من جدول categories
         supabase.from('categories').select('category_name').order('category_name').then(function(res) {
             if (res.data && res.data.length > 0) {
                 var catNames = [];
-                for (var i = 0; i < res.data.length; i++) {
-                    catNames.push(res.data[i].category_name);
-                }
+                for (var i = 0; i < res.data.length; i++) { catNames.push(res.data[i].category_name); }
                 _renderCategoryButtons(catNames);
-            } else {
-                _buildCategoriesFromItems();
-            }
-        }).catch(function() {
-            _buildCategoriesFromItems();
-        });
+            } else { _buildCategoriesFromItems(); }
+        }).catch(function() { _buildCategoriesFromItems(); });
         
         function _buildCategoriesFromItems() {
             db.items.toArray().then(function(items) {
-                if (!items || !items.length) {
-                    RW_UI.safeHTML(cd, '<span class="text-xs text-gray-400">لا توجد تصنيفات</span>');
-                    return;
-                }
+                if (!items || !items.length) { RW_UI.safeHTML(cd, '<span class="text-xs text-gray-400">لا توجد تصنيفات</span>'); return; }
                 var cats = {};
-                for (var i = 0; i < items.length; i++) {
-                    var cat = items[i].category || 'أخرى';
-                    cats[cat] = true;
-                }
+                for (var i = 0; i < items.length; i++) { var cat = items[i].category || 'أخرى'; cats[cat] = true; }
                 var keys = ['الكل'];
                 for (var k in cats) { if (cats.hasOwnProperty(k)) keys.push(k); }
                 _renderCategoryButtons(keys);
-            }).catch(function() {
-                RW_UI.safeHTML(cd, '<span class="text-xs text-gray-400">تعذر تحميل التصنيفات</span>');
-            });
+            }).catch(function() { RW_UI.safeHTML(cd, '<span class="text-xs text-gray-400">تعذر تحميل التصنيفات</span>'); });
         }
         
         function _renderCategoryButtons(catNames) {
@@ -497,7 +493,16 @@ var App = (function() {
 
     self.calcTotals = function() { var s = 0; for (var i = 0; i < cart.length; i++) s += cart[i].price * cart[i].qty; if (s === 0) return { sub: 0, del: 0, tax: 0, total: 0 }; var d = delFee, bt = s + d, tx = Math.round(bt * taxRate) / 100; return { sub: s, del: d, tax: tx, total: bt + tx }; };
 
-    self.updateFloatingCart = function() { var bar = RW_UI.byId('floatingCart'); if (!bar) return; var t = self.calcTotals(); if (cart.length === 0) { bar.classList.add('hidden'); return; } bar.classList.remove('hidden'); RW_UI.byId('cartBadgeCount').innerText = cart.length; RW_UI.byId('cartBadgeSummary').innerText = cart.length === 1 ? cart[0].name : (cart.length + ' أصناف'); RW_UI.byId('cartBadgeTotal').innerText = fmtNum(t.total); };
+    self.updateFloatingCart = function() {
+        var bar = RW_UI.byId('floatingCart');
+        if (!bar) return;
+        var t = self.calcTotals();
+        if (cart.length === 0) { bar.classList.add('hidden'); return; }
+        bar.classList.remove('hidden');
+        RW_UI.byId('cartBadgeCount').innerText = cart.length;
+        RW_UI.byId('cartBadgeSummary').innerText = cart.length === 1 ? cart[0].name : (cart.length + ' أصناف');
+        RW_UI.byId('cartBadgeTotal').innerText = fmtNum(t.total);
+    };
 
     self.openCartModal = function() { if (cart.length === 0) return; RW_UI.byId('cartModal').classList.remove('hidden'); self.renderCartModalBody(); };
     self.closeCartModal = function() { RW_UI.byId('cartModal').classList.add('hidden'); };
