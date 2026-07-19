@@ -389,42 +389,45 @@ var App = (function() {
         });
     };
 
-    // ✅ دالة عرض المنتج – السلوك مربوط بـ currentTab
-    self._renderProductCard = function(it, avail, useListView) {
-        var ic = it.item_code || '', nm = it.name || '', pr = Number(it.sales_price) || 0;
-        var unit = it.unit || 'حبة', desc = it.description || '', imgUrl = it.image_url || '';
-        var inCart = 0; for (var x = 0; x < cart.length; x++) { if (cart[x].code === ic) { inCart = cart[x].qty; break; } }
-        var sc = avail > 10 ? 'bg-green-500' : avail > 0 ? 'bg-yellow-500' : 'bg-red-500';
-        var st = avail > 10 ? 'متوفر' : avail > 0 ? 'باقي ' + avail : 'نافد';
-        var isCatalog = (currentTab === 'products');
-        var cardOnClick = isCatalog
-            ? 'onclick="App.showProductDetail(\'' + ic + '\',\'' + nm.replace(/'/g, "\\'") + '\',\'' + unit + '\',' + pr + ',' + avail + ',\'' + desc.replace(/'/g, "\\'") + '\',\'' + imgUrl + '\')"'
-            : 'onclick="App.addToCart(\'' + ic + '\')"';
+// ✅ الإصدار المُصلح 100% – سلوك النقر يُمرر بشكل صريح
+self._renderProductCard = function(it, avail, useListView, forceDetail) {
+    var ic = it.item_code || '', nm = it.name || '', pr = Number(it.sales_price) || 0;
+    var unit = it.unit || 'حبة', desc = it.description || '', imgUrl = it.image_url || '';
+    var inCart = 0; for (var x = 0; x < cart.length; x++) { if (cart[x].code === ic) { inCart = cart[x].qty; break; } }
+    var sc = avail > 10 ? 'bg-green-500' : avail > 0 ? 'bg-yellow-500' : 'bg-red-500';
+    var st = avail > 10 ? 'متوفر' : avail > 0 ? 'باقي ' + avail : 'نافد';
+    
+    // ✅ الإصلاح: forceDetail = true يعني أننا في تبويب المنتجات (كتالوج)
+    var cardOnClick;
+    if (forceDetail === true) {
+        cardOnClick = 'onclick="App.showProductDetail(\'' + ic + '\',\'' + nm.replace(/'/g, "\\'") + '\',\'' + unit + '\',' + pr + ',' + avail + ',\'' + desc.replace(/'/g, "\\'") + '\',\'' + imgUrl + '\')"';
+    } else {
+        cardOnClick = 'onclick="App.addToCart(\'' + ic + '\')"';
+    }
 
-        if (useListView) {
-            var imgHtml = imgUrl ? '<img src="' + imgUrl + '" class="w-12 h-12 rounded-lg object-cover flex-shrink-0" onerror="this.style.display=\'none\'">' : '<div class="w-12 h-12 bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex items-center justify-center text-slate-400 flex-shrink-0"><i class="fa-solid fa-box"></i></div>';
-            var h = '<div class="bg-white p-3 rounded-xl shadow-sm border flex items-center gap-3" ' + cardOnClick + '>' + imgHtml;
-            h += '<div class="flex-1 min-w-0"><div class="font-bold text-sm truncate">' + nm + '</div><div class="text-xs text-gray-400">' + ic + '</div><div class="flex items-center gap-1 mt-1"><span class="w-2 h-2 rounded-full ' + sc + '"></span><span class="text-[10px] text-gray-500">' + st + '</span></div></div>';
-            h += '<div class="text-left"><div class="font-black text-blue-700 text-sm">' + fmtNum(pr) + '</div>';
-            if (inCart > 0) {
-                h += '<div class="flex items-center gap-1 mt-1"><button onclick="event.stopPropagation();App.decCart(\'' + ic + '\')" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black">-</button><span class="text-xs font-black w-5 text-center">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-black">+</button></div>';
-            } else { h += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="mt-1 w-8 h-8 bg-blue-600 text-white rounded-full text-xs flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>'; }
-            h += '</div></div>'; return h;
-        } else {
-            var imgG = imgUrl ? '<img src="' + imgUrl + '" alt="' + nm + '" class="absolute inset-0 w-full h-full object-contain p-3 hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.style.display=\'none\'">' : '<div class="absolute inset-0 w-full h-full flex items-center justify-center text-slate-400"><i class="fa-solid fa-box text-4xl"></i></div>';
-            var h2 = '<div class="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col cursor-pointer active:scale-[0.98] transition" ' + cardOnClick + '>';
-            h2 += '<div class="relative pt-[100%] bg-gray-50 overflow-hidden">' + imgG;
-            h2 += '<span class="absolute top-2 right-2 w-3 h-3 rounded-full ' + sc + ' border-2 border-white shadow-sm"></span>';
-            if (Number(it.discount_percent) > 0) h2 += '<span class="absolute bottom-2 left-2 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">-' + it.discount_percent + '%</span>';
-            h2 += '</div><div class="p-2 flex flex-col flex-1"><div class="font-bold text-xs truncate mb-1">' + nm + '</div>';
-            h2 += '<div class="mt-auto flex justify-between items-center"><span class="font-black text-blue-700 text-xs">' + fmtNum(pr) + '</span>';
-            if (inCart > 0) {
-                h2 += '<div class="flex items-center gap-1"><button onclick="event.stopPropagation();App.decCart(\'' + ic + '\')" class="w-5 h-5 bg-gray-100 rounded-full text-[10px] font-black">-</button><span class="text-[10px] font-black">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-5 h-5 bg-blue-600 text-white rounded-full text-[10px] font-black">+</button></div>';
-            } else { h2 += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-[10px] flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>'; }
-            h2 += '</div></div></div>'; return h2;
-        }
-    };
-
+    if (useListView) {
+        var imgHtml = imgUrl ? '<img src="' + imgUrl + '" class="w-12 h-12 rounded-lg object-cover flex-shrink-0" onerror="this.style.display=\'none\'">' : '<div class="w-12 h-12 bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex items-center justify-center text-slate-400 flex-shrink-0"><i class="fa-solid fa-box"></i></div>';
+        var h = '<div class="bg-white p-3 rounded-xl shadow-sm border flex items-center gap-3" ' + cardOnClick + '>' + imgHtml;
+        h += '<div class="flex-1 min-w-0"><div class="font-bold text-sm truncate">' + nm + '</div><div class="text-xs text-gray-400">' + ic + '</div><div class="flex items-center gap-1 mt-1"><span class="w-2 h-2 rounded-full ' + sc + '"></span><span class="text-[10px] text-gray-500">' + st + '</span></div></div>';
+        h += '<div class="text-left"><div class="font-black text-blue-700 text-sm">' + fmtNum(pr) + '</div>';
+        if (inCart > 0) {
+            h += '<div class="flex items-center gap-1 mt-1"><button onclick="event.stopPropagation();App.decCart(\'' + ic + '\')" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black">-</button><span class="text-xs font-black w-5 text-center">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-xs font-black">+</button></div>';
+        } else { h += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="mt-1 w-8 h-8 bg-blue-600 text-white rounded-full text-xs flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>'; }
+        h += '</div></div>'; return h;
+    } else {
+        var imgG = imgUrl ? '<img src="' + imgUrl + '" alt="' + nm + '" class="absolute inset-0 w-full h-full object-contain p-3 hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.style.display=\'none\'">' : '<div class="absolute inset-0 w-full h-full flex items-center justify-center text-slate-400"><i class="fa-solid fa-box text-4xl"></i></div>';
+        var h2 = '<div class="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col cursor-pointer active:scale-[0.98] transition" ' + cardOnClick + '>';
+        h2 += '<div class="relative pt-[100%] bg-gray-50 overflow-hidden">' + imgG;
+        h2 += '<span class="absolute top-2 right-2 w-3 h-3 rounded-full ' + sc + ' border-2 border-white shadow-sm"></span>';
+        if (Number(it.discount_percent) > 0) h2 += '<span class="absolute bottom-2 left-2 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full">-' + it.discount_percent + '%</span>';
+        h2 += '</div><div class="p-2 flex flex-col flex-1"><div class="font-bold text-xs truncate mb-1">' + nm + '</div>';
+        h2 += '<div class="mt-auto flex justify-between items-center"><span class="font-black text-blue-700 text-xs">' + fmtNum(pr) + '</span>';
+        if (inCart > 0) {
+            h2 += '<div class="flex items-center gap-1"><button onclick="event.stopPropagation();App.decCart(\'' + ic + '\')" class="w-5 h-5 bg-gray-100 rounded-full text-[10px] font-black">-</button><span class="text-[10px] font-black">' + inCart + '</span><button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-5 h-5 bg-blue-600 text-white rounded-full text-[10px] font-black">+</button></div>';
+        } else { h2 += '<button onclick="event.stopPropagation();App.addToCart(\'' + ic + '\')" class="w-6 h-6 bg-blue-600 text-white rounded-full text-[10px] flex items-center justify-center"><i class="fa-solid fa-plus"></i></button>'; }
+        h2 += '</div></div></div>'; return h2;
+    }
+};
     // ==================== تبويب "المنتجات" (كتالوج) ====================
     self.renderProductsView = function() {
         var c = RW_UI.byId('mainContent'); if (!c) return;
