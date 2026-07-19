@@ -605,9 +605,36 @@ var RW_ImageCache = (function() {
 })();
 
 // ============================================================
-// الوحدة ٦: RW_SW – تسجيل Service Worker وكشف التحديثات
+// الوحدة ٦: RW_SW – تسجيل Service Worker وكشف التحديثات (محدثة)
 // ============================================================
 var RW_SW = (function() {
+    
+    // 💡 اللمسة العبقرية: الاستماع الصامت لرسالة الـ Service Worker الجديد
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'RW_SW_UPDATED') {
+                console.log('[RW_SW] تم رصد إصدار جديد، جاري التحديث التلقائي...');
+                
+                // عرض إشعار أنيق يختفي بسرعة ثم يُحدث الصفحة
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top',
+                        icon: 'success',
+                        title: 'تم تحديث النظام لآخر إصدار 🚀',
+                        showConfirmButton: false,
+                        timer: 1500,
+                        customClass: { popup: '!rounded-2xl !shadow-xl' }
+                    }).then(function() {
+                        window.location.reload(true);
+                    });
+                } else {
+                    window.location.reload(true);
+                }
+            }
+        });
+    }
+
     function register(swPath, callback) {
         if (!('serviceWorker' in navigator)) {
             if (callback) callback(false, 'المتصفح لا يدعم Service Worker');
@@ -615,32 +642,8 @@ var RW_SW = (function() {
         }
         var path = swPath || '../sw.js';
         navigator.serviceWorker.register(path).then(function(reg) {
-            reg.addEventListener('updatefound', function() {
-                var newWorker = reg.installing;
-                if (newWorker) {
-                    newWorker.addEventListener('statechange', function() {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            if (typeof Swal !== 'undefined') {
-                                Swal.fire({
-                                    title: '🔄 تحديث متاح',
-                                    text: 'تم تحميل نسخة أحدث من التطبيق.',
-                                    icon: 'info',
-                                    confirmButtonText: 'تحديث الآن',
-                                    customClass: {
-                                        popup: '!rounded-3xl',
-                                        confirmButton: '!rounded-xl !bg-blue-600 !px-8'
-                                    }
-                                }).then(function() {
-                                    if (newWorker && newWorker.postMessage) {
-                                        newWorker.postMessage({ action: 'skipWaiting' });
-                                    }
-                                    window.location.reload();
-                                });
-                            }
-                        }
-                    });
-                }
-            });
+            // تم تخفيف الكود هنا لأن الاعتماد أصبح على حدث 'message' في الأعلى
+            // والذي يعتبر أسرع وأدق مع استراتيجية self.skipWaiting
             if (callback) callback(true, null);
         }).catch(function(err) {
             console.error('❌ فشل تسجيل Service Worker:', err);
@@ -652,7 +655,6 @@ var RW_SW = (function() {
         register: register
     };
 })();
-
 // ============================================================
 // دوال مساعدة عامة (متوافقة مع جميع التطبيقات)
 // ============================================================
