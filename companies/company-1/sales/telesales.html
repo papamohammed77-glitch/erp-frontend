@@ -200,24 +200,44 @@ var App = (function() {
         self.syncDown().then(function() { RW_UI.hideLoader(); self.loadBranches(); self.syncPendingOrders(); RW_UI.toast('تمت المزامنة', 'success'); }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشلت المزامنة', 'error'); });
     };
 
-    self.switchTab = function(tab) {
-        currentTab = tab;
-        var btns = document.querySelectorAll('.tab-btn');
-        for (var i = 0; i < btns.length; i++) { btns[i].classList.remove('text-blue-600'); btns[i].classList.add('text-gray-400'); if (btns[i].getAttribute('data-tab') === tab) { btns[i].classList.remove('text-gray-400'); btns[i].classList.add('text-blue-600'); } }
-        var fc = RW_UI.byId('floatingCart');
-        if (tab === 'new-order' || tab === 'products') {
-            if (fc && cart.length > 0) fc.classList.remove('hidden');
-        } else {
-            if (fc) fc.classList.add('hidden');
+self.switchTab = function(tab) {
+    currentTab = tab;
+    var btns = document.querySelectorAll('.tab-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.remove('text-blue-600');
+        btns[i].classList.add('text-gray-400');
+        if (btns[i].getAttribute('data-tab') === tab) {
+            btns[i].classList.remove('text-gray-400');
+            btns[i].classList.add('text-blue-600');
         }
-        if (tab === 'today') self.renderTodayView();
-        else if (tab === 'products') self.renderProductsView();
-        else if (tab === 'my-orders') self.renderOrdersView();
-        else if (tab === 'more') self.renderMoreView();
-    };
-
-    self.openNewOrder = function() { cart = []; selCust = null; currentTab = 'new-order'; self.renderNewOrderView(); };
-
+    }
+    var fc = RW_UI.byId('floatingCart');
+    if (tab === 'new-order') {
+        // في وضع الأوردر الجديد، أظهر السلة إذا كان فيها أصناف
+        if (fc && cart.length > 0) fc.classList.remove('hidden');
+        else if (fc) fc.classList.add('hidden');
+    } else if (tab === 'products') {
+        // ✅ إصلاح: أبدًا لا تظهر السلة في تبويب كتالوج المنتجات
+        if (fc) fc.classList.add('hidden');
+    } else {
+        // في بقية التبويبات (اليوم، أوردراتي، المزيد)، أخفِ السلة
+        if (fc) fc.classList.add('hidden');
+    }
+    if (tab === 'today') self.renderTodayView();
+    else if (tab === 'products') self.renderProductsView();
+    else if (tab === 'my-orders') self.renderOrdersView();
+    else if (tab === 'more') self.renderMoreView();
+};
+    
+self.openNewOrder = function() {
+    cart = [];
+    selCust = null;
+    var b = RW_UI.byId('creditBanner'); if (b) b.className = 'hidden';
+    var i = RW_UI.byId('selectedCustInfo'); if (i) i.classList.add('hidden');
+    currentTab = 'new-order';
+    self.renderNewOrderView();
+};
+    
     // ==================== تبويب "اليوم" – Call Planner ====================
     self.renderTodayView = function() {
         var c = RW_UI.byId('mainContent'); if (!c) return;
@@ -313,21 +333,65 @@ var App = (function() {
         });
     };
 
-    self.selectCustomer = function(code) {
-        db.customers.get(code).then(function(c) {
-            if (!c) return; selCust = c;
-            var limit = Number(c.credit_limit) || 0, debt = Number(c.debt) || 0, pct = limit > 0 ? (debt / limit) * 100 : 0;
-            var banner = RW_UI.byId('creditBanner');
-            if (pct >= 100) { banner.className = 'text-center py-2 text-sm font-bold flex-shrink-0 bg-red-500 text-white'; banner.innerHTML = '⛔ العميل تجاوز الحد الائتماني (' + fmtNum(debt) + ' / ' + fmtNum(limit) + ')'; }
-            else if (pct >= 75) { banner.className = 'text-center py-2 text-sm font-bold flex-shrink-0 bg-yellow-100 text-yellow-800 border-b border-yellow-200'; banner.innerHTML = '⚠️ العميل يقترب من الحد الائتماني (' + Math.round(pct) + '%)'; }
-            else { banner.className = 'hidden'; }
-            var info = RW_UI.byId('selectedCustInfo'); if (info) { info.classList.remove('hidden'); info.innerHTML = '<div class="flex justify-between items-center"><div><span class="font-black text-blue-800">' + (c.name || '') + '</span><span class="text-xs text-blue-500 mr-2">' + (c.area || '') + '</span></div><button onclick="App.clearCustomer()" class="text-xs text-red-500 font-bold">✕ تغيير</button></div>'; }
-            RW_UI.byId('custSearch').value = ''; RW_UI.safeHTML(RW_UI.byId('custResults'), ''); RW_UI.toast('تم اختيار: ' + (c.name || code), 'success');
-        });
-    };
+self.selectCustomer = function(code) {
+    db.customers.get(code).then(function(c) {
+        if (!c) return;
+        
+        // ✅ إصلاح: مسح السلة تلقائياً عند اختيار عميل جديد
+        if (cart.length > 0) {
+            var oldCustName = selCust ? (selCust.name || selCust.customer_code) : 'سابق';
+            var newCustName = c.name || c.customer_code;
+            // تأكيد سريع: إذا كانت السلة كبيرة (أكثر من 3 أصناف)، نطلب التأكيد
+            if (cart.length > 3) {
+                RW_UI.showConfirm(
+                    'لديك ' + cart.length + ' أصناف من العميل ' + oldCustName + '. هل تريد مسحها والبدء مع ' + newCustName + '؟',
+                    function() { cart = []; self._selectCustomerCore(c); },
+                    function() { /* يبقى على العميل القديم – لا يغير */ return; }
+                );
+                return;
+            } else {
+                // سلة صغيرة – نمسحها مباشرة
+                cart = [];
+            }
+        }
+        self._selectCustomerCore(c);
+    });
+};
 
-    self.clearCustomer = function() { selCust = null; var b = RW_UI.byId('creditBanner'); if (b) b.className = 'hidden'; var i = RW_UI.byId('selectedCustInfo'); if (i) i.classList.add('hidden'); };
+// ✅ دالة مساعدة: نواة اختيار العميل (لا تتكرر)
+self._selectCustomerCore = function(c) {
+    selCust = c;
+    var limit = Number(c.credit_limit) || 0, debt = Number(c.debt) || 0, pct = limit > 0 ? (debt / limit) * 100 : 0;
+    var banner = RW_UI.byId('creditBanner');
+    if (pct >= 100) {
+        banner.className = 'text-center py-2 text-sm font-bold flex-shrink-0 bg-red-500 text-white';
+        banner.innerHTML = '⛔ العميل تجاوز الحد الائتماني (' + fmtNum(debt) + ' / ' + fmtNum(limit) + ')';
+    } else if (pct >= 75) {
+        banner.className = 'text-center py-2 text-sm font-bold flex-shrink-0 bg-yellow-100 text-yellow-800 border-b border-yellow-200';
+        banner.innerHTML = '⚠️ العميل يقترب من الحد الائتماني (' + Math.round(pct) + '%)';
+    } else {
+        banner.className = 'hidden';
+    }
+    var info = RW_UI.byId('selectedCustInfo');
+    if (info) {
+        info.classList.remove('hidden');
+        info.innerHTML = '<div class="flex justify-between items-center"><div><span class="font-black text-blue-800">' + (c.name || '') + '</span><span class="text-xs text-blue-500 mr-2">' + (c.area || '') + '</span></div><button onclick="App.clearCustomer()" class="text-xs text-red-500 font-bold">✕ تغيير</button></div>';
+    }
+    RW_UI.byId('custSearch').value = '';
+    RW_UI.safeHTML(RW_UI.byId('custResults'), '');
+    self.updateFloatingCart();
+    RW_UI.toast('تم اختيار: ' + (c.name || code), 'success');
+};
 
+self.clearCustomer = function() {
+    selCust = null;
+    var b = RW_UI.byId('creditBanner'); if (b) b.className = 'hidden';
+    var i = RW_UI.byId('selectedCustInfo'); if (i) i.classList.add('hidden');
+    // ✅ إصلاح: مسح السلة عند إلغاء العميل
+    cart = [];
+    self.updateFloatingCart();
+};
+    
     self.loadBranches = function() {
         db.branches.toArray().then(function(br) { branchMap = {}; var h = '<option value="">-- اختر الفرع --</option>'; for (var i = 0; i < br.length; i++) { branchMap[br[i].branch_code] = br[i].id; h += '<option value="' + br[i].branch_code + '">' + (br[i].name || br[i].branch_code) + '</option>'; } var sel = RW_UI.byId('branchSel'); if (sel) RW_UI.safeHTML(sel, h); });
     };
@@ -487,6 +551,9 @@ self.showProductDetail = function(code, name, unit, price, avail, desc, imgUrl) 
     var inCart = 0;
     for (var x = 0; x < cart.length; x++) { if (cart[x].code === code) { inCart = cart[x].qty; break; } }
     
+    // ✅ إصلاح: معرفة ما إذا كنا في تبويب المنتجات (لإظهار رسالة تنبيه)
+    var isCatalog = (currentTab === 'products');
+    
     var h = '<div style="text-align:right;font-family:Cairo,sans-serif;direction:rtl">';
     h += imgHtml;
     h += '<h3 style="font-size:20px;font-weight:800;color:#1e293b;margin-bottom:4px">' + name + '</h3>';
@@ -512,7 +579,7 @@ self.showProductDetail = function(code, name, unit, price, avail, desc, imgUrl) 
             h += '<button onclick="App.addToCart(\'' + code + '\');App.showProductDetail(\'' + code + '\',\'' + name.replace(/'/g,"\\'") + '\',\'' + unit + '\',' + price + ',' + avail + ',\'' + desc.replace(/'/g,"\\'") + '\',\'' + imgUrl + '\')" style="width:36px;height:36px;border-radius:50%;background:#2563eb;border:none;font-weight:700;font-size:18px;cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center">+</button>';
             h += '</div>';
         } else {
-            h += '<button onclick="App.addToCart(\'' + code + '\');App.showProductDetail(\'' + code + '\',\'' + name.replace(/'/g,"\\'") + '\',\'' + unit + '\',' + price + ',' + avail + ',\'' + desc.replace(/'/g,"\\'") + '\',\'' + imgUrl + '\')" style="background:#2563eb;color:#fff;padding:10px 24px;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer"><i class="fa-solid fa-cart-plus" style="margin-left:6px"></i> أضف للسلة</button>';
+            h += '<button onclick="App._addFromDetail(\'' + code + '\',' + isCatalog + ');App.showProductDetail(\'' + code + '\',\'' + name.replace(/'/g,"\\'") + '\',\'' + unit + '\',' + price + ',' + avail + ',\'' + desc.replace(/'/g,"\\'") + '\',\'' + imgUrl + '\')" style="background:#2563eb;color:#fff;padding:10px 24px;border:none;border-radius:12px;font-weight:700;font-size:14px;cursor:pointer"><i class="fa-solid fa-cart-plus" style="margin-left:6px"></i> أضف للسلة</button>';
         }
     } else {
         h += '<span style="color:#ef4444;font-weight:700">غير متوفر حالياً</span>';
@@ -528,7 +595,15 @@ self.showProductDetail = function(code, name, unit, price, avail, desc, imgUrl) 
         customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-400 !text-lg' }
     });
 };
-    
+
+// ✅ دالة مساعدة: إضافة من نافذة التفاصيل مع تنبيه في وضع المنتجات
+self._addFromDetail = function(code, isCatalog) {
+    self.addToCart(code);
+    if (isCatalog) {
+        // تنبيه المستخدم بأنه أضاف صنفاً للسلة من تبويب المنتجات
+        RW_UI.toast('✅ تمت إضافة الصنف للسلة. يمكنك إكمال الأوردر من أيقونة + الرئيسية.', 'success');
+    }
+};    
     self.toggleCatalogViewMode = function() { catalogListView = !catalogListView; var i = RW_UI.byId('catalogViewModeIcon'); if (i) i.className = 'fa-solid ' + (catalogListView ? 'fa-list' : 'fa-grip'); self.renderCatalogProducts(); };
     self.onCatalogBranchChange = function(v) { selBranch = v || null; self.renderCatalogProducts(); };
     self.filterCatalogProducts = function(cat) { catalogActiveCat = cat; self.renderCatalogProducts(); };
@@ -554,24 +629,44 @@ self.renderCatalogProducts = function(searchQuery) {
     }).catch(function() { RW_UI.showEmptyState('catalogProductsContainer', 'تعذر تحميل المنتجات', '📡'); });
 };
     // ==================== إدارة السلة ====================
-    self.addToCart = function(code) {
-        db.items.get(code).then(function(it) {
-            if (!it) return;
-            self.getAvail(it.id).then(function(avail) {
-                var ex = null; for (var i = 0; i < cart.length; i++) { if (cart[i].code === code) { ex = cart[i]; break; } }
-                var cur = ex ? ex.qty : 0, nq = cur + 1;
-                var mx = it.max_qty ? Number(it.max_qty) : 0;
-                if (mx > 0 && nq > mx) { RW_UI.toast('الحد الأقصى: ' + mx, 'warning'); return; }
-                if (nq > avail) { RW_UI.toast('المتاح: ' + avail, 'warning'); return; }
-                if (ex) ex.qty = nq; else cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 });
-                self.updateFloatingCart();
-                if (currentTab === 'new-order') self.renderAllProducts();
-                else if (currentTab === 'products') self.renderCatalogProducts();
-                if (navigator.vibrate) navigator.vibrate(30);
-            });
+self.addToCart = function(code) {
+    db.items.get(code).then(function(it) {
+        if (!it) return;
+        self.getAvail(it.id).then(function(avail) {
+            var ex = null;
+            for (var i = 0; i < cart.length; i++) { if (cart[i].code === code) { ex = cart[i]; break; } }
+            var cur = ex ? ex.qty : 0, nq = cur + 1;
+            var mx = it.max_qty ? Number(it.max_qty) : 0;
+            if (mx > 0 && nq > mx) { RW_UI.toast('الحد الأقصى: ' + mx, 'warning'); return; }
+            if (nq > avail) { RW_UI.toast('المتاح: ' + avail, 'warning'); return; }
+            if (ex) ex.qty = nq;
+            else cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 });
+            
+            // ✅ إصلاح: تحديث السلة العائمة فقط إذا كنا في وضع الأوردر الجديد
+            if (currentTab === 'new-order') self.updateFloatingCart();
+            // ✅ في وضع المنتجات: السلة مخفية دائماً، لكنها تُحدَّث داخلياً فقط
+            // (لا نستدعي updateFloatingCart لأن السلة غير ظاهرة)
+            
+            if (currentTab === 'new-order') self.renderAllProducts();
+            else if (currentTab === 'products') self.renderCatalogProducts();
+            if (navigator.vibrate) navigator.vibrate(30);
         });
-    };
+    });
+};
 
+self.decCart = function(code) {
+    for (var i = 0; i < cart.length; i++) {
+        if (cart[i].code === code) {
+            cart[i].qty--;
+            if (cart[i].qty <= 0) cart.splice(i, 1);
+            break;
+        }
+    }
+    if (currentTab === 'new-order') self.updateFloatingCart();
+    if (currentTab === 'new-order') self.renderAllProducts();
+    else if (currentTab === 'products') self.renderCatalogProducts();
+};
+    
     // ✅ دالة عرض كل المنتجات في وضع الأوردر الجديد – الضغط على البطاقة يضيف للسلة
 self.renderAllProducts = function() {
     var c = RW_UI.byId('productsContainer');
@@ -621,17 +716,21 @@ self.renderAllProducts = function() {
 
     self.calcTotals = function() { var s = 0; for (var i = 0; i < cart.length; i++) s += cart[i].price * cart[i].qty; if (s === 0) return { sub: 0, del: 0, tax: 0, total: 0 }; var d = delFee, bt = s + d, tx = Math.round(bt * taxRate) / 100; return { sub: s, del: d, tax: tx, total: bt + tx }; };
 
-    self.updateFloatingCart = function() {
-        var bar = RW_UI.byId('floatingCart');
-        if (!bar) return;
-        var t = self.calcTotals();
-        if (cart.length === 0) { bar.classList.add('hidden'); return; }
-        bar.classList.remove('hidden');
-        RW_UI.byId('cartBadgeCount').innerText = cart.length;
-        RW_UI.byId('cartBadgeSummary').innerText = cart.length === 1 ? cart[0].name : (cart.length + ' أصناف');
-        RW_UI.byId('cartBadgeTotal').innerText = fmtNum(t.total);
-    };
-
+self.updateFloatingCart = function() {
+    var bar = RW_UI.byId('floatingCart');
+    if (!bar) return;
+    var t = self.calcTotals();
+    // ✅ إصلاح: لا تظهر السلة أبداً في تبويب المنتجات أو إذا كانت فارغة
+    if (cart.length === 0 || currentTab === 'products') {
+        bar.classList.add('hidden');
+        return;
+    }
+    bar.classList.remove('hidden');
+    RW_UI.byId('cartBadgeCount').innerText = cart.length;
+    RW_UI.byId('cartBadgeSummary').innerText = cart.length === 1 ? cart[0].name : (cart.length + ' أصناف');
+    RW_UI.byId('cartBadgeTotal').innerText = fmtNum(t.total);
+};
+    
     self.openCartModal = function() { if (cart.length === 0) return; RW_UI.byId('cartModal').classList.remove('hidden'); self.renderCartModalBody(); };
     self.closeCartModal = function() { RW_UI.byId('cartModal').classList.add('hidden'); };
 
