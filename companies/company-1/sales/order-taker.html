@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-21 00:50 UTC – Order Taker Diamond Edition -->
+<!-- 2026-07-21 01:00 UTC – Order Taker Diamond Edition -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -273,7 +273,19 @@ self.startBrandNewOrder = function() {
 };
 
 self.continueShoppingToProducts = function() {
-    self.switchTab('products');
+    // الاحتفاظ بالعميل والفرع والسلة، والعودة لشاشة الأوردر الجديد
+    currentTab = 'new-order';
+    var btns = document.querySelectorAll('.tab-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.remove('text-purple-600');
+        btns[i].classList.add('text-gray-400');
+    }
+    var newOrderBtn = document.querySelector('[data-tab="new-order"]');
+    if (newOrderBtn) {
+        newOrderBtn.classList.remove('text-gray-400');
+        newOrderBtn.classList.add('text-purple-600');
+    }
+    self.renderNewOrderView();
 };
 
 // ==================== دوال التنقل الجديدة ====================
@@ -419,11 +431,34 @@ self.loadTodayOpportunities = function() {
         h += '</div>';
         setTimeout(function() {
             RW_UI.safeHTML(c, h);
-            self.loadBranches(); self.showRecentCustomers();
-            setTimeout(function() { self.updateFloatingCart(); }, 100);
+            self.loadBranches();
+            self.showRecentCustomers();
+
+            // ✅ استعادة العميل المحدد إذا كان موجوداً
+            if (selCust) {
+                setTimeout(function() {
+                    self._selectCustomerCore(selCust);
+                }, 300);
+            }
+
+            // ✅ استعادة الفرع المحدد إذا كان موجوداً
+            if (selBranch) {
+                setTimeout(function() {
+                    var branchSelect = RW_UI.byId('branchSel');
+                    if (branchSelect) {
+                        branchSelect.value = selBranch;
+                        // تشغيل onchange يدوياً لتحميل المنتجات
+                        self.onBranchChange(selBranch);
+                    }
+                }, 400);
+            }
+
+            setTimeout(function() {
+                self.updateFloatingCart();
+            }, 500);
         }, 200);
     };
-
+    
     self.toggleViewMode = function() { isListView = !isListView; var i = RW_UI.byId('viewModeIcon'); if (i) i.className = 'fa-solid ' + (isListView ? 'fa-list' : 'fa-grip'); self.renderAllProducts(); };
 
     self.showRecentCustomers = function() {
