@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-21 00:30 UTC – Order Taker Diamond Edition -->
+<!-- 2026-07-21 00:40 UTC – Order Taker Diamond Edition -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -1034,52 +1034,127 @@ self._forceOpenCart = function(items, customer, branchCode) {
     setTimeout(commitRender, 350);
 };
 
+// ============================================================
+// دالة عرض سلة التعديل – بنفس تنسيق renderCartTab الأصلي
+// ============================================================
 function _renderForcedCartHTML(items, customer, myGeneration) {
     var container = RW_UI.byId('mainContent');
     if (!container) return;
 
-    var h = '<div class="p-4 pb-32">';
+    // ✅ التحقق من صلاحية الجيل – لا تنفذ إذا فُتح أوردر آخر
+    if (myGeneration !== _rwRenderGeneration) return;
 
+    var h = '<div class="flex-1 overflow-y-auto p-4 no-scrollbar">';
+
+    // ✅ زر استكمال التسوق – يظهر أولاً (مطابق لـ renderCartTab)
+    h += '<div class="mb-4 flex gap-2">';
+    h += '<button onclick="App.continueShoppingToProducts()" class="flex-1 bg-purple-50 text-purple-700 py-3 rounded-xl font-bold text-sm border border-purple-200 hover:bg-purple-100 transition">';
+    h += '<i class="fa-solid fa-box ml-2"></i>استكمال التسوق من المنتجات';
+    h += '</button>';
+    h += '<button onclick="App.startBrandNewOrder()" class="flex-1 bg-purple-50 text-purple-700 py-3 rounded-xl font-bold text-sm border border-purple-200 hover:bg-purple-100 transition">';
+    h += '<i class="fa-solid fa-cart-plus ml-2"></i>أوردر جديد';
+    h += '</button>';
+    h += '</div>';
+
+    // ✅ بطاقة العميل – مطابقة لـ renderCartTab
     if (customer) {
-        h += '<div class="bg-purple-50 border-2 border-purple-100 rounded-2xl p-4 mb-4">';
-        h += '<div class="text-xs text-purple-400 font-black">العميل</div>';
-        h += '<div class="font-black text-purple-800 text-lg">' + (customer.name || '') + '</div>';
+        h += '<div class="bg-gradient-to-r from-purple-50 to-indigo-50 p-4 rounded-2xl mb-4 border border-purple-100">';
+        h += '<div class="flex justify-between items-center">';
+        h += '<div>';
+        h += '<p class="text-xs text-purple-400 font-bold mb-1">👤 العميل</p>';
+        h += '<p class="font-black text-lg text-purple-800">' + (customer.name || '') + '</p>';
+        h += '<p class="text-xs text-purple-500 mt-1">' + (customer.area || '') + (customer.location ? ' | 📍 ' + customer.location : '') + ' | ' + (customer.customer_code || '') + '</p>';
         h += '</div>';
+        h += '<button onclick="App.clearCustomer()" class="text-xs text-red-500 font-bold bg-white px-3 py-1.5 rounded-full shadow-sm border border-red-100">✕ تغيير</button>';
+        h += '</div></div>';
     }
 
-    if (!items.length) {
-        h += '<div class="text-center py-16 text-gray-400 font-bold">السلة فارغة</div>';
+    // ✅ عنوان الأصناف
+    h += '<h3 class="font-bold text-lg mb-3">📦 أصناف السلة</h3>';
+
+    if (!items || items.length === 0) {
+        h += '<div class="text-center py-8 text-gray-400 font-bold">السلة فارغة</div>';
     } else {
-        h += '<div id="rwForcedCartLines">';
+        // ✅ قائمة الأصناف – مطابقة لـ renderCartTab
+        h += '<div class="space-y-2 mb-4" id="rwForcedCartLines">';
         for (var i = 0; i < items.length; i++) {
             var it = items[i];
-            h += '<div class="bg-white border rounded-2xl p-3 mb-2 flex justify-between items-center">';
-            h += '<div class="flex-1"><div class="font-bold text-sm">' + it.name + '</div><div class="text-xs text-gray-400">' + it.price.toFixed(2) + ' ر.س × ' + it.qty + '</div></div>';
-            h += '<div class="flex items-center gap-2">';
-            h += '<button onclick="self._forcedCartDecrement(' + i + ')" class="w-8 h-8 rounded-full bg-gray-100 font-black">−</button>';
-            h += '<span class="w-6 text-center font-black">' + it.qty + '</span>';
-            h += '<button onclick="self._forcedCartIncrement(' + i + ')" class="w-8 h-8 rounded-full bg-purple-600 text-white font-black">+</button>';
-            h += '<button onclick="self._forcedCartRemove(' + i + ')" class="text-red-400 mr-2"><i class="fa-solid fa-trash"></i></button>';
+            var lineTotal = it.price * it.qty;
+            var imgHtml = RW_ImageCache.getImageHTML(it.code, 'w-12', 'h-12');
+            h += '<div class="bg-white p-3 rounded-xl shadow-sm border flex items-center gap-3" id="forced-item-' + i + '">';
+            h += '<div class="flex-shrink-0">' + imgHtml + '</div>';
+            h += '<div class="flex-1 min-w-0"><div class="font-bold text-sm truncate">' + (it.name || '') + '</div>';
+            h += '<div class="text-xs text-gray-400">' + RW_UI.formatNumber(it.price) + ' × ' + it.qty + ' = <span class="font-bold text-purple-600">' + RW_UI.formatNumber(lineTotal) + '</span></div></div>';
+            h += '<div class="flex items-center gap-1 flex-shrink-0">';
+            h += '<button onclick="App._forcedCartDecrement(' + i + ')" class="w-8 h-8 bg-red-100 text-red-600 rounded-full text-sm font-black">−</button>';
+            h += '<span class="text-sm font-black w-6 text-center" id="forced-qty-' + i + '">' + it.qty + '</span>';
+            h += '<button onclick="App._forcedCartIncrement(' + i + ')" class="w-8 h-8 bg-purple-600 text-white rounded-full text-sm font-black">+</button>';
+            h += '<button onclick="App._forcedCartRemove(' + i + ')" class="text-red-400 mr-1"><i class="fa-solid fa-trash"></i></button>';
             h += '</div></div>';
         }
         h += '</div>';
 
-        var total = 0;
-        for (var k = 0; k < items.length; k++) total += items[k].price * items[k].qty;
+        // ✅ حساب الإجماليات – مطابق لـ renderCartTab
+        var subtotal = 0;
+        for (var k = 0; k < items.length; k++) {
+            subtotal += items[k].price * items[k].qty;
+        }
+        var deliveryFee = (typeof delFee !== 'undefined') ? delFee : 0;
+        var taxRateVal = (typeof taxRate !== 'undefined') ? taxRate : 0;
+        var beforeTax = subtotal + deliveryFee;
+        var taxAmount = taxRateVal > 0 ? Math.round(beforeTax * taxRateVal) / 100 : 0;
+        var grandTotal = beforeTax + taxAmount;
 
-        h += '<div class="bg-white border-t-2 p-4 mt-4 rounded-2xl shadow-sm">';
-        h += '<div class="flex justify-between text-lg font-black"><span>الإجمالي</span><span class="text-purple-700">' + total.toFixed(2) + ' ر.س</span></div></div>';
+        // ✅ ملخص الفاتورة – مطابق لـ renderCartTab
+        h += '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">';
+        h += '<h3 class="font-bold text-lg mb-3">🧾 ملخص الفاتورة</h3>';
+        h += '<div class="space-y-2 text-sm">';
+        h += '<div class="flex justify-between"><span class="text-gray-500">مجموع الأصناف</span><span class="font-bold">' + RW_UI.formatNumber(subtotal) + ' EGP</span></div>';
+        if (deliveryFee > 0) {
+            h += '<div class="flex justify-between"><span class="text-gray-500">رسوم التوصيل</span><span class="font-bold text-purple-600">' + RW_UI.formatNumber(deliveryFee) + ' EGP</span></div>';
+        }
+        if (taxAmount > 0) {
+            h += '<div class="flex justify-between"><span class="text-gray-500">ضريبة القيمة المضافة</span><span class="font-bold text-red-600">' + RW_UI.formatNumber(taxAmount) + ' EGP</span></div>';
+        }
+        h += '<hr class="my-2">';
+        h += '<div class="flex justify-between text-lg"><span class="font-black">الإجمالي النهائي</span><span class="font-black text-emerald-600">' + RW_UI.formatNumber(grandTotal) + ' EGP</span></div>';
+        h += '</div></div>';
     }
 
-    h += '<button onclick="self._forceSaveEditedOrder(' + myGeneration + ')" class="w-full bg-purple-700 text-white font-black py-4 rounded-2xl mt-4 text-lg">حفظ التعديلات</button>';
+    // ✅ صف الأزرار السفلي – مطابق لـ renderCartTab
+    h += '<div class="flex gap-3 mb-4">';
+    h += '<button onclick="App.clearCartAndReset()" class="flex-1 bg-red-50 text-red-600 py-3.5 rounded-xl font-bold text-sm border border-red-200"><i class="fa-solid fa-trash ml-1"></i>مسح السلة</button>';
+    h += '<button onclick="App._forceSaveEditedOrder(' + myGeneration + ')" class="flex-1 bg-emerald-600 text-white py-3.5 rounded-xl font-black text-sm shadow-lg"><i class="fa-solid fa-check ml-2"></i>حفظ الأوردر</button>';
+    h += '</div>';
+
     h += '</div>';
 
     RW_UI.safeHTML(container, h);
+    App.updateCartTabBadge();
 }
 
-self._forcedCartIncrement = function(idx) { if (!cart[idx]) return; cart[idx].qty++; _renderForcedCartHTML(cart, selCust, _rwRenderGeneration); };
-self._forcedCartDecrement = function(idx) { if (!cart[idx]) return; cart[idx].qty--; if (cart[idx].qty <= 0) cart.splice(idx, 1); _renderForcedCartHTML(cart, selCust, _rwRenderGeneration); };
-self._forcedCartRemove = function(idx) { cart.splice(idx, 1); _renderForcedCartHTML(cart, selCust, _rwRenderGeneration); };
+self._forcedCartIncrement = function(idx) {
+    if (!cart[idx]) return;
+    cart[idx].qty++;
+    // إعادة بناء HTML السلة بالتنسيق الجديد
+    _renderForcedCartHTML(cart, selCust, _rwRenderGeneration);
+};
+
+self._forcedCartDecrement = function(idx) {
+    if (!cart[idx]) return;
+    cart[idx].qty--;
+    if (cart[idx].qty <= 0) {
+        cart.splice(idx, 1);
+    }
+    // إعادة بناء HTML السلة بالتنسيق الجديد
+    _renderForcedCartHTML(cart, selCust, _rwRenderGeneration);
+};
+
+self._forcedCartRemove = function(idx) {
+    cart.splice(idx, 1);
+    // إعادة بناء HTML السلة بالتنسيق الجديد
+    _renderForcedCartHTML(cart, selCust, _rwRenderGeneration);
+};
 
 self._forceSaveEditedOrder = function(expectedGeneration) {
     if (expectedGeneration !== _rwRenderGeneration) {
