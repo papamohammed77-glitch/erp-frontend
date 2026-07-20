@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-20 10:40 UTC – Order Taker Diamond Edition -->
+<!-- 2026-07-20 10:45 UTC – Order Taker Diamond Edition -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -889,14 +889,12 @@ self._editOrderFromDetail = function(orderId) {
             RW_UI.hideLoader();
             var details = dRes.data || [];
             if (details.length === 0) { RW_UI.toast('الأوردر لا يحتوي على أصناف', 'warning'); return; }
-            
-            // مسح السلة الحالية
-            cart = [];
-            
-            // تحميل الأصناف من الأوردر القديم
+
+            // ✅ 1. تجهيز السلة أولاً (بدون مسح العميل الحالي إذا كان هو نفسه)
+            var newCart = [];
             for (var i = 0; i < details.length; i++) {
                 var det = details[i];
-                cart.push({
+                newCart.push({
                     code: det.item_code,
                     name: det.item_name,
                     price: Number(det.unit_price) || 0,
@@ -904,8 +902,8 @@ self._editOrderFromDetail = function(orderId) {
                     qty: Number(det.qty) || 1
                 });
             }
-            
-            // تعيين الفرع
+
+            // ✅ 2. تعيين الفرع
             if (order.branch_id) {
                 db.branches.toArray().then(function(branches) {
                     for (var b = 0; b < branches.length; b++) {
@@ -920,31 +918,32 @@ self._editOrderFromDetail = function(orderId) {
                     }
                 });
             }
-            
-            // ✅ الإصلاح الجذري: تعيين العميل أولاً ثم الانتقال للسلة
-            function _goToCart() {
+
+            // ✅ 3. تعيين العميل ثم السلة
+            function finalizeCart() {
+                cart = newCart;                        // ← تحميل الأصناف
                 self.updateCartTabBadge();
-                self.switchTab('cart');
-                RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
+                self.switchTab('cart');                // ← فتح تبويب السلة
+                RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل', 'success');
             }
-            
+
             if (order.customer_id) {
                 db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
-                    if (c) { 
-                        selCust = c; 
-                        self._selectCustomerCore(c); 
+                    if (c) {
+                        selCust = c;
+                        self._selectCustomerCore(c);
                     }
-                    _goToCart(); // ✅ دائماً ينتقل للسلة
+                    finalizeCart();                    // ← ينفذ حتى لو فشل جلب العميل
                 }).catch(function() {
-                    _goToCart(); // ✅ حتى لو فشل، ينتقل للسلة
+                    finalizeCart();
                 });
             } else {
-                _goToCart(); // ✅ لا يوجد عميل، ينتقل للسلة
+                finalizeCart();
             }
         });
-    }).catch(function() { 
-        RW_UI.hideLoader(); 
-        RW_UI.toast('فشل الاتصال', 'error'); 
+    }).catch(function() {
+        RW_UI.hideLoader();
+        RW_UI.toast('فشل الاتصال', 'error');
     });
 };
 
