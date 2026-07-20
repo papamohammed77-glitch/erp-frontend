@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-20 12:00 UTC – Order Taker Diamond Edition -->
+<!-- 2026-07-21 00:30 UTC – Order Taker Diamond Edition -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -143,6 +143,7 @@ var App = (function() {
     var _quickSearchTimer = null;
     var _assignedCustomerIds = [];
     var _mapInstance = null;
+    var _rwRenderGeneration = 0;
     var _mapMarkers = [];
 
     // ==================== دوال المصادقة ====================
@@ -261,6 +262,21 @@ self.switchTab = function(tab) {
     else if (tab === 'account') self.renderAccountView();
 };
 
+self.startBrandNewOrder = function() {
+    _rwRenderGeneration++;
+    cart = [];
+    selCust = null;
+    var b = RW_UI.byId('creditBanner'); if (b) b.className = 'hidden';
+    var i = RW_UI.byId('selectedCustInfo'); if (i) i.classList.add('hidden');
+    currentTab = 'new-order';
+    self.renderNewOrderView();
+};
+
+self.continueShoppingToProducts = function() {
+    self.switchTab('products');
+};
+
+// ==================== دوال التنقل الجديدة ====================
 self.startBrandNewOrder = function() {
     _rwRenderGeneration++;
     cart = [];
@@ -766,12 +782,10 @@ self.renderCartTab = function() {
 
     // ✅ زر استكمال التسوق – يظهر في كل حالات تبويب السلة
     var continueShoppingHTML = '<div class="mb-4 flex gap-2">';
-    continueShoppingHTML += '<button onclick="App.switchTab(\'products\')" class="flex-1 bg-purple-50 text-purple-700 py-3 rounded-xl font-bold text-sm border border-purple-200 hover:bg-purple-100 transition">';
+    continueShoppingHTML += '<button onclick="App.continueShoppingToProducts()" class="flex-1 bg-purple-50 text-purple-700 py-3 rounded-xl font-bold text-sm border border-purple-200 hover:bg-purple-100 transition">';
     continueShoppingHTML += '<i class="fa-solid fa-box ml-2"></i>استكمال التسوق من المنتجات';
     continueShoppingHTML += '</button>';
-    continueShoppingHTML += '<button onclick="App.continueShoppingToProducts()" class="flex-1 bg-purple-50 text-purple-700 py-3 rounded-xl font-bold text-sm border border-purple-200 hover:bg-purple-100 transition">';
-continueShoppingHTML += '<i class="fa-solid fa-box ml-2"></i>استكمال التسوق من المنتجات';
-continueShoppingHTML += '</button>';
+    continueShoppingHTML += '<button onclick="App.startBrandNewOrder()" class="flex-1 bg-purple-50 text-purple-700 py-3 rounded-xl font-bold text-sm border border-purple-200 hover:bg-purple-100 transition">';
     continueShoppingHTML += '<i class="fa-solid fa-cart-plus ml-2"></i>أوردر جديد';
     continueShoppingHTML += '</button>';
     continueShoppingHTML += '</div>';
@@ -783,7 +797,7 @@ continueShoppingHTML += '</button>';
         emptyH += '<div class="text-6xl mb-4">🛒</div>';
         emptyH += '<h3 class="font-black text-xl text-slate-700 mb-2">السلة فارغة</h3>';
         emptyH += '<p class="text-slate-400 mb-6">أضف منتجات من تبويب "المنتجات" أو من "أوردر جديد"</p>';
-        emptyH += '<button onclick="App.switchTab(\'products\')" class="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold"><i class="fa-solid fa-box ml-2"></i>تصفح المنتجات</button>';
+        emptyH += '<button onclick="App.continueShoppingToProducts()" class="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold"><i class="fa-solid fa-box ml-2"></i>تصفح المنتجات</button>';
         emptyH += '</div>';
         RW_UI.safeHTML(c, emptyH);
         return;
@@ -796,7 +810,7 @@ continueShoppingHTML += '</button>';
         noCustH += '<div class="text-6xl mb-4">👤</div>';
         noCustH += '<h3 class="font-black text-xl text-slate-700 mb-2">لم تختر عميلاً بعد</h3>';
         noCustH += '<p class="text-slate-400 mb-6">يجب اختيار عميل لإتمام الأوردر</p>';
-        noCustH += '<button onclick="App.switchTab(\'new-order\')" class="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold"><i class="fa-solid fa-plus ml-2"></i>إنشاء أوردر جديد</button>';
+        noCustH += '<button onclick="App.startBrandNewOrder()" class="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold"><i class="fa-solid fa-plus ml-2"></i>إنشاء أوردر جديد</button>';
         noCustH += '</div>';
         RW_UI.safeHTML(c, noCustH);
         return;
@@ -893,6 +907,9 @@ self.showOrderDetail = function(orderId) {
 self._editOrderFromDetail = function(orderId) {
     var myGeneration = ++_rwRenderGeneration;
 
+    // إغلاق المودال فوراً دون انتظار animation
+    if (typeof Swal !== 'undefined') { Swal.close(); }
+
     RW_UI.showLoader('جاري تحميل الأوردر للتعديل...');
 
     supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
@@ -913,10 +930,11 @@ self._editOrderFromDetail = function(orderId) {
                 return;
             }
 
-            var items = [];
+            // تعبئة cart بالمصفوفة العامة
+            cart = [];
             for (var i = 0; i < details.length; i++) {
                 var det = details[i];
-                items.push({
+                cart.push({
                     code: det.item_code,
                     name: det.item_name,
                     price: Number(det.unit_price) || 0,
@@ -925,16 +943,40 @@ self._editOrderFromDetail = function(orderId) {
                 });
             }
 
+            // تعيين العميل ثم فتح السلة بعد مهلة للتغلب على didClose
+            function openCartWithCustomer(cust) {
+                selCust = cust || null;
+
+                // تحديث currentTab يدوياً دون المرور على switchTab
+                currentTab = 'cart';
+                var btns = document.querySelectorAll('.tab-btn');
+                for (var j = 0; j < btns.length; j++) {
+                    btns[j].classList.remove('text-purple-600');
+                    btns[j].classList.add('text-gray-400');
+                }
+                var cartBtn = document.querySelector('[data-tab="cart"]');
+                if (cartBtn) {
+                    cartBtn.classList.remove('text-gray-400');
+                    cartBtn.classList.add('text-purple-600');
+                }
+
+                // Generation Token: لا تنفذ إذا فُتح أوردر آخر أثناء الانتظار
+                if (myGeneration !== _rwRenderGeneration) return;
+
+                // استدعاء renderCartTab الأصلية – السلة بتنسيقها المعتاد
+                self.renderCartTab();
+                RW_UI.toast('تم تحميل الأوردر للتعديل (' + cart.length + ' صنف)', 'success');
+            }
+
+            // جدولة فتح السلة بعد ٤٠٠ مللي ثانية لتجاوز أي didClose متأخر
             if (order.customer_id) {
                 db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
-                    if (myGeneration !== _rwRenderGeneration) return;
-                    self._forceOpenCart(items, c || null, order.branch_code || null);
+                    setTimeout(function() { openCartWithCustomer(c || null); }, 400);
                 }).catch(function() {
-                    if (myGeneration !== _rwRenderGeneration) return;
-                    self._forceOpenCart(items, null, order.branch_code || null);
+                    setTimeout(function() { openCartWithCustomer(null); }, 400);
                 });
             } else {
-                self._forceOpenCart(items, null, order.branch_code || null);
+                setTimeout(function() { openCartWithCustomer(null); }, 400);
             }
         });
     }).catch(function() {
