@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-20 10:15 UTC – Order Taker Diamond Edition -->
+<!-- 2026-07-20 10:30 UTC – Order Taker Diamond Edition -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -889,9 +889,9 @@ self._editOrderFromDetail = function(orderId) {
             RW_UI.hideLoader();
             var details = dRes.data || [];
             if (details.length === 0) { RW_UI.toast('الأوردر لا يحتوي على أصناف', 'warning'); return; }
-            // مسح السلة الحالية
+            // ✅ مسح السلة الحالية أولاً
             cart = [];
-            // تحميل الأصناف من الأوردر القديم
+            // ✅ تحميل الأصناف من الأوردر القديم
             for (var i = 0; i < details.length; i++) {
                 var det = details[i];
                 cart.push({
@@ -902,7 +902,7 @@ self._editOrderFromDetail = function(orderId) {
                     qty: Number(det.qty) || 1
                 });
             }
-            // تعيين الفرع
+            // ✅ تعيين الفرع
             if (order.branch_id) {
                 db.branches.toArray().then(function(branches) {
                     for (var b = 0; b < branches.length; b++) {
@@ -917,14 +917,14 @@ self._editOrderFromDetail = function(orderId) {
                     }
                 });
             }
-            // ✅ الإصلاح: تعيين العميل أولاً، ثم الانتقال للسلة بعد الاكتمال
+            // ✅ الإصلاح: نقل switchTab('cart') إلى داخل callback العميل
             if (order.customer_id) {
                 db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
-                    if (c) { 
-                        selCust = c; 
-                        self._selectCustomerCore(c); 
+                    if (c) {
+                        selCust = c;
+                        self._selectCustomerCore(c);
                     }
-                    // ✅ الانتقال للسلة بعد تعيين العميل (حتى لو فشل)
+                    // ✅ الانتقال للسلة بعد تعيين العميل (حتى لو فشل جلب العميل)
                     self.updateCartTabBadge();
                     self.switchTab('cart');
                     RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
@@ -935,7 +935,7 @@ self._editOrderFromDetail = function(orderId) {
                     RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
                 });
             } else {
-                // لا يوجد عميل مرتبط، ننتقل للسلة مباشرة
+                // ✅ لا يوجد عميل مرتبط، ننتقل للسلة مباشرة
                 self.updateCartTabBadge();
                 self.switchTab('cart');
                 RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
