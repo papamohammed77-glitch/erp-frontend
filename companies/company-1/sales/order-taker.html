@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-20 10:45 UTC – Order Taker Diamond Edition -->
+<!-- 2026-07-20 10:55 UTC – Order Taker Diamond Edition -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -877,24 +877,38 @@ self.showOrderDetail = function(orderId) {
 self._editOrderFromDetail = function(orderId) {
     Swal.close();
     RW_UI.showLoader('جاري تحميل الأوردر للتعديل...');
+    
     supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
         var order = oRes.data;
-        if (!order) { RW_UI.hideLoader(); RW_UI.toast('الأوردر غير موجود', 'error'); return; }
+        if (!order) { 
+            RW_UI.hideLoader(); 
+            RW_UI.toast('الأوردر غير موجود', 'error'); 
+            return; 
+        }
         if (order.order_status !== 'Draft' && order.order_status !== 'Confirmed') {
             RW_UI.hideLoader();
             RW_UI.toast('لا يمكن تعديل أوردر في حالة: ' + (order.order_status || ''), 'warning');
             return;
         }
+        
+        // جلب تفاصيل الأوردر
         supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
-            RW_UI.hideLoader();
             var details = dRes.data || [];
-            if (details.length === 0) { RW_UI.toast('الأوردر لا يحتوي على أصناف', 'warning'); return; }
-
-            // ✅ 1. تجهيز السلة أولاً (بدون مسح العميل الحالي إذا كان هو نفسه)
-            var newCart = [];
+            if (details.length === 0) { 
+                RW_UI.hideLoader(); 
+                RW_UI.toast('الأوردر لا يحتوي على أصناف', 'warning'); 
+                return; 
+            }
+            
+            RW_UI.hideLoader();
+            
+            // 1. مسح السلة الحالية
+            cart = [];
+            
+            // 2. تعبئة السلة بالأصناف مباشرة (لا دالة وسيطة)
             for (var i = 0; i < details.length; i++) {
                 var det = details[i];
-                newCart.push({
+                cart.push({
                     code: det.item_code,
                     name: det.item_name,
                     price: Number(det.unit_price) || 0,
@@ -902,48 +916,38 @@ self._editOrderFromDetail = function(orderId) {
                     qty: Number(det.qty) || 1
                 });
             }
-
-            // ✅ 2. تعيين الفرع
-            if (order.branch_id) {
-                db.branches.toArray().then(function(branches) {
-                    for (var b = 0; b < branches.length; b++) {
-                        if (branches[b].id === order.branch_id) {
-                            selBranch = branches[b].branch_code;
-                            var selEl = RW_UI.byId('branchSel');
-                            if (selEl) selEl.value = selBranch;
-                            var catSel = RW_UI.byId('catalogBranchSel');
-                            if (catSel) catSel.value = selBranch;
-                            break;
-                        }
-                    }
-                });
-            }
-
-            // ✅ 3. تعيين العميل ثم السلة
-            function finalizeCart() {
-                cart = newCart;                        // ← تحميل الأصناف
-                self.updateCartTabBadge();
-                self.switchTab('cart');                // ← فتح تبويب السلة
-                RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل', 'success');
-            }
-
+            
+            // 3. تعيين العميل (بدون استدعاء دوال قد تمسح السلة)
             if (order.customer_id) {
                 db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
                     if (c) {
                         selCust = c;
-                        self._selectCustomerCore(c);
+                        // تحديث واجهة العميل المختار يدوياً بدلاً من _selectCustomerCore
+                        var info = document.getElementById('selectedCustInfo');
+                        if (info) {
+                            info.classList.remove('hidden');
+                            info.innerHTML = '<div class="flex justify-between items-center"><div><span class="font-black text-purple-800">' + (c.name || '') + '</span><span class="text-xs text-purple-500 mr-2">' + (c.area || '') + '</span></div><button onclick="App.clearCustomer()" class="text-xs text-red-500 font-bold">✕ تغيير</button></div>';
+                        }
                     }
-                    finalizeCart();                    // ← ينفذ حتى لو فشل جلب العميل
+                    // بغض النظر عن نجاح جلب العميل، ننتقل للسلة
+                    self.updateCartTabBadge();
+                    self.switchTab('cart');
+                    RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
                 }).catch(function() {
-                    finalizeCart();
+                    self.updateCartTabBadge();
+                    self.switchTab('cart');
+                    RW_UI.toast('تم تحميل الأوردر للتعديل (لم يتم العثور على العميل).', 'warning');
                 });
             } else {
-                finalizeCart();
+                // لا يوجد عميل مرتبط، ننتقل للسلة فوراً
+                self.updateCartTabBadge();
+                self.switchTab('cart');
+                RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
             }
         });
-    }).catch(function() {
-        RW_UI.hideLoader();
-        RW_UI.toast('فشل الاتصال', 'error');
+    }).catch(function() { 
+        RW_UI.hideLoader(); 
+        RW_UI.toast('فشل الاتصال', 'error'); 
     });
 };
 
