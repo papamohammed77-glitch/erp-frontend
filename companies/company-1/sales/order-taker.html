@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-20 09:30 UTC – Order Taker Diamond Edition -->
+<!-- 2026-07-20 10:00 UTC – Order Taker Diamond Edition -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -277,35 +277,65 @@ self.switchTab = function(tab) {
         _todayInterval = setInterval(function() { self.loadTodaySummary(); self.loadTodayOpportunities(); }, 30000);
     };
 
-    self.loadTodaySummary = function() {
-        var today = new Date().toISOString().split('T')[0];
-        if (!currentUser) return;
-        supabase.from('orders').select('id, total_amount').eq('created_by', currentUser.email).eq('order_date', today).then(function(res) {
-            var orders = res.data || [], total = 0;
-            for (var i = 0; i < orders.length; i++) total += Number(orders[i].total_amount) || 0;
-            RW_UI.safeHTML(RW_UI.byId('todaySummary'), '<div class="grid grid-cols-2 gap-3"><div class="text-center p-3 bg-purple-50 rounded-xl"><p class="text-xs text-gray-500">أوردرات اليوم</p><p class="text-2xl font-black text-purple-600">' + orders.length + '</p></div><div class="text-center p-3 bg-emerald-50 rounded-xl"><p class="text-xs text-gray-500">قيمة اليوم</p><p class="text-2xl font-black text-emerald-600">' + fmtNum(total) + ' ج.م</p></div></div>');
-        }).catch(function() { RW_UI.showEmptyState('todaySummary', 'تعذر تحميل الملخص', '📡'); });
-    };
+self.loadTodaySummary = function() {
+    var today = new Date().toISOString().split('T')[0];
+    if (!currentUser) return;
+    supabase.from('orders').select('id, total_amount').eq('created_by', currentUser.email).eq('order_date', today).then(function(res) {
+        var orders = res.data || [];
+        var total = 0;
+        for (var i = 0; i < orders.length; i++) {
+            total += Number(orders[i].total_amount) || 0;
+        }
+        RW_UI.safeHTML(RW_UI.byId('todaySummary'), '<div class="grid grid-cols-2 gap-3"><div class="text-center p-3 bg-purple-50 rounded-xl"><p class="text-xs text-gray-500">أوردرات اليوم</p><p class="text-2xl font-black text-purple-600">' + orders.length + '</p></div><div class="text-center p-3 bg-emerald-50 rounded-xl"><p class="text-xs text-gray-500">قيمة اليوم</p><p class="text-2xl font-black text-emerald-600">' + fmtNum(total) + ' ج.م</p></div></div>');
+    }).catch(function() { RW_UI.showEmptyState('todaySummary', 'تعذر تحميل الملخص', '📡'); });
+};
 
-    self.loadTodayOpportunities = function() {
-        var d = new Date(); d.setDate(d.getDate() - 30); var from = d.toISOString().split('T')[0];
-        supabase.from('orders').select('customer_id, customer_name, order_date, total_amount').gte('order_date', from).order('order_date', { ascending: false }).limit(200).then(function(res) {
-            var orders = res.data || [], map = {};
-            for (var i = 0; i < orders.length; i++) { var o = orders[i], cid = o.customer_id || o.customer_name; if (!map[cid]) map[cid] = { name: o.customer_name || cid, last: o.order_date, cnt: 0, val: 0, days: 0 }; map[cid].cnt++; map[cid].val += Number(o.total_amount) || 0; if (o.order_date > map[cid].last) map[cid].last = o.order_date; }
-            var today = new Date();
-            for (var k in map) { if (map.hasOwnProperty(k)) { var ld = new Date(map[k].last); map[k].days = Math.floor((today - ld) / (1000 * 60 * 60 * 24)); } }
-            var opps = []; for (var k2 in map) { if (map.hasOwnProperty(k2) && map[k2].cnt >= 2) opps.push(map[k2]); }
-            opps.sort(function(a, b) { return b.days - a.days; }); opps = opps.slice(0, 8);
-            if (!opps.length) { RW_UI.showEmptyState('todayOpportunities', 'لا توجد فرص كافية بعد', '☕'); return; }
-            var h = '';
-            for (var j = 0; j < opps.length; j++) {
-                var op = opps[j], rc = op.days > 15 ? 'border-red-200 bg-red-50' : (op.days > 7 ? 'border-yellow-200 bg-yellow-50' : 'border-green-200 bg-green-50');
-                var ri = op.days > 15 ? '🔴' : (op.days > 7 ? '🟡' : '🟢'), avg = Math.round(op.val / op.cnt);
-                h += '<div class="p-3 rounded-xl border mb-2 ' + rc + '"><div class="flex justify-between items-center"><div><span class="font-bold">' + op.name + '</span><span class="text-xs text-gray-500 mr-2">آخر طلب: منذ ' + op.days + ' يوم</span></div><span class="text-lg">' + ri + '</span></div><div class="flex justify-between text-xs text-gray-500 mt-1"><span>متوسط الطلب: ' + fmtNum(avg) + ' ج.م</span><span>عدد الطلبات: ' + op.cnt + '</span></div></div>';
+self.loadTodayOpportunities = function() {
+    var d = new Date();
+    d.setDate(d.getDate() - 30);
+    var from = d.toISOString().split('T')[0];
+    supabase.from('orders').select('customer_id, customer_name, order_date, total_amount').gte('order_date', from).order('order_date', { ascending: false }).limit(200).then(function(res) {
+        var orders = res.data || [];
+        var map = {};
+        for (var i = 0; i < orders.length; i++) {
+            var o = orders[i];
+            var cid = o.customer_id || o.customer_name;
+            if (!map[cid]) {
+                map[cid] = { name: o.customer_name || cid, last: o.order_date, cnt: 0, val: 0, days: 0 };
             }
-            RW_UI.safeHTML(RW_UI.byId('todayOpportunities'), h);
-        }).catch(function() { RW_UI.showEmptyState('todayOpportunities', 'تعذر تحميل الفرص', '📡'); });
-    };
+            map[cid].cnt++;
+            map[cid].val += Number(o.total_amount) || 0;
+            if (o.order_date > map[cid].last) {
+                map[cid].last = o.order_date;
+            }
+        }
+        var today = new Date();
+        for (var k in map) {
+            if (map.hasOwnProperty(k)) {
+                var ld = new Date(map[k].last);
+                map[k].days = Math.floor((today - ld) / (1000 * 60 * 60 * 24));
+            }
+        }
+        var opps = [];
+        for (var k2 in map) {
+            if (map.hasOwnProperty(k2) && map[k2].cnt >= 2) {
+                opps.push(map[k2]);
+            }
+        }
+        opps.sort(function(a, b) { return b.days - a.days; });
+        opps = opps.slice(0, 8);
+        if (!opps.length) { RW_UI.showEmptyState('todayOpportunities', 'لا توجد فرص كافية بعد', '☕'); return; }
+        var h = '';
+        for (var j = 0; j < opps.length; j++) {
+            var op = opps[j];
+            var rc = op.days > 15 ? 'border-red-200 bg-red-50' : (op.days > 7 ? 'border-yellow-200 bg-yellow-50' : 'border-green-200 bg-green-50');
+            var ri = op.days > 15 ? '🔴' : (op.days > 7 ? '🟡' : '🟢');
+            var avg = Math.round(op.val / op.cnt);
+            h += '<div class="p-3 rounded-xl border mb-2 ' + rc + '"><div class="flex justify-between items-center"><div><span class="font-bold">' + op.name + '</span><span class="text-xs text-gray-500 mr-2">آخر طلب: منذ ' + op.days + ' يوم</span></div><span class="text-lg">' + ri + '</span></div><div class="flex justify-between text-xs text-gray-500 mt-1"><span>متوسط الطلب: ' + fmtNum(avg) + ' ج.م</span><span>عدد الطلبات: ' + op.cnt + '</span></div></div>';
+        }
+        RW_UI.safeHTML(RW_UI.byId('todayOpportunities'), h);
+    }).catch(function() { RW_UI.showEmptyState('todayOpportunities', 'تعذر تحميل الفرص', '📡'); });
+};
 
     // ==================== تبويب الخريطة ====================
     self.renderMapView = function() {
@@ -853,7 +883,9 @@ self._editOrderFromDetail = function(orderId) {
             RW_UI.hideLoader();
             var details = dRes.data || [];
             if (details.length === 0) { RW_UI.toast('الأوردر لا يحتوي على أصناف', 'warning'); return; }
+            // مسح السلة الحالية
             cart = [];
+            // تحميل الأصناف من الأوردر القديم
             for (var i = 0; i < details.length; i++) {
                 var det = details[i];
                 cart.push({
@@ -864,11 +896,13 @@ self._editOrderFromDetail = function(orderId) {
                     qty: Number(det.qty) || 1
                 });
             }
+            // تعيين العميل
             if (order.customer_id) {
                 db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
                     if (c) { selCust = c; self._selectCustomerCore(c); }
                 });
             }
+            // تعيين الفرع
             if (order.branch_id) {
                 db.branches.toArray().then(function(branches) {
                     for (var b = 0; b < branches.length; b++) {
@@ -876,6 +910,8 @@ self._editOrderFromDetail = function(orderId) {
                             selBranch = branches[b].branch_code;
                             var selEl = RW_UI.byId('branchSel');
                             if (selEl) selEl.value = selBranch;
+                            var catSel = RW_UI.byId('catalogBranchSel');
+                            if (catSel) catSel.value = selBranch;
                             break;
                         }
                     }
@@ -884,7 +920,7 @@ self._editOrderFromDetail = function(orderId) {
             // ✅ الإصلاح: الانتقال فوراً إلى تبويب السلة
             self.updateCartTabBadge();
             self.switchTab('cart');
-            RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. يمكنك مراجعة السلة والحفظ.', 'success');
+            RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
         });
     }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
 };
