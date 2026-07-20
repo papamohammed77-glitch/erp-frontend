@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-20 07:15 UTC -->
+<!-- 2026-07-20 07:30 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -1043,6 +1043,9 @@ self.showOrderDetail = function(orderId) {
             else if (order.order_status === 'Delivered') statusLabel = 'تم التوصيل';
             else if (order.order_status === 'Cancelled') statusLabel = 'ملغي';
 
+            // ✅ تحديد ما إذا كان الأوردر قابلاً للتعديل (Draft أو Confirmed فقط)
+            var canEdit = (order.order_status === 'Draft' || order.order_status === 'Confirmed');
+
             var html = '<div class="text-right">';
             html += '<div class="bg-gray-50 p-4 rounded-xl mb-4"><div class="flex justify-between mb-2"><span class="font-black text-lg">' + (order.order_code || '') + '</span><span class="text-sm font-bold">' + statusLabel + '</span></div>';
             html += '<p><strong>العميل:</strong> ' + (order.customer_name || '') + '</p>';
@@ -1060,16 +1063,83 @@ self.showOrderDetail = function(orderId) {
                     html += '<tr><td class="p-2 font-semibold">' + (d.item_name || '') + '</td><td class="p-2 text-center">' + d.qty + '</td><td class="p-2 text-center">' + fmtNum(d.unit_price) + '</td><td class="p-2 text-center font-bold">' + fmtNum(lt) + '</td></tr>';
                 }
                 html += '</tbody></table></div>';
+                // ✅ عرض الإجمالي المحسوب من التفاصيل + الإجمالي المخزّن للمقارنة
                 html += '<div class="mt-3 text-left font-bold text-lg">الإجمالي: ' + fmtNum(order.total_amount || total) + ' EGP</div>';
+                if (order.total_amount && Math.abs(order.total_amount - total) > 0.01) {
+                    html += '<div class="mt-1 text-left text-xs text-red-500">⚠️ الإجمالي المخزّن (' + fmtNum(order.total_amount) + ') يختلف عن مجموع الأصناف (' + fmtNum(total) + ')</div>';
+                }
             }
 
             html += '<div class="flex gap-2 mt-4 pt-3 border-t">';
+            // ✅ زر تعديل الطلب – يظهر فقط للأوردرات القابلة للتعديل
+            if (canEdit) {
+                html += '<button onclick="App._editOrderFromDetail(\'' + order.id + '\')" class="flex-1 bg-amber-500 text-white py-2 rounded-lg font-bold text-sm"><i class="fa-solid fa-pen-to-square ml-1"></i>تعديل الطلب</button>';
+            }
             html += '<button onclick="App._deleteOrderFromDetail(\'' + order.order_code + '\')" class="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold text-sm"><i class="fa-solid fa-trash ml-1"></i>حذف الأوردر</button>';
             html += '<button onclick="App._printOrderFromDetail(\'' + order.id + '\')" class="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold text-sm"><i class="fa-solid fa-print ml-1"></i>طباعة</button>';
             html += '</div>';
             html += '</div>';
 
             Swal.fire({ title: 'تفاصيل الأوردر', html: html, width: '700px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl' } });
+        });
+    }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
+};
+
+self._editOrderFromDetail = function(orderId) {
+    Swal.close();
+    RW_UI.showLoader('جاري تحميل الأوردر للتعديل...');
+    supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
+        var order = oRes.data;
+        if (!order) { RW_UI.hideLoader(); RW_UI.toast('الأوردر غير موجود', 'error'); return; }
+        // ✅ التحقق من أن الأوردر قابل للتعديل
+        if (order.order_status !== 'Draft' && order.order_status !== 'Confirmed') {
+            RW_UI.hideLoader();
+            RW_UI.toast('لا يمكن تعديل أوردر في حالة: ' + (order.order_status || ''), 'warning');
+            return;
+        }
+        supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
+            RW_UI.hideLoader();
+            var details = dRes.data || [];
+            if (details.length === 0) { RW_UI.toast('الأوردر لا يحتوي على أصناف', 'warning'); return; }
+            // ✅ مسح السلة الحالية
+            cart = [];
+            // ✅ إعادة بناء السلة من تفاصيل الأوردر
+            for (var i = 0; i < details.length; i++) {
+                var det = details[i];
+                cart.push({
+                    code: det.item_code,
+                    name: det.item_name,
+                    price: Number(det.unit_price) || 0,
+                    unit: det.unit || 'حبة',
+                    qty: Number(det.qty) || 1
+                });
+            }
+            // ✅ تعيين العميل
+            if (order.customer_id) {
+                db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
+                    if (c) {
+                        selCust = c;
+                        self._selectCustomerCore(c);
+                    }
+                });
+            }
+            // ✅ تعيين الفرع إن وُجد
+            if (order.branch_id) {
+                db.branches.toArray().then(function(branches) {
+                    for (var b = 0; b < branches.length; b++) {
+                        if (branches[b].id === order.branch_id) {
+                            selBranch = branches[b].branch_code;
+                            var selEl = RW_UI.byId('branchSel');
+                            if (selEl) selEl.value = selBranch;
+                            break;
+                        }
+                    }
+                });
+            }
+            // ✅ الانتقال إلى تبويب السلة
+            self.switchTab('cart');
+            self.updateCartTabBadge();
+            RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. يمكنك مراجعة السلة والحفظ.', 'success');
         });
     }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
 };
