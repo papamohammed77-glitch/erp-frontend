@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-20 10:55 UTC – Order Taker Diamond Edition -->
+<!-- 2026-07-20 11:00 UTC – Order Taker Diamond Edition -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -891,7 +891,6 @@ self._editOrderFromDetail = function(orderId) {
             return;
         }
         
-        // جلب تفاصيل الأوردر
         supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
             var details = dRes.data || [];
             if (details.length === 0) { 
@@ -905,7 +904,7 @@ self._editOrderFromDetail = function(orderId) {
             // 1. مسح السلة الحالية
             cart = [];
             
-            // 2. تعبئة السلة بالأصناف مباشرة (لا دالة وسيطة)
+            // 2. تعبئة السلة بالأصناف
             for (var i = 0; i < details.length; i++) {
                 var det = details[i];
                 cart.push({
@@ -917,32 +916,42 @@ self._editOrderFromDetail = function(orderId) {
                 });
             }
             
-            // 3. تعيين العميل (بدون استدعاء دوال قد تمسح السلة)
+            // 3. تعيين العميل وتجهيز الواجهة
+            function goToCart() {
+                // تغيير التبويب النشط يدوياً
+                var btns = document.querySelectorAll('.tab-btn');
+                for (var j = 0; j < btns.length; j++) {
+                    btns[j].classList.remove('text-purple-600');
+                    btns[j].classList.add('text-gray-400');
+                }
+                var cartBtn = document.querySelector('[data-tab="cart"]');
+                if (cartBtn) {
+                    cartBtn.classList.remove('text-gray-400');
+                    cartBtn.classList.add('text-purple-600');
+                }
+                currentTab = 'cart';
+                
+                // عرض السلة مباشرة
+                self.renderCartTab();
+                RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
+            }
+            
             if (order.customer_id) {
                 db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
                     if (c) {
                         selCust = c;
-                        // تحديث واجهة العميل المختار يدوياً بدلاً من _selectCustomerCore
                         var info = document.getElementById('selectedCustInfo');
                         if (info) {
                             info.classList.remove('hidden');
                             info.innerHTML = '<div class="flex justify-between items-center"><div><span class="font-black text-purple-800">' + (c.name || '') + '</span><span class="text-xs text-purple-500 mr-2">' + (c.area || '') + '</span></div><button onclick="App.clearCustomer()" class="text-xs text-red-500 font-bold">✕ تغيير</button></div>';
                         }
                     }
-                    // بغض النظر عن نجاح جلب العميل، ننتقل للسلة
-                    self.updateCartTabBadge();
-                    self.switchTab('cart');
-                    RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
+                    goToCart();
                 }).catch(function() {
-                    self.updateCartTabBadge();
-                    self.switchTab('cart');
-                    RW_UI.toast('تم تحميل الأوردر للتعديل (لم يتم العثور على العميل).', 'warning');
+                    goToCart();
                 });
             } else {
-                // لا يوجد عميل مرتبط، ننتقل للسلة فوراً
-                self.updateCartTabBadge();
-                self.switchTab('cart');
-                RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. راجع السلة واحفظ.', 'success');
+                goToCart();
             }
         });
     }).catch(function() { 
