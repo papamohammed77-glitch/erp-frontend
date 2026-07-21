@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-20 08:20 UTC -->
+<!-- 2026-07-21 08:40 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -880,92 +880,56 @@ self.submitOrder = function() {
     RW_UI.showLoader(isEdit ? 'جاري تحديث الأوردر...' : 'جاري حفظ الأوردر...');
 
     if (isEdit) {
-        var token = RW_Auth.getToken();
-        if (!token) { RW_UI.hideLoader(); RW_UI.showError('انتهت الجلسة'); return; }
+        // ✅ تعريف orderId في النطاق الخارجي
+        var orderId = null;
 
-        // ✅ استخدم orderUuid واضحاً طوال السلسلة
-        var orderUuid = null;
+        supabase.from('orders').select('id').eq('order_code', oldOrderCode).maybeSingle()
+        .then(function(res) {
+            if (!res.data) { throw new Error('الأوردر القديم غير موجود'); }
+            orderId = res.data.id;  // ← حفظ في المتغير الخارجي
 
-        // 1. جلب order_id من order_code
-        fetch(SUPABASE_URL + '/rest/v1/orders?select=id&order_code=eq.' + encodeURIComponent(oldOrderCode), {
-            headers: {
-                'apikey': SUPABASE_KEY,
-                'Authorization': 'Bearer ' + token
-            }
-        })
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-            if (!data || data.length === 0) { throw new Error('الأوردر القديم غير موجود'); }
-            orderUuid = data[0].id;   // ← احفظ الـ id هنا
-
-            // 2. تحديث رأس الأوردر
-            var updateBody = {
+            // تحديث رأس الأوردر
+            return supabase.from('orders').update({
                 customer_name: selCust.name,
                 area: selCust.area || '',
                 total_amount: t.total,
                 delivery_fee: t.del,
                 order_status: 'Confirmed',
                 payment_type: selCust.payment_type || 'أجل',
-                branch_id: branchMap[selBranch] || null,
-                tax_amount: 0,
-                tax_rate: 0
-            };
-            return fetch(SUPABASE_URL + '/rest/v1/orders?id=eq.' + encodeURIComponent(orderUuid), {
-                method: 'PATCH',
-                headers: {
-                    'apikey': SUPABASE_KEY,
-                    'Authorization': 'Bearer ' + token,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'return=minimal'
-                },
-                body: JSON.stringify(updateBody)
-            });
+                branch_id: branchMap[selBranch] || null
+            }).eq('id', orderId);
         })
-        .then(function(res) {
-            if (!res.ok) { return res.json().then(function(err) { throw new Error(err.message || 'فشل تحديث الأوردر'); }); }
-            // 3. حذف البنود القديمة
-            return fetch(SUPABASE_URL + '/rest/v1/order_details?order_id=eq.' + encodeURIComponent(orderUuid), {
-                method: 'DELETE',
-                headers: {
-                    'apikey': SUPABASE_KEY,
-                    'Authorization': 'Bearer ' + token
-                }
-            });
-        })
-        .then(function(res) {
-            if (!res.ok) { return res.json().then(function(err) { throw new Error(err.message || 'فشل حذف البنود القديمة'); }); }
+        .then(function(upRes) {
+            if (upRes.error) { throw new Error(upRes.error.message); }
 
-            // 4. جلب item_id لكل صنف من جدول items
+            // حذف البنود القديمة – orderId متاح هنا
+            return supabase.from('order_details').delete().eq('order_id', orderId);
+        })
+        .then(function(delRes) {
+            if (delRes.error) { throw new Error(delRes.error.message); }
+
+            // جلب item_id لكل صنف من جدول items
             var itemCodes = [];
             for (var j = 0; j < items.length; j++) {
                 if (itemCodes.indexOf(items[j].code) === -1) {
                     itemCodes.push(items[j].code);
                 }
             }
-            var filter = '';
-            for (var k = 0; k < itemCodes.length; k++) {
-                if (k > 0) filter += ',';
-                filter += 'eq.' + encodeURIComponent(itemCodes[k]);
-            }
-            return fetch(SUPABASE_URL + '/rest/v1/items?select=id,item_code&item_code=in.(' + filter + ')', {
-                headers: {
-                    'apikey': SUPABASE_KEY,
-                    'Authorization': 'Bearer ' + token
-                }
-            }).then(function(res) { return res.json(); }).then(function(itemData) {
-                var itemIdMap = {};
-                for (var m = 0; m < itemData.length; m++) {
-                    itemIdMap[itemData[m].item_code] = itemData[m].id;
-                }
-                return itemIdMap;
-            });
+            return supabase.from('items').select('id, item_code').in('item_code', itemCodes);
         })
-        .then(function(itemIdMap) {
-            // 5. إدراج البنود الجديدة مع item_id
+        .then(function(itemRes) {
+            if (itemRes.error) { throw new Error(itemRes.error.message); }
+            var itemData = itemRes.data || [];
+            var itemIdMap = {};
+            for (var m = 0; m < itemData.length; m++) {
+                itemIdMap[itemData[m].item_code] = itemData[m].id;
+            }
+
+            // إدراج البنود الجديدة مع item_id – orderId متاح هنا
             var detailsToInsert = [];
             for (var j = 0; j < items.length; j++) {
                 detailsToInsert.push({
-                    order_id: orderUuid,
+                    order_id: orderId,
                     item_id: itemIdMap[items[j].code] || null,
                     item_code: items[j].code,
                     item_name: items[j].name,
@@ -974,19 +938,10 @@ self.submitOrder = function() {
                     qty: items[j].qty
                 });
             }
-            return fetch(SUPABASE_URL + '/rest/v1/order_details', {
-                method: 'POST',
-                headers: {
-                    'apikey': SUPABASE_KEY,
-                    'Authorization': 'Bearer ' + token,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'return=minimal'
-                },
-                body: JSON.stringify(detailsToInsert)
-            });
+            return supabase.from('order_details').insert(detailsToInsert);
         })
-        .then(function(res) {
-            if (!res.ok) { return res.json().then(function(err) { throw new Error(err.message || 'فشل إدراج البنود'); }); }
+        .then(function(insRes) {
+            if (insRes.error) { throw new Error(insRes.error.message); }
             RW_UI.hideLoader();
             RW_UI.toast('تم تحديث الأوردر ' + oldOrderCode + ' بنجاح', 'success');
             cart = []; selCust = null; selBranch = null; editingOrderCode = null;
@@ -1528,9 +1483,6 @@ self.showOrderDetail = function(orderId) {
 
                 var deliveryFee = Number(order.delivery_fee) || 0;
                 var grandTotal = Number(order.total_amount) || itemsTotal;
-                var beforeTax = itemsTotal + deliveryFee;
-                var taxAmount = grandTotal - beforeTax;
-                if (taxAmount < 0) taxAmount = 0;
 
                 html += '<div class="bg-white rounded-2xl shadow-sm border p-4 mt-4">';
                 html += '<h3 class="font-bold text-sm mb-3">🧾 تفاصيل الفاتورة</h3>';
@@ -1538,9 +1490,6 @@ self.showOrderDetail = function(orderId) {
                 html += '<div class="flex justify-between"><span class="text-gray-500">مجموع الأصناف</span><span class="font-bold">' + fmtNum(itemsTotal) + ' EGP</span></div>';
                 if (deliveryFee > 0) {
                     html += '<div class="flex justify-between"><span class="text-gray-500">رسوم التوصيل</span><span class="font-bold text-blue-600">' + fmtNum(deliveryFee) + ' EGP</span></div>';
-                }
-                if (taxAmount > 0) {
-                    html += '<div class="flex justify-between"><span class="text-gray-500">ضريبة القيمة المضافة</span><span class="font-bold text-red-600">' + fmtNum(taxAmount) + ' EGP</span></div>';
                 }
                 html += '<hr class="my-2">';
                 html += '<div class="flex justify-between text-lg"><span class="font-black">الإجمالي النهائي</span><span class="font-black text-emerald-600">' + fmtNum(grandTotal) + ' EGP</span></div>';
