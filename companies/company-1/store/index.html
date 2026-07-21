@@ -218,67 +218,76 @@ var Store = (function() {
     self.loadMore = function() { currentPage++; self.loadPage(); };
     self.searchProducts = function() { currentPage = 0; self.loadPage(); };
 
-    self.buildProductCard = function(item) {
-        var curr = settings.currency || 'SAR';
-        var price = Number(item.sales_price) || 0;
-        var oldPrice = Number(item.old_price) || 0;
-        var hasDisc = item.discount_percent > 0;
-        var now = new Date(), discActive = hasDisc;
-        if (item.discount_start && now < new Date(item.discount_start)) discActive = false;
-        if (item.discount_end && now > new Date(item.discount_end)) discActive = false;
-        var finalPrice = price, discPct = 0, saved = 0;
-        if (discActive && hasDisc) { discPct = Number(item.discount_percent); finalPrice = price - (price * discPct / 100); saved = price - finalPrice; }
-        else if (oldPrice > price) { discPct = Math.round(((oldPrice - price) / oldPrice) * 100); saved = oldPrice - price; finalPrice = price; }
-        var stockAvail = Number(item.qty) || 0;
+self.buildProductCard = function(item) {
+    var curr = settings.currency || 'SAR';
+    var price = Number(item.sales_price) || 0;
+    var oldPrice = Number(item.old_price) || 0;
+    var hasDisc = item.discount_percent > 0;
+    var now = new Date(), discActive = hasDisc;
+    if (item.discount_start && now < new Date(item.discount_start)) discActive = false;
+    if (item.discount_end && now > new Date(item.discount_end)) discActive = false;
+    var finalPrice = price, discPct = 0, saved = 0;
+    if (discActive && hasDisc) { discPct = Number(item.discount_percent); finalPrice = price - (price * discPct / 100); saved = price - finalPrice; }
+    else if (oldPrice > price) { discPct = Math.round(((oldPrice - price) / oldPrice) * 100); saved = oldPrice - price; finalPrice = price; }
+    var stockAvail = Number(item.qty) || 0;
 
-        // ✅ إصلاح: استخدام الصورة من الكاش أو الرابط المباشر
-        var cachedUrl = RW_ImageCache.getImageUrl(item.item_code);
-        var imgUrl = cachedUrl || item.image_url || '';
-        var imgHtml = '';
-        if (imgUrl) {
-            imgHtml = '<img src="' + imgUrl + '" alt="' + (item.name||'') + '" class="absolute inset-0 w-full h-full object-contain p-3 hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.style.display=\'none\'">';
-        } else {
-            imgHtml = '<div class="absolute inset-0 w-full h-full flex items-center justify-center text-slate-300"><i class="fa-solid fa-box text-4xl"></i></div>';
-        }
+    var cachedUrl = RW_ImageCache.getImageUrl(item.item_code);
+    var imgUrl = cachedUrl || item.image_url || '';
+    var imgHtml = '';
+    if (imgUrl) {
+        imgHtml = '<img src="' + imgUrl + '" alt="' + (item.name||'') + '" class="absolute inset-0 w-full h-full object-contain p-3 hover:scale-105 transition-transform duration-300" loading="lazy" onerror="this.style.display=\'none\'">';
+    } else {
+        imgHtml = '<div class="absolute inset-0 w-full h-full flex items-center justify-center text-slate-300"><i class="fa-solid fa-box text-4xl"></i></div>';
+    }
 
-        var freeShip = price >= (settings.freeShippingThreshold || 200);
-        var html = '<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col animate-fadeIn hover:shadow-md transition-shadow cursor-pointer" onclick="Store.showProductDetail(\'' + item.item_code + '\')">';
-        html += '<div class="relative pt-[100%] bg-gray-50 overflow-hidden">';
-        html += imgHtml;
-        if (discActive && discPct > 0) html += '<span class="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">-' + discPct + '%</span>';
-        else if (item.badge_text) html += '<span class="absolute top-2 right-2 bg-blue-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">' + item.badge_text + '</span>';
-        if (item.is_daily_deal) html += '<span class="absolute top-2 left-2 bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow pulse-dot"><i class="fa-solid fa-fire ml-1"></i>عرض اليوم</span>';
-        if (freeShip) html += '<span class="absolute bottom-2 left-2 bg-green-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow"><i class="fa-solid fa-truck-fast ml-1"></i>توصيل مجاني</span>';
-        if (stockAvail <= 10 && stockAvail > 0) html += '<span class="absolute bottom-2 right-2 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">تبقت ' + stockAvail + ' فقط!</span>';
-        html += '</div><div class="p-3 flex flex-col flex-1"><h3 class="text-sm font-bold text-gray-800 line-clamp-2 mb-2 min-h-[2.5rem]">' + (item.name||'') + '</h3><div class="mt-auto">';
-        if (saved > 0) { html += '<div class="flex items-baseline gap-1.5"><span class="text-lg font-black text-red-600">' + formatCurrency(finalPrice, curr) + '</span></div>'; html += '<div class="flex items-center gap-2 mt-0.5"><span class="text-xs text-gray-400 line-through">' + formatCurrency((oldPrice||price), curr) + '</span></div>'; html += '<div class="text-[10px] text-emerald-600 font-bold">وفرت ' + formatCurrency(saved, curr) + '</div>'; }
-        else { html += '<div class="flex items-baseline gap-1.5"><span class="text-lg font-black text-gray-800">' + formatCurrency(price, curr) + '</span></div>'; }
-        html += '</div>'; var inCart = 0; for (var j = 0; j < cart.length; j++) { if (cart[j].code === item.item_code) { inCart = cart[j].qty; break; } }
-        if (inCart > 0) { html += '<div class="flex items-center justify-between bg-blue-50 rounded-xl px-2 py-1.5 mt-2" onclick="event.stopPropagation()"><button onclick="Store.updateCart(\'' + item.item_code + '\', -1)" class="w-7 h-7 bg-white rounded-full font-black text-blue-600 shadow-sm">−</button><span class="font-black text-blue-700">' + inCart + '</span><button onclick="Store.updateCart(\'' + item.item_code + '\', 1)" class="w-7 h-7 bg-blue-600 rounded-full font-black text-white shadow-sm">+</button></div>'; }
-        else { html += '<button onclick="event.stopPropagation();Store.addToCart(\'' + item.item_code + '\')" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-black py-2.5 rounded-xl mt-2 transition active:scale-95"><i class="fa-solid fa-cart-plus ml-1"></i> أضف للسلة</button>'; }
-        html += '</div></div>'; return html;
-    };
+    var freeShip = price >= (settings.freeShippingThreshold || 200);
+    var html = '<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col animate-fadeIn hover:shadow-md transition-shadow cursor-pointer" onclick="Store.showProductDetail(\'' + item.item_code + '\')">';
+    html += '<div class="relative pt-[100%] bg-gray-50 overflow-hidden">';
+    html += imgHtml;
+    if (discActive && discPct > 0) html += '<span class="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">-' + discPct + '%</span>';
+    else if (item.badge_text) html += '<span class="absolute top-2 right-2 bg-blue-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">' + item.badge_text + '</span>';
+    if (item.is_daily_deal) html += '<span class="absolute top-2 left-2 bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow pulse-dot"><i class="fa-solid fa-fire ml-1"></i>عرض اليوم</span>';
+    if (freeShip) html += '<span class="absolute bottom-2 left-2 bg-green-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow"><i class="fa-solid fa-truck-fast ml-1"></i>توصيل مجاني</span>';
+    if (stockAvail <= 10 && stockAvail > 0) html += '<span class="absolute bottom-2 right-2 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">تبقت ' + stockAvail + ' فقط!</span>';
+    html += '</div><div class="p-3 flex flex-col flex-1"><h3 class="text-sm font-bold text-gray-800 line-clamp-2 mb-2 min-h-[2.5rem]">' + (item.name||'') + '</h3><div class="mt-auto">';
+    if (saved > 0) { html += '<div class="flex items-baseline gap-1.5"><span class="text-lg font-black text-red-600">' + formatCurrency(finalPrice, curr) + '</span></div>'; html += '<div class="flex items-center gap-2 mt-0.5"><span class="text-xs text-gray-400 line-through">' + formatCurrency((oldPrice||price), curr) + '</span></div>'; html += '<div class="text-[10px] text-emerald-600 font-bold">وفرت ' + formatCurrency(saved, curr) + '</div>'; }
+    else { html += '<div class="flex items-baseline gap-1.5"><span class="text-lg font-black text-gray-800">' + formatCurrency(price, curr) + '</span></div>'; }
+    html += '</div>';
+    var inCart = 0;
+    for (var j = 0; j < cart.length; j++) { if (cart[j].code === item.item_code) { inCart = cart[j].qty; break; } }
+    if (inCart > 0) { html += '<div class="flex items-center justify-between bg-blue-50 rounded-xl px-2 py-1.5 mt-2" onclick="event.stopPropagation()"><button onclick="Store.updateCart(\'' + item.item_code + '\', -1)" class="w-7 h-7 bg-white rounded-full font-black text-blue-600 shadow-sm">−</button><span class="font-black text-blue-700">' + inCart + '</span><button onclick="Store.updateCart(\'' + item.item_code + '\', 1)" class="w-7 h-7 bg-blue-600 rounded-full font-black text-white shadow-sm">+</button></div>'; }
+    else { html += '<button onclick="event.stopPropagation();Store.addToCart(\'' + item.item_code + '\')" class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-black py-2.5 rounded-xl mt-2 transition active:scale-95"><i class="fa-solid fa-cart-plus ml-1"></i> أضف للسلة</button>'; }
+    html += '</div></div>';
+    return html;
+};
 
-    self.showProductDetail = function(code) {
-        var product = null; for (var i = 0; i < products.length; i++) { if (products[i].item_code === code) { product = products[i]; break; } } if (!product) return;
-        var curr = settings.currency || 'SAR'; var price = Number(product.sales_price)||0, oldPrice = Number(product.old_price)||0;
-        var hasDisc = product.discount_percent > 0, finalPrice = hasDisc ? price - (price * product.discount_percent / 100) : price;
-        var saved = hasDisc ? price - finalPrice : (oldPrice > price ? oldPrice - price : 0);
-        var inCart = 0; for (var j = 0; j < cart.length; j++) { if (cart[j].code === code) { inCart = cart[j].qty; break; } }
-        var cachedUrl = RW_ImageCache.getImageUrl(code);
-        var imgUrl = cachedUrl || product.image_url || '';
-        var imgHtml = imgUrl ? '<img src="' + imgUrl + '" style="width:100%;max-height:300px;object-fit:contain;border-radius:16px;background:#f8fafc;margin-bottom:16px" onerror="this.style.display=\'none\'">' : '<div style="width:100%;height:200px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8;margin-bottom:16px"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
-        var html = '<div class="text-right">' + imgHtml + '<h2 class="text-xl font-black text-gray-800 mb-2">' + (product.name||'') + '</h2>';
-        if (product.description) { html += '<div class="bg-gray-50 p-4 rounded-xl mb-4"><h4 class="font-bold text-sm text-gray-700 mb-2"><i class="fa-solid fa-align-left ml-1"></i> وصف المنتج</h4><p class="text-sm text-gray-600 leading-relaxed">' + product.description + '</p></div>'; }
-        html += '<div class="bg-gray-50 p-4 rounded-xl mb-4">';
-        if (saved > 0) { html += '<div class="flex items-baseline gap-3 mb-2"><span class="text-3xl font-black text-red-600">' + formatCurrency(finalPrice, curr) + '</span><span class="text-lg text-gray-400 line-through">' + formatCurrency((oldPrice||price), curr) + '</span><span class="bg-red-100 text-red-600 text-sm font-black px-2 py-1 rounded-full">-' + (product.discount_percent || Math.round(((oldPrice-price)/oldPrice)*100)) + '%</span></div>'; html += '<p class="text-emerald-600 font-bold">وفرت ' + formatCurrency(saved, curr) + '</p>'; }
-        else { html += '<span class="text-3xl font-black text-gray-800">' + formatCurrency(price, curr) + '</span>'; }
-        html += '</div><div class="flex items-center gap-2 text-sm text-gray-500 mb-4"><i class="fa-solid fa-star text-yellow-400"></i><span>متوفر</span><span class="mx-2">|</span><span>' + (product.unit||'حبة') + '</span></div>';
-        if (inCart > 0) { html += '<div class="flex items-center justify-center gap-3 bg-blue-50 rounded-xl p-3"><button onclick="Store.updateCart(\''+code+'\',-1);Store.showProductDetail(\''+code+'\');" class="w-10 h-10 bg-white rounded-full font-black text-blue-600 text-xl shadow-sm">−</button><span class="font-black text-blue-700 text-xl">'+inCart+'</span><button onclick="Store.updateCart(\''+code+'\',1);Store.showProductDetail(\''+code+'\');" class="w-10 h-10 bg-blue-600 rounded-full font-black text-white text-xl shadow-sm">+</button></div>'; }
-        else { html += '<button onclick="Store.addToCart(\''+code+'\');Store.showProductDetail(\''+code+'\');" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 rounded-xl transition text-lg"><i class="fa-solid fa-cart-plus ml-2"></i> أضف للسلة</button>'; }
-        html += '</div>'; Swal.fire({ html: html, width: '600px', showCloseButton: true, showConfirmButton: false, customClass: { popup: 'rounded-2xl' } });
-    };
-
+self.showProductDetail = function(code) {
+    var product = null;
+    for (var i = 0; i < products.length; i++) { if (products[i].item_code === code) { product = products[i]; break; } }
+    if (!product) return;
+    var curr = settings.currency || 'SAR';
+    var price = Number(product.sales_price) || 0;
+    var oldPrice = Number(product.old_price) || 0;
+    var hasDisc = product.discount_percent > 0;
+    var finalPrice = hasDisc ? price - (price * product.discount_percent / 100) : price;
+    var saved = hasDisc ? price - finalPrice : (oldPrice > price ? oldPrice - price : 0);
+    var inCart = 0;
+    for (var j = 0; j < cart.length; j++) { if (cart[j].code === code) { inCart = cart[j].qty; break; } }
+    var cachedUrl = RW_ImageCache.getImageUrl(code);
+    var imgUrl = cachedUrl || product.image_url || '';
+    var imgHtml = imgUrl ? '<img src="' + imgUrl + '" style="width:100%;max-height:300px;object-fit:contain;border-radius:16px;background:#f8fafc;margin-bottom:16px" onerror="this.style.display=\'none\'">' : '<div style="width:100%;height:200px;background:linear-gradient(135deg,#e2e8f0,#f1f5f9);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#94a3b8;margin-bottom:16px"><i class="fa-solid fa-box" style="font-size:60px"></i></div>';
+    var html = '<div class="text-right">' + imgHtml + '<h2 class="text-xl font-black text-gray-800 mb-2">' + (product.name||'') + '</h2>';
+    if (product.description) { html += '<div class="bg-gray-50 p-4 rounded-xl mb-4"><h4 class="font-bold text-sm text-gray-700 mb-2"><i class="fa-solid fa-align-left ml-1"></i> وصف المنتج</h4><p class="text-sm text-gray-600 leading-relaxed">' + product.description + '</p></div>'; }
+    html += '<div class="bg-gray-50 p-4 rounded-xl mb-4">';
+    if (saved > 0) { html += '<div class="flex items-baseline gap-3 mb-2"><span class="text-3xl font-black text-red-600">' + formatCurrency(finalPrice, curr) + '</span><span class="text-lg text-gray-400 line-through">' + formatCurrency((oldPrice||price), curr) + '</span><span class="bg-red-100 text-red-600 text-sm font-black px-2 py-1 rounded-full">-' + (product.discount_percent || Math.round(((oldPrice-price)/oldPrice)*100)) + '%</span></div>'; html += '<p class="text-emerald-600 font-bold">وفرت ' + formatCurrency(saved, curr) + '</p>'; }
+    else { html += '<span class="text-3xl font-black text-gray-800">' + formatCurrency(price, curr) + '</span>'; }
+    html += '</div><div class="flex items-center gap-2 text-sm text-gray-500 mb-4"><i class="fa-solid fa-star text-yellow-400"></i><span>متوفر</span><span class="mx-2">|</span><span>' + (product.unit||'حبة') + '</span></div>';
+    if (inCart > 0) { html += '<div class="flex items-center justify-center gap-3 bg-blue-50 rounded-xl p-3"><button onclick="Store.updateCart(\''+code+'\',-1);Store.showProductDetail(\''+code+'\');" class="w-10 h-10 bg-white rounded-full font-black text-blue-600 text-xl shadow-sm">−</button><span class="font-black text-blue-700 text-xl">'+inCart+'</span><button onclick="Store.updateCart(\''+code+'\',1);Store.showProductDetail(\''+code+'\');" class="w-10 h-10 bg-blue-600 rounded-full font-black text-white text-xl shadow-sm">+</button></div>'; }
+    else { html += '<button onclick="Store.addToCart(\''+code+'\');Store.showProductDetail(\''+code+'\');" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3.5 rounded-xl transition text-lg"><i class="fa-solid fa-cart-plus ml-2"></i> أضف للسلة</button>'; }
+    html += '</div>';
+    Swal.fire({ html: html, width: '600px', showCloseButton: true, showConfirmButton: false, customClass: { popup: 'rounded-2xl' } });
+};
+    
     self.addToCart = function(code) { var product = null; for (var i = 0; i < products.length; i++) { if (products[i].item_code === code) { product = products[i]; break; } } if (!product) return; var existing = null; for (var j = 0; j < cart.length; j++) { if (cart[j].code === code) { existing = cart[j]; break; } } if (existing) existing.qty++; else cart.push({ code: product.item_code, name: product.name, price: Number(product.sales_price)||0, oldPrice: Number(product.old_price)||0, discountPercent: Number(product.discount_percent)||0, image: product.image_url||'', unit: product.unit||'حبة', qty: 1 }); self.refreshProductCards(); if (RW_UI.byId('cartPanel').classList.contains('open')) { self.renderCartItems(); } };
     self.updateCart = function(code, delta) { for (var i = 0; i < cart.length; i++) { if (cart[i].code === code) { cart[i].qty += delta; if (cart[i].qty <= 0) cart.splice(i,1); break; } } self.refreshProductCards(); if (RW_UI.byId('cartPanel').classList.contains('open')) { self.renderCartItems(); } };
     self.removeFromCart = function(code) { for (var i = 0; i < cart.length; i++) { if (cart[i].code === code) { cart.splice(i,1); break; } } self.refreshProductCards(); if (RW_UI.byId('cartPanel').classList.contains('open')) { self.renderCartItems(); } };
@@ -332,17 +341,41 @@ var Store = (function() {
         });
     };
 
-    self.checkout = function() {
-        var name=(RW_UI.byId('custName').value||'').trim(), phone=(RW_UI.byId('custPhone').value||'').trim(), area=(RW_UI.byId('custArea').value||'').trim();
-        if (!name||!phone||!area) { Swal.fire({icon:'warning',title:'أكمل بيانات العميل في السلة'}); return; } if (!cart.length) { Swal.fire({icon:'warning',title:'السلة فارغة'}); return; }
-        saveCustomerData({name:name,phone:phone,area:area});
-        var subtotal=0; for (var i=0;i<cart.length;i++) { var ip=cart[i].price; if(cart[i].discountPercent>0) ip=ip-(ip*cart[i].discountPercent/100); subtotal+=ip*cart[i].qty; }
-        var delivery=settings.deliveryFee||0; if ((settings.freeShippingThreshold||0)>0 && subtotal>=(settings.freeShippingThreshold||0)) delivery=0;
-        var afterCoupon=subtotal-couponDiscount; if(afterCoupon<0) afterCoupon=0; var total=afterCoupon+delivery;
-        if ((settings.minInvoiceAmount||0)>0 && total<(settings.minInvoiceAmount||0)) { Swal.fire({icon:'warning',title:'الحد الأدنى: '+(settings.minInvoiceAmount||0)}); return; }
-        Swal.fire({title:'تأكيد الطلب',html:'<div class="text-right"><p>الإجمالي: <strong>'+formatCurrency(total,settings.currency||'SAR')+'</strong></p><p class="text-sm text-gray-500 mt-2">'+name+' | '+phone+' | '+area+'</p></div>',showCancelButton:true,confirmButtonText:'تأكيد',cancelButtonText:'رجوع'}).then(function(r){if(r.isConfirmed) self.submitOrder({name:name,phone:phone,area:area,notes:(RW_UI.byId('custNotes').value||'').trim()},total);});
-    };
-
+self.checkout = function() {
+    var name = (RW_UI.byId('custName').value||'').trim();
+    var phone = (RW_UI.byId('custPhone').value||'').trim();
+    var area = (RW_UI.byId('custArea').value||'').trim();
+    if (!name || !phone || !area) { Swal.fire({icon:'warning',title:'أكمل بيانات العميل في السلة'}); return; }
+    if (!cart.length) { Swal.fire({icon:'warning',title:'السلة فارغة'}); return; }
+    saveCustomerData({name:name, phone:phone, area:area});
+    var subtotal = 0;
+    for (var i = 0; i < cart.length; i++) {
+        var ip = cart[i].price;
+        if (cart[i].discountPercent > 0) ip = ip - (ip * cart[i].discountPercent / 100);
+        subtotal += ip * cart[i].qty;
+    }
+    var delivery = settings.deliveryFee || 0;
+    if ((settings.freeShippingThreshold||0) > 0 && subtotal >= (settings.freeShippingThreshold||0)) delivery = 0;
+    var afterCoupon = subtotal - couponDiscount;
+    if (afterCoupon < 0) afterCoupon = 0;
+    var total = afterCoupon + delivery;
+    if ((settings.minInvoiceAmount||0) > 0 && total < (settings.minInvoiceAmount||0)) {
+        Swal.fire({icon:'warning', title:'الحد الأدنى: ' + (settings.minInvoiceAmount||0)});
+        return;
+    }
+    Swal.fire({
+        title:'تأكيد الطلب',
+        html:'<div class="text-right"><p>الإجمالي: <strong>' + formatCurrency(total, settings.currency||'SAR') + '</strong></p><p class="text-sm text-gray-500 mt-2">' + name + ' | ' + phone + ' | ' + area + '</p></div>',
+        showCancelButton:true,
+        confirmButtonText:'تأكيد',
+        cancelButtonText:'رجوع'
+    }).then(function(r) {
+        if (r.isConfirmed) {
+            self.submitOrder({name:name, phone:phone, area:area, notes:(RW_UI.byId('custNotes').value||'').trim()}, total);
+        }
+    });
+};
+    
 self.submitOrder = function(customer, total) {
     RW_UI.showLoader('جاري إرسال الطلب...');
 
