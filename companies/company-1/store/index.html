@@ -436,21 +436,25 @@ self.submitOrder = function(customer, total) {
         couponDiscount: couponDiscount
     };
 
+    // ✅ إرسال كلا الهيدرين: apikey + Authorization
     fetch(SUPABASE_URL + '/functions/v1/submit-online-order', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'apikey': SUPABASE_KEY
+            'apikey': SUPABASE_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_KEY
         },
         body: JSON.stringify(bodyPayload)
     }).then(function(res) {
+        console.log('📥 استجابة الخادم:', res.status);
         if (!res.ok) {
             return res.json().then(function(err) {
-                throw new Error(err.msg || err.error || 'خطأ في الخادم');
+                throw new Error(err.message || err.msg || err.error || 'خطأ في الخادم');
             });
         }
         return res.json();
     }).then(function(json) {
+        console.log('✅ نجاح الطلب:', json);
         RW_UI.hideLoader();
         if (json && json.success) {
             Swal.fire({
@@ -475,6 +479,7 @@ self.submitOrder = function(customer, total) {
             });
         }
     }).catch(function(err) {
+        console.error('❌ فشل الاتصال:', err.message);
         RW_UI.hideLoader();
         Swal.fire({
             icon: 'error',
