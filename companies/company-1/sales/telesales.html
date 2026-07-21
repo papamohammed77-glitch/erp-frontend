@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-21 09:00 UTC -->
+<!-- 2026-07-21 09:05 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -1051,13 +1051,13 @@ self.submitOrder = function() {
     RW_UI.showLoader(isEdit ? 'جاري تحديث الأوردر...' : 'جاري حفظ الأوردر...');
 
     if (isEdit) {
-        // 1. جلب order_id من order_code
+        var orderId = null;
+
         supabase.from('orders').select('id').eq('order_code', oldOrderCode).maybeSingle()
         .then(function(res) {
             if (!res.data) { throw new Error('الأوردر القديم غير موجود'); }
-            var orderId = res.data.id;
+            orderId = res.data.id;
 
-            // 2. تحديث رأس الأوردر (بدون tax_amount)
             return supabase.from('orders').update({
                 customer_name: selCust.name,
                 area: selCust.area || '',
@@ -1070,19 +1070,13 @@ self.submitOrder = function() {
         })
         .then(function(upRes) {
             if (upRes.error) { throw new Error(upRes.error.message); }
-
-            // 3. حذف البنود القديمة
             return supabase.from('order_details').delete().eq('order_id', orderId);
         })
         .then(function(delRes) {
             if (delRes.error) { throw new Error(delRes.error.message); }
-
-            // 4. جلب item_id لكل صنف من جدول items
             var itemCodes = [];
             for (var j = 0; j < items.length; j++) {
-                if (itemCodes.indexOf(items[j].code) === -1) {
-                    itemCodes.push(items[j].code);
-                }
+                if (itemCodes.indexOf(items[j].code) === -1) itemCodes.push(items[j].code);
             }
             return supabase.from('items').select('id, item_code').in('item_code', itemCodes);
         })
@@ -1093,8 +1087,6 @@ self.submitOrder = function() {
             for (var m = 0; m < itemData.length; m++) {
                 itemIdMap[itemData[m].item_code] = itemData[m].id;
             }
-
-            // 5. إدراج البنود الجديدة مع item_id
             var detailsToInsert = [];
             for (var j = 0; j < items.length; j++) {
                 detailsToInsert.push({
@@ -1122,7 +1114,6 @@ self.submitOrder = function() {
         });
 
     } else {
-        // وضع الإنشاء
         var hdr = {
             customer_code: selCust.customer_code,
             custName: selCust.name,
