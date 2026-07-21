@@ -343,22 +343,49 @@ var Store = (function() {
         Swal.fire({title:'تأكيد الطلب',html:'<div class="text-right"><p>الإجمالي: <strong>'+formatCurrency(total,settings.currency||'SAR')+'</strong></p><p class="text-sm text-gray-500 mt-2">'+name+' | '+phone+' | '+area+'</p></div>',showCancelButton:true,confirmButtonText:'تأكيد',cancelButtonText:'رجوع'}).then(function(r){if(r.isConfirmed) self.submitOrder({name:name,phone:phone,area:area,notes:(RW_UI.byId('custNotes').value||'').trim()},total);});
     };
 
-    self.submitOrder = function(customer, total) {
-        RW_UI.showLoader('جاري إرسال الطلب...');
-        var itemsList = []; for (var i = 0; i < cart.length; i++) { itemsList.push({ code: cart[i].code, name: cart[i].name, price: cart[i].price, qty: cart[i].qty, unit: cart[i].unit }); }
-        var bodyPayload = { user: customer, cartItems: itemsList, total: total, delivery: settings.deliveryFee || 0 };
-        RW_API.call('submit-online-order', bodyPayload, function(json) {
-            RW_UI.hideLoader();
-            if (json.success) {
-                Swal.fire({ icon: 'success', title: 'تم إرسال الطلب بنجاح!', confirmButtonText: 'حسناً' });
-                cart = []; couponCode = ''; couponDiscount = 0;
-                RW_UI.byId('couponInput').value = ''; RW_UI.byId('couponMsg').classList.add('hidden');
-                currentPage = 0; self.loadPage(); self.updateCartBadge(); self.closeCart();
-            } else {
-                RW_UI.showError(json.msg || 'فشل إرسال الطلب');
-            }
+self.submitOrder = function(customer, total) {
+    var self = this;
+    RW_UI.showLoader('جاري إرسال الطلب...');
+
+    var itemsList = [];
+    for (var i = 0; i < cart.length; i++) {
+        itemsList.push({
+            code: cart[i].code,
+            name: cart[i].name,
+            price: cart[i].price,
+            qty: cart[i].qty,
+            unit: cart[i].unit
         });
+    }
+
+    var bodyPayload = {
+        user: customer,
+        cartItems: itemsList,
+        total: total,
+        delivery: self.settings.deliveryFee || 0
     };
+
+    // ✅ استخدام callPublic للمتجر (تطبيق عام لا يتطلب تسجيل دخول)
+    RW_API.callPublic('submit-online-order', bodyPayload, function(json) {
+        RW_UI.hideLoader();
+        if (json.success) {
+            Swal.fire({ icon: 'success', title: 'تم إرسال الطلب بنجاح!', confirmButtonText: 'حسناً' });
+            cart = [];
+            couponCode = '';
+            couponDiscount = 0;
+            var couponInput = document.getElementById('couponInput');
+            if (couponInput) couponInput.value = '';
+            var couponMsg = document.getElementById('couponMsg');
+            if (couponMsg) couponMsg.classList.add('hidden');
+            currentPage = 0;
+            self.loadPage();
+            self.updateCartBadge();
+            self.closeCart();
+        } else {
+            RW_UI.showError(json.msg || 'فشل إرسال الطلب');
+        }
+    });
+};
 
     return self;
 })();
