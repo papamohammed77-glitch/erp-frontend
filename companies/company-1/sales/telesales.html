@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-21 06:00 UTC -->
+<!-- 2026-07-21 06:30 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -867,14 +867,107 @@ self.submitOrder = function() {
     if (!selBranch) { RW_UI.toast('اختر فرعاً', 'warning'); return; }
     var t = self.calcTotals();
     if (minAmt > 0 && t.total < minAmt) { RW_UI.toast('الحد الأدنى للفاتورة: ' + fmtNum(minAmt), 'warning'); return; }
-    var items = []; for (var i = 0; i < cart.length; i++) items.push({ code: cart[i].code, name: cart[i].name, price: cart[i].price, qty: cart[i].qty, unit: cart[i].unit });
-    var hdr = { customer_code: selCust.customer_code, custName: selCust.name, area: selCust.area || '', total: t.total, deliveryFees: t.del, status: 'Confirmed', paymentType: selCust.payment_type || 'أجل', taxAmount: t.tax, taxRate: taxRate };
     
+    var items = [];
+    for (var i = 0; i < cart.length; i++) {
+        items.push({ code: cart[i].code, name: cart[i].name, price: cart[i].price, qty: cart[i].qty, unit: cart[i].unit });
+    }
+    
+    var hdr = {
+        customer_code: selCust.customer_code,
+        custName: selCust.name,
+        area: selCust.area || '',
+        total: t.total,
+        deliveryFees: t.del,
+        status: 'Confirmed',
+        paymentType: selCust.payment_type || 'أجل',
+        taxAmount: t.tax,
+        taxRate: taxRate
+    };
+
     var oldOrderCode = editingOrderCode;
     var isEdit = !!oldOrderCode;
     
     self.closeCartModal();
     RW_UI.showLoader(isEdit ? 'جاري تحديث الأوردر...' : 'جاري حفظ الأوردر...');
+
+    // ✅ دالة مساعدة داخلية لتحديث الأوردر مباشرة (تعديل)
+    function updateExistingOrder(orderCode, callback) {
+        // 1. جلب order_id من order_code
+        supabase.from('orders').select('id').eq('order_code', orderCode).maybeSingle()
+        .then(function(res) {
+            if (!res.data) { callback(false, 'الأوردر القديم غير موجود'); return; }
+            var orderId = res.data.id;
+
+            // 2. تحديث رأس الأوردر
+            supabase.from('orders').update({
+                customer_id: selCust.customer_code,
+                customer_name: selCust.name,
+                area: selCust.area || '',
+                total_amount: t.total,
+                delivery_fee: t.del,
+                order_status: 'Confirmed',
+                payment_type: selCust.payment_type || 'أجل',
+                branch_id: branchMap[selBranch] || null,
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId)
+            .then(function(upRes) {
+                if (upRes.error) { callback(false, upRes.error.message); return; }
+
+                // 3. حذف البنود القديمة
+                supabase.from('order_details').delete().eq('order_id', orderId)
+                .then(function(delRes) {
+                    if (delRes.error) { callback(false, delRes.error.message); return; }
+
+                    // 4. إدراج البنود الجديدة
+                    var detailsToInsert = [];
+                    for (var j = 0; j < items.length; j++) {
+                        detailsToInsert.push({
+                            order_id: orderId,
+                            item_code: items[j].code,
+                            item_name: items[j].name,
+                            unit: items[j].unit,
+                            unit_price: items[j].price,
+                            qty: items[j].qty
+                        });
+                    }
+                    supabase.from('order_details').insert(detailsToInsert)
+                    .then(function(insRes) {
+                        if (insRes.error) { callback(false, insRes.error.message); return; }
+                        callback(true, null);
+                    }).catch(function(e) { callback(false, e.message); });
+                }).catch(function(e) { callback(false, e.message); });
+            }).catch(function(e) { callback(false, e.message); });
+        }).catch(function(e) { callback(false, e.message); });
+    }
+
+    if (isEdit) {
+        // وضع التعديل: تحديث الأوردر الموجود مباشرة
+        updateExistingOrder(oldOrderCode, function(success, errMsg) {
+            RW_UI.hideLoader();
+            if (success) {
+                RW_UI.toast('تم تحديث الأوردر ' + oldOrderCode + ' بنجاح', 'success');
+                cart = []; selCust = null; selBranch = null; editingOrderCode = null;
+                self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
+            } else {
+                RW_UI.showError(errMsg || 'فشل تحديث الأوردر');
+            }
+        });
+    } else {
+        // وضع الإنشاء: استدعاء Edge Function كما في السابق
+        RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch }, function(json) {
+            RW_UI.hideLoader();
+            if (json.success) {
+                RW_UI.toast('تم الحفظ: ' + (json.orderID || ''), 'success');
+                cart = []; selCust = null; selBranch = null; editingOrderCode = null;
+                self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
+            } else {
+                RW_UI.toast(json.msg || 'فشل الحفظ', 'error');
+                editingOrderCode = oldOrderCode;
+            }
+        });
+    }
+};
 
     function doSave() {
         RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch }, function(json) {
