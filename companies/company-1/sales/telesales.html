@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-21 08:10 UTC -->
+<!-- 2026-07-20 08:20 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -873,18 +873,6 @@ self.submitOrder = function() {
         items.push({ code: cart[i].code, name: cart[i].name, price: cart[i].price, qty: cart[i].qty, unit: cart[i].unit });
     }
 
-    var hdr = {
-        customer_code: selCust.customer_code,
-        custName: selCust.name,
-        area: selCust.area || '',
-        total: t.total,
-        deliveryFees: t.del,
-        status: 'Confirmed',
-        paymentType: selCust.payment_type || 'أجل',
-        taxAmount: t.tax,
-        taxRate: taxRate
-    };
-
     var oldOrderCode = editingOrderCode;
     var isEdit = !!oldOrderCode;
 
@@ -895,7 +883,8 @@ self.submitOrder = function() {
         var token = RW_Auth.getToken();
         if (!token) { RW_UI.hideLoader(); RW_UI.showError('انتهت الجلسة'); return; }
 
-        var _editingOrderId = null;
+        // ✅ استخدم orderUuid واضحاً طوال السلسلة
+        var orderUuid = null;
 
         // 1. جلب order_id من order_code
         fetch(SUPABASE_URL + '/rest/v1/orders?select=id&order_code=eq.' + encodeURIComponent(oldOrderCode), {
@@ -907,9 +896,9 @@ self.submitOrder = function() {
         .then(function(res) { return res.json(); })
         .then(function(data) {
             if (!data || data.length === 0) { throw new Error('الأوردر القديم غير موجود'); }
-            _editingOrderId = data[0].id;
+            orderUuid = data[0].id;   // ← احفظ الـ id هنا
 
-            // 2. تحديث رأس الأوردر (بدون customer_id وبدون ضريبة)
+            // 2. تحديث رأس الأوردر
             var updateBody = {
                 customer_name: selCust.name,
                 area: selCust.area || '',
@@ -921,7 +910,7 @@ self.submitOrder = function() {
                 tax_amount: 0,
                 tax_rate: 0
             };
-            return fetch(SUPABASE_URL + '/rest/v1/orders?id=eq.' + encodeURIComponent(_editingOrderId), {
+            return fetch(SUPABASE_URL + '/rest/v1/orders?id=eq.' + encodeURIComponent(orderUuid), {
                 method: 'PATCH',
                 headers: {
                     'apikey': SUPABASE_KEY,
@@ -935,7 +924,7 @@ self.submitOrder = function() {
         .then(function(res) {
             if (!res.ok) { return res.json().then(function(err) { throw new Error(err.message || 'فشل تحديث الأوردر'); }); }
             // 3. حذف البنود القديمة
-            return fetch(SUPABASE_URL + '/rest/v1/order_details?order_id=eq.' + encodeURIComponent(_editingOrderId), {
+            return fetch(SUPABASE_URL + '/rest/v1/order_details?order_id=eq.' + encodeURIComponent(orderUuid), {
                 method: 'DELETE',
                 headers: {
                     'apikey': SUPABASE_KEY,
@@ -976,7 +965,7 @@ self.submitOrder = function() {
             var detailsToInsert = [];
             for (var j = 0; j < items.length; j++) {
                 detailsToInsert.push({
-                    order_id: _editingOrderId,
+                    order_id: orderUuid,
                     item_id: itemIdMap[items[j].code] || null,
                     item_code: items[j].code,
                     item_name: items[j].name,
@@ -1009,6 +998,17 @@ self.submitOrder = function() {
         });
 
     } else {
+        var hdr = {
+            customer_code: selCust.customer_code,
+            custName: selCust.name,
+            area: selCust.area || '',
+            total: t.total,
+            deliveryFees: t.del,
+            status: 'Confirmed',
+            paymentType: selCust.payment_type || 'أجل',
+            taxAmount: t.tax,
+            taxRate: taxRate
+        };
         RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch }, function(json) {
             RW_UI.hideLoader();
             if (json.success) {
