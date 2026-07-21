@@ -1,5 +1,5 @@
 // ============================================================
-// core.js – النواة المشتركة لنظام الروائع ERP (الإصدار 1.2)
+// core.js – النواة المشتركة لنظام الروائع ERP (الإصدار 1.3)
 // التزم بـ var و function فقط. لا تستخدم const أو let أو () =>
 // هذا الملف يُحمّل مرة واحدة في كل تطبيق PWA
 // ============================================================
@@ -7,7 +7,7 @@
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 
-// ✅ إنشاء عميل Supabase الموحد (إصلاح الخطأ القاتل)
+// ✅ إنشاء عميل Supabase الموحد
 var supabase = (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function')
     ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
     : null;
@@ -381,9 +381,35 @@ var RW_API = (function() {
         tryCall();
     }
 
+    // 🆕 callPublic – للاستدعاءات العامة التي لا تتطلب جلسة (مثل المتجر الإلكتروني)
+    // تستخدم SUPABASE_ANON_KEY بدلاً من JWT
+    function callPublic(functionName, body, callback) {
+        fetch(SUPABASE_URL + '/functions/v1/' + functionName, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + SUPABASE_KEY
+            },
+            body: JSON.stringify(body || {})
+        }).then(function(res) {
+            if (!res.ok) {
+                return res.json().then(function(err) {
+                    throw new Error(err.msg || err.error || 'خطأ في الخادم');
+                });
+            }
+            return res.json();
+        }).then(function(json) {
+            if (callback) callback(json, null);
+        }).catch(function(e) {
+            console.error('❌ فشل استدعاء ' + functionName + ':', e.message);
+            if (callback) callback({ success: false, msg: e.message || 'فشل الاتصال بـ Edge Function' }, e.message);
+        });
+    }
+
     return {
         call: call,
-        callWithRetry: callWithRetry
+        callWithRetry: callWithRetry,
+        callPublic: callPublic
     };
 })();
 
@@ -605,17 +631,13 @@ var RW_ImageCache = (function() {
 })();
 
 // ============================================================
-// الوحدة ٦: RW_SW – تسجيل Service Worker وكشف التحديثات (محدثة)
+// الوحدة ٦: RW_SW – تسجيل Service Worker وكشف التحديثات
 // ============================================================
 var RW_SW = (function() {
-    
-    // 💡 اللمسة العبقرية: الاستماع الصامت لرسالة الـ Service Worker الجديد
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.addEventListener('message', function(event) {
             if (event.data && event.data.type === 'RW_SW_UPDATED') {
                 console.log('[RW_SW] تم رصد إصدار جديد، جاري التحديث التلقائي...');
-                
-                // عرض إشعار أنيق يختفي بسرعة ثم يُحدث الصفحة
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
                         toast: true,
@@ -642,8 +664,6 @@ var RW_SW = (function() {
         }
         var path = swPath || '../sw.js';
         navigator.serviceWorker.register(path).then(function(reg) {
-            // تم تخفيف الكود هنا لأن الاعتماد أصبح على حدث 'message' في الأعلى
-            // والذي يعتبر أسرع وأدق مع استراتيجية self.skipWaiting
             if (callback) callback(true, null);
         }).catch(function(err) {
             console.error('❌ فشل تسجيل Service Worker:', err);
@@ -655,6 +675,7 @@ var RW_SW = (function() {
         register: register
     };
 })();
+
 // ============================================================
 // دوال مساعدة عامة (متوافقة مع جميع التطبيقات)
 // ============================================================
