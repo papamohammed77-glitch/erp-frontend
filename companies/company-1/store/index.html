@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!-- 2026-07-21 11:30 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -13,7 +12,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
-    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Tahoma,sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
@@ -87,6 +85,22 @@
 </div>
 
 <script>
+// ============================================================
+// إنشاء عميل Supabase مستقل تماماً عن core.js
+// ============================================================
+var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+var supabase = null;
+
+function initSupabase() {
+    if (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function') {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        console.log('✅ Supabase client initialized in store');
+        return true;
+    }
+    return false;
+}
+
 var db = RW_DB.getDB('Store');
 function formatCurrency(amount, currency) { var symbol = 'ر.س'; if (currency === 'SAR') symbol = 'ر.س'; else if (currency === 'EGP') symbol = 'ج.م'; else if (currency === 'AED') symbol = 'د.إ'; else if (currency === 'KWD') symbol = 'د.ك'; else if (currency === 'QAR') symbol = 'ر.ق'; else if (currency === 'BHD') symbol = 'د.ب'; else if (currency === 'OMR') symbol = 'ر.ع'; else if (currency === 'USD') symbol = '$'; return Number(amount || 0).toFixed(2) + ' ' + symbol; }
 function saveCustomerData(data) { try { localStorage.setItem('rw_store_customer', JSON.stringify(data)); } catch(e) {} }
@@ -94,7 +108,31 @@ function loadCustomerData() { try { var d = localStorage.getItem('rw_store_custo
 
 var Store = {
     cart: [], products: [], categories: [], activeCategory: 'الكل', currentPage: 0, pageSize: 20, settings: {}, couponCode: '', couponDiscount: 0,
-    init: function() { var s = this; this.loadSettings().then(function() { s.syncProducts().then(function() { s.showApp(); s.loadCustomerToForm(); s.checkDailyDeals(); }); }); },
+    init: function() {
+        var s = this;
+        // انتظر حتى يصبح Supabase جاهزاً
+        var attempts = 0;
+        var maxAttempts = 10;
+        function tryInit() {
+            if (initSupabase()) {
+                s.loadSettings().then(function() {
+                    s.syncProducts().then(function() {
+                        s.showApp();
+                        s.loadCustomerToForm();
+                        s.checkDailyDeals();
+                    });
+                });
+            } else {
+                attempts++;
+                if (attempts < maxAttempts) {
+                    setTimeout(tryInit, 200);
+                } else {
+                    document.getElementById('splashScreen').innerHTML = '<div class="text-center"><p class="text-red-500 font-bold">فشل الاتصال بالخادم. الرجاء تحديث الصفحة.</p></div>';
+                }
+            }
+        }
+        tryInit();
+    },
     loadSettings: function() { var s = this; return supabase.from('app_settings').select('*').limit(1).single().then(function(res) { if (res.data) { s.settings = { storeName: res.data.store_name || res.data.company_name || 'متجر الروائع', storeLogo: res.data.store_logo || res.data.company_logo || '', primaryColor: res.data.store_primary_color || '#2563eb', deliveryFee: Number(res.data.delivery_fee) || 0, minInvoiceAmount: Number(res.data.min_invoice_amount) || 0, freeShippingThreshold: Number(res.data.free_shipping_threshold) || 0, paymentMethod: res.data.payment_method || 'both', currency: res.data.currency || 'SAR' }; document.getElementById('storeName').textContent = s.settings.storeName; document.getElementById('headerStoreName').textContent = s.settings.storeName; if (s.settings.storeLogo) { var logo = document.getElementById('storeLogo'); logo.src = s.settings.storeLogo; logo.classList.remove('hidden'); } } }); },
     syncProducts: function() { var s = this; return supabase.from('items').select('*').eq('show_in_store', true).eq('is_active', true).order('sort_order', { ascending: true }).then(function(res) { if (res.data && res.data.length > 0) { s.products = res.data; db.products.clear().then(function() { db.products.bulkPut(res.data); }); s.extractCategories(); s.renderCategoryBar(); s.loadPage(); } }); },
     checkDailyDeals: function() { var hasDeals = false; for (var i = 0; i < this.products.length; i++) { if (this.products[i].is_daily_deal) { hasDeals = true; break; } } if (hasDeals) document.getElementById('dealsBanner').classList.remove('hidden'); },
