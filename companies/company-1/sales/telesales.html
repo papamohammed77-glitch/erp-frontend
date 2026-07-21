@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-21 07:10 UTC -->
+<!-- 2026-07-20 08:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -943,11 +943,39 @@ self.submitOrder = function() {
         })
         .then(function(res) {
             if (!res.ok) { return res.json().then(function(err) { throw new Error(err.message || 'فشل حذف البنود القديمة'); }); }
-            // 4. إدراج البنود الجديدة
+
+            // 4. جلب item_id لكل صنف من جدول items
+            var itemCodes = [];
+            for (var j = 0; j < items.length; j++) {
+                if (itemCodes.indexOf(items[j].code) === -1) {
+                    itemCodes.push(items[j].code);
+                }
+            }
+            var filter = '';
+            for (var k = 0; k < itemCodes.length; k++) {
+                if (k > 0) filter += ',';
+                filter += 'eq.' + encodeURIComponent(itemCodes[k]);
+            }
+            return fetch(SUPABASE_URL + '/rest/v1/items?select=id,item_code&item_code=in.(' + filter + ')', {
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': 'Bearer ' + token
+                }
+            }).then(function(res) { return res.json(); }).then(function(itemData) {
+                var itemIdMap = {};
+                for (var m = 0; m < itemData.length; m++) {
+                    itemIdMap[itemData[m].item_code] = itemData[m].id;
+                }
+                return itemIdMap;
+            });
+        })
+        .then(function(itemIdMap) {
+            // 5. إدراج البنود الجديدة مع item_id
             var detailsToInsert = [];
             for (var j = 0; j < items.length; j++) {
                 detailsToInsert.push({
                     order_id: _editingOrderId,
+                    item_id: itemIdMap[items[j].code] || null,
                     item_code: items[j].code,
                     item_name: items[j].name,
                     unit: items[j].unit,
