@@ -436,9 +436,22 @@ self.submitOrder = function(customer, total) {
         couponDiscount: couponDiscount
     };
 
-    RW_API.callPublic('submit-online-order', bodyPayload, function(json) {
+    fetch(SUPABASE_URL + '/functions/v1/submit-online-order', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY
+        },
+        body: JSON.stringify(bodyPayload)
+    }).then(function(res) {
+        if (!res.ok) {
+            return res.json().then(function(err) {
+                throw new Error(err.msg || err.error || 'خطأ في الخادم');
+            });
+        }
+        return res.json();
+    }).then(function(json) {
         RW_UI.hideLoader();
-        
         if (json && json.success) {
             Swal.fire({
                 icon: 'success',
@@ -461,6 +474,13 @@ self.submitOrder = function(customer, total) {
                 text: (json && json.msg) || 'حدث خطأ غير متوقع'
             });
         }
+    }).catch(function(err) {
+        RW_UI.hideLoader();
+        Swal.fire({
+            icon: 'error',
+            title: 'فشل إرسال الطلب',
+            text: err.message || 'فشل الاتصال بالخادم'
+        });
     });
 };
     
