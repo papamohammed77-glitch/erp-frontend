@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-21 06:30 UTC -->
+<!-- 2026-07-21 07:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -860,19 +860,19 @@ self.updateFloatingCart = function() {
         RW_UI.byId('cartModalTotal').innerText = fmtNum(t.total);
     };
 
-    // ==================== حفظ الأوردر ====================
+// ==================== حفظ الأوردر ====================
 self.submitOrder = function() {
     if (!selCust) { RW_UI.toast('اختر عميلاً أولاً', 'warning'); return; }
     if (!cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
     if (!selBranch) { RW_UI.toast('اختر فرعاً', 'warning'); return; }
     var t = self.calcTotals();
     if (minAmt > 0 && t.total < minAmt) { RW_UI.toast('الحد الأدنى للفاتورة: ' + fmtNum(minAmt), 'warning'); return; }
-    
+
     var items = [];
     for (var i = 0; i < cart.length; i++) {
         items.push({ code: cart[i].code, name: cart[i].name, price: cart[i].price, qty: cart[i].qty, unit: cart[i].unit });
     }
-    
+
     var hdr = {
         customer_code: selCust.customer_code,
         custName: selCust.name,
@@ -887,16 +887,15 @@ self.submitOrder = function() {
 
     var oldOrderCode = editingOrderCode;
     var isEdit = !!oldOrderCode;
-    
+
     self.closeCartModal();
     RW_UI.showLoader(isEdit ? 'جاري تحديث الأوردر...' : 'جاري حفظ الأوردر...');
 
-    // ✅ دالة مساعدة داخلية لتحديث الأوردر مباشرة (تعديل)
-    function updateExistingOrder(orderCode, callback) {
+    if (isEdit) {
         // 1. جلب order_id من order_code
-        supabase.from('orders').select('id').eq('order_code', orderCode).maybeSingle()
+        supabase.from('orders').select('id').eq('order_code', oldOrderCode).maybeSingle()
         .then(function(res) {
-            if (!res.data) { callback(false, 'الأوردر القديم غير موجود'); return; }
+            if (!res.data) { RW_UI.hideLoader(); RW_UI.showError('الأوردر القديم غير موجود'); return; }
             var orderId = res.data.id;
 
             // 2. تحديث رأس الأوردر
@@ -912,12 +911,12 @@ self.submitOrder = function() {
                 updated_at: new Date().toISOString()
             }).eq('id', orderId)
             .then(function(upRes) {
-                if (upRes.error) { callback(false, upRes.error.message); return; }
+                if (upRes.error) { RW_UI.hideLoader(); RW_UI.showError(upRes.error.message); return; }
 
                 // 3. حذف البنود القديمة
                 supabase.from('order_details').delete().eq('order_id', orderId)
                 .then(function(delRes) {
-                    if (delRes.error) { callback(false, delRes.error.message); return; }
+                    if (delRes.error) { RW_UI.hideLoader(); RW_UI.showError(delRes.error.message); return; }
 
                     // 4. إدراج البنود الجديدة
                     var detailsToInsert = [];
@@ -933,28 +932,17 @@ self.submitOrder = function() {
                     }
                     supabase.from('order_details').insert(detailsToInsert)
                     .then(function(insRes) {
-                        if (insRes.error) { callback(false, insRes.error.message); return; }
-                        callback(true, null);
-                    }).catch(function(e) { callback(false, e.message); });
-                }).catch(function(e) { callback(false, e.message); });
-            }).catch(function(e) { callback(false, e.message); });
-        }).catch(function(e) { callback(false, e.message); });
-    }
+                        RW_UI.hideLoader();
+                        if (insRes.error) { RW_UI.showError(insRes.error.message); return; }
+                        RW_UI.toast('تم تحديث الأوردر ' + oldOrderCode + ' بنجاح', 'success');
+                        cart = []; selCust = null; selBranch = null; editingOrderCode = null;
+                        self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
+                    }).catch(function(e) { RW_UI.hideLoader(); RW_UI.showError(e.message); });
+                }).catch(function(e) { RW_UI.hideLoader(); RW_UI.showError(e.message); });
+            }).catch(function(e) { RW_UI.hideLoader(); RW_UI.showError(e.message); });
+        }).catch(function(e) { RW_UI.hideLoader(); RW_UI.showError(e.message); });
 
-    if (isEdit) {
-        // وضع التعديل: تحديث الأوردر الموجود مباشرة
-        updateExistingOrder(oldOrderCode, function(success, errMsg) {
-            RW_UI.hideLoader();
-            if (success) {
-                RW_UI.toast('تم تحديث الأوردر ' + oldOrderCode + ' بنجاح', 'success');
-                cart = []; selCust = null; selBranch = null; editingOrderCode = null;
-                self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
-            } else {
-                RW_UI.showError(errMsg || 'فشل تحديث الأوردر');
-            }
-        });
     } else {
-        // وضع الإنشاء: استدعاء Edge Function كما في السابق
         RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch }, function(json) {
             RW_UI.hideLoader();
             if (json.success) {
@@ -963,38 +951,8 @@ self.submitOrder = function() {
                 self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
             } else {
                 RW_UI.toast(json.msg || 'فشل الحفظ', 'error');
-                editingOrderCode = oldOrderCode;
             }
         });
-    }
-};
-
-    function doSave() {
-        RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch }, function(json) {
-            RW_UI.hideLoader();
-            if (json.success) {
-                RW_UI.toast(isEdit ? 'تم تحديث الأوردر بنجاح' : 'تم الحفظ: ' + (json.orderID || ''), 'success');
-                cart = []; selCust = null; selBranch = null; editingOrderCode = null;
-                self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
-            } else {
-                RW_UI.toast(json.msg || 'فشل الحفظ', 'error');
-                editingOrderCode = oldOrderCode;
-            }
-        });
-    }
-
-    if (isEdit) {
-        RW_API.call('delete-order', { order_code: oldOrderCode }, function(deleteJson) {
-            if (deleteJson.success) {
-                editingOrderCode = null;
-                doSave();
-            } else {
-                RW_UI.hideLoader();
-                RW_UI.toast('فشل حذف الأوردر القديم: ' + (deleteJson.msg || ''), 'error');
-            }
-        });
-    } else {
-        doSave();
     }
 };
 
