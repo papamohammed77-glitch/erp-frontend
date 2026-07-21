@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-20 08:00 UTC -->
+<!-- 2026-07-21 06:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -151,6 +151,7 @@ var App = (function() {
     var db = RW_DB.getDB('Telesales');
     var currentUser = null, pubUserId = null, cart = [], selCust = null, selBranch = null, branchMap = {};
     var delFee = 0, taxRate = 0, minAmt = 0, currentTab = 'today', isListView = true;
+    var editingOrderCode = null;
     var catalogListView = false, catalogActiveCat = 'الكل';
     var productsCache = [], customersCache = [];
     var _todayInterval = null;
@@ -860,29 +861,66 @@ self.updateFloatingCart = function() {
     };
 
     // ==================== حفظ الأوردر ====================
-    self.submitOrder = function() {
-        if (!selCust) { RW_UI.toast('اختر عميلاً أولاً', 'warning'); return; }
-        if (!cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
-        if (!selBranch) { RW_UI.toast('اختر فرعاً', 'warning'); return; }
-        var t = self.calcTotals();
-        if (minAmt > 0 && t.total < minAmt) { RW_UI.toast('الحد الأدنى للفاتورة: ' + fmtNum(minAmt), 'warning'); return; }
-        var items = []; for (var i = 0; i < cart.length; i++) items.push({ code: cart[i].code, name: cart[i].name, price: cart[i].price, qty: cart[i].qty, unit: cart[i].unit });
-        var hdr = { customer_code: selCust.customer_code, custName: selCust.name, area: selCust.area || '', total: t.total, deliveryFees: t.del, status: 'Confirmed', paymentType: selCust.payment_type || 'أجل', taxAmount: t.tax, taxRate: taxRate };
-        self.closeCartModal();
-        RW_UI.showLoader('جاري حفظ الأوردر...');
+self.submitOrder = function() {
+    if (!selCust) { RW_UI.toast('اختر عميلاً أولاً', 'warning'); return; }
+    if (!cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
+    if (!selBranch) { RW_UI.toast('اختر فرعاً', 'warning'); return; }
+    var t = self.calcTotals();
+    if (minAmt > 0 && t.total < minAmt) { RW_UI.toast('الحد الأدنى للفاتورة: ' + fmtNum(minAmt), 'warning'); return; }
+    var items = []; for (var i = 0; i < cart.length; i++) items.push({ code: cart[i].code, name: cart[i].name, price: cart[i].price, qty: cart[i].qty, unit: cart[i].unit });
+    var hdr = { customer_code: selCust.customer_code, custName: selCust.name, area: selCust.area || '', total: t.total, deliveryFees: t.del, status: 'Confirmed', paymentType: selCust.payment_type || 'أجل', taxAmount: t.tax, taxRate: taxRate };
+    
+    var oldOrderCode = editingOrderCode;
+    var isEdit = !!oldOrderCode;
+    
+    self.closeCartModal();
+    RW_UI.showLoader(isEdit ? 'جاري تحديث الأوردر...' : 'جاري حفظ الأوردر...');
+
+    function doSave() {
         RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch }, function(json) {
             RW_UI.hideLoader();
-            if (json.success) { RW_UI.toast('تم الحفظ: ' + (json.orderID || ''), 'success'); cart = []; selCust = null; self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today'); }
-            else RW_UI.toast(json.msg || 'فشل الحفظ', 'error');
+            if (json.success) {
+                RW_UI.toast(isEdit ? 'تم تحديث الأوردر بنجاح' : 'تم الحفظ: ' + (json.orderID || ''), 'success');
+                cart = []; selCust = null; selBranch = null; editingOrderCode = null;
+                self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
+            } else {
+                RW_UI.toast(json.msg || 'فشل الحفظ', 'error');
+                editingOrderCode = oldOrderCode;
+            }
         });
-    };
+    }
+
+    if (isEdit) {
+        RW_API.call('delete-order', { order_code: oldOrderCode }, function(deleteJson) {
+            if (deleteJson.success) {
+                editingOrderCode = null;
+                doSave();
+            } else {
+                RW_UI.hideLoader();
+                RW_UI.toast('فشل حذف الأوردر القديم: ' + (deleteJson.msg || ''), 'error');
+            }
+        });
+    } else {
+        doSave();
+    }
+};
 
 self.renderCartTab = function() {
     var c = RW_UI.byId('mainContent');
     if (!c) return;
-    
+
+    var continueShoppingHTML = '<div class="mb-4 flex gap-2">' +
+        '<button onclick="App.continueShoppingToProducts()" class="flex-1 bg-blue-50 text-blue-700 py-3 rounded-xl font-bold text-sm border border-blue-200 hover:bg-blue-100 transition">' +
+        '<i class="fa-solid fa-box ml-2"></i>استكمال التسوق من المنتجات' +
+        '</button>' +
+        '<button onclick="App.openNewOrder()" class="flex-1 bg-blue-50 text-blue-700 py-3 rounded-xl font-bold text-sm border border-blue-200 hover:bg-blue-100 transition">' +
+        '<i class="fa-solid fa-cart-plus ml-2"></i>أوردر جديد' +
+        '</button>' +
+        '</div>';
+
     if (cart.length === 0) {
         var emptyH = '<div class="flex-1 flex flex-col items-center justify-center p-8 text-center">';
+        emptyH += continueShoppingHTML;
         emptyH += '<div class="text-6xl mb-4">🛒</div>';
         emptyH += '<h3 class="font-black text-xl text-slate-700 mb-2">السلة فارغة</h3>';
         emptyH += '<p class="text-slate-400 mb-6">أضف منتجات من تبويب "المنتجات" أو من "أوردر جديد"</p>';
@@ -891,9 +929,10 @@ self.renderCartTab = function() {
         RW_UI.safeHTML(c, emptyH);
         return;
     }
-    
+
     if (!selCust) {
         var noCustH = '<div class="flex-1 flex flex-col items-center justify-center p-8 text-center">';
+        noCustH += continueShoppingHTML;
         noCustH += '<div class="text-6xl mb-4">👤</div>';
         noCustH += '<h3 class="font-black text-xl text-slate-700 mb-2">لم تختر عميلاً بعد</h3>';
         noCustH += '<p class="text-slate-400 mb-6">يجب اختيار عميل لإتمام الأوردر</p>';
@@ -902,10 +941,12 @@ self.renderCartTab = function() {
         RW_UI.safeHTML(c, noCustH);
         return;
     }
-    
+
     var t = self.calcTotals();
     var h = '<div class="flex-1 overflow-y-auto p-4 no-scrollbar">';
-    
+
+    h += continueShoppingHTML;
+
     h += '<div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-2xl mb-4 border border-blue-100">';
     h += '<div class="flex justify-between items-center">';
     h += '<div>';
@@ -915,7 +956,7 @@ self.renderCartTab = function() {
     h += '</div>';
     h += '<button onclick="App.clearCustomer()" class="text-xs text-red-500 font-bold bg-white px-3 py-1.5 rounded-full shadow-sm border border-red-100">✕ تغيير</button>';
     h += '</div></div>';
-    
+
     h += '<h3 class="font-bold text-lg mb-3">📦 أصناف السلة</h3>';
     h += '<div class="space-y-2 mb-4">';
     for (var i = 0; i < cart.length; i++) {
@@ -928,7 +969,6 @@ self.renderCartTab = function() {
         h += '<div class="font-bold text-sm truncate">' + it.name + '</div>';
         h += '<div class="text-xs text-gray-400">' + fmtNum(it.price) + ' × ' + it.qty + ' = <span class="font-bold text-blue-600">' + fmtNum(lineTotal) + '</span></div>';
         h += '</div>';
-        // ✅ استخدام الدالة المساعدة _changeCartQty التي تستدعي renderCartTab تلقائياً بعد التحديث
         h += '<div class="flex items-center gap-1 flex-shrink-0">';
         h += '<button onclick="App._changeCartQty(\'' + it.code + '\', -1)" class="w-8 h-8 bg-red-100 text-red-600 rounded-full text-sm font-black">−</button>';
         h += '<span class="text-sm font-black w-6 text-center">' + it.qty + '</span>';
@@ -936,7 +976,7 @@ self.renderCartTab = function() {
         h += '</div></div>';
     }
     h += '</div>';
-    
+
     h += '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">';
     h += '<h3 class="font-bold text-lg mb-3">🧾 ملخص الفاتورة</h3>';
     h += '<div class="space-y-2 text-sm">';
@@ -947,16 +987,16 @@ self.renderCartTab = function() {
     h += '<hr class="my-2">';
     h += '<div class="flex justify-between text-lg"><span class="font-black">الإجمالي النهائي</span><span class="font-black text-emerald-600">' + fmtNum(t.total) + ' EGP</span></div>';
     h += '</div></div>';
-    
+
     if (selBranch) {
         h += '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="flex justify-between"><span class="text-gray-500">الفرع</span><span class="font-bold">' + selBranch + '</span></div></div>';
     }
-    
+
     h += '<div class="flex gap-3 mb-4">';
     h += '<button onclick="App.clearCartAndReset()" class="flex-1 bg-red-50 text-red-600 py-3.5 rounded-xl font-bold text-sm border border-red-200"><i class="fa-solid fa-trash ml-1"></i>مسح السلة</button>';
     h += '<button onclick="App.submitOrder()" class="flex-1 bg-emerald-600 text-white py-3.5 rounded-xl font-black text-sm shadow-lg"><i class="fa-solid fa-check ml-2"></i>حفظ الأوردر</button>';
     h += '</div>';
-    
+
     h += '</div>';
     RW_UI.safeHTML(c, h);
     self.updateCartTabBadge();
@@ -1115,19 +1155,19 @@ self._editOrderFromDetail = function(orderId) {
     supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
         var order = oRes.data;
         if (!order) { RW_UI.hideLoader(); RW_UI.toast('الأوردر غير موجود', 'error'); return; }
-        // ✅ التحقق من أن الأوردر قابل للتعديل
         if (order.order_status !== 'Draft' && order.order_status !== 'Confirmed') {
             RW_UI.hideLoader();
             RW_UI.toast('لا يمكن تعديل أوردر في حالة: ' + (order.order_status || ''), 'warning');
             return;
         }
+        // ✅ تعيين كود الأوردر الذي نعدله
+        editingOrderCode = order.order_code;
         supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
             RW_UI.hideLoader();
             var details = dRes.data || [];
             if (details.length === 0) { RW_UI.toast('الأوردر لا يحتوي على أصناف', 'warning'); return; }
-            // ✅ مسح السلة الحالية
+            // ✅ بناء السلة مباشرة (بدون addToCart غير المتزامنة)
             cart = [];
-            // ✅ إعادة بناء السلة من تفاصيل الأوردر
             for (var i = 0; i < details.length; i++) {
                 var det = details[i];
                 cart.push({
@@ -1138,34 +1178,49 @@ self._editOrderFromDetail = function(orderId) {
                     qty: Number(det.qty) || 1
                 });
             }
-            // ✅ تعيين العميل
+            // ✅ بناء selCust
+            selCust = {
+                customer_code: order.customer_id || '',
+                name: order.customer_name || 'عميل بدون اسم',
+                area: order.area || '',
+                phone: order.customer_phone || '',
+                payment_type: order.payment_type || 'أجل',
+                debt: 0, credit_limit: 0
+            };
+            // ✅ محاولة إثراء بيانات العميل من Dexie
             if (order.customer_id) {
                 db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
-                    if (c) {
-                        selCust = c;
-                        self._selectCustomerCore(c);
-                    }
-                });
-            }
-            // ✅ تعيين الفرع إن وُجد
-            if (order.branch_id) {
+                    if (c) { selCust = c; }
+                    self._finalizeEditCart();
+                }).catch(function() { self._finalizeEditCart(); });
+            } else { self._finalizeEditCart(); }
+        });
+    }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
+};
+
+// ✅ دالة مساعدة جديدة – تكمل عملية التعديل
+self._finalizeEditCart = function() {
+    if (editingOrderCode) {
+        supabase.from('orders').select('branch_id').eq('order_code', editingOrderCode).maybeSingle().then(function(oRes) {
+            if (oRes.data && oRes.data.branch_id) {
                 db.branches.toArray().then(function(branches) {
                     for (var b = 0; b < branches.length; b++) {
-                        if (branches[b].id === order.branch_id) {
+                        if (branches[b].id === oRes.data.branch_id) {
                             selBranch = branches[b].branch_code;
-                            var selEl = RW_UI.byId('branchSel');
-                            if (selEl) selEl.value = selBranch;
                             break;
                         }
                     }
-                });
-            }
-            // ✅ الانتقال إلى تبويب السلة
-            self.switchTab('cart');
-            self.updateCartTabBadge();
-            RW_UI.toast('تم تحميل الأوردر ' + (order.order_code || '') + ' للتعديل. يمكنك مراجعة السلة والحفظ.', 'success');
-        });
-    }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
+                    self._commitEdit();
+                }).catch(function() { self._commitEdit(); });
+            } else { self._commitEdit(); }
+        }).catch(function() { self._commitEdit(); });
+    } else { self._commitEdit(); }
+};
+
+self._commitEdit = function() {
+    self.switchTab('cart');
+    self.updateCartTabBadge();
+    RW_UI.toast('تم تحميل الأوردر ' + (editingOrderCode || '') + ' للتعديل. يمكنك مراجعة السلة والحفظ.', 'success');
 };
 
 self._deleteOrderFromDetail = function(orderCode) {
@@ -1257,6 +1312,22 @@ self.toggleMoreMenu = function() {
         dd.classList.add('hidden');
     }
 };
+
+self.continueShoppingToProducts = function() {
+    currentTab = 'products';
+    var btns = document.querySelectorAll('.tab-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.remove('text-blue-600');
+        btns[i].classList.add('text-gray-400');
+    }
+    var productsBtn = document.querySelector('[data-tab="products"]');
+    if (productsBtn) {
+        productsBtn.classList.remove('text-gray-400');
+        productsBtn.classList.add('text-blue-600');
+    }
+    self.renderProductsView();
+};
+
 
     return self;
 })();
