@@ -342,37 +342,73 @@ self.showProductDetail = function(code) {
     };
 
 self.checkout = function() {
-    var name = (RW_UI.byId('custName').value||'').trim();
-    var phone = (RW_UI.byId('custPhone').value||'').trim();
-    var area = (RW_UI.byId('custArea').value||'').trim();
-    if (!name || !phone || !area) { Swal.fire({icon:'warning',title:'أكمل بيانات العميل في السلة'}); return; }
-    if (!cart.length) { Swal.fire({icon:'warning',title:'السلة فارغة'}); return; }
-    saveCustomerData({name:name, phone:phone, area:area});
+    var name = (RW_UI.byId('custName').value || '').trim();
+    var phone = (RW_UI.byId('custPhone').value || '').trim();
+    var area = (RW_UI.byId('custArea').value || '').trim();
+
+    if (!name || !phone || !area) {
+        Swal.fire({ icon: 'warning', title: 'أكمل بيانات العميل في السلة' });
+        return;
+    }
+    if (!cart.length) {
+        Swal.fire({ icon: 'warning', title: 'السلة فارغة' });
+        return;
+    }
+
+    saveCustomerData({ name: name, phone: phone, area: area });
+
     var subtotal = 0;
     for (var i = 0; i < cart.length; i++) {
         var ip = cart[i].price;
-        if (cart[i].discountPercent > 0) ip = ip - (ip * cart[i].discountPercent / 100);
+        if (cart[i].discountPercent > 0) {
+            ip = ip - (ip * cart[i].discountPercent / 100);
+        }
         subtotal += ip * cart[i].qty;
     }
+
     var delivery = settings.deliveryFee || 0;
-    if ((settings.freeShippingThreshold||0) > 0 && subtotal >= (settings.freeShippingThreshold||0)) delivery = 0;
+    if ((settings.freeShippingThreshold || 0) > 0 && subtotal >= (settings.freeShippingThreshold || 0)) {
+        delivery = 0;
+    }
+
     var afterCoupon = subtotal - couponDiscount;
     if (afterCoupon < 0) afterCoupon = 0;
     var total = afterCoupon + delivery;
-    if ((settings.minInvoiceAmount||0) > 0 && total < (settings.minInvoiceAmount||0)) {
-        Swal.fire({icon:'warning', title:'الحد الأدنى: ' + (settings.minInvoiceAmount||0)});
+
+    if ((settings.minInvoiceAmount || 0) > 0 && total < (settings.minInvoiceAmount || 0)) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'الحد الأدنى للطلب: ' + formatCurrency(settings.minInvoiceAmount, settings.currency || 'SAR')
+        });
         return;
     }
+
     Swal.fire({
-        title:'تأكيد الطلب',
-        html:'<div class="text-right"><p>الإجمالي: <strong>' + formatCurrency(total, settings.currency||'SAR') + '</strong></p><p class="text-sm text-gray-500 mt-2">' + name + ' | ' + phone + ' | ' + area + '</p></div>',
-        showCancelButton:true,
-        confirmButtonText:'تأكيد',
-        cancelButtonText:'رجوع'
-    }).then(function(r) {
+        title: 'تأكيد الطلب',
+        html: '<div class="text-right">'
+            + '<p>الإجمالي: <strong>' + formatCurrency(total, settings.currency || 'SAR') + '</strong></p>'
+            + '<p class="text-sm text-gray-500 mt-2">' + name + ' | ' + phone + ' | ' + area + '</p>'
+            + '</div>',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد',
+        cancelButtonText: 'رجوع'
+    }).then(function (r) {
         if (r.isConfirmed) {
-            self.submitOrder({name:name, phone:phone, area:area, notes:(RW_UI.byId('custNotes').value||'').trim()}, total);
+            self.submitOrder({
+                name: name,
+                phone: phone,
+                area: area,
+                notes: (RW_UI.byId('custNotes').value || '').trim()
+            }, total);
         }
+    }).catch(function (err) {
+        console.error('❌ خطأ في checkout:', err);
+        RW_UI.hideLoader();
+        Swal.fire({
+            icon: 'error',
+            title: 'حدث خطأ غير متوقع',
+            text: err.message || 'يرجى المحاولة مرة أخرى'
+        });
     });
 };
     
@@ -394,26 +430,35 @@ self.submitOrder = function(customer, total) {
         user: customer,
         cartItems: itemsList,
         total: total,
-        delivery: settings.deliveryFee || 0
+        delivery: settings.deliveryFee || 0,
+        couponCode: couponCode,
+        couponDiscount: couponDiscount
     };
 
     RW_API.callPublic('submit-online-order', bodyPayload, function(json) {
         RW_UI.hideLoader();
-        if (json.success) {
-            Swal.fire({ icon: 'success', title: 'تم إرسال الطلب بنجاح!', confirmButtonText: 'حسناً' });
-            cart = [];
-            couponCode = '';
-            couponDiscount = 0;
-            var couponInput = document.getElementById('couponInput');
-            if (couponInput) couponInput.value = '';
-            var couponMsg = document.getElementById('couponMsg');
-            if (couponMsg) couponMsg.classList.add('hidden');
-            currentPage = 0;
-            self.loadPage();
-            self.updateCartBadge();
-            self.closeCart();
+        
+        if (json && json.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'تم إرسال الطلب بنجاح!',
+                text: 'رقم الطلب: ' + (json.orderCode || json.orderID || ''),
+                confirmButtonText: 'حسناً'
+            }).then(function() {
+                cart = [];
+                couponCode = '';
+                couponDiscount = 0;
+                currentPage = 0;
+                self.loadPage();
+                self.updateCartBadge();
+                self.closeCart();
+            });
         } else {
-            RW_UI.showError(json.msg || 'فشل إرسال الطلب');
+            Swal.fire({
+                icon: 'error',
+                title: 'فشل إرسال الطلب',
+                text: (json && json.msg) || 'حدث خطأ غير متوقع'
+            });
         }
     });
 };
