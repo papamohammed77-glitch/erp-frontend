@@ -5050,177 +5050,182 @@ async function render() {
             }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
         });
     }
-async function _confirmOrderFromDetails(code) {
-    var confirmResult = await Swal.fire({
+function _confirmOrderFromDetails(code) {
+    Swal.fire({
         title: 'تأكيد الأوردر',
         text: 'سيتم تحويل الأوردر ' + code + ' من مسودة إلى مؤكد. متابعة؟',
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'نعم، أكّد',
         cancelButtonText: 'إلغاء'
-    });
+    }).then(function(confirmResult) {
+        if (!confirmResult.isConfirmed) return;
 
-    if (!confirmResult.isConfirmed) return;
+        showLoader('جاري تأكيد الأوردر...');
 
-    showLoader('جاري تأكيد الأوردر...');
+        supabase.auth.getSession().then(function(sessionRes) {
+            var token = (sessionRes.data && sessionRes.data.session) ? sessionRes.data.session.access_token : null;
+            if (!token) {
+                hideLoader();
+                showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
+                return;
+            }
 
-    try {
-        var sessionRes = await supabase.auth.getSession();
-        var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
-
-        if (!token) {
+            return fetch(RW_SUPABASE_URL + '/functions/v1/confirm-order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({ order_code: code })
+            }).then(function(res) { return res.json(); });
+        }).then(function(json) {
             hideLoader();
-            showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
-            return;
-        }
+            if (json && json.success) {
+                // تحديث بيانات الأوردر في الذاكرة
+                var found = null;
+                if (typeof ordersData !== 'undefined' && ordersData) {
+                    for (var i = 0; i < ordersData.length; i++) {
+                        if (ordersData[i].order_code === code) {
+                            found = ordersData[i];
+                            break;
+                        }
+                    }
+                }
+                if (found) {
+                    var oldStatus = found.order_status;
+                    found.order_status = 'Confirmed';
+                    if (typeof RW_Audit_log === 'function') {
+                        RW_Audit_log('update', 'orders', code, { order_status: oldStatus }, { order_status: 'Confirmed' });
+                    }
+                }
 
-        var res = await fetch(RW_SUPABASE_URL + '/functions/v1/confirm-order', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token
-            },
-            body: JSON.stringify({ order_code: code })
+                showToast('تم تأكيد الأوردر بنجاح', 'success');
+
+                // تحديث الجدول
+                if (typeof _applyFilters === 'function') {
+                    _applyFilters();
+                }
+
+                // إعادة فتح مودال التفاصيل لعرض الحالة الجديدة
+                _showDetails(code);
+            } else {
+                showToast((json && json.msg) || 'فشل تأكيد الأوردر', 'error');
+            }
+        }).catch(function(e) {
+            hideLoader();
+            showToast('فشل الاتصال بـ Edge Function', 'error');
+            console.error(e);
         });
-
-        var json = await res.json();
-        hideLoader();
-
-        if (json.success) {
-            // تحديث بيانات الأوردر في الذاكرة
-            var found = ordersData.find(function(o) { return o.order_code === code; });
-            if (found) {
-                var oldStatus = found.order_status;
-                found.order_status = 'Confirmed';
-                RW_Audit_log('update', 'orders', code, { order_status: oldStatus }, { order_status: 'Confirmed' });
-            }
-
-            showToast('تم تأكيد الأوردر بنجاح', 'success');
-
-            // تحديث الجدول
-            if (typeof _applyFilters === 'function') {
-                _applyFilters();
-            }
-
-            // إعادة فتح مودال التفاصيل لعرض الحالة الجديدة
-            _showDetails(code);
-        } else {
-            showToast(json.msg || 'فشل تأكيد الأوردر', 'error');
-        }
-    } catch(e) {
-        hideLoader();
-        showToast('فشل الاتصال بـ Edge Function', 'error');
-        console.error(e);
-    }
+    });
 }
 	
     // ========== مودال التفاصيل ==========
-async function _showDetails(code) {
+function _showDetails(code) {
     showLoader('جاري تحميل التفاصيل...');
-    try {
-        var oRes = await supabase.from('orders').select('*').eq('order_code', code).maybeSingle();
+    supabase.from('orders').select('*').eq('order_code', code).maybeSingle().then(function(oRes) {
         var order = oRes.data;
         if (!order) { hideLoader(); showToast('الأوردر غير موجود', 'error'); return; }
 
-        var itemsRes = await supabase.from('order_details').select('*').eq('order_id', order.id);
-        var items = itemsRes.data || [];
-        hideLoader();
+        return supabase.from('order_details').select('*').eq('order_id', order.id).then(function(itemsRes) {
+            var items = itemsRes.data || [];
+            hideLoader();
 
-        var warningHtml = '';
-        if (order.runsheet_id) {
-            warningHtml = '<div class="bg-amber-50 border-r-4 border-amber-500 p-3 mb-4 rounded">' +
-                '<p class="text-amber-700 text-sm"><i class="fa-solid fa-link ml-2"></i> مرتبط بالرانشيت: <strong>' + esc(order.runsheet_id) + '</strong></p></div>';
-        }
-
-        var itemsHtml = '';
-        var itemsTotal = 0;
-        if (items.length > 0) {
-            itemsHtml = '<table class="w-full border text-sm"><thead class="bg-gray-100"><tr>' +
-                '<th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th>' +
-                '<th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-            for (var i = 0; i < items.length; i++) {
-                var it = items[i];
-                var lt = Number(it.line_amount) || (Number(it.qty) * Number(it.unit_price));
-                itemsTotal += lt;
-                itemsHtml += '<tr><td class="p-2 font-semibold">' + (it.item_name || '') + '</td>' +
-                    '<td class="p-2 text-center">' + (it.unit || 'حبة') + '</td>' +
-                    '<td class="p-2 text-center">' + it.qty + '</td>' +
-                    '<td class="p-2 text-center">' + Number(it.unit_price).toLocaleString() + '</td>' +
-                    '<td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
+            var warningHtml = '';
+            if (order.runsheet_id) {
+                warningHtml = '<div class="bg-amber-50 border-r-4 border-amber-500 p-3 mb-4 rounded">' +
+                    '<p class="text-amber-700 text-sm"><i class="fa-solid fa-link ml-2"></i> مرتبط بالرانشيت: <strong>' + esc(order.runsheet_id) + '</strong></p></div>';
             }
-            itemsHtml += '</tbody></table>';
-        } else {
-            itemsHtml = '<div class="text-center py-4 text-gray-500">لا توجد أصناف مسجلة لهذا الأوردر</div>';
-        }
 
-        var deliveryFee = Number(order.delivery_fee) || 0;
-        var grandTotal = itemsTotal + deliveryFee;
-
-        // ✅ بناء أزرار الإجراءات حسب حالة الأوردر
-        var actionButtons = '';
-
-        // 🆕 زر تأكيد الأوردر – يظهر فقط للحالات القابلة للتأكيد
-        if (order.order_status === 'Draft' && !order.runsheet_id) {
-            actionButtons += '<button id="btn-confirm-order-modal" class="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-check-circle ml-2"></i> تأكيد الأوردر</button>';
-        }
-
-        // زر حذف الأوردر – يظهر فقط للحالات التي يمكن حذفها
-        if (order.order_status === 'Draft' || order.order_status === 'Confirmed') {
-            actionButtons += '<button id="btn-delete-order-modal" class="bg-red-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-trash ml-2"></i> حذف الأوردر</button>';
-        }
-
-        // زر طباعة الفاتورة – يظهر دائماً
-        actionButtons += '<button id="btn-print-order-modal" class="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-print ml-2"></i> طباعة الفاتورة</button>';
-
-        var html = '<div class="text-right">' + warningHtml +
-            '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4">' +
-                '<div><p><b>العميل:</b> ' + esc(order.customer_name || '') + '</p><p><b>المنطقة:</b> ' + esc(order.area || '') + '</p></div>' +
-                '<div><p><b>الحالة:</b> <span class="font-bold">' + esc(order.order_status || '') + '</span></p><p><b>الرانشيت:</b> ' + (order.runsheet_id || '---') + '</p></div>' +
-            '</div>' +
-            '<div class="overflow-x-auto">' + itemsHtml + '</div>' +
-            '<div class="bg-gray-50 p-4 rounded-2xl mt-4">' +
-                '<div class="flex justify-between mb-2"><span>مجموع الأصناف:</span><span>' + Number(itemsTotal).toLocaleString() + ' EGP</span></div>' +
-                '<div class="flex justify-between mb-2"><span class="text-blue-600">رسوم التوصيل:</span><span class="text-blue-600">' + Number(deliveryFee).toLocaleString() + ' EGP</span></div>' +
-                '<div class="flex justify-between pt-2 border-t"><span class="font-bold">الإجمالي:</span><span class="font-bold text-emerald-600 text-lg">' + Number(grandTotal).toLocaleString() + ' EGP</span></div>' +
-            '</div>' +
-            '<div class="flex justify-center gap-3 mt-6 pt-4 border-t">' +
-                actionButtons +
-            '</div>' +
-        '</div>';
-
-        Swal.fire({
-            title: 'تفاصيل الأوردر: ' + code,
-            html: html,
-            width: '900px',
-            showCloseButton: true,
-            showConfirmButton: false,
-            showCancelButton: true,
-            cancelButtonText: 'إغلاق',
-            didOpen: function() {
-                // 🆕 زر تأكيد الأوردر
-                var confirmBtn = document.getElementById('btn-confirm-order-modal');
-                if (confirmBtn) {
-                    confirmBtn.onclick = function() {
-                        Swal.close();
-                        _confirmOrderFromDetails(code);
-                    };
+            var itemsHtml = '';
+            var itemsTotal = 0;
+            if (items.length > 0) {
+                itemsHtml = '<table class="w-full border text-sm"><thead class="bg-gray-100"><tr>' +
+                    '<th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th>' +
+                    '<th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
+                for (var i = 0; i < items.length; i++) {
+                    var it = items[i];
+                    var lt = Number(it.line_amount) || (Number(it.qty) * Number(it.unit_price));
+                    itemsTotal += lt;
+                    itemsHtml += '<tr><td class="p-2 font-semibold">' + (it.item_name || '') + '</td>' +
+                        '<td class="p-2 text-center">' + (it.unit || 'حبة') + '</td>' +
+                        '<td class="p-2 text-center">' + it.qty + '</td>' +
+                        '<td class="p-2 text-center">' + Number(it.unit_price).toLocaleString() + '</td>' +
+                        '<td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
                 }
-
-                // زر حذف الأوردر
-                var deleteBtn = document.getElementById('btn-delete-order-modal');
-                if (deleteBtn) {
-                    deleteBtn.onclick = function() { Swal.close(); _delete(code); };
-                }
-
-                // زر طباعة الفاتورة
-                var printBtn = document.getElementById('btn-print-order-modal');
-                if (printBtn) {
-                    printBtn.onclick = function() { _printOrder(code); };
-                }
+                itemsHtml += '</tbody></table>';
+            } else {
+                itemsHtml = '<div class="text-center py-4 text-gray-500">لا توجد أصناف مسجلة لهذا الأوردر</div>';
             }
+
+            var deliveryFee = Number(order.delivery_fee) || 0;
+            var grandTotal = itemsTotal + deliveryFee;
+
+            // بناء أزرار الإجراءات حسب حالة الأوردر
+            var actionButtons = '';
+
+            // زر تأكيد الأوردر – يظهر فقط للحالات القابلة للتأكيد
+            if (order.order_status === 'Draft' && !order.runsheet_id) {
+                actionButtons += '<button id="btn-confirm-order-modal" class="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-check-circle ml-2"></i> تأكيد الأوردر</button>';
+            }
+
+            // زر حذف الأوردر – يظهر للحالات التي يمكن حذفها (Draft دائماً، Confirmed فقط إذا لم تكن مرتبطة برانشيت)
+            if (order.order_status === 'Draft' || (order.order_status === 'Confirmed' && !order.runsheet_id)) {
+                actionButtons += '<button id="btn-delete-order-modal" class="bg-red-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-trash ml-2"></i> حذف الأوردر</button>';
+            }
+
+            // زر طباعة الفاتورة – يظهر دائماً
+            actionButtons += '<button id="btn-print-order-modal" class="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-print ml-2"></i> طباعة الفاتورة</button>';
+
+            var html = '<div class="text-right">' + warningHtml +
+                '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4">' +
+                    '<div><p><b>العميل:</b> ' + esc(order.customer_name || '') + '</p><p><b>المنطقة:</b> ' + esc(order.area || '') + '</p></div>' +
+                    '<div><p><b>الحالة:</b> <span class="font-bold">' + esc(order.order_status || '') + '</span></p><p><b>الرانشيت:</b> ' + (order.runsheet_id || '---') + '</p></div>' +
+                '</div>' +
+                '<div class="overflow-x-auto">' + itemsHtml + '</div>' +
+                '<div class="bg-gray-50 p-4 rounded-2xl mt-4">' +
+                    '<div class="flex justify-between mb-2"><span>مجموع الأصناف:</span><span>' + Number(itemsTotal).toLocaleString() + ' EGP</span></div>' +
+                    '<div class="flex justify-between mb-2"><span class="text-blue-600">رسوم التوصيل:</span><span class="text-blue-600">' + Number(deliveryFee).toLocaleString() + ' EGP</span></div>' +
+                    '<div class="flex justify-between pt-2 border-t"><span class="font-bold">الإجمالي:</span><span class="font-bold text-emerald-600 text-lg">' + Number(grandTotal).toLocaleString() + ' EGP</span></div>' +
+                '</div>' +
+                '<div class="flex justify-center gap-3 mt-6 pt-4 border-t">' +
+                    actionButtons +
+                '</div>' +
+            '</div>';
+
+            Swal.fire({
+                title: 'تفاصيل الأوردر: ' + code,
+                html: html,
+                width: '900px',
+                showCloseButton: true,
+                showConfirmButton: false,
+                showCancelButton: true,
+                cancelButtonText: 'إغلاق',
+                didOpen: function() {
+                    // زر تأكيد الأوردر
+                    var confirmBtn = document.getElementById('btn-confirm-order-modal');
+                    if (confirmBtn) {
+                        confirmBtn.onclick = function() {
+                            Swal.close();
+                            _confirmOrderFromDetails(code);
+                        };
+                    }
+
+                    // زر حذف الأوردر
+                    var deleteBtn = document.getElementById('btn-delete-order-modal');
+                    if (deleteBtn) {
+                        deleteBtn.onclick = function() { Swal.close(); _delete(code); };
+                    }
+
+                    // زر طباعة الفاتورة
+                    var printBtn = document.getElementById('btn-print-order-modal');
+                    if (printBtn) {
+                        printBtn.onclick = function() { _printOrder(code); };
+                    }
+                }
+            });
         });
-
-    } catch(e) { hideLoader(); showToast('فشل التحميل', 'error'); console.error(e); }
+    }).catch(function(e) { hideLoader(); showToast('فشل التحميل', 'error'); console.error(e); });
 }
     function _printOrder(code) {
         showLoader('جاري تحضير الطباعة...');
