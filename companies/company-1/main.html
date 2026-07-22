@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-22 04:00 UTC -->
+<!-- 2026-07-22 04:15 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -4822,33 +4822,33 @@ async function render() {
         '</div>' +
     '</div>');
 
-    showLoader('جاري تحميل الأوردرات...');
-    try {
-        var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
-        ordersData = ordRes.data || [];
-        var detRes = await supabase.from('order_details').select('order_id, item_code');
-        var details = detRes.data || [];
-        var itemsCountMap = {};
-        for (var i = 0; i < details.length; i++) {
-            var oid = details[i].order_id;
-            if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
-        }
-        for (var j = 0; j < ordersData.length; j++) {
-            // ✅ الإصلاح: استخدم id (UUID) بدلاً من order_code
-            ordersData[j].itemsCount = itemsCountMap[ordersData[j].id] || 0;
-        }
-        hideLoader();
-    } catch(e) {
-        hideLoader();
-        console.error(e);
+showLoader('جاري تحميل الأوردرات...');
+try {
+    var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
+    ordersData = ordRes.data || [];
+    var detRes = await supabase.from('order_details').select('order_id, item_code');
+    var details = detRes.data || [];
+    var itemsCountMap = {};
+    for (var i = 0; i < details.length; i++) {
+        var oid = details[i].order_id;
+        if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
     }
-    _loadRunsheetCodes();
-    clearInterval(window._ordersRefreshInterval);
-    window._ordersRefreshInterval = setInterval(function() {
-        if (RW_STATE.app.currentView === 'orders') {
-            RW_Orders._refreshData();
-        }
-    }, 30000);
+    for (var j = 0; j < ordersData.length; j++) {
+        // ✅ التصحيح الوحيد: استخدام ordersData[j].id بدلاً من ordersData[j].order_code
+        ordersData[j].itemsCount = itemsCountMap[ordersData[j].id] || 0;
+    }
+    hideLoader();
+} catch(e) {
+    hideLoader();
+    console.error(e);
+}
+_loadRunsheetCodes();
+clearInterval(window._ordersRefreshInterval);
+window._ordersRefreshInterval = setInterval(function() {
+    if (RW_STATE.app.currentView === 'orders') {
+        RW_Orders._refreshData();
+    }
+}, 30000);
 }
 
     // ========== الفلترة والفرز ==========
