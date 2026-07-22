@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-22 05:30 UTC -->
+<!-- 2026-07-22 06:30 UTC -->
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -38,6 +38,8 @@
         .btn-primary:active{transform:scale(0.97)}
         .btn-emerald{background:linear-gradient(135deg,#059669,#10b981);color:#fff;padding:0.875rem 1.5rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;width:100%;box-shadow:0 8px 20px rgba(5,150,105,0.25)}
         .btn-danger{background:linear-gradient(135deg,#dc2626,#ef4444);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(220,38,38,0.2)}
+        .btn-red{background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;padding:0.875rem 1.5rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;width:100%;box-shadow:0 8px 20px rgba(220,38,38,0.25)}
+        .btn-red:active{transform:scale(0.97)}
         .tab-btn{padding:0.7rem 0.5rem;font-weight:700;font-size:0.7rem;color:#94a3b8;cursor:pointer;background:transparent;border:none;transition:all 0.2s;display:flex;flex-direction:column;align-items:center;gap:2px}
         .tab-btn.active{color:#3b82f6}
         .slide-in{animation:slideIn 0.2s ease}
@@ -196,12 +198,12 @@
                     <span id="lblItemCount" class="font-mono text-white">0</span>
                 </div>
                 <div class="flex justify-between text-sm font-black text-white border-t border-slate-700 pt-2">
-                    <span>الإجمالي:</span>
+                    <span id="lblTotalLabel">الإجمالي:</span>
                     <span id="lblGrandTotal" class="font-mono text-emerald-400 text-lg">0.00</span>
                 </div>
 
-                <!-- أزرار الإجراءات -->
-                <div class="grid grid-cols-3 gap-1.5 pt-1">
+                <!-- ✅ أزرار الإجراءات – تتغير حسب وضع البيع/المرتجع -->
+                <div id="cartActionsNormal" class="grid grid-cols-3 gap-1.5 pt-1">
                     <button onclick="POS.holdInvoice()" class="bg-amber-900/30 text-amber-400 py-2 rounded-lg font-bold text-xs border border-amber-700/30 hover:bg-amber-900/50 transition">
                         ⏸️ تعليق (F3)
                     </button>
@@ -213,8 +215,17 @@
                     </button>
                 </div>
 
-                <!-- زر الدفع -->
-                <button onclick="POS.openPaymentModal()" class="btn-emerald mt-2"><i class="fa-solid fa-check ml-2"></i> إتمام الدفع وحفظ الفاتورة (Space)</button>
+                <div id="cartActionsReturn" class="hidden grid grid-cols-1 gap-1.5 pt-1">
+                    <button onclick="POS.clearReturnCart()" class="bg-red-900/30 text-red-400 py-2 rounded-lg font-bold text-xs border border-red-700/30 hover:bg-red-900/50 transition">
+                        🗑 إلغاء المرتجع
+                    </button>
+                </div>
+
+                <!-- زر الدفع (بيع) -->
+                <button id="btnPayNormal" onclick="POS.openPaymentModal()" class="btn-emerald mt-2"><i class="fa-solid fa-check ml-2"></i> إتمام الدفع وحفظ الفاتورة (Space)</button>
+
+                <!-- زر المرتجع (مرتجع) -->
+                <button id="btnPayReturn" onclick="POS.openReturnPaymentModal()" class="btn-red mt-2 hidden"><i class="fa-solid fa-undo ml-2"></i> إتمام المرتجع وإعادة المبلغ للعميل</button>
             </div>
         </aside>
     </main>
@@ -237,7 +248,7 @@
 </div>
 
 <!-- ============================================================ -->
-<!-- مودال الدفع -->
+<!-- مودال الدفع (بيع) -->
 <!-- ============================================================ -->
 <div id="paymentModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
@@ -284,14 +295,38 @@
 </div>
 
 <!-- ============================================================ -->
+<!-- مودال دفع المرتجع (منفصل) -->
+<!-- ============================================================ -->
+<div id="returnPaymentModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-red-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+        <div class="p-4 bg-red-900/50 border-b border-red-700 flex justify-between items-center">
+            <h3 class="font-black text-lg text-red-400">↩️ إتمام المرتجع</h3>
+            <button onclick="POS.closeReturnPaymentModal()" class="text-slate-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <div class="p-5 space-y-4">
+            <div class="bg-slate-800 p-4 rounded-xl text-center">
+                <p class="text-xs text-slate-400">المبلغ المستحق للعميل</p>
+                <p id="modalReturnTotal" class="text-3xl font-black text-red-400 font-mono mt-1">0.00</p>
+            </div>
+            <div class="bg-red-950/30 border border-red-700/50 p-3 rounded-xl text-center">
+                <p class="text-xs text-red-400">سيتم إعادة المخزون وإنشاء قيد عكسي تلقائياً</p>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="POS.finalizeReturn('cash')" class="py-3 rounded-xl border-2 border-red-500 bg-red-950/40 text-red-300 font-bold text-sm">💵 دفع نقدي للعميل</button>
+                <button onclick="POS.finalizeReturn('card')" class="py-3 rounded-xl border border-slate-600 bg-slate-800 text-slate-400 font-bold text-sm">💳 إعادة للبطاقة</button>
+            </div>
+        </div>
+        <div class="p-4 bg-slate-800 border-t border-slate-700 flex gap-2">
+            <button onclick="POS.closeReturnPaymentModal()" class="w-1/3 bg-slate-700 text-slate-300 py-3 rounded-xl font-bold hover:bg-slate-600 transition">رجوع</button>
+            <button onclick="POS.finalizeReturn('cash')" class="w-2/3 bg-red-600 hover:bg-red-500 text-white py-3 rounded-xl font-black text-base shadow-lg">تأكيد المرتجع ✅</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
 <!-- الكود التنفيذي -->
 <!-- ============================================================ -->
 <script>
-// ============================================================
-// تطبيق نقطة البيع – الإصدار الذهبي الماسي
-// مبني على core.js – مسترشد بـ telesales.html
-// ============================================================
-
 function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', {minimumFractionDigits: 2}); }
 
 var POS = (function() {
@@ -306,6 +341,10 @@ var POS = (function() {
     var activePaymentMethod = 'cash';
     var searchTimer = null;
     var _todayInterval = null;
+
+    // ✅ متغيرات المرتجع
+    var returnCart = [];
+    var returnOriginalInvoice = null;
 
     // ==================== المصادقة ====================
     self.togglePass = function() {
@@ -375,7 +414,7 @@ var POS = (function() {
     self.doLogout = function() {
         if (_todayInterval) clearInterval(_todayInterval);
         RW_Auth.doLogout(function() {
-            cart = []; selCust = null;
+            cart = []; returnCart = []; returnOriginalInvoice = null; selCust = null;
             RW_UI.byId('mainApp').classList.add('hidden');
             RW_UI.byId('loginScreen').classList.remove('hidden');
             RW_UI.byId('loginEmail').value = ''; RW_UI.byId('loginPass').value = '';
@@ -554,7 +593,7 @@ var POS = (function() {
         self._updateProductCardQty(code, inCart);
     };
 
-    // ==================== إدارة السلة ====================
+    // ==================== إدارة السلة (بيع) ====================
     self.addToCart = function(code) {
         db.items.get(code).then(function(it) {
             if (!it) return;
@@ -564,7 +603,7 @@ var POS = (function() {
                 if (mx > 0 && nq > mx) { RW_UI.toast('الحد الأقصى: ' + mx, 'warning'); return; }
                 if (nq > avail) { RW_UI.toast('المتاح: ' + avail, 'warning'); return; }
                 if (ex) ex.qty = nq;
-                else cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 });
+                else cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1, isReturn: false });
                 self._updateProductCardQty(code, nq);
                 self.updateCartUI();
                 if (navigator.vibrate) navigator.vibrate(30);
@@ -593,36 +632,29 @@ var POS = (function() {
         return { total: total, count: cart.length };
     };
 
-self.updateCartUI = function() {
-    var t = self.calcTotals();
-    RW_UI.safeText(RW_UI.byId('lblItemCount'), String(t.count));
-    
-    // ✅ إذا كان في وضع مرتجع، نغيّر العنوان
-    if (self._returnOriginalOrder) {
-        RW_UI.safeText(RW_UI.byId('lblGrandTotal'), fmtNum(t.total) + ' ' + currency + ' (مرتجع)');
-        var cartCust = RW_UI.byId('cartCustName');
-        if (cartCust) RW_UI.safeText(cartCust, '↩️ مرتجع فاتورة: ' + self._returnOriginalOrder.code);
-    } else {
+    self.updateCartUI = function() {
+        var t = self.calcTotals();
+        RW_UI.safeText(RW_UI.byId('lblItemCount'), String(t.count));
+        RW_UI.safeText(RW_UI.byId('lblTotalLabel'), 'الإجمالي:');
         RW_UI.safeText(RW_UI.byId('lblGrandTotal'), fmtNum(t.total) + ' ' + currency);
-    }
-    
-    var container = RW_UI.byId('cartItemsContainer');
-    if (!cart.length) { RW_UI.safeHTML(container, '<div class="text-center text-slate-500 py-8">السلة فارغة 🛒</div>'); return; }
-    
-    var h = '';
-    for (var i = 0; i < cart.length; i++) {
-        var it = cart[i], lt = it.price * it.qty;
-        // ✅ لون مختلف لأصناف المرتجع
-        var bgClass = it.isReturn ? 'border-l-4 border-red-500' : '';
-        h += '<div class="card-dark flex items-center justify-between gap-2 ' + bgClass + '">' +
-            '<div class="flex-1 min-w-0"><div class="font-bold text-xs text-white truncate">' + it.name + '</div>' +
-            '<div class="text-[10px] text-slate-400">' + fmtNum(it.price) + ' × ' + it.qty + ' = <span class="' + (it.isReturn ? 'text-red-400' : 'text-emerald-400') + ' font-bold">' + fmtNum(lt) + '</span></div></div>' +
-            '<div class="flex items-center gap-1"><button onclick="POS.decCart(\'' + it.code + '\')" class="qty-btn bg-slate-700 text-white text-xs w-6 h-6">-</button>' +
-            '<span class="text-xs font-black w-5 text-center">' + it.qty + '</span>' +
-            '<button onclick="POS.addToCart(\'' + it.code + '\')" class="qty-btn bg-blue-600 text-white text-xs w-6 h-6">+</button></div></div>';
-    }
-    RW_UI.safeHTML(container, h);
-};
+        RW_UI.byId('lblGrandTotal').className = 'font-mono text-emerald-400 text-lg';
+
+        var container = RW_UI.byId('cartItemsContainer');
+        if (!cart.length) { RW_UI.safeHTML(container, '<div class="text-center text-slate-500 py-8">السلة فارغة 🛒</div>'); return; }
+
+        var h = '';
+        for (var i = 0; i < cart.length; i++) {
+            var it = cart[i], lt = it.price * it.qty;
+            var bgClass = it.isReturn ? 'border-l-4 border-red-500' : '';
+            h += '<div class="card-dark flex items-center justify-between gap-2 ' + bgClass + '">' +
+                '<div class="flex-1 min-w-0"><div class="font-bold text-xs text-white truncate">' + it.name + '</div>' +
+                '<div class="text-[10px] text-slate-400">' + fmtNum(it.price) + ' × ' + it.qty + ' = <span class="' + (it.isReturn ? 'text-red-400' : 'text-emerald-400') + ' font-bold">' + fmtNum(lt) + '</span></div></div>' +
+                '<div class="flex items-center gap-1"><button onclick="POS.decCart(\'' + it.code + '\')" class="qty-btn bg-slate-700 text-white text-xs w-6 h-6">-</button>' +
+                '<span class="text-xs font-black w-5 text-center">' + it.qty + '</span>' +
+                '<button onclick="POS.addToCart(\'' + it.code + '\')" class="qty-btn bg-blue-600 text-white text-xs w-6 h-6">+</button></div></div>';
+        }
+        RW_UI.safeHTML(container, h);
+    };
 
     self.clearCart = function() {
         if (!cart.length) return;
@@ -654,7 +686,7 @@ self.updateCartUI = function() {
         RW_UI.toast('تم استئناف الفاتورة ▶️', 'success');
     };
 
-    // ==================== الدفع ====================
+    // ==================== الدفع (بيع) ====================
     self.openPaymentModal = function() {
         var t = self.calcTotals();
         if (!t.count) { RW_UI.toast('السلة فارغة', 'warning'); return; }
@@ -690,66 +722,201 @@ self.updateCartUI = function() {
         RW_UI.safeText(RW_UI.byId('splitRemaining'), rem.toFixed(2) + ' ' + currency);
     };
 
-self.finalizeCheckout = function() {
-    var t = self.calcTotals(); if (!t.count) return;
-    
-    // ✅ إذا كان في وضع مرتجع
-    if (self._returnOriginalOrder) {
-        self._processReturn(t);
-        return;
-    }
-    
-    // ... باقي كود الدفع العادي ...
-};
-
-self._processReturn = function(t) {
-    var items = [];
-    for (var i = 0; i < cart.length; i++) {
-        items.push({
-            item_code: cart[i].code,
-            item_name: cart[i].name,
-            qty_loaded: cart[i].qty,
-            qty_delivered: cart[i].qty,
-            unit_price: cart[i].price,
-            returnedQty: cart[i].qty,
-            return_condition: 'good',
-            reason: 'مرتجع من نقطة البيع'
+    self.finalizeCheckout = function() {
+        var t = self.calcTotals(); if (!t.count) return;
+        var custCode = selCust ? selCust.customer_code : '';
+        var custName = selCust ? selCust.name : 'عميل نقدي';
+        var custArea = selCust ? selCust.area || '' : '';
+        var custPayment = selCust ? selCust.payment_type || 'نقدي' : 'نقدي';
+        if (minAmt > 0 && t.total < minAmt) { RW_UI.toast('الحد الأدنى للفاتورة: ' + fmtNum(minAmt), 'warning'); return; }
+        var items = [];
+        for (var i = 0; i < cart.length; i++) items.push({ code: cart[i].code, name: cart[i].name, price: cart[i].price, qty: cart[i].qty, unit: cart[i].unit });
+        var hdr = { customer_code: custCode, custName: custName, area: custArea, total: t.total, deliveryFees: 0, status: 'Invoiced', paymentType: custPayment, taxAmount: 0, taxRate: 0 };
+        self.closePaymentModal();
+        RW_UI.showLoader();
+        RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch || 'MAIN' }, function(json) {
+            RW_UI.hideLoader();
+            if (json.success) {
+                RW_UI.toast('تم الحفظ: ' + (json.orderID || ''), 'success');
+                cart = []; selCust = null;
+                RW_UI.safeText(RW_UI.byId('cartCustName'), 'عميل نقدي (عام)');
+                RW_UI.safeHTML(RW_UI.byId('cartCustDetails'), '');
+                self.updateCartUI(); self.renderProducts();
+            } else {
+                RW_UI.showError(json.msg || 'فشل الحفظ');
+            }
         });
-    }
-    
-    self.closePaymentModal();
-    RW_UI.showLoader('جاري حفظ المرتجع...');
-    
-    RW_API.call('complete-return', {
-        runsheet_code: null,
-        order_code: self._returnOriginalOrder.code,
-        items: items,
-        is_pos_return: true  // ← علامة أن هذا مرتجع POS مباشر
-    }, function(json) {
-        RW_UI.hideLoader();
-        if (json.success) {
-            Swal.fire({
-                icon: 'success',
-                title: '✅ تم حفظ المرتجع',
-                html: '<div class="text-right text-white"><p>تم ترجيع <strong>' + items.length + ' صنف</strong>.</p><p>القيمة: <strong>' + fmtNum(t.total) + ' ' + currency + '</strong></p></div>',
-                confirmButtonText: 'حسناً',
-                customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-red-600 !rounded-xl' }
-            });
-            cart = []; selCust = null; self._returnOriginalOrder = null;
-            RW_UI.safeText(RW_UI.byId('cartCustName'), 'عميل نقدي (عام)');
-            RW_UI.safeHTML(RW_UI.byId('cartCustDetails'), '');
-            self.updateCartUI(); self.renderProducts();
-        } else {
-            RW_UI.showError(json.msg || 'فشل حفظ المرتجع');
-        }
-    });
-};
+    };
 
-    self._saveOffline = function(hdr, items) {
-        db.pending_updates.add({ type: 'invoice', status: 'pending', payload: { orderHeader: hdr, itemsList: items, branchCode: selBranch || 'MAIN' }, created_at: new Date().toISOString() }).then(function() {
-            RW_UI.toast('💾 تم حفظ الفاتورة محلياً، ستُرسل عند الاتصال', 'info');
-            cart = []; selCust = null; self.updateCartUI(); self.renderProducts();
-            self._updateSyncBadge();
+    // ==================== المرتجع ====================
+    self.renderReturnsView = function() {
+        var grid = RW_UI.byId('productsGrid');
+        RW_UI.safeHTML(grid, '<div class="col-span-full p-4 text-center"><div class="text-5xl mb-3">↩️</div><h3 class="text-lg font-black text-white mb-2">المرتجعات</h3><p class="text-slate-400 mb-4">ابحث عن الفاتورة لعمل مرتجع</p><input type="text" id="returnSearch" placeholder="🔍 أدخل رقم الفاتورة..." class="w-full bg-slate-800 border border-slate-600 text-white p-3 rounded-xl text-sm font-bold mb-2"><button onclick="POS._searchReturnInvoice()" class="btn-primary">بحث عن الفاتورة</button></div>');
+        RW_UI.safeHTML(RW_UI.byId('cartItemsContainer'), '<div class="text-center text-slate-500 py-8">المرتجعات – ابحث عن فاتورة أولاً</div>');
+    };
+
+    self._searchReturnInvoice = function() {
+        var code = RW_UI.byId('returnSearch') ? RW_UI.byId('returnSearch').value.trim() : '';
+        if (!code) { RW_UI.toast('أدخل رقم الفاتورة', 'warning'); return; }
+        RW_UI.showLoader('جاري تحميل الفاتورة...');
+        supabase.from('orders').select('*').eq('order_code', code).maybeSingle().then(function(oRes) {
+            var order = oRes.data;
+            if (!order) { RW_UI.hideLoader(); RW_UI.toast('الفاتورة غير موجودة', 'error'); return; }
+            if (order.order_status === 'Returned') { RW_UI.hideLoader(); RW_UI.toast('هذه الفاتورة سبق ترجيعها', 'warning'); return; }
+            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
+                RW_UI.hideLoader();
+                var details = dRes.data || [];
+                if (!details.length) { RW_UI.toast('الفاتورة لا تحتوي على أصناف', 'warning'); return; }
+                returnOriginalInvoice = { id: order.id, code: order.order_code };
+                returnCart = [];
+                for (var i = 0; i < details.length; i++) {
+                    var det = details[i];
+                    returnCart.push({
+                        code: det.item_code,
+                        name: det.item_name,
+                        price: Number(det.unit_price) || 0,
+                        unit: det.unit || 'حبة',
+                        maxReturn: Number(det.qty_delivered) || Number(det.qty) || 0,
+                        returnQty: Number(det.qty_delivered) || Number(det.qty) || 0
+                    });
+                }
+                self._fillCartFromReturn();
+                self.switchView('pos');
+                self._showReturnModeUI();
+                self.updateReturnCartUI();
+                RW_UI.toast('✅ تم تحميل الفاتورة ' + code + ' للمرتجع. عدّل الكميات ثم احفظ.', 'success');
+            });
+        }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
+    };
+
+    self._fillCartFromReturn = function() {
+        cart = [];
+        for (var i = 0; i < returnCart.length; i++) {
+            cart.push({
+                code: returnCart[i].code,
+                name: returnCart[i].name,
+                price: returnCart[i].price,
+                unit: returnCart[i].unit,
+                qty: returnCart[i].returnQty,
+                isReturn: true
+            });
+        }
+    };
+
+    self._showReturnModeUI = function() {
+        RW_UI.byId('lblTotalLabel').innerText = 'قيمة المرتجع:';
+        RW_UI.byId('lblGrandTotal').className = 'font-mono text-red-400 text-lg';
+        RW_UI.safeText(RW_UI.byId('cartCustName'), '↩️ مرتجع فاتورة: ' + returnOriginalInvoice.code);
+        RW_UI.byId('cartActionsNormal').classList.add('hidden');
+        RW_UI.byId('cartActionsReturn').classList.remove('hidden');
+        RW_UI.byId('btnPayNormal').classList.add('hidden');
+        RW_UI.byId('btnPayReturn').classList.remove('hidden');
+    };
+
+    self._hideReturnModeUI = function() {
+        RW_UI.byId('lblTotalLabel').innerText = 'الإجمالي:';
+        RW_UI.byId('lblGrandTotal').className = 'font-mono text-emerald-400 text-lg';
+        RW_UI.safeText(RW_UI.byId('cartCustName'), 'عميل نقدي (عام)');
+        RW_UI.byId('cartActionsNormal').classList.remove('hidden');
+        RW_UI.byId('cartActionsReturn').classList.add('hidden');
+        RW_UI.byId('btnPayNormal').classList.remove('hidden');
+        RW_UI.byId('btnPayReturn').classList.add('hidden');
+    };
+
+    self.updateReturnCartUI = function() {
+        var totalReturn = 0;
+        for (var i = 0; i < returnCart.length; i++) totalReturn += returnCart[i].price * returnCart[i].returnQty;
+        RW_UI.safeText(RW_UI.byId('lblItemCount'), returnCart.length + ' أصناف');
+        RW_UI.safeText(RW_UI.byId('lblGrandTotal'), fmtNum(totalReturn) + ' ' + currency);
+        // تزامن cart مع returnCart
+        for (var j = 0; j < cart.length; j++) {
+            for (var k = 0; k < returnCart.length; k++) {
+                if (cart[j].code === returnCart[k].code) {
+                    cart[j].qty = returnCart[k].returnQty;
+                    if (cart[j].qty <= 0) { cart.splice(j, 1); j--; }
+                    break;
+                }
+            }
+        }
+        self.updateCartUI();
+    };
+
+    self._incReturnQty = function(idx) {
+        if (returnCart[idx].returnQty < returnCart[idx].maxReturn) {
+            returnCart[idx].returnQty++;
+            self.updateReturnCartUI();
+        } else {
+            RW_UI.toast('لا يمكن تجاوز الكمية الأصلية (' + returnCart[idx].maxReturn + ')', 'warning');
+        }
+    };
+
+    self._decReturnQty = function(idx) {
+        if (returnCart[idx].returnQty > 0) {
+            returnCart[idx].returnQty--;
+            if (returnCart[idx].returnQty === 0) returnCart.splice(idx, 1);
+            self.updateReturnCartUI();
+        }
+    };
+
+    self.clearReturnCart = function() {
+        RW_UI.showConfirm('إلغاء المرتجع؟', function() {
+            returnCart = []; returnOriginalInvoice = null; cart = []; selCust = null;
+            self._hideReturnModeUI();
+            self.updateCartUI();
+            self.renderProducts();
+            self.switchView('pos');
+        });
+    };
+
+    self.openReturnPaymentModal = function() {
+        var totalReturn = 0;
+        for (var i = 0; i < returnCart.length; i++) totalReturn += returnCart[i].price * returnCart[i].returnQty;
+        if (totalReturn <= 0) { RW_UI.toast('لا توجد أصناف للإرجاع', 'warning'); return; }
+        RW_UI.safeText(RW_UI.byId('modalReturnTotal'), fmtNum(totalReturn) + ' ' + currency);
+        RW_UI.byId('returnPaymentModal').classList.remove('hidden');
+    };
+
+    self.closeReturnPaymentModal = function() { RW_UI.byId('returnPaymentModal').classList.add('hidden'); };
+
+    self.finalizeReturn = function(method) {
+        var totalReturn = 0;
+        var items = [];
+        for (var i = 0; i < returnCart.length; i++) {
+            totalReturn += returnCart[i].price * returnCart[i].returnQty;
+            items.push({
+                item_code: returnCart[i].code,
+                item_name: returnCart[i].name,
+                qty_loaded: returnCart[i].returnQty,
+                qty_delivered: returnCart[i].returnQty,
+                unit_price: returnCart[i].price,
+                returnedQty: returnCart[i].returnQty,
+                return_condition: 'good',
+                reason: 'مرتجع من نقطة البيع'
+            });
+        }
+        self.closeReturnPaymentModal();
+        RW_UI.showLoader('جاري حفظ المرتجع...');
+        RW_API.call('complete-return', {
+            runsheet_code: null,
+            order_code: returnOriginalInvoice ? returnOriginalInvoice.code : null,
+            items: items,
+            is_pos_return: true
+        }, function(json) {
+            RW_UI.hideLoader();
+            if (json.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: '✅ تم حفظ المرتجع',
+                    html: '<div class="text-right text-white"><p>تم ترجيع <strong>' + items.length + ' صنف</strong>.</p><p>القيمة: <strong>' + fmtNum(totalReturn) + ' ' + currency + '</strong></p></div>',
+                    confirmButtonText: 'حسناً',
+                    customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-red-600 !rounded-xl' }
+                });
+                returnCart = []; returnOriginalInvoice = null; cart = []; selCust = null;
+                self._hideReturnModeUI();
+                self.updateCartUI(); self.renderProducts(); self.switchView('pos');
+            } else {
+                RW_UI.showError(json.msg || 'فشل حفظ المرتجع');
+            }
         });
     };
 
@@ -801,60 +968,6 @@ self._processReturn = function(t) {
         RW_UI.safeHTML(RW_UI.byId('cartItemsContainer'), '<div class="text-center text-slate-500 py-8">فواتير اليوم</div>');
     };
 
-    self.renderReturnsView = function() {
-        var grid = RW_UI.byId('productsGrid');
-        RW_UI.safeHTML(grid, '<div class="col-span-full p-4 text-center"><div class="text-5xl mb-3">↩️</div><h3 class="text-lg font-black text-white mb-2">المرتجعات</h3><p class="text-slate-400 mb-4">ابحث عن الفاتورة لعمل مرتجع</p><input type="text" id="returnSearch" placeholder="🔍 أدخل رقم الفاتورة..." class="w-full bg-slate-800 border border-slate-600 text-white p-3 rounded-xl text-sm font-bold mb-2"><button onclick="POS._searchReturnInvoice()" class="btn-primary">بحث عن الفاتورة</button></div>');
-        RW_UI.safeHTML(RW_UI.byId('cartItemsContainer'), '<div class="text-center text-slate-500 py-8">المرتجعات</div>');
-    };
-
-self._searchReturnInvoice = function() {
-    var code = RW_UI.byId('returnSearch') ? RW_UI.byId('returnSearch').value.trim() : '';
-    if (!code) { RW_UI.toast('أدخل رقم الفاتورة', 'warning'); return; }
-    RW_UI.showLoader('جاري تحميل الفاتورة...');
-    
-    supabase.from('orders').select('*').eq('order_code', code).maybeSingle().then(function(oRes) {
-        var order = oRes.data;
-        if (!order) { RW_UI.hideLoader(); RW_UI.toast('الفاتورة غير موجودة', 'error'); return; }
-        if (order.order_status === 'Returned') { RW_UI.hideLoader(); RW_UI.toast('هذه الفاتورة سبق ترجيعها', 'warning'); return; }
-        
-        supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
-            RW_UI.hideLoader();
-            var details = dRes.data || [];
-            if (!details.length) { RW_UI.toast('الفاتورة لا تحتوي على أصناف', 'warning'); return; }
-            
-            // ✅ تعبئة السلة بأصناف الفاتورة الأصلية
-            cart = [];
-            for (var i = 0; i < details.length; i++) {
-                var det = details[i];
-                cart.push({
-                    code: det.item_code,
-                    name: det.item_name,
-                    price: Number(det.unit_price) || 0,
-                    unit: det.unit || 'حبة',
-                    qty: Number(det.qty_delivered) || Number(det.qty) || 0,
-                    isReturn: true  // ← علامة أن هذا الصنف في وضع مرتجع
-                });
-            }
-            
-            // ✅ تعبئة بيانات العميل من الفاتورة
-            if (order.customer_id) {
-                db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
-                    if (c) { selCust = c; self._updateCartCustomerInfo(); }
-                });
-            }
-            
-            // ✅ تخزين رقم الفاتورة الأصلية للاستخدام عند الحفظ
-            self._returnOriginalOrder = { id: order.id, code: order.order_code };
-            
-            // ✅ العودة إلى شاشة البيع مع السلة المعبأة
-            self.switchView('pos');
-            self.updateCartUI();
-            self.renderProducts();
-            RW_UI.toast('✅ تم تحميل الفاتورة ' + code + ' للمرتجع. عدّل الكميات ثم احفظ.', 'success');
-        });
-    }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
-};
-    
     // ==================== تصنيفات + بيع سريع ====================
     self.loadCategories = function() {
         db.items.toArray().then(function(items) {
@@ -924,7 +1037,6 @@ self._searchReturnInvoice = function() {
                                     var code = barcodes[0].rawValue;
                                     stream.getTracks().forEach(function(t) { t.stop(); });
                                     Swal.close();
-                                    // ✅ ينتقل تلقائياً إلى الفاتورة
                                     self._handleBarcode(code);
                                 } else requestAnimationFrame(scanLoop);
                             }).catch(function() { requestAnimationFrame(scanLoop); });
@@ -940,7 +1052,6 @@ self._searchReturnInvoice = function() {
     self._handleBarcode = function(code) {
         db.items.filter(function(i) { return i.barcode === code || i.item_code === code; }).first().then(function(item) {
             if (item) {
-                // ✅ يضيف للسلة تلقائياً – ينتقل مباشرة للفاتورة
                 self.addToCart(item.item_code);
                 RW_UI.toast('✅ ' + (item.name || code), 'success');
             } else {
@@ -964,9 +1075,6 @@ self._searchReturnInvoice = function() {
     return self;
 })();
 
-// ============================================================
-// بدء التشغيل
-// ============================================================
 RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded', function() { POS.init(); });
 </script>
