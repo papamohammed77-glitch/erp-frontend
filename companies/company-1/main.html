@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-22 04:15 UTC -->
+<!-- 2026-07-22 04:20 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -5437,29 +5437,29 @@ function _loadRunsheetCodes() {
     });
 }
 
-    async function _refreshData() {
-        var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
-        ordersData = (ordRes.data || []).map(function(o) {
-            if (o.runsheets && o.runsheets.runsheet_code) {
-                o._runsheetCode = o.runsheets.runsheet_code;
-            } else {
-                o._runsheetCode = null;
-            }
-            return o;
-        });
-        var detRes = await supabase.from('order_details').select('order_id, item_code');
-        var details = detRes.data || [];
-        var itemsCountMap = {};
-        for (var i = 0; i < details.length; i++) {
-            var oid = details[i].order_id;
-            if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
+async function _refreshData() {
+    var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)');
+    ordersData = (ordRes.data || []).map(function(o) {
+        if (o.runsheets && o.runsheets.runsheet_code) {
+            o._runsheetCode = o.runsheets.runsheet_code;
+        } else {
+            o._runsheetCode = null;
         }
-        for (var j = 0; j < ordersData.length; j++) {
-            ordersData[j].itemsCount = itemsCountMap[ordersData[j].order_code] || 0;
-        }
-        _applyFilters();
+        return o;
+    });
+    var detRes = await supabase.from('order_details').select('order_id, item_code');
+    var details = detRes.data || [];
+    var itemsCountMap = {};
+    for (var i = 0; i < details.length; i++) {
+        var oid = details[i].order_id;
+        if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
     }
-
+    for (var j = 0; j < ordersData.length; j++) {
+        // ✅ التصحيح الوحيد: استخدام ordersData[j].id بدلاً من ordersData[j].order_code
+        ordersData[j].itemsCount = itemsCountMap[ordersData[j].id] || 0;
+    }
+    _applyFilters();
+}
     return {
         render: render,
         _applyFilters: _applyFilters,
