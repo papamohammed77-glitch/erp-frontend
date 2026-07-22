@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-07-22 03:31 UTC -->
+<!-- 2026-07-22 04:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -5053,7 +5053,7 @@ async function render() {
 function _confirmOrderFromDetails(code) {
     Swal.fire({
         title: 'تأكيد الأوردر',
-        text: 'سيتم تحويل الأوردر ' + code + ' من مسودة إلى مؤكد. متابعة؟',
+        text: 'سيتم تحويل الأوردر ' + code + ' إلى مؤكد. متابعة؟',
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: 'نعم، أكّد',
@@ -5064,7 +5064,10 @@ function _confirmOrderFromDetails(code) {
         showLoader('جاري تأكيد الأوردر...');
 
         supabase.auth.getSession().then(function(sessionRes) {
-            var token = (sessionRes.data && sessionRes.data.session) ? sessionRes.data.session.access_token : null;
+            var token = null;
+            if (sessionRes && sessionRes.data && sessionRes.data.session) {
+                token = sessionRes.data.session.access_token;
+            }
             if (!token) {
                 hideLoader();
                 showToast('انتهت الجلسة. يرجى إعادة تسجيل الدخول.', 'error');
@@ -5082,7 +5085,7 @@ function _confirmOrderFromDetails(code) {
         }).then(function(json) {
             hideLoader();
             if (json && json.success) {
-                // تحديث بيانات الأوردر في الذاكرة
+                // ✅ تحديث بيانات الأوردر في الذاكرة
                 var found = null;
                 if (typeof ordersData !== 'undefined' && ordersData) {
                     for (var i = 0; i < ordersData.length; i++) {
@@ -5095,6 +5098,12 @@ function _confirmOrderFromDetails(code) {
                 if (found) {
                     var oldStatus = found.order_status;
                     found.order_status = 'Confirmed';
+                    // ✅ إعادة حساب itemsCount لهذا الأوردر
+                    supabase.from('order_details').select('id', { count: 'exact', head: true }).eq('order_id', found.id).then(function(countRes) {
+                        if (countRes && countRes.count !== undefined) {
+                            found.itemsCount = countRes.count;
+                        }
+                    });
                     if (typeof RW_Audit_log === 'function') {
                         RW_Audit_log('update', 'orders', code, { order_status: oldStatus }, { order_status: 'Confirmed' });
                     }
@@ -5102,12 +5111,10 @@ function _confirmOrderFromDetails(code) {
 
                 showToast('تم تأكيد الأوردر بنجاح', 'success');
 
-                // تحديث الجدول
                 if (typeof _applyFilters === 'function') {
                     _applyFilters();
                 }
 
-                // إعادة فتح مودال التفاصيل لعرض الحالة الجديدة
                 _showDetails(code);
             } else {
                 showToast((json && json.msg) || 'فشل تأكيد الأوردر', 'error');
