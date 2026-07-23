@@ -681,51 +681,53 @@ var POS = (function() {
 
     self.closeReturnPaymentModal = function() { RW_UI.byId('returnPaymentModal').classList.add('hidden'); };
 
-    self._finalizeReturn = function(method) {
-        self.closeReturnPaymentModal();
-        var totalReturn = _returnTotal;
-        var items = [];
-        for (var i = 0; i < returnCart.length; i++) {
-            var it = returnCart[i];
-            if (it.returnQty > 0) {
-                items.push({
-                    item_code: it.code,
-                    item_name: it.name,
-                    unit_price: it.price, // ✅ سعر الفاتورة الأصلية
-                    returnedQty: it.returnQty,
-                    return_condition: 'good',
-                    reason: 'مرتجع من نقطة البيع'
-                });
-            }
+self._finalizeReturn = function(method) {
+    self.closeReturnPaymentModal();
+    var totalReturn = _returnTotal;
+    var items = [];
+    for (var i = 0; i < returnCart.length; i++) {
+        var it = returnCart[i];
+        if (it.returnQty > 0) {
+            items.push({
+                item_code: it.code,
+                item_name: it.name,
+                unit_price: it.price,
+                returnedQty: it.returnQty,
+                return_condition: 'good',
+                reason: 'مرتجع من نقطة البيع'
+            });
         }
-        if (!items.length) { RW_UI.toast('لا توجد أصناف في سلة المرتجع', 'warning'); return; }
+    }
+    if (!items.length) { RW_UI.toast('لا توجد أصناف في سلة المرتجع', 'warning'); return; }
 
-        RW_UI.showLoader('جاري حفظ المرتجع...');
-        RW_API.call('complete-return', {
-            runsheet_code: null,
-            order_code: returnOriginalInvoice ? returnOriginalInvoice.order_code : null,
-            items: items,
-            is_pos_return: true
-        }, function(json) {
-            RW_UI.hideLoader();
-            if (json.success) {
-                Swal.fire({
-                    icon: 'success',
-                    title: '✅ تم حفظ المرتجع',
-                    html: '<div class="text-right text-white"><p>تم ترجيع <strong>' + items.length + ' صنف</strong>.</p><p>القيمة: <strong>' + fmtNum(totalReturn) + ' ' + currency + '</strong></p><p class="text-xs text-slate-400 mt-2">طريقة الإعادة: ' + (method === 'cash' ? '💵 نقداً' : '💳 بطاقة') + '</p></div>',
-                    confirmButtonText: 'حسناً',
-                    customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-red-600 !rounded-xl' }
-                });
-                returnCart = []; returnOriginalInvoice = null; _returnTotal = 0;
-                self.renderProducts();
-                self.switchView('pos');
-            } else {
-                var errMsg = json.msg || json.error || 'فشل حفظ المرتجع';
-                RW_UI.showError(errMsg);
-            }
-        });
-    };
-
+    RW_UI.showLoader('جاري حفظ المرتجع...');
+    RW_API.call('complete-return', {
+        runsheet_code: null,
+        order_code: returnOriginalInvoice ? returnOriginalInvoice.order_code : null,
+        items: items,
+        is_pos_return: true
+    }, function(json) {
+        RW_UI.hideLoader();
+        if (json.success) {
+            // ✅ P0: عرض حالة الأوردر الجديدة
+            var newStatus = json.new_order_status || 'Returned';
+            var statusLabel = newStatus === 'Returned' ? '✅ تم الترجيع كاملاً' : '⚠️ تم الترجيع جزئياً';
+            Swal.fire({
+                icon: newStatus === 'Returned' ? 'success' : 'warning',
+                title: statusLabel,
+                html: '<div class="text-right text-white"><p>تم ترجيع <strong>' + items.length + ' صنف</strong>.</p><p>القيمة: <strong>' + fmtNum(totalReturn) + ' ' + currency + '</strong></p><p class="text-xs text-slate-400 mt-2">حالة الفاتورة: <strong>' + newStatus + '</strong></p><p class="text-xs text-slate-400">طريقة الإعادة: ' + (method === 'cash' ? '💵 نقداً' : '💳 بطاقة') + '</p></div>',
+                confirmButtonText: 'حسناً',
+                customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: newStatus === 'Returned' ? '!bg-emerald-600 !rounded-xl' : '!bg-amber-600 !rounded-xl' }
+            });
+            returnCart = []; returnOriginalInvoice = null; _returnTotal = 0;
+            self.renderProducts();
+            self.switchView('pos');
+        } else {
+            var errMsg = json.msg || json.error || 'فشل حفظ المرتجع';
+            RW_UI.showError(errMsg);
+        }
+    });
+};
     self._cancelReturnScreen = function() {
         RW_UI.showConfirm('إلغاء المرتجع والعودة لشاشة البيع؟', function() {
             returnCart = []; returnOriginalInvoice = null; _returnTotal = 0;
