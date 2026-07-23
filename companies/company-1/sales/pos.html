@@ -58,7 +58,7 @@
         <h2 class="text-lg font-bold text-slate-300 text-center mb-4">تسجيل الدخول إلى حسابك</h2>
         <div class="space-y-3">
             <div><label class="block text-xs font-bold text-slate-400 mb-1">البريد الإلكتروني <span class="text-red-500">*</span></label><input id="loginEmail" type="email" placeholder="example@domain.com" class="input-field w-full p-3 bg-slate-800 rounded-xl border-2 border-slate-600 focus:border-blue-500 focus:bg-slate-700 outline-none font-bold text-sm text-white transition-all"></div>
-            <div><label class="block text-xs font-bold text-slate-400 mb-1">كلمة السر <span class="text-red-500">*</span></label><div class="relative"><input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-slate-800 rounded-xl border-2 border-slate-600 focus:border-blue-500 focus:bg-slate-700 outline-none font-bold text-sm text-white transition-all pr-12"><button type="button" onclick="POS.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-white"><i id="passIcon" class="fa-solid fa-eye"></i></button></div></div>
+            <div><label class="block text-xs font-bold text-slate-400 mb-1">كلمة السر <span class="text-red-500">*</span></label><div class="relative"><input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-slate-800 rounded-xl border-2 border-slate-600 focus:border-blue-500 focus:bg-slate-700 outline-none font-bold text-sm text-white transition-all pr-12"><button type="button" onclick="var p=document.getElementById('loginPass');var i=document.getElementById('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-white"><i id="passIcon" class="fa-solid fa-eye"></i></button></div></div>
             <div class="flex justify-between items-center text-sm"><label class="flex items-center gap-1 cursor-pointer"><input type="checkbox" id="rememberMe" class="accent-blue-600 w-4 h-4"><span class="text-xs text-slate-400 font-bold">تذكرني</span></label><button onclick="POS.forgotPassword()" class="text-blue-400 font-bold text-xs hover:underline">نسيت كلمة المرور؟</button></div>
         </div>
         <button onclick="POS.doLogin()" class="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-4 rounded-2xl font-bold text-base shadow-lg mt-6">تسجيل الدخول</button>
@@ -782,12 +782,18 @@ var POS = (function() {
         RW_UI.safeHTML(grid, '<div class="col-span-full p-4"><h3 class="text-lg font-black text-white mb-4">📄 فواتير اليوم</h3><div id="invoicesTodayList" class="space-y-2"><div class="text-center text-slate-400 py-4">جاري التحميل...</div></div></div>');
         supabase.from('orders').select('*').eq('created_by', currentUser.email).eq('order_date', today).order('order_date', { ascending: false }).then(function(r) {
             var invs = r.data || [], h = '';
-            if (!invs.length) h = '<div class="text-center py-8 text-slate-400">لا توجد فواتير اليوم</div>';
-            else {
+            if (!invs.length) {
+                h = '<div class="text-center py-8 text-slate-400">لا توجد فواتير اليوم</div>';
+            } else {
                 var total = 0;
                 for (var i = 0; i < invs.length; i++) { 
                     total += Number(invs[i].total_amount) || 0; 
-                    h += '<div class="card-dark flex justify-between items-center"><div class="flex-1"><span class="font-black text-white text-sm">' + (invs[i].order_code || '') + '</span><p class="text-xs text-slate-400">' + (invs[i].customer_name || '') + '</p></div><div class="flex items-center gap-2"><span class="font-black text-emerald-400 text-sm">' + fmtNum(Number(invs[i].total_amount) || 0) + '</span><button onclick="event.stopPropagation();POS._deleteOrder(\'' + (invs[i].order_code || '') + '\')" class="text-red-400 hover:text-red-300 p-1" title="حذف الأوردر"><i class="fa-solid fa-trash-can text-xs"></i></button></div></div>';<p class="text-xs text-slate-400">' + (invs[i].customer_name || '') + '</p></div><span class="font-black text-emerald-400">' + fmtNum(Number(invs[i].total_amount) || 0) + '</span></div>'; 
+                    h += '<div class="card-dark flex justify-between items-center">';
+                    h += '<div class="flex-1"><span class="font-black text-white text-sm">' + (invs[i].order_code || '') + '</span><p class="text-xs text-slate-400">' + (invs[i].customer_name || '') + '</p></div>';
+                    h += '<div class="flex items-center gap-2">';
+                    h += '<span class="font-black text-emerald-400 text-sm">' + fmtNum(Number(invs[i].total_amount) || 0) + '</span>';
+                    h += '<button onclick="event.stopPropagation();POS._deleteOrder(\'' + (invs[i].order_code || '') + '\')" class="text-red-400 hover:text-red-300 p-1" title="حذف الأوردر"><i class="fa-solid fa-trash-can text-xs"></i></button>';
+                    h += '</div></div>';
                 }
                 h = '<div class="bg-emerald-900/30 p-3 rounded-xl mb-3 text-center"><span class="text-emerald-400 font-bold">' + invs.length + ' فاتورة | الإجمالي: ' + fmtNum(total) + ' ' + currency + '</span></div>' + h;
             }
