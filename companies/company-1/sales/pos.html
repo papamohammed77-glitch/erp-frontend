@@ -709,22 +709,19 @@ self._finalizeReturn = function(method) {
     }, function(json) {
         RW_UI.hideLoader();
         if (json.success) {
-            // ✅ P0: عرض حالة الأوردر الجديدة
             var newStatus = json.new_order_status || 'Returned';
-            var statusLabel = newStatus === 'Returned' ? '✅ تم الترجيع كاملاً' : '⚠️ تم الترجيع جزئياً';
+            var isPartial = newStatus === 'Partially Returned';
             Swal.fire({
-                icon: newStatus === 'Returned' ? 'success' : 'warning',
-                title: statusLabel,
-                html: '<div class="text-right text-white"><p>تم ترجيع <strong>' + items.length + ' صنف</strong>.</p><p>القيمة: <strong>' + fmtNum(totalReturn) + ' ' + currency + '</strong></p><p class="text-xs text-slate-400 mt-2">حالة الفاتورة: <strong>' + newStatus + '</strong></p><p class="text-xs text-slate-400">طريقة الإعادة: ' + (method === 'cash' ? '💵 نقداً' : '💳 بطاقة') + '</p></div>',
+                icon: isPartial ? 'warning' : 'success',
+                title: isPartial ? '⚠️ تم الترجيع جزئياً' : '✅ تم الترجيع كاملاً',
+                html: '<div class="text-right text-white text-sm"><p>تم ترجيع <strong>' + items.length + ' صنف</strong>.</p><p>القيمة: <strong>' + fmtNum(totalReturn) + ' ' + currency + '</strong></p><p class="text-xs text-slate-400 mt-2">حالة الفاتورة: <strong>' + newStatus + '</strong></p><p class="text-xs text-slate-400">طريقة الإعادة: ' + (method === 'cash' ? '💵 نقداً' : '💳 بطاقة') + '</p></div>',
                 confirmButtonText: 'حسناً',
-                customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: newStatus === 'Returned' ? '!bg-emerald-600 !rounded-xl' : '!bg-amber-600 !rounded-xl' }
+                customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: isPartial ? '!bg-amber-600 !rounded-xl' : '!bg-emerald-600 !rounded-xl' }
             });
             returnCart = []; returnOriginalInvoice = null; _returnTotal = 0;
-            self.renderProducts();
-            self.switchView('pos');
+            POS.switchView('pos');
         } else {
-            var errMsg = json.msg || json.error || 'فشل حفظ المرتجع';
-            RW_UI.showError(errMsg);
+            RW_UI.showError(json.msg || json.error || 'فشل حفظ المرتجع');
         }
     });
 };
@@ -798,32 +795,31 @@ self._finalizeReturn = function(method) {
         RW_UI.safeHTML(RW_UI.byId('cartItemsContainer'), '<div class="text-center text-slate-500 py-8">فواتير اليوم</div>');
     };
 
-    // ==================== حذف الأوردر – مباشر (بدون صلاحية مشرف) ====================
-    self._deleteOrder = function(orderCode) {
-        Swal.fire({
-            title: '⚠️ تأكيد حذف الأوردر',
-            html: '<div class="text-right"><p class="text-sm text-slate-400 mb-3">هل أنت متأكد من حذف الأوردر <strong>' + orderCode + '</strong>؟</p><p class="text-xs text-red-400">لا يمكن التراجع عن هذا الإجراء.</p></div>',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'نعم، احذف',
-            cancelButtonText: 'تراجع',
-            confirmButtonColor: '#dc2626',
-            customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-red-600 !rounded-xl', cancelButton: '!rounded-xl' }
-        }).then(function(result) {
-            if (!result.isConfirmed) return;
-            RW_UI.showLoader('جاري حذف الأوردر...');
-            RW_API.call('delete-order', { order_code: orderCode }, function(json) {
-                RW_UI.hideLoader();
-                if (json.success) {
-                    Swal.fire({ icon: 'success', title: '✅ تم الحذف', text: 'تم حذف الأوردر ' + orderCode + ' بنجاح', customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-emerald-600 !rounded-xl' } });
-                    self.renderInvoicesView();
-                } else {
-                    RW_UI.showError(json.msg || 'فشل حذف الأوردر');
-                }
-            });
+    // ==================== حذف الأوردر – مباشر  ====================
+self._deleteOrder = function(orderCode) {
+    Swal.fire({
+        title: '⚠️ تأكيد حذف الأوردر',
+        html: '<div class="text-right text-sm text-slate-400 mb-3">هل أنت متأكد من حذف الأوردر <strong>' + orderCode + '</strong>؟</div><div class="text-xs text-red-400">لا يمكن التراجع عن هذا الإجراء.</div>',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'نعم، احذف',
+        cancelButtonText: 'تراجع',
+        confirmButtonColor: '#dc2626',
+        customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-red-600 !rounded-xl', cancelButton: '!rounded-xl' }
+    }).then(function(result) {
+        if (!result.isConfirmed) return;
+        RW_UI.showLoader('جاري حذف الأوردر...');
+        RW_API.call('delete-order', { order_code: orderCode }, function(json) {
+            RW_UI.hideLoader();
+            if (json.success) {
+                Swal.fire({ icon: 'success', title: '✅ تم الإلغاء', text: 'تم إلغاء الفاتورة ' + orderCode + ' وعكس جميع آثارها (مخزون، قيد، عميل)', customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-emerald-600 !rounded-xl' } });
+                POS.renderInvoicesView();
+            } else {
+                RW_UI.showError(json.msg || 'فشل حذف الأوردر');
+            }
         });
-    };
-
+    });
+};
     // ==================== تصنيفات + بيع سريع ====================
     self.loadCategories = function() {
         db.items.toArray().then(function(items) {
