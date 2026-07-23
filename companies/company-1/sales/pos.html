@@ -118,7 +118,7 @@
         <button onclick="POS.switchView('returns')" class="tab-btn" id="nav-returns"><i class="fa-solid fa-rotate-left text-xl mb-0.5"></i><span>مرتجع</span></button>
     </nav>
 </div>
-<!-- مودال الدفع (بيع) -->
+
 <div id="paymentModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
         <div class="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center"><h3 class="font-black text-lg text-emerald-400">💳 إتمام الدفع</h3><button onclick="POS.closePaymentModal()" class="text-slate-400 hover:text-white text-xl">&times;</button></div>
@@ -148,7 +148,6 @@
     </div>
 </div>
 
-<!-- مودال دفع المرتجع (منفصل) -->
 <div id="returnPaymentModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="bg-slate-900 border border-red-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
         <div class="p-4 bg-red-900/50 border-b border-red-700 flex justify-between items-center"><h3 class="font-black text-lg text-red-400">↩️ إتمام المرتجع</h3><button onclick="POS.closeReturnPaymentModal()" class="text-slate-400 hover:text-white text-xl">&times;</button></div>
@@ -300,7 +299,8 @@ var POS = (function() {
             if (b) { if (c > 0) { b.classList.remove('hidden'); b.innerText = '⏳ ' + c; } else b.classList.add('hidden'); }
         });
     };
-        self.loadBranches = function() {
+
+    self.loadBranches = function() {
         db.branches.toArray().then(function(br) {
             branchMap = {};
             var h = '<option value="">🏭 اختر الفرع</option>';
@@ -427,7 +427,8 @@ var POS = (function() {
         }
         self._updateProductCardQty(code, inCart);
     };
-        self.addToCart = function(code) {
+
+    self.addToCart = function(code) {
         db.items.get(code).then(function(it) {
             if (!it) return;
             self.getAvail(it.id).then(function(avail) {
@@ -558,7 +559,8 @@ var POS = (function() {
             } else { RW_UI.showError(json.msg || 'فشل الحفظ'); }
         });
     };
-        // ==================== المرتجع – شاشة مستقلة ====================
+
+    // ==================== المرتجع – شاشة مستقلة ====================
     self.renderReturnsView = function() {
         var grid = RW_UI.byId('productsGrid'), cartCont = RW_UI.byId('cartItemsContainer');
         var h = '<div class="col-span-full p-6 flex flex-col items-center justify-center" style="min-height:60vh">';
@@ -577,7 +579,8 @@ var POS = (function() {
         supabase.from('orders').select('*').eq('order_code', code).maybeSingle().then(function(oRes) {
             var order = oRes.data;
             if (!order) { RW_UI.hideLoader(); RW_UI.toast('الفاتورة غير موجودة', 'error'); return; }
-            // ✅ نعرض القيمة الأصلية دائماً – complete-return لا تغير orders.total_amount
+            // ✅ P0: منع المرتجع على فاتورة ملغاة
+            if (order.order_status === 'Cancelled') { RW_UI.hideLoader(); RW_UI.toast('الفاتورة ملغية ولا يمكن عمل مرتجع عليها', 'error'); return; }
             supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
                 RW_UI.hideLoader();
                 var details = dRes.data || [];
@@ -586,7 +589,6 @@ var POS = (function() {
                 returnCart = [];
                 for (var i = 0; i < details.length; i++) {
                     var det = details[i];
-                    // ✅ الأصل: qty_delivered هو ما استلمه العميل فعلياً (أو qty إن لم يكن هناك توصيل)
                     var deliveredQty = Number(det.qty_delivered) || Number(det.qty) || 0;
                     var alreadyReturned = Number(det.qty_returned) || 0;
                     var remainingQty = Math.max(0, deliveredQty - alreadyReturned);
@@ -594,12 +596,11 @@ var POS = (function() {
                         code: det.item_code, 
                         name: det.item_name || '', 
                         unit: det.unit || 'حبة', 
-                        price: Number(det.unit_price) || 0, 
-                        originalQty: remainingQty,  // ✅ الكمية المتبقية القابلة للإرجاع
+                        price: Number(det.unit_price) || 0, // ✅ استخدام سعر الفاتورة الأصلية
+                        originalQty: remainingQty,
                         returnQty: 0 
                     });
                 }
-                // ✅ التحقق من وجود أصناف قابلة للإرجاع
                 var hasReturnable = false;
                 for (var j = 0; j < returnCart.length; j++) { if (returnCart[j].originalQty > 0) { hasReturnable = true; break; } }
                 if (!hasReturnable) { RW_UI.toast('جميع الأصناف في هذه الفاتورة تم ترجيعها مسبقاً', 'warning'); return; }
@@ -611,19 +612,17 @@ var POS = (function() {
     self._buildReturnScreen = function(order) {
         var grid = RW_UI.byId('productsGrid');
         var gridHTML = '<div class="col-span-full p-4">';
-        // ✅ بطاقة معلومات الفاتورة – تظهر القيمة الأصلية دائماً
         gridHTML += '<div class="bg-slate-800 rounded-2xl p-4 mb-4 border border-slate-700"><div class="flex justify-between items-center">';
         gridHTML += '<div><span class="text-xs text-slate-400">الفاتورة</span><p class="font-black text-xl text-white">' + (order.order_code || '') + '</p></div>';
         gridHTML += '<div class="text-right"><span class="text-xs text-slate-400">العميل</span><p class="font-bold text-white">' + (order.customer_name || '') + '</p></div>';
         gridHTML += '<div class="text-right"><span class="text-xs text-slate-400">التاريخ</span><p class="font-bold text-white">' + (order.order_date || '') + '</p></div>';
         gridHTML += '<div class="text-right"><span class="text-xs text-slate-400">الإجمالي</span><p class="font-black text-amber-400">' + fmtNum(Number(order.total_amount) || 0) + ' ' + currency + '</p></div>';
         gridHTML += '</div></div>';
-        // ✅ قائمة الأصناف مع الكميات المتبقية
         gridHTML += '<div class="bg-slate-800 rounded-2xl p-4 border border-slate-700"><h3 class="font-bold text-slate-300 mb-3 text-sm"><i class="fa-solid fa-list-ul ml-1 text-slate-400"></i> 📋 أصناف الفاتورة (الكميات المتبقية القابلة للإرجاع)</h3>';
         gridHTML += '<p class="text-xs text-slate-500 mb-4">اضغط على أي صنف لنقله إلى سلة المرتجع</p>';
         for (var i = 0; i < returnCart.length; i++) {
             var it = returnCart[i];
-            if (it.originalQty <= 0) continue; // ✅ تخطي الأصناف التي تم ترجيعها بالكامل
+            if (it.originalQty <= 0) continue;
             var alreadyAdded = it.returnQty > 0;
             var cardClass = alreadyAdded ? 'border-l-4 border-red-500 bg-red-950/10' : 'border-l-4 border-slate-600';
             gridHTML += '<div class="card-dark mb-2 cursor-pointer ' + cardClass + '" onclick="POS._addToReturnCart(' + i + ')"><div class="flex items-center justify-between">';
@@ -681,7 +680,8 @@ var POS = (function() {
     };
 
     self.closeReturnPaymentModal = function() { RW_UI.byId('returnPaymentModal').classList.add('hidden'); };
-        self._finalizeReturn = function(method) {
+
+    self._finalizeReturn = function(method) {
         self.closeReturnPaymentModal();
         var totalReturn = _returnTotal;
         var items = [];
@@ -691,7 +691,7 @@ var POS = (function() {
                 items.push({
                     item_code: it.code,
                     item_name: it.name,
-                    unit_price: it.price,
+                    unit_price: it.price, // ✅ سعر الفاتورة الأصلية
                     returnedQty: it.returnQty,
                     return_condition: 'good',
                     reason: 'مرتجع من نقطة البيع'
@@ -701,7 +701,6 @@ var POS = (function() {
         if (!items.length) { RW_UI.toast('لا توجد أصناف في سلة المرتجع', 'warning'); return; }
 
         RW_UI.showLoader('جاري حفظ المرتجع...');
-        // ✅ استخدام complete-return مع is_pos_return: true للمرتجع المباشر بدون رانشيت
         RW_API.call('complete-return', {
             runsheet_code: null,
             order_code: returnOriginalInvoice ? returnOriginalInvoice.order_code : null,
@@ -718,11 +717,9 @@ var POS = (function() {
                     customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-red-600 !rounded-xl' }
                 });
                 returnCart = []; returnOriginalInvoice = null; _returnTotal = 0;
-                // ✅ المزامنة اللحظية للواجهة – تحديث المخزون في شبكة المنتجات فوراً
                 self.renderProducts();
                 self.switchView('pos');
             } else {
-                // ✅ عرض رسالة الخطأ الحقيقية من الخادم
                 var errMsg = json.msg || json.error || 'فشل حفظ المرتجع';
                 RW_UI.showError(errMsg);
             }
@@ -743,10 +740,8 @@ var POS = (function() {
         for (var i = 0; i < views.length; i++) { var b = RW_UI.byId('nav-' + views[i]); if (b) b.classList.remove('active'); }
         var a = RW_UI.byId('nav-' + view); if (a) a.classList.add('active');
         if (view === 'pos') { 
-            // ✅ عند العودة لشاشة البيع، تأكد من تحميل المنتجات بالمخزون المحدث
             self.renderProducts(); 
             self.updateCartUI(); 
-            // ✅ إظهار أزرار البيع وإخفاء أزرار المرتجع
             RW_UI.byId('cartActionsNormal').classList.remove('hidden');
             RW_UI.byId('btnPayNormal').classList.remove('hidden');
             RW_UI.byId('cartActionsReturn').classList.add('hidden');
@@ -790,6 +785,7 @@ var POS = (function() {
                     h += '<div class="flex-1"><span class="font-black text-white text-sm">' + (invs[i].order_code || '') + '</span><p class="text-xs text-slate-400">' + (invs[i].customer_name || '') + '</p></div>';
                     h += '<div class="flex items-center gap-2">';
                     h += '<span class="font-black text-emerald-400 text-sm">' + fmtNum(Number(invs[i].total_amount) || 0) + '</span>';
+                    // ✅ P0: زر حذف الفاتورة – بدون مصادقة مشرف (مباشر)
                     h += '<button onclick="event.stopPropagation();POS._deleteOrder(\'' + (invs[i].order_code || '') + '\')" class="text-red-400 hover:text-red-300 p-1" title="حذف الأوردر"><i class="fa-solid fa-trash-can text-xs"></i></button>';
                     h += '</div></div>';
                 }
@@ -799,7 +795,34 @@ var POS = (function() {
         });
         RW_UI.safeHTML(RW_UI.byId('cartItemsContainer'), '<div class="text-center text-slate-500 py-8">فواتير اليوم</div>');
     };
-        // ==================== تصنيفات + بيع سريع ====================
+
+    // ==================== حذف الأوردر – مباشر (بدون صلاحية مشرف) ====================
+    self._deleteOrder = function(orderCode) {
+        Swal.fire({
+            title: '⚠️ تأكيد حذف الأوردر',
+            html: '<div class="text-right"><p class="text-sm text-slate-400 mb-3">هل أنت متأكد من حذف الأوردر <strong>' + orderCode + '</strong>؟</p><p class="text-xs text-red-400">لا يمكن التراجع عن هذا الإجراء.</p></div>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'نعم، احذف',
+            cancelButtonText: 'تراجع',
+            confirmButtonColor: '#dc2626',
+            customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-red-600 !rounded-xl', cancelButton: '!rounded-xl' }
+        }).then(function(result) {
+            if (!result.isConfirmed) return;
+            RW_UI.showLoader('جاري حذف الأوردر...');
+            RW_API.call('delete-order', { order_code: orderCode }, function(json) {
+                RW_UI.hideLoader();
+                if (json.success) {
+                    Swal.fire({ icon: 'success', title: '✅ تم الحذف', text: 'تم حذف الأوردر ' + orderCode + ' بنجاح', customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-emerald-600 !rounded-xl' } });
+                    self.renderInvoicesView();
+                } else {
+                    RW_UI.showError(json.msg || 'فشل حذف الأوردر');
+                }
+            });
+        });
+    };
+
+    // ==================== تصنيفات + بيع سريع ====================
     self.loadCategories = function() {
         db.items.toArray().then(function(items) {
             var cats = {}; for (var i = 0; i < items.length; i++) { var c = items[i].category || 'أخرى'; cats[c] = true; }
@@ -901,102 +924,6 @@ var POS = (function() {
         else if (e.key === 'F9') { e.preventDefault(); self.openPaymentModal(); }
         else if (e.key === 'Escape') { e.preventDefault(); self.clearCart(); }
         else if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); self.openPaymentModal(); }
-    };
-    // ==================== حذف أوردر من فواتير اليوم (يتطلب كلمة سر المشرف) ====================
-    self._deleteOrder = function(orderCode) {
-        // ✅ مودال كلمة سر المشرف
-        Swal.fire({
-            title: '🔒 صلاحية المشرف مطلوبة',
-            html: '<div class="text-right">' +
-                '<p class="text-sm text-slate-400 mb-3">حذف الأوردر ' + orderCode + ' يتطلب صلاحية مشرف البيع</p>' +
-                '<input type="password" id="swal-supervisor-pass" class="swal2-input" placeholder="أدخل كلمة سر مشرف البيع" style="width:100%;padding:10px;border:1px solid #334155;border-radius:12px;background:#1e293b;color:white;font-size:14px;text-align:right">' +
-                '</div>',
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonText: 'تأكيد الحذف',
-            cancelButtonText: 'إلغاء',
-            customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-red-600 !rounded-xl', cancelButton: '!rounded-xl' },
-            preConfirm: function() {
-    var popup = Swal.getPopup();
-    if (!popup) { Swal.showValidationMessage('خطأ في النافذة'); return false; }
-    var passInput = popup.querySelector('#swal-supervisor-pass');
-    var pass = passInput ? passInput.value.trim() : '';
-    if (!pass) { Swal.showValidationMessage('أدخل كلمة سر المشرف'); return false; }
-    return pass;
-}
-        }).then(function(result) {
-            if (!result.isConfirmed) return;
-            var supervisorPass = result.value;
-
-            // ✅ المصادقة بكلمة سر المشرف – تسجيل دخول المشرف للتحقق
-            supabase.auth.signInWithPassword({
-                email: currentUser.email,
-                password: supervisorPass
-            }).then(function(authRes) {
-                if (authRes.error) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: '❌ كلمة سر غير صحيحة',
-                        text: 'لا يمكن حذف الأوردر بدون صلاحية المشرف',
-                        customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700' }
-                    });
-                    return;
-                }
-
-                // ✅ التحقق من صلاحية المشرف
-                var meta = authRes.data.user.user_metadata || {};
-                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-                var isSupervisor = (meta.role === 'مشرف مبيعات' || meta.role === 'مدير مبيعات' || meta.permissions.indexOf('sales_supervisor') !== -1 || meta.permissions.indexOf('sales_manager') !== -1);
-
-                if (!isOwner && !isSupervisor) {
-                    Swal.fire({
-                        icon: 'error',
-                        title: '❌ صلاحية غير كافية',
-                        text: 'هذا الحساب لا يملك صلاحية حذف الأوردرات',
-                        customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700' }
-                    });
-                    return;
-                }
-
-                // ✅ تنفيذ الحذف
-                Swal.fire({
-                    title: '⚠️ تأكيد نهائي',
-                    text: 'هل أنت متأكد من حذف الأوردر ' + orderCode + '؟ لا يمكن التراجع عن هذا الإجراء.',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonText: 'نعم، احذف نهائياً',
-                    cancelButtonText: 'تراجع',
-                    confirmButtonColor: '#dc2626',
-                    customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700' }
-                }).then(function(confirmResult) {
-                    if (!confirmResult.isConfirmed) return;
-
-                    RW_UI.showLoader('جاري حذف الأوردر...');
-                    RW_API.call('delete-order', { order_code: orderCode }, function(json) {
-                        RW_UI.hideLoader();
-                        if (json.success) {
-                            Swal.fire({
-                                icon: 'success',
-                                title: '✅ تم الحذف',
-                                text: 'تم حذف الأوردر ' + orderCode + ' بنجاح',
-                                customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: '!bg-emerald-600 !rounded-xl' }
-                            });
-                            // ✅ إعادة تحميل قائمة فواتير اليوم بعد الحذف
-                            self.renderInvoicesView();
-                        } else {
-                            RW_UI.showError(json.msg || 'فشل حذف الأوردر');
-                        }
-                    });
-                });
-            }).catch(function() {
-                Swal.fire({
-                    icon: 'error',
-                    title: '❌ فشل التحقق',
-                    text: 'حدث خطأ أثناء التحقق من الصلاحية',
-                    customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700' }
-                });
-            });
-        });
     };
 
     return self;
