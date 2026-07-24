@@ -702,49 +702,50 @@ var POS = (function() {
 
     self.closeReturnPaymentModal = function() { RW_UI.byId('returnPaymentModal').classList.add('hidden'); };
 
-    self._finalizeReturn = function(method) {
-        self.closeReturnPaymentModal();
-        var totalReturn = _returnTotal;
-        var items = [];
-        for (var i = 0; i < returnCart.length; i++) {
-            var it = returnCart[i];
-            if (it.returnQty > 0) {
-                items.push({
-                    item_code: it.code,
-                    item_name: it.name,
-                    unit_price: it.price,
-                    returnedQty: it.returnQty,
-                    return_condition: 'good',
-                    reason: 'مرتجع من نقطة البيع'
-                });
-            }
+self._finalizeReturn = function(method) {
+    self.closeReturnPaymentModal();
+    var totalReturn = _returnTotal;
+    var items = [];
+    for (var i = 0; i < returnCart.length; i++) {
+        var it = returnCart[i];
+        if (it.returnQty > 0) {
+            items.push({
+                item_code: it.code,
+                item_name: it.name,
+                unit_price: it.price,
+                returnedQty: it.returnQty,
+                return_condition: 'good',
+                reason: 'مرتجع من نقطة البيع'
+            });
         }
-        if (!items.length) { RW_UI.toast('لا توجد أصناف في سلة المرتجع', 'warning'); return; }
-        RW_UI.showLoader('جاري حفظ المرتجع...');
-        RW_API.call('complete-return', {
-            runsheet_code: null,
-            order_code: returnOriginalInvoice ? returnOriginalInvoice.order_code : null,
-            items: items,
-            is_pos_return: true
-        }, function(json) {
-            RW_UI.hideLoader();
-            if (json.success) {
-                var newStatus = json.new_order_status || 'Returned';
-                var isPartial = newStatus === 'Partially Returned';
-                Swal.fire({
-                    icon: isPartial ? 'warning' : 'success',
-                    title: isPartial ? '⚠️ تم الترجيع جزئياً' : '✅ تم الترجيع كاملاً',
-                    html: '<div class="text-right text-white text-sm"><p>تم ترجيع <strong>' + items.length + ' صنف</strong>.</p><p>القيمة: <strong>' + fmtNum(totalReturn) + ' ' + currency + '</strong></p><p class="text-xs text-slate-400 mt-2">حالة الفاتورة: <strong>' + newStatus + '</strong></p><p class="text-xs text-slate-400">طريقة الإعادة: ' + (method === 'cash' ? '💵 نقداً' : '💳 بطاقة') + '</p></div>',
-                    confirmButtonText: 'حسناً',
-                    customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: isPartial ? '!bg-amber-600 !rounded-xl' : '!bg-emerald-600 !rounded-xl' }
-                });
-                returnCart = []; returnOriginalInvoice = null; _returnTotal = 0;
-                POS.switchView('pos');
-            } else {
-                RW_UI.showError(json.msg || json.error || 'فشل حفظ المرتجع');
-            }
-        });
-    };
+    }
+    if (!items.length) { RW_UI.toast('لا توجد أصناف في سلة المرتجع', 'warning'); return; }
+    RW_UI.showLoader('جاري حفظ المرتجع...');
+    RW_API.call('complete-return', {
+        runsheet_code: null,
+        order_code: returnOriginalInvoice ? returnOriginalInvoice.order_code : null,
+        items: items,
+        is_pos_return: true
+    }, function(json) {
+        RW_UI.hideLoader();
+        if (json.success) {
+            var newStatus = json.new_order_status || 'Returned';
+            var isPartial = newStatus === 'Partially Returned';
+            Swal.fire({
+                icon: isPartial ? 'warning' : 'success',
+                title: isPartial ? '⚠️ تم الترجيع جزئياً' : '✅ تم الترجيع كاملاً',
+                html: '<div class="text-right text-white text-sm"><p>تم ترجيع <strong>' + items.length + ' صنف</strong>.</p><p>القيمة: <strong>' + fmtNum(totalReturn) + ' ' + currency + '</strong></p><p class="text-xs text-slate-400 mt-2">حالة الفاتورة: <strong>' + newStatus + '</strong></p><p class="text-xs text-slate-400">طريقة الإعادة: ' + (method === 'cash' ? '💵 نقداً' : '💳 بطاقة') + '</p></div>',
+                confirmButtonText: 'حسناً',
+                customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', confirmButton: isPartial ? '!bg-amber-600 !rounded-xl' : '!bg-emerald-600 !rounded-xl' }
+            });
+            returnCart = []; returnOriginalInvoice = null; _returnTotal = 0;
+            // ✅ تحديث قائمة فواتير اليوم مباشرة لعرض التغييرات اللحظية
+            POS.switchView('invoices');
+        } else {
+            RW_UI.showError(json.msg || json.error || 'فشل حفظ المرتجع');
+        }
+    });
+};
 
     self._cancelReturnScreen = function() {
         RW_UI.showConfirm('إلغاء المرتجع والعودة لشاشة البيع؟', function() {
