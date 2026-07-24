@@ -623,6 +623,59 @@ self.finalizeCheckout = function() {
         }
     });
 };
+    
+    // ============================================================
+// دالة طباعة الإيصال – توضع داخل كائن POS، قبل return self;
+// ============================================================
+POS.printReceipt = function(orderCode, orderTotal, customerName, paymentMethod, tendered, change) {
+    var now = new Date();
+    var dateStr = now.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+    var timeStr = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+
+    var itemsHtml = '';
+    for (var i = 0; i < cart.length; i++) {
+        var it = cart[i];
+        var lineTotal = it.price * it.qty;
+        itemsHtml += '<tr>' +
+            '<td style="text-align:right;padding:3px 0;border-bottom:1px dashed #ccc;font-size:11px">' +
+            it.name + ' × ' + it.qty + '</td>' +
+            '<td style="text-align:left;padding:3px 0;border-bottom:1px dashed #ccc;font-size:11px">' +
+            lineTotal.toFixed(2) + '</td>' +
+            '</tr>';
+    }
+
+    var printWindow = window.open('', '_blank', 'width=300,height=600');
+    if (!printWindow) {
+        RW_UI.toast('الرجاء السماح بالنوافذ المنبثقة للطباعة', 'warning');
+        return;
+    }
+
+    printWindow.document.write('<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">' +
+        '<title>إيصال ' + orderCode + '</title>' +
+        '<style>' +
+        'body{font-family:"Cairo",sans-serif;font-size:11px;margin:0;padding:8px;width:280px;color:#000}' +
+        'table{width:100%;border-collapse:collapse}' +
+        '@media print{body{width:72mm;padding:2mm}@page{margin:0}}' +
+        '</style></head><body>' +
+        '<div style="text-align:center;margin-bottom:6px">' +
+        '<h2 style="margin:0;font-size:14px;font-weight:bold">الروائع</h2>' +
+        '<p style="margin:1px 0;font-size:9px">' + dateStr + ' | ' + timeStr + '</p>' +
+        '<p style="margin:1px 0;font-size:11px;font-weight:bold">فاتورة: ' + orderCode + '</p>' +
+        '<p style="margin:1px 0;font-size:10px">العميل: ' + (customerName || 'نقدي') + '</p>' +
+        '</div>' +
+        '<hr style="border-top:1px dashed #000;margin:4px 0">' +
+        '<table>' + itemsHtml + '</table>' +
+        '<hr style="border-top:1px dashed #000;margin:4px 0">' +
+        '<div style="text-align:left;font-size:13px;font-weight:bold;margin:4px 0">الإجمالي: ' + orderTotal.toFixed(2) + ' EGP</div>' +
+        '<div style="font-size:9px;margin-top:2px">الدفع: ' + (paymentMethod === 'cash' ? 'نقدي' : paymentMethod === 'card' ? 'بطاقة' : 'مختلط') + '</div>' +
+        (tendered > 0 ? '<div style="font-size:9px">المستلم: ' + tendered.toFixed(2) + ' | الباقي: ' + change.toFixed(2) + '</div>' : '') +
+        '<hr style="border-top:1px dashed #000;margin:4px 0">' +
+        '<div style="text-align:center;font-size:9px;margin-top:6px">شكراً لتعاملكم معنا</div>' +
+        '<script>window.onload=function(){window.print();window.close();}<\/script>' +
+        '</body></html>');
+    printWindow.document.close();
+};
+    
     self.renderReturnsView = function() {
         var grid = RW_UI.byId('productsGrid'), cartCont = RW_UI.byId('cartItemsContainer');
         var h = '<div class="col-span-full p-6 flex flex-col items-center justify-center" style="min-height:60vh">';
@@ -1049,57 +1102,6 @@ self._finalizeReturn = function(method) {
         else if (e.key === 'Escape') { e.preventDefault(); self.clearCart(); }
         else if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); self.openPaymentModal(); }
     };
-// ============================================================
-// دالة طباعة الإيصال – توضع داخل كائن POS، قبل return self;
-// ============================================================
-POS.printReceipt = function(orderCode, orderTotal, customerName, paymentMethod, tendered, change) {
-    var now = new Date();
-    var dateStr = now.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
-    var timeStr = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
-
-    var itemsHtml = '';
-    for (var i = 0; i < cart.length; i++) {
-        var it = cart[i];
-        var lineTotal = it.price * it.qty;
-        itemsHtml += '<tr>' +
-            '<td style="text-align:right;padding:3px 0;border-bottom:1px dashed #ccc;font-size:11px">' +
-            it.name + ' × ' + it.qty + '</td>' +
-            '<td style="text-align:left;padding:3px 0;border-bottom:1px dashed #ccc;font-size:11px">' +
-            lineTotal.toFixed(2) + '</td>' +
-            '</tr>';
-    }
-
-    var printWindow = window.open('', '_blank', 'width=300,height=600');
-    if (!printWindow) {
-        RW_UI.toast('الرجاء السماح بالنوافذ المنبثقة للطباعة', 'warning');
-        return;
-    }
-
-    printWindow.document.write('<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">' +
-        '<title>إيصال ' + orderCode + '</title>' +
-        '<style>' +
-        'body{font-family:"Cairo",sans-serif;font-size:11px;margin:0;padding:8px;width:280px;color:#000}' +
-        'table{width:100%;border-collapse:collapse}' +
-        '@media print{body{width:72mm;padding:2mm}@page{margin:0}}' +
-        '</style></head><body>' +
-        '<div style="text-align:center;margin-bottom:6px">' +
-        '<h2 style="margin:0;font-size:14px;font-weight:bold">الروائع</h2>' +
-        '<p style="margin:1px 0;font-size:9px">' + dateStr + ' | ' + timeStr + '</p>' +
-        '<p style="margin:1px 0;font-size:11px;font-weight:bold">فاتورة: ' + orderCode + '</p>' +
-        '<p style="margin:1px 0;font-size:10px">العميل: ' + (customerName || 'نقدي') + '</p>' +
-        '</div>' +
-        '<hr style="border-top:1px dashed #000;margin:4px 0">' +
-        '<table>' + itemsHtml + '</table>' +
-        '<hr style="border-top:1px dashed #000;margin:4px 0">' +
-        '<div style="text-align:left;font-size:13px;font-weight:bold;margin:4px 0">الإجمالي: ' + orderTotal.toFixed(2) + ' EGP</div>' +
-        '<div style="font-size:9px;margin-top:2px">الدفع: ' + (paymentMethod === 'cash' ? 'نقدي' : paymentMethod === 'card' ? 'بطاقة' : 'مختلط') + '</div>' +
-        (tendered > 0 ? '<div style="font-size:9px">المستلم: ' + tendered.toFixed(2) + ' | الباقي: ' + change.toFixed(2) + '</div>' : '') +
-        '<hr style="border-top:1px dashed #000;margin:4px 0">' +
-        '<div style="text-align:center;font-size:9px;margin-top:6px">شكراً لتعاملكم معنا</div>' +
-        '<script>window.onload=function(){window.print();window.close();}<\/script>' +
-        '</body></html>');
-    printWindow.document.close();
-};
     
     return self;
 })();
