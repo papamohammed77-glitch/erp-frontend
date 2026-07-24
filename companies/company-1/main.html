@@ -4849,6 +4849,33 @@ window._ordersRefreshInterval = setInterval(function() {
         RW_Orders._refreshData();
     }
 }, 30000);
+// ✅ مستمع Supabase Realtime للمزامنة اللحظية
+var channel = supabase
+    .channel('orders-realtime')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, function(payload) {
+        var updatedOrder = payload.new;
+        if (updatedOrder && updatedOrder.id) {
+            // تحديث الصف مباشرة في المصفوفة المحلية
+            var found = false;
+            for (var i = 0; i < ordersData.length; i++) {
+                if (ordersData[i].id === updatedOrder.id) {
+                    // دمج البيانات الجديدة مع القديمة للحفاظ على الحقول المخصصة مثل _runsheetCode و itemsCount
+                    ordersData[i].total_amount = updatedOrder.total_amount;
+                    ordersData[i].order_status = updatedOrder.order_status;
+                    ordersData[i].amount_paid = updatedOrder.amount_paid;
+                    // يمكن إضافة حقول أخرى حسب الحاجة
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
+                console.log('🔄 تحديث لحظي للأوردر:', updatedOrder.order_code, '| القيمة الجديدة:', updatedOrder.total_amount);
+                // إعادة عرض الجدول بالبيانات المحدثة
+                _applyFilters();
+            }
+        }
+    })
+    .subscribe();
 }
 
     // ========== الفلترة والفرز ==========
