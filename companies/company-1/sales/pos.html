@@ -171,7 +171,14 @@ function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', { minimumFrac
 
 var POS = (function() {
     var self = {};
-    var db = RW_DB.getDB('POS');
+
+    var db = null;
+    try {
+        db = RW_DB.getDB('POS');
+    } catch (e) {
+        console.error('POS DB ERROR', e);
+    }
+
     var currentUser = null, pubUserId = null;
     var cart = [], selCust = null, selBranch = null, branchMap = {};
     var currency = 'EGP';
@@ -264,6 +271,9 @@ var POS = (function() {
     self.updateConnectionStatus = function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); };
 
     self.syncDown = function() {
+        if (!db) {
+            return Promise.resolve();
+        }
         return Promise.all([
             supabase.from('customers').select('*').then(function(r) { customersCache = r.data || []; return db.customers.clear().then(function() { return db.customers.bulkPut(r.data || []); }); }),
             supabase.from('items').select('*').then(function(r) { productsCache = r.data || []; return db.items.clear().then(function() { return db.items.bulkPut(r.data || []); }); }),
@@ -279,6 +289,7 @@ var POS = (function() {
     };
 
     self.syncPendingOrders = function() {
+        if (!db) return;
         db.pending_updates.where('status').equals('pending').toArray().then(function(ops) {
             var badge = RW_UI.byId('syncPendingBadge');
             if (badge) { if (ops.length > 0) { badge.classList.remove('hidden'); badge.innerText = '⏳ ' + ops.length; } else badge.classList.add('hidden'); }
@@ -294,6 +305,7 @@ var POS = (function() {
     };
 
     self._updateSyncBadge = function() {
+        if (!db) return;
         db.pending_updates.where('status').equals('pending').count().then(function(c) {
             var b = RW_UI.byId('syncPendingBadge');
             if (b) { if (c > 0) { b.classList.remove('hidden'); b.innerText = '⏳ ' + c; } else b.classList.add('hidden'); }
@@ -301,6 +313,11 @@ var POS = (function() {
     };
 
     self.loadBranches = function() {
+        if (!db) {
+            var s = RW_UI.byId('posBranchSel');
+            if (s) RW_UI.safeHTML(s, '<option value="">🏭 فشل تحميل الفروع</option>');
+            return;
+        }
         db.branches.toArray().then(function(br) {
             branchMap = {};
             var h = '<option value="">🏭 اختر الفرع</option>';
@@ -310,6 +327,7 @@ var POS = (function() {
     };
 
     self.loadCustomers = function() {
+        if (!db) return;
         db.customers.toArray().then(function(list) {
             var h = '<option value="">👤 عميل نقدي (عام)</option>';
             for (var i = 0; i < Math.min(list.length, 50); i++) h += '<option value="' + list[i].customer_code + '">' + list[i].name + ' (' + (list[i].area || '') + ')</option>';
@@ -322,7 +340,7 @@ var POS = (function() {
         if (!code) { selCust = null; RW_UI.safeText(RW_UI.byId('cartCustName'), 'عميل نقدي (عام)'); RW_UI.safeHTML(RW_UI.byId('cartCustDetails'), ''); return; }
         selCust = null;
         for (var i = 0; i < customersCache.length; i++) { if (customersCache[i].customer_code === code) { selCust = customersCache[i]; break; } }
-        if (!selCust) { db.customers.get(code).then(function(c) { if (c) { selCust = c; self._updateCartCustomerInfo(); } }); }
+        if (!selCust && db) { db.customers.get(code).then(function(c) { if (c) { selCust = c; self._updateCartCustomerInfo(); } }); }
         else { self._updateCartCustomerInfo(); }
     };
 
@@ -339,6 +357,7 @@ var POS = (function() {
     self.onBranchChange = function() { selBranch = RW_UI.byId('posBranchSel') ? RW_UI.byId('posBranchSel').value : null; self.renderProducts(); };
 
     self.getAvail = function(itemId) {
+        if (!db) return Promise.resolve(0);
         var bid = selBranch ? branchMap[selBranch] : null;
         return db.stock.where('item_id').equals(itemId).toArray().then(function(r) {
             if (bid) { for (var i = 0; i < r.length; i++) { if (r[i].branch_id === bid) return Math.max(0, (Number(r[i].qty) || 0) - (Number(r[i].allocated_qty) || 0)); } return 0; }
@@ -347,6 +366,11 @@ var POS = (function() {
     };
 
     self.renderProducts = function() {
+        if (!db) {
+            var grid = RW_UI.byId('productsGrid');
+            if (grid) RW_UI.safeHTML(grid, '<div class="col-span-full text-center text-slate-500 py-10">قاعدة البيانات المحلية غير متاحة. تحقق من الاتصال.</div>');
+            return;
+        }
         var grid = RW_UI.byId('productsGrid'); if (!grid) return;
         if (!selBranch) { RW_UI.safeHTML(grid, '<div class="col-span-full text-center text-slate-500 py-10">اختر فرعاً لتصفح المنتجات</div>'); return; }
         RW_UI.showSkeleton('productsGrid', 8, 'grid');
@@ -429,6 +453,7 @@ var POS = (function() {
     };
 
     self.addToCart = function(code) {
+        if (!db) { RW_UI.toast('قاعدة البيانات المحلية غير متاحة', 'error'); return; }
         db.items.get(code).then(function(it) {
             if (!it) return;
             self.getAvail(it.id).then(function(avail) {
@@ -519,12 +544,10 @@ var POS = (function() {
 
     self.setPaymentMethod = function(m) {
         activePaymentMethod = m;
-        var methods = ['cash', 'card', 'split'];
-        for (var i = 0; i < methods.length; i++) {
-            var x = methods[i];
+        ['cash', 'card', 'split'].forEach(function(x) {
             var b = RW_UI.byId('btnPay' + x.charAt(0).toUpperCase() + x.slice(1));
             if (b) { b.classList.remove('border-emerald-500', 'bg-emerald-950/40', 'text-emerald-300'); b.classList.add('border-slate-600', 'bg-slate-800', 'text-slate-400'); }
-        }
+        });
         var ab = RW_UI.byId('btnPay' + m.charAt(0).toUpperCase() + m.slice(1));
         if (ab) { ab.classList.add('border-emerald-500', 'bg-emerald-950/40', 'text-emerald-300'); ab.classList.remove('border-slate-600', 'bg-slate-800', 'text-slate-400'); }
         var sf = RW_UI.byId('splitPaymentFields'), cs = RW_UI.byId('cashTenderedSection');
@@ -873,6 +896,7 @@ var POS = (function() {
     };
 
     self.loadCategories = function() {
+        if (!db) return;
         db.items.toArray().then(function(items) {
             var cats = {}; for (var i = 0; i < items.length; i++) { var c = items[i].category || 'أخرى'; cats[c] = true; }
             var keys = ['الكل']; for (var k in cats) { if (cats.hasOwnProperty(k)) keys.push(k); }
@@ -904,6 +928,7 @@ var POS = (function() {
     };
 
     self._searchProducts = function(q) {
+        if (!db) return;
         var grid = RW_UI.byId('productsGrid'); if (!grid) return;
         db.items.toArray().then(function(items) {
             var f = [];
@@ -951,6 +976,7 @@ var POS = (function() {
     };
 
     self._handleBarcode = function(code) {
+        if (!db) { RW_UI.toast('قاعدة البيانات المحلية غير متاحة', 'error'); return; }
         db.items.filter(function(i) { return i.barcode === code || i.item_code === code; }).first().then(function(item) {
             if (item) { 
                 self.addToCart(item.item_code); 
