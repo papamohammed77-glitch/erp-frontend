@@ -808,7 +808,10 @@ var POS = (function() {
                     var cardBg = isCancelled ? 'bg-red-950/20 border-red-900/50' : '';
                     var statusBadge = isCancelled ? '<span class="text-[10px] font-bold text-red-400 bg-red-950/50 px-2 py-0.5 rounded-full ml-2">🚫 ملغاة</span>' : '';
                     var amountClass = isCancelled ? 'text-red-400 line-through' : 'text-emerald-400';
-                    h += '<div class="card-dark flex justify-between items-center ' + cardBg + '" onclick="POS._viewCancelledInvoice(\'' + (inv.order_code || '') + '\')">';
+                    var onClickAction = isCancelled 
+                        ? ' onclick="POS._viewCancelledInvoice(\'' + (inv.order_code || '') + '\')"'
+                        : ' onclick="POS._viewActiveInvoice(\'' + (inv.order_code || '') + '\')"';
+                    h += '<div class="card-dark flex justify-between items-center ' + cardBg + '"' + onClickAction + '>';
                     h += '<div class="flex-1"><div class="flex items-center"><span class="font-black text-white text-sm">' + (inv.order_code || '') + '</span>' + statusBadge + '</div><p class="text-xs text-slate-400">' + (inv.customer_name || '') + '</p></div>';
                     h += '<div class="flex items-center gap-2">';
                     h += '<span class="font-black ' + amountClass + ' text-sm">' + fmtNum(Number(inv.total_amount) || 0) + '</span>';
@@ -825,6 +828,45 @@ var POS = (function() {
             RW_UI.safeHTML(RW_UI.byId('invoicesTodayList'), h);
         });
         RW_UI.safeHTML(RW_UI.byId('cartItemsContainer'), '<div class="text-center text-slate-500 py-8">فواتير اليوم</div>');
+    };
+
+    self._viewActiveInvoice = function(orderCode) {
+        RW_UI.showLoader('جاري تحميل الفاتورة...');
+        supabase.from('orders').select('*').eq('order_code', orderCode).maybeSingle().then(function(oRes) {
+            var order = oRes.data;
+            if (!order) { RW_UI.hideLoader(); RW_UI.toast('الفاتورة غير موجودة', 'error'); return; }
+            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
+                RW_UI.hideLoader();
+                var details = dRes.data || [];
+                var h = '<div class="text-right text-sm">';
+                h += '<div class="bg-slate-800 rounded-xl p-3 mb-4">';
+                h += '<p><strong>رقم الفاتورة:</strong> ' + (order.order_code || '') + '</p>';
+                h += '<p><strong>التاريخ:</strong> ' + (order.order_date || '') + '</p>';
+                h += '<p><strong>العميل:</strong> ' + (order.customer_name || '') + '</p>';
+                h += '<p><strong>الإجمالي:</strong> <span class="text-emerald-400 font-bold text-lg">' + fmtNum(Number(order.total_amount) || 0) + ' ' + currency + '</span></p>';
+                h += '</div>';
+                if (details.length > 0) {
+                    h += '<div class="overflow-x-auto"><table class="w-full text-sm border border-slate-700"><thead class="bg-slate-800"><tr><th class="p-2 border border-slate-700">الصنف</th><th class="p-2 border border-slate-700 text-center">الكمية</th><th class="p-2 border border-slate-700 text-center">السعر</th><th class="p-2 border border-slate-700 text-center">الإجمالي</th></tr></thead><tbody>';
+                    for (var i = 0; i < details.length; i++) {
+                        var det = details[i];
+                        var lt = (Number(det.qty) || 0) * (Number(det.unit_price) || 0);
+                        h += '<tr class="border-b border-slate-700"><td class="p-2 border border-slate-700 font-semibold">' + (det.item_name || '') + '</td><td class="p-2 border border-slate-700 text-center">' + det.qty + '</td><td class="p-2 border border-slate-700 text-center">' + fmtNum(det.unit_price) + '</td><td class="p-2 border border-slate-700 text-center font-bold">' + fmtNum(lt) + '</td></tr>';
+                    }
+                    h += '</tbody></table></div>';
+                } else {
+                    h += '<div class="text-center py-4 text-slate-400">لا توجد أصناف مسجلة</div>';
+                }
+                h += '</div>';
+                Swal.fire({
+                    title: 'تفاصيل الفاتورة',
+                    html: h,
+                    width: '650px',
+                    showCloseButton: true,
+                    showConfirmButton: false,
+                    customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', closeButton: '!text-slate-400' }
+                });
+            });
+        }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل التحميل', 'error'); });
     };
 
     self._deleteOrder = function(orderCode) {
@@ -857,6 +899,7 @@ var POS = (function() {
         supabase.from('orders').select('*').eq('order_code', orderCode).maybeSingle().then(function(oRes) {
             var order = oRes.data;
             if (!order) { RW_UI.hideLoader(); RW_UI.toast('الفاتورة غير موجودة', 'error'); return; }
+            if (order.order_status !== 'Cancelled') { RW_UI.hideLoader(); self._viewActiveInvoice(orderCode); return; }
             supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
                 RW_UI.hideLoader();
                 var details = dRes.data || [];
