@@ -6,35 +6,40 @@
     <title>فان سيلز | الروائع ERP</title>
     <link rel="manifest" href="../manifest.json">
     <meta name="theme-color" content="#ea580c">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
-    <script>var supabase = window.supabase;</script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:Tahoma,sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
+        body{font-family:'Cairo',sans-serif;background:#f1f5f9;-webkit-tap-highlight-color:transparent}
         .auth-container{background:linear-gradient(135deg,#7c2d12 0%,#9a3412 40%,#ea580c 100%)}
-        .input-field:focus{border-color:#ea580c;box-shadow:0 0 0 3px rgba(234,88,12,0.1)}
-        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-        .animate-fadeIn{animation:fadeIn .3s}
-        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
-        .btn-orange{background:#ea580c;color:#fff;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;border:none;cursor:pointer;width:100%}
-        .btn-orange:active{background:#c2410c}
-        .badge-green{background:#dcfce7;color:#166534;border:1px solid #86efac}
-        .badge-yellow{background:#fef9c3;color:#854d0e;border:1px solid #fde047}
-        .badge-red{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05);transition:all 0.15s ease}
+        .card:active{transform:scale(0.98)}
+        .btn-primary{background:linear-gradient(135deg,#ea580c,#f97316);color:#fff;padding:1rem 1.5rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;width:100%;box-shadow:0 4px 12px rgba(234,88,12,0.25)}
+        .btn-primary:active{transform:scale(0.97)}
+        .tab-btn{transition:all 0.2s ease}
+        .slide-in{animation:slideIn 0.25s ease}
+        @keyframes slideIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+        .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        .badge-green{background:#dcfce7;color:#166534}
+        .badge-yellow{background:#fef9c3;color:#854d0e}
+        .badge-red{background:#fee2e2;color:#991b1b}
+        .map-wrapper{border-radius:16px;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-<!-- ============================================================ -->
 <!-- شاشة الدخول -->
-<!-- ============================================================ -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
-    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
+    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
         <div class="text-center mb-6">
             <div class="w-20 h-20 bg-gradient-to-br from-orange-600 to-orange-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
                 <i class="fa-solid fa-truck-field text-white text-3xl"></i>
@@ -46,12 +51,12 @@
         <div class="space-y-3">
             <div>
                 <label class="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني <span class="text-red-500">*</span></label>
-                <input id="loginEmail" type="email" placeholder="example@domain.com" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-orange-600 focus:bg-white outline-none font-bold text-sm transition-all">
+                <input id="loginEmail" type="email" placeholder="example@domain.com" class="w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-orange-600 focus:bg-white outline-none font-bold text-sm transition-all">
             </div>
             <div>
                 <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر <span class="text-red-500">*</span></label>
                 <div class="relative">
-                    <input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-orange-600 focus:bg-white outline-none font-bold text-sm transition-all pr-12">
+                    <input id="loginPass" type="password" placeholder="••••••••" class="w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-orange-600 focus:bg-white outline-none font-bold text-sm transition-all pr-12">
                     <button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600">
                         <i id="passIcon" class="fa-solid fa-eye"></i>
                     </button>
@@ -65,9 +70,7 @@
     </div>
 </div>
 
-<!-- ============================================================ -->
 <!-- التطبيق الرئيسي -->
-<!-- ============================================================ -->
 <div id="mainApp" class="hidden flex flex-col h-full">
 
     <header class="bg-orange-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
@@ -83,6 +86,21 @@
     </header>
 
     <main id="mainContent" class="flex-1 overflow-y-auto pb-20"></main>
+
+    <!-- السلة العائمة -->
+    <div id="floatingCart" class="hidden mx-3 mb-2 bg-gray-900 text-white p-4 rounded-2xl shadow-2xl flex justify-between items-center cursor-pointer active:scale-[0.98] transition z-20 flex-shrink-0" onclick="App.showView('new-order')">
+        <div class="flex items-center gap-3">
+            <div class="bg-orange-600 w-10 h-10 rounded-full flex items-center justify-center font-black text-sm" id="cartBadgeCount">0</div>
+            <div>
+                <div class="font-bold text-sm">سلة المشتريات</div>
+                <div class="text-xs text-gray-400" id="cartBadgeSummary">لا توجد أصناف</div>
+            </div>
+        </div>
+        <div class="text-left">
+            <div class="text-xs text-gray-400">الإجمالي</div>
+            <div class="font-black text-lg" id="cartBadgeTotal">0.00</div>
+        </div>
+    </div>
 
     <nav id="bottomNav" class="bg-white border-t fixed bottom-0 left-0 right-0 z-30 h-16 flex justify-around items-center text-gray-400 text-xs flex-shrink-0"></nav>
 
@@ -117,6 +135,8 @@ var App = {
     taxRate: 0,
     minAmt: 0,
     companyName: 'الروائع',
+    _mapInstance: null,
+    _mapMarkers: [],
 
     // ==================== دوال الدخول (باستخدام core.js) ====================
     togglePass: function() {
@@ -189,6 +209,7 @@ var App = {
 
     doLogout: function() {
         var self = this;
+        if (this._mapInstance) { this._mapInstance.remove(); this._mapInstance = null; }
         RW_Auth.doLogout(function() {
             self.cart = [];
             self.selCust = null;
@@ -279,6 +300,8 @@ var App = {
         html += '<button onclick="App.showView(\'home\')" class="flex flex-col items-center p-2 text-orange-600" id="nav-home"><i class="fa-solid fa-house text-lg mb-1"></i><span>الرئيسية</span></button>';
         html += '<button onclick="App.showView(\'customers\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-customers"><i class="fa-solid fa-users text-lg mb-1"></i><span>عملائي</span></button>';
         html += '<button onclick="App.showView(\'invoices\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-invoices"><i class="fa-solid fa-file-invoice text-lg mb-1"></i><span>فواتيري</span></button>';
+        html += '<button onclick="App.showView(\'vehicle\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-vehicle"><i class="fa-solid fa-truck text-lg mb-1"></i><span>سيارتي</span></button>';
+        html += '<button onclick="App.showView(\'map\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-map"><i class="fa-solid fa-map-location-dot text-lg mb-1"></i><span>الخريطة</span></button>';
         html += '<button onclick="App.showView(\'balance\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-balance"><i class="fa-solid fa-scale-balanced text-lg mb-1"></i><span>رصيدي</span></button>';
         RW_UI.safeHTML(RW_UI.byId('bottomNav'), html);
     },
@@ -297,6 +320,8 @@ var App = {
         if (view === 'home') this.renderHomeView();
         else if (view === 'customers') this.renderCustomersView();
         else if (view === 'invoices') this.renderInvoicesView();
+        else if (view === 'vehicle') this.renderVehicleStockView();
+        else if (view === 'map') this.renderMapView();
         else if (view === 'balance') this.renderBalanceView();
     },
 
@@ -367,7 +392,7 @@ var App = {
 
         // أزرار سريعة
         html += '<div class="grid grid-cols-2 gap-3">';
-        html += '<button onclick="App.openQuickSale()" class="btn-orange text-lg py-6 rounded-2xl shadow-lg"><i class="fa-solid fa-cart-plus ml-2"></i>بيع سريع</button>';
+        html += '<button onclick="App.openQuickSale()" class="bg-orange-600 text-white text-lg py-6 rounded-2xl shadow-lg font-bold"><i class="fa-solid fa-cart-plus ml-2"></i>بيع سريع</button>';
         html += '<button onclick="App.openQuickInventory()" class="bg-amber-600 text-white text-lg py-6 rounded-2xl shadow-lg font-bold"><i class="fa-solid fa-clipboard-check ml-2"></i>جرد سريع</button>';
         html += '</div>';
 
@@ -426,8 +451,8 @@ var App = {
                 if (orders[i].payment_type === 'نقدي') { countCash++; totalCash += amt; }
                 else { countCredit++; totalCredit += amt; }
             }
-            var html = '<div class="text-2xl font-black text-orange-600">' + fmtNum(total) + ' ج.م</div>';
-            html += '<div class="text-xs text-gray-500 mt-1">' + orders.length + ' فواتير | 💵 نقدي: ' + fmtNum(totalCash) + ' | 📋 آجل: ' + fmtNum(totalCredit) + '</div>';
+            var html = '<div class="text-2xl font-black text-orange-600">' + RW_UI.formatNumber(total) + ' ج.م</div>';
+            html += '<div class="text-xs text-gray-500 mt-1">' + orders.length + ' فواتير | 💵 نقدي: ' + RW_UI.formatNumber(totalCash) + ' | 📋 آجل: ' + RW_UI.formatNumber(totalCredit) + '</div>';
             RW_UI.safeHTML(RW_UI.byId('homeSalesSummary'), html);
         }).catch(function() {
             RW_UI.safeHTML(RW_UI.byId('homeSalesSummary'), '<p class="text-gray-400">تعذر تحميل المبيعات</p>');
@@ -447,7 +472,7 @@ var App = {
             var balance = totalDebit - totalCredit;
             var badgeClass = balance <= 0 ? 'badge-green' : (balance < 5000 ? 'badge-yellow' : 'badge-red');
             var badgeText = balance <= 0 ? '🟢 أنا ملتزم' : (balance < 5000 ? '🟡 عليّ بعض المستحقات' : '🔴 عليّ مستحقات');
-            var html = '<div class="text-2xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(balance)) + ' ج.م</div>';
+            var html = '<div class="text-2xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</div>';
             html += '<div class="text-xs mt-1"><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + badgeClass + '">' + badgeText + '</span></div>';
             RW_UI.safeHTML(RW_UI.byId('homeBalanceSummary'), html);
         }).catch(function() {
@@ -486,7 +511,7 @@ var App = {
                 html += '<div class="card cursor-pointer hover:bg-orange-50 transition" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\', \'' + (c.name || '').replace(/'/g, "\\'") + '\')">';
                 html += '<div class="flex justify-between items-center">';
                 html += '<div><span class="font-bold">' + debtIcon + ' ' + (c.name || '') + '</span><p class="text-xs text-gray-400">آخر بيع: ' + (c.lastOrderDate ? new Date(c.lastOrderDate).toLocaleDateString('ar-EG') : '---') + '</p></div>';
-                html += '<div class="text-left"><span class="font-black text-sm">' + fmtNum(c.totalDebt) + ' ج.م</span><br><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + debtClass + '">' + (c.totalDebt > 0 ? 'مديونية' : 'لا توجد') + '</span></div>';
+                html += '<div class="text-left"><span class="font-black text-sm">' + RW_UI.formatNumber(c.totalDebt) + ' ج.م</span><br><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + debtClass + '">' + (c.totalDebt > 0 ? 'مديونية' : 'لا توجد') + '</span></div>';
                 html += '</div></div>';
             }
             RW_UI.safeHTML(container, html);
@@ -512,7 +537,7 @@ var App = {
             for (var i = 0; i < filtered.length; i++) {
                 var c = filtered[i];
                 html += '<div class="card cursor-pointer hover:bg-orange-50 transition" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\', \'' + (c.name || '').replace(/'/g, "\\'") + '\')">';
-                html += '<div class="flex justify-between items-center"><div><span class="font-bold">' + (c.name || '') + '</span></div><span class="font-black text-sm">' + fmtNum(c.totalDebt) + ' ج.م</span></div></div>';
+                html += '<div class="flex justify-between items-center"><div><span class="font-bold">' + (c.name || '') + '</span></div><span class="font-black text-sm">' + RW_UI.formatNumber(c.totalDebt) + ' ج.م</span></div></div>';
             }
             RW_UI.safeHTML(container, html);
         });
@@ -533,10 +558,10 @@ var App = {
                 html += '<div class="max-h-60 overflow-y-auto"><table class="w-full text-sm border"><thead class="bg-gray-100"><tr><th class="p-2">التاريخ</th><th class="p-2">الفاتورة</th><th class="p-2 text-center">المبلغ</th></tr></thead><tbody>';
                 for (var i = 0; i < orders.length; i++) {
                     totalDebt += Number(orders[i].total_amount) || 0;
-                    html += '<tr class="border-t"><td class="p-2">' + (orders[i].order_date ? new Date(orders[i].order_date).toLocaleDateString('ar-EG') : '') + '</td><td class="p-2">' + (orders[i].order_code || '') + '</td><td class="p-2 text-center font-bold">' + fmtNum(orders[i].total_amount) + ' ج.م</td></tr>';
+                    html += '<tr class="border-t"><td class="p-2">' + (orders[i].order_date ? new Date(orders[i].order_date).toLocaleDateString('ar-EG') : '') + '</td><td class="p-2">' + (orders[i].order_code || '') + '</td><td class="p-2 text-center font-bold">' + RW_UI.formatNumber(orders[i].total_amount) + ' ج.م</td></tr>';
                 }
                 html += '</tbody></table></div>';
-                html += '<div class="mt-3 text-left font-black text-lg">الإجمالي: ' + fmtNum(totalDebt) + ' ج.م</div>';
+                html += '<div class="mt-3 text-left font-black text-lg">الإجمالي: ' + RW_UI.formatNumber(totalDebt) + ' ج.م</div>';
             }
             html += '<div class="flex gap-2 mt-4 pt-3 border-t"><button onclick="App.openQuickSaleForCustomer(\'' + (code || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-orange-600 text-white py-2 rounded-lg font-bold text-sm">بيع له</button><button onclick="App.collectPayment(\'' + (code || '').replace(/'/g, "\\'") + '\', \'' + (name || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold text-sm">تحصيل نقدية</button></div>';
             html += '</div>';
@@ -548,13 +573,16 @@ var App = {
     },
 
     collectPayment: function(code, name) {
+        var self = this;
         Swal.fire({
             title: 'تحصيل نقدية من ' + (name || code),
             html: '<input type="number" id="collectAmount" class="swal2-input" placeholder="المبلغ المحصل" step="0.01" min="0">',
             showCancelButton: true,
             confirmButtonText: 'حفظ التحصيل',
             preConfirm: function() {
-                var amt = parseFloat(document.getElementById('collectAmount').value) || 0;
+                var popup = Swal.getPopup();
+                var amtEl = popup ? popup.querySelector('#collectAmount') : null;
+                var amt = amtEl ? (parseFloat(amtEl.value) || 0) : 0;
                 if (amt <= 0) { Swal.showValidationMessage('أدخل مبلغاً صحيحاً'); return false; }
                 return amt;
             }
@@ -562,24 +590,13 @@ var App = {
             if (!result.isConfirmed) return;
             Swal.showLoading();
             var payload = {
-                customer_code: code,
-                amount: result.value,
-                collected_by: App.currentUser ? App.currentUser.email : ''
+                date: new Date().toISOString().split('T')[0],
+                cashBoxId: 'MAIN',
+                mainAccountName: name || code,
+                notes: 'تحصيل من مندوب: ' + (App.currentUser ? App.currentUser.email : ''),
+                lines: [{ accountName: name || code, description: 'تحصيل نقدية', amount: result.value }]
             };
-            supabase.auth.getSession().then(function(ses) {
-                var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-                return fetch(SUPABASE_URL + '/functions/v1/save-receipt-voucher', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                    body: JSON.stringify({
-                        date: new Date().toISOString().split('T')[0],
-                        cashBoxId: 'MAIN',
-                        mainAccountName: name || code,
-                        notes: 'تحصيل من مندوب: ' + (App.currentUser ? App.currentUser.email : ''),
-                        lines: [{ accountName: name || code, description: 'تحصيل نقدية', amount: result.value }]
-                    })
-                });
-            }).then(function(res) { return res.json(); }).then(function(json) {
+            RW_API.call('save-receipt-voucher', payload, function(json) {
                 Swal.close();
                 if (json.success) {
                     RW_UI.toast('تم تسجيل التحصيل', 'success');
@@ -587,9 +604,6 @@ var App = {
                 } else {
                     RW_UI.toast(json.error || 'فشل', 'error');
                 }
-            }).catch(function() {
-                Swal.close();
-                RW_UI.toast('فشل الاتصال', 'error');
             });
         });
     },
@@ -608,7 +622,7 @@ var App = {
         html += '<div class="mb-3"><input type="text" id="quickSearch" oninput="App.searchQuickItems(this.value)" placeholder="ابحث عن صنف..." class="w-full p-3 bg-white rounded-xl border"></div>';
         html += '<div id="quickItemResults" class="grid grid-cols-2 gap-2 mb-4"></div>';
         html += '<div class="bg-white p-4 rounded-2xl border mb-4"><h3 class="font-bold mb-2">السلة</h3><div id="quickCartItems"><p class="text-gray-400 text-center">السلة فارغة</p></div></div>';
-        html += '<button onclick="App.submitQuickSale()" class="btn-orange text-lg py-4">حفظ الفاتورة</button>';
+        html += '<button onclick="App.submitQuickSale()" class="btn-primary text-lg py-4">حفظ الفاتورة</button>';
         html += '</div>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         
@@ -646,7 +660,7 @@ var App = {
             var html = '';
             for (var j = 0; j < filtered.length; j++) {
                 var it = filtered[j];
-                html += '<div onclick="App.addToQuickCart(\'' + it.item_code + '\')" class="bg-white p-3 rounded-xl border cursor-pointer hover:bg-orange-50"><div class="font-bold text-sm">' + it.name + '</div><div class="text-orange-600 font-black text-sm">' + fmtNum(it.sales_price) + '</div></div>';
+                html += '<div onclick="App.addToQuickCart(\'' + it.item_code + '\')" class="bg-white p-3 rounded-xl border cursor-pointer hover:bg-orange-50"><div class="font-bold text-sm">' + it.name + '</div><div class="text-orange-600 font-black text-sm">' + RW_UI.formatNumber(it.sales_price) + '</div></div>';
             }
             if (!html) html = '<div class="col-span-2 text-center text-gray-400 p-4">لا توجد نتائج</div>';
             RW_UI.safeHTML(container, html);
@@ -682,7 +696,7 @@ var App = {
             total += lt;
             html += '<div class="flex justify-between items-center py-2 border-b"><span class="font-bold text-sm">' + item.name + ' × ' + item.qty + '</span><div class="flex items-center gap-1"><button onclick="App.decQuickCart(\'' + item.code + '\')" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black">-</button><span class="w-5 text-center font-black text-sm">' + item.qty + '</span><button onclick="App.addToQuickCart(\'' + item.code + '\')" class="w-6 h-6 bg-orange-600 text-white rounded-full text-xs font-black">+</button></div></div>';
         }
-        html += '<div class="flex justify-between font-black text-lg pt-2 border-t mt-2"><span>الإجمالي:</span><span class="text-orange-600">' + fmtNum(total) + '</span></div>';
+        html += '<div class="flex justify-between font-black text-lg pt-2 border-t mt-2"><span>الإجمالي:</span><span class="text-orange-600">' + RW_UI.formatNumber(total) + '</span></div>';
         RW_UI.safeHTML(container, html);
     },
 
@@ -716,29 +730,20 @@ var App = {
                 status: 'Invoiced',
                 paymentType: c.payment_type || 'نقدي',
                 taxAmount: 0,
-                taxRate: 0
+                taxRate: 0,
+                source: 'van-sales'
             };
-            Swal.showLoading();
-            supabase.auth.getSession().then(function(ses) {
-                var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-                return fetch(SUPABASE_URL + '/functions/v1/save-sales-invoice', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                    body: JSON.stringify({ orderHeader: hdr, itemsList: items, branchCode: self.vanBranch ? self.vanBranch.branch_code : 'MAIN' })
-                });
-            }).then(function(r) { return r.json(); }).then(function(json) {
-                Swal.close();
+            RW_UI.showLoader();
+            RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: self.vanBranch ? self.vanBranch.branch_code : 'MAIN' }, function(json) {
+                RW_UI.hideLoader();
                 if (json.success) {
-                    RW_UI.toast('تم الحفظ: ' + (json.orderID || ''), 'success');
+                    Swal.fire({ icon: 'success', title: '✅ تم الحفظ', html: '<div class="text-right"><p>الفاتورة: <strong>' + json.orderID + '</strong></p><p>العميل: <strong>' + c.name + '</strong></p><p>المبلغ: <strong>' + RW_UI.formatNumber(total) + ' ج.م</strong></p></div>', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-orange-600' } });
                     self.cart = [];
                     self.loadMyCustomers();
                     self.showView('home');
                 } else {
-                    RW_UI.toast(json.msg || 'فشل', 'error');
+                    RW_UI.showError(json.msg || 'فشل');
                 }
-            }).catch(function() {
-                Swal.close();
-                RW_UI.toast('فشل الاتصال', 'error');
             });
         });
     },
@@ -796,30 +801,20 @@ var App = {
             items.push({ itemCode: '', itemName: '', qty: qty, unit: 'حبة', unitPrice: 0, notes: '' });
         }
         if (allZero) { RW_UI.toast('أدخل كميات الجرد', 'warning'); return; }
-        Swal.showLoading();
-        supabase.auth.getSession().then(function(ses) {
-            var token = (ses && ses.data && ses.data.session) ? ses.data.session.access_token : null;
-            return fetch(SUPABASE_URL + '/functions/v1/save-inventory-count', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-                body: JSON.stringify({
-                    type: 'vehicle',
-                    entityId: self.currentUser ? self.currentUser.email : '',
-                    reference: 'جرد سريع - ' + new Date().toLocaleDateString('ar-EG'),
-                    items: items
-                })
-            });
-        }).then(function(r) { return r.json(); }).then(function(json) {
-            Swal.close();
+        RW_UI.showLoader();
+        RW_API.call('save-inventory-count', {
+            type: 'vehicle',
+            entityId: self.currentUser ? self.currentUser.email : '',
+            reference: 'جرد سريع - ' + new Date().toLocaleDateString('ar-EG'),
+            items: items
+        }, function(json) {
+            RW_UI.hideLoader();
             if (json.success) {
-                RW_UI.toast('تم حفظ الجرد', 'success');
+                Swal.fire({ icon: 'success', title: '✅ تم حفظ الجرد', html: '<div class="text-right"><p>تم جرد <strong>' + items.length + ' صنف</strong> بنجاح.</p></div>', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-600' } });
                 self.showView('home');
             } else {
-                RW_UI.toast(json.msg || 'فشل', 'error');
+                RW_UI.showError(json.msg || 'فشل');
             }
-        }).catch(function() {
-            Swal.close();
-            RW_UI.toast('فشل الاتصال', 'error');
         });
     },
 
@@ -850,11 +845,39 @@ var App = {
             for (var i = 0; i < invoices.length; i++) {
                 var inv = invoices[i];
                 var paymentClass = inv.payment_type === 'نقدي' ? 'badge-green' : 'badge-yellow';
-                html += '<div class="card"><div class="flex justify-between items-start"><div><span class="font-black text-orange-600 text-sm">' + (inv.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (inv.order_date || '') + '</span></div><span class="font-black text-orange-600">' + fmtNum(inv.total_amount) + ' ج.م</span></div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold">' + (inv.customer_name || '') + '</span><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + paymentClass + '">' + (inv.payment_type || '') + '</span></div></div>';
+                html += '<div class="card"><div class="flex justify-between items-start"><div><span class="font-black text-orange-600 text-sm">' + (inv.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (inv.order_date || '') + '</span></div><span class="font-black text-orange-600">' + RW_UI.formatNumber(inv.total_amount) + ' ج.م</span></div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold">' + (inv.customer_name || '') + '</span><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + paymentClass + '">' + (inv.payment_type || '') + '</span></div></div>';
             }
             RW_UI.safeHTML(container, html);
         }).catch(function() {
             RW_UI.safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الفواتير</div>');
+        });
+    },
+
+    // ==================== شاشة سيارتي ====================
+    renderVehicleStockView: function() {
+        var self = this; RW_UI.showSkeleton('mainContent', 4, 'card');
+        var branchId = this.vanBranch ? this.vanBranch.id : null;
+        if (!branchId) { setTimeout(function() { RW_UI.showEmptyState('mainContent', 'لا يوجد فرع للسيارة', '🚛'); }, 300); return; }
+        var today = new Date().toISOString().split('T')[0];
+        db.stock.where('branch_id').equals(branchId).toArray().then(function(myStock) {
+            if (!myStock.length) { RW_UI.showEmptyState('mainContent', 'السيارة فارغة – لا توجد عهدة', '🚛'); return; }
+            supabase.from('orders').select('id').eq('created_by', self.currentUser.email).eq('order_date', today).then(function(oRes) {
+                var orderIds = (oRes.data || []).map(function(o) { return o.id; });
+                if (!orderIds.length) { self._renderVehicleStock(myStock, {}); return; }
+                supabase.from('order_details').select('item_code, qty').in('order_id', orderIds).then(function(dRes) { var soldMap = {}; var details = dRes.data || []; for (var d = 0; d < details.length; d++) { var it = details[d]; soldMap[it.item_code] = (soldMap[it.item_code] || 0) + (Number(it.qty) || 0); } self._renderVehicleStock(myStock, soldMap); });
+            });
+        });
+    },
+
+    _renderVehicleStock: function(myStock, soldMap) {
+        var self = this, proms = []; for (var k = 0; k < myStock.length; k++) proms.push(db.items.get(myStock[k].item_id));
+        Promise.all(proms).then(function(items) {
+            var totalValue = 0, h = '<div class="p-4"><h2 class="text-xl font-black mb-2">🚛 رصيد سيارتي</h2><div class="bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl p-5 mb-4 text-center"><p class="text-sm opacity-80">قيمة البضاعة المتبقية</p><p class="text-3xl font-black" id="vehicleTotalValue">---</p></div><h3 class="font-bold text-lg mb-3">📦 تفاصيل الأصناف</h3><div id="vehicleItemsList"></div></div>';
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), h);
+            var rows = '';
+            for (var m = 0; m < myStock.length; m++) { var it = items[m], st = myStock[m], nm = it ? it.name : (st.item_id || '---'), ic = it ? it.item_code : (st.item_id || '---'), stockQty = Number(st.qty) || 0, soldQty = soldMap[ic] || 0, remaining = Math.max(0, stockQty - soldQty), price = it ? (Number(it.sales_price) || 0) : 0; totalValue += remaining * price; var color = remaining > 10 ? 'text-green-600' : remaining > 0 ? 'text-amber-600' : 'text-red-600'; rows += '<div class="card mb-2"><div class="flex items-center gap-3">' + RW_ImageCache.getImageHTML(ic, 'w-12', 'h-12') + '<div><p class="font-bold text-sm">' + nm + '</p><p class="text-xs text-gray-400">الرصيد: <strong>' + stockQty + '</strong> | المباع: <strong class="text-red-500">' + soldQty + '</strong> | المتبقي: <strong class="' + color + '">' + remaining + '</strong></p></div></div></div>'; }
+            RW_UI.safeHTML(RW_UI.byId('vehicleItemsList'), rows);
+            RW_UI.safeText(RW_UI.byId('vehicleTotalValue'), RW_UI.formatNumber(totalValue) + ' ج.م');
         });
     },
 
@@ -887,7 +910,7 @@ var App = {
             var badgeClass = balance <= 0 ? 'badge-green' : (balance < 5000 ? 'badge-yellow' : 'badge-red');
             var badgeText = balance <= 0 ? '🟢 أنا ملتزم بالسداد' : (balance < 5000 ? '🟡 عليّ بعض المستحقات' : '🔴 عليّ مستحقات');
             
-            html += '<div class="text-4xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(balance)) + ' ج.م</div>';
+            html += '<div class="text-4xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</div>';
             html += '<div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + badgeClass + '">' + badgeText + '</span></div>';
             html += '</div>';
 
@@ -904,28 +927,62 @@ var App = {
                     var color = row.debit > 0 ? 'text-red-600' : 'text-green-600';
                     html += '<div class="flex justify-between items-center p-2 bg-gray-50 rounded-lg">';
                     html += '<div><span class="text-xs text-gray-400 ml-2">' + (row.entry_date || '') + '</span><span class="font-bold text-sm">' + (row.description || '') + '</span></div>';
-                    html += '<span class="font-bold ' + color + '">' + sign + fmtNum(row.debit || row.credit) + '</span>';
+                    html += '<span class="font-bold ' + color + '">' + sign + RW_UI.formatNumber(row.debit || row.credit) + '</span>';
                     html += '</div>';
                 }
                 html += '</div>';
-                html += '<div class="flex justify-between font-black text-lg pt-3 border-t mt-3"><span>📋 صافي المستحق:</span><span class="' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + fmtNum(Math.abs(balance)) + ' ج.م</span></div>';
+                html += '<div class="flex justify-between font-black text-lg pt-3 border-t mt-3"><span>📋 صافي المستحق:</span><span class="' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</span></div>';
             }
             html += '</div>';
             RW_UI.safeHTML(container, html);
         }).catch(function() {
             RW_UI.safeHTML(container, '<div class="card text-center text-red-400">فشل تحميل الرصيد</div>');
         });
+    },
+
+    // ==================== الخريطة ====================
+    renderMapView: function() {
+        var self = this;
+        var h = '<div class="flex-1 flex flex-col overflow-hidden p-2"><div class="map-wrapper flex-1"><div id="mapContainer" style="width:100%;height:100%;border-radius:16px;"></div></div></div>';
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), h);
+        setTimeout(function() { self._initMap(); }, 300);
+    },
+
+    _initMap: function() {
+        var self = this;
+        if (self._mapInstance) { self._mapInstance.remove(); self._mapInstance = null; }
+        var mapEl = RW_UI.byId('mapContainer'); if (!mapEl) return;
+        self._mapInstance = L.map('mapContainer').setView([30.0444, 31.2357], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(self._mapInstance);
+        db.myCustomers.toArray().then(function(myCustomers) {
+            for (var i = 0; i < self._mapMarkers.length; i++) { self._mapInstance.removeLayer(self._mapMarkers[i]); }
+            self._mapMarkers = [];
+            db.customers.toArray().then(function(allCustomers) {
+                var custMap = {}; for (var j = 0; j < allCustomers.length; j++) { custMap[allCustomers[j].customer_code] = allCustomers[j]; }
+                var bounds = [];
+                for (var k = 0; k < myCustomers.length; k++) {
+                    var mc = myCustomers[k], cust = custMap[mc.customer_code];
+                    if (cust && cust.location_lat && cust.location_lng) {
+                        var marker = L.marker([cust.location_lat, cust.location_lng]).addTo(self._mapInstance).bindPopup('<b>' + (cust.name || '') + '</b><br>' + (cust.area || '') + '<br>المديونية: ' + RW_UI.formatNumber(mc.totalDebt) + ' ج.م<br><a href="javascript:void(0)" onclick="App.openQuickSaleForCustomer(\'' + mc.customer_code + '\')">📝 بيع سريع</a>');
+                        self._mapMarkers.push(marker); bounds.push([cust.location_lat, cust.location_lng]);
+                    }
+                }
+                if (bounds.length > 0) { self._mapInstance.fitBounds(bounds, { padding: [30, 30] }); }
+            });
+        });
+        setTimeout(function() { if (self._mapInstance) self._mapInstance.invalidateSize(); }, 200);
     }
 };
 
 // ============================================================
-// تهيئة التطبيق (باستخدام core.js)
+// دوال عامة
 // ============================================================
+function togglePass() { var p = RW_UI.byId('loginPass'), i = RW_UI.byId('passIcon'); if (p.type === 'password') { p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; } else { p.type = 'password'; i.className = 'fa-solid fa-eye'; } }
+function doLogin() { var email = RW_UI.byId('loginEmail').value.trim(), pass = RW_UI.byId('loginPass').value.trim(); if (!email || !pass) { RW_UI.byId('loginMsg').innerText = 'أدخل البيانات'; RW_UI.byId('loginMsg').classList.remove('hidden'); return; } RW_UI.byId('loginMsg').classList.add('hidden'); RW_UI.showLoader(); RW_Auth.doLogin(email, pass, function(user, err) { RW_UI.hideLoader(); if (err) { RW_UI.byId('loginMsg').innerText = err; RW_UI.byId('loginMsg').classList.remove('hidden'); } else { App.init(); } }); }
+function doLogout() { if (App._mapInstance) { App._mapInstance.remove(); App._mapInstance = null; } RW_Auth.doLogout(function() { RW_UI.byId('mainApp').classList.add('hidden'); RW_UI.byId('loginScreen').classList.remove('hidden'); }); }
+
 RW_SW.register('../sw.js');
-document.addEventListener('DOMContentLoaded', function() {
-    App.init();
-});
+document.addEventListener('DOMContentLoaded', function() { App.init(); });
 </script>
-<script src="../register-sw.js"></script>
 </body>
 </html>
