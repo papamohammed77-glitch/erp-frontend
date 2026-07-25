@@ -57,13 +57,13 @@
                 <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر <span class="text-red-500">*</span></label>
                 <div class="relative">
                     <input id="loginPass" type="password" placeholder="••••••••" class="w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-orange-600 focus:bg-white outline-none font-bold text-sm transition-all pr-12">
-                    <button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600">
+                    <button type="button" onclick="togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600">
                         <i id="passIcon" class="fa-solid fa-eye"></i>
                     </button>
                 </div>
             </div>
         </div>
-        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-orange-600 to-orange-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-orange-200 hover:shadow-xl transition-all mt-4">
+        <button onclick="doLogin()" class="w-full bg-gradient-to-r from-orange-600 to-orange-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-orange-200 hover:shadow-xl transition-all mt-4">
             تسجيل الدخول
         </button>
         <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
@@ -73,15 +73,17 @@
 <!-- التطبيق الرئيسي -->
 <div id="mainApp" class="hidden flex flex-col h-full">
 
-    <header class="bg-orange-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
+    <header class="bg-orange-700 text-white px-3 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0" style="padding-top:max(8px,env(safe-area-inset-top));min-height:52px">
         <div class="flex items-center gap-2">
             <span class="font-black text-sm">🚛 فان سيلز</span>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-1.5 overflow-x-auto">
             <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
             <span id="connLabel" class="text-[11px] font-bold">متصل</span>
-            <button onclick="App.syncData()" class="relative bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-rotate text-xs"></i></button>
-            <button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
+            <button onclick="App.showView('customers')" class="bg-white/10 px-2.5 py-1.5 rounded-full flex items-center gap-1 text-[11px] font-bold flex-shrink-0"><i class="fa-solid fa-users text-xs"></i><span>عملائي</span></button>
+            <button onclick="App.showView('map')" class="bg-white/10 px-2.5 py-1.5 rounded-full flex items-center gap-1 text-[11px] font-bold flex-shrink-0"><i class="fa-solid fa-map-location-dot text-xs"></i><span>الخريطة</span></button>
+            <button onclick="App.syncData()" class="bg-white/10 px-2.5 py-1.5 rounded-full flex items-center gap-1 text-[11px] font-bold flex-shrink-0"><i class="fa-solid fa-rotate text-xs"></i></button>
+            <button onclick="doLogout()" class="bg-white/10 px-2.5 py-1.5 rounded-full flex items-center gap-1 text-[11px] font-bold flex-shrink-0 text-red-200"><i class="fa-solid fa-right-from-bracket text-xs"></i></button>
         </div>
     </header>
 
@@ -102,10 +104,17 @@
         </div>
     </div>
 
-    <nav id="bottomNav" class="bg-white border-t fixed bottom-0 left-0 right-0 z-30 h-16 flex justify-around items-center text-gray-400 text-xs flex-shrink-0"></nav>
-
+    <nav id="bottomNav" class="bg-white border-t fixed bottom-0 left-0 right-0 z-30 h-16 flex justify-around items-center text-gray-400 text-xs flex-shrink-0" style="padding-bottom:max(12px,env(safe-area-inset-bottom))">
+        <button onclick="App.showView('home')" class="flex flex-col items-center p-2 text-orange-600" id="nav-home"><i class="fa-solid fa-calendar-day text-lg mb-1"></i><span>اليوم</span></button>
+        <button onclick="App.showView('invoices')" class="flex flex-col items-center p-2 text-gray-400" id="nav-invoices"><i class="fa-solid fa-file-invoice text-lg mb-1"></i><span>فواتيري</span></button>
+        <button onclick="App.startNewOrder()" class="flex flex-col items-center p-2 text-gray-400 relative" id="nav-new-order" style="margin-top:-20px">
+            <div class="w-14 h-14 bg-orange-600 rounded-full flex items-center justify-center text-white text-2xl shadow-lg shadow-orange-300 active:scale-90 transition"><i class="fa-solid fa-plus"></i></div>
+            <span>أوردر جديد</span>
+        </button>
+        <button onclick="App.showView('vehicle')" class="flex flex-col items-center p-2 text-gray-400" id="nav-vehicle"><i class="fa-solid fa-truck text-lg mb-1"></i><span>سيارتي</span></button>
+        <button onclick="App.showView('balance')" class="flex flex-col items-center p-2 text-gray-400" id="nav-balance"><i class="fa-solid fa-scale-balanced text-lg mb-1"></i><span>رصيدي</span></button>
+    </nav>
 </div>
-
 <script>
 // ============================================================
 // قاعدة البيانات المحلية (Dexie) – خاصة بالتطبيق
@@ -137,8 +146,9 @@ var App = {
     companyName: 'الروائع',
     _mapInstance: null,
     _mapMarkers: [],
+    currentView: 'home',
 
-    // ==================== دوال الدخول (باستخدام core.js) ====================
+    // ==================== دوال الدخول ====================
     togglePass: function() {
         var passInput = RW_UI.byId('loginPass');
         var icon = RW_UI.byId('passIcon');
@@ -183,7 +193,8 @@ var App = {
             }
             var isOwner = user.isOwner;
             var perms = user.permissions;
-            var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('orders') !== -1);
+            // ✅ إصلاح مشكلة الصلاحية: van-sales أولاً، ثم orders (للتوافق)
+            var hasAccess = isOwner || (Array.isArray(perms) && (perms.indexOf('van-sales') !== -1 || perms.indexOf('orders') !== -1));
             if (!hasAccess) {
                 RW_UI.showError('غير مصرح');
                 RW_Auth.doLogout();
@@ -201,7 +212,6 @@ var App = {
         this.updateConnectionStatus();
         window.addEventListener('online', function() { App.updateConnectionStatus(); });
         window.addEventListener('offline', function() { App.updateConnectionStatus(); });
-        this.renderBottomNav();
         this.syncDown().then(function() {
             App.loadVanBranch();
         });
@@ -294,35 +304,36 @@ var App = {
         });
     },
 
-    // ==================== شريط التنقل ====================
-    renderBottomNav: function() {
-        var html = '';
-        html += '<button onclick="App.showView(\'home\')" class="flex flex-col items-center p-2 text-orange-600" id="nav-home"><i class="fa-solid fa-house text-lg mb-1"></i><span>الرئيسية</span></button>';
-        html += '<button onclick="App.showView(\'customers\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-customers"><i class="fa-solid fa-users text-lg mb-1"></i><span>عملائي</span></button>';
-        html += '<button onclick="App.showView(\'invoices\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-invoices"><i class="fa-solid fa-file-invoice text-lg mb-1"></i><span>فواتيري</span></button>';
-        html += '<button onclick="App.showView(\'vehicle\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-vehicle"><i class="fa-solid fa-truck text-lg mb-1"></i><span>سيارتي</span></button>';
-        html += '<button onclick="App.showView(\'map\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-map"><i class="fa-solid fa-map-location-dot text-lg mb-1"></i><span>الخريطة</span></button>';
-        html += '<button onclick="App.showView(\'balance\')" class="flex flex-col items-center p-2 text-gray-400" id="nav-balance"><i class="fa-solid fa-scale-balanced text-lg mb-1"></i><span>رصيدي</span></button>';
-        RW_UI.safeHTML(RW_UI.byId('bottomNav'), html);
-    },
-
+    // ==================== التوجيه بين التبويبات ====================
     showView: function(view) {
-        var btns = document.querySelectorAll('#bottomNav button');
-        for (var i = 0; i < btns.length; i++) {
-            btns[i].classList.remove('text-orange-600');
-            btns[i].classList.add('text-gray-400');
+        this.currentView = view;
+        // تحديث ألوان الشريط السفلي
+        var navButtons = document.querySelectorAll('#bottomNav button');
+        for (var i = 0; i < navButtons.length; i++) {
+            navButtons[i].classList.remove('text-orange-600');
+            navButtons[i].classList.add('text-gray-400');
         }
-        var activeBtn = RW_UI.byId('nav-' + view);
-        if (activeBtn) {
-            activeBtn.classList.remove('text-gray-400');
-            activeBtn.classList.add('text-orange-600');
+        if (view === 'new-order') {
+            var newOrderBtn = RW_UI.byId('nav-new-order');
+            if (newOrderBtn) { newOrderBtn.classList.remove('text-gray-400'); newOrderBtn.classList.add('text-orange-600'); }
+        } else {
+            var activeBtn = RW_UI.byId('nav-' + view);
+            if (activeBtn) { activeBtn.classList.remove('text-gray-400'); activeBtn.classList.add('text-orange-600'); }
         }
+
         if (view === 'home') this.renderHomeView();
         else if (view === 'customers') this.renderCustomersView();
         else if (view === 'invoices') this.renderInvoicesView();
         else if (view === 'vehicle') this.renderVehicleStockView();
         else if (view === 'map') this.renderMapView();
         else if (view === 'balance') this.renderBalanceView();
+        else if (view === 'new-order') this.renderNewOrderView();
+    },
+
+    startNewOrder: function() {
+        this.cart = [];
+        this.selCust = null;
+        this.showView('new-order');
     },
 
     // ==================== تحميل عملائي ====================
@@ -369,33 +380,33 @@ var App = {
     // ==================== الشاشة الرئيسية ====================
     renderHomeView: function() {
         var self = this;
-        var html = '<div class="p-4 animate-fadeIn">';
+        RW_UI.showSkeleton('mainContent', 3, 'card');
+        var html = '<div class="p-4">';
+        html += '<div class="mb-4"><p class="text-slate-400 text-sm">صباح الخير، <span class="font-bold text-slate-700">' + (this.currentUser.name || 'زميل') + '</span> 👋</p></div>';
 
         // بطاقة العهدة
-        html += '<div class="card mb-4" onclick="App.showView(\'customers\')">';
+        html += '<div class="card mb-4 cursor-pointer" onclick="App.showView(\'vehicle\')">';
         html += '<div class="flex items-center gap-3 mb-3"><span class="text-2xl">📦</span><span class="font-black text-lg">عهدتي الآن</span></div>';
         html += '<div id="homeStockSummary" class="text-center text-gray-400 text-sm">جاري تحميل العهدة...</div>';
-        html += '<div class="text-xs text-gray-400 mt-2" id="homeStockLastUpdate"></div>';
         html += '</div>';
 
         // بطاقة مبيعات اليوم
-        html += '<div class="card mb-4" onclick="App.showView(\'invoices\')">';
+        html += '<div class="card mb-4 cursor-pointer" onclick="App.showView(\'invoices\')">';
         html += '<div class="flex items-center gap-3 mb-3"><span class="text-2xl">💰</span><span class="font-black text-lg">مبيعات اليوم</span></div>';
         html += '<div id="homeSalesSummary" class="text-center text-gray-400 text-sm">جاري تحميل المبيعات...</div>';
         html += '</div>';
 
         // بطاقة رصيدي
-        html += '<div class="card mb-4" onclick="App.showView(\'balance\')">';
+        html += '<div class="card mb-4 cursor-pointer" onclick="App.showView(\'balance\')">';
         html += '<div class="flex items-center gap-3 mb-3"><span class="text-2xl">⚖️</span><span class="font-black text-lg">رصيدي</span></div>';
         html += '<div id="homeBalanceSummary" class="text-center text-gray-400 text-sm">جاري تحميل الرصيد...</div>';
         html += '</div>';
 
         // أزرار سريعة
-        html += '<div class="grid grid-cols-2 gap-3">';
-        html += '<button onclick="App.openQuickSale()" class="bg-orange-600 text-white text-lg py-6 rounded-2xl shadow-lg font-bold"><i class="fa-solid fa-cart-plus ml-2"></i>بيع سريع</button>';
+        html += '<div class="grid grid-cols-2 gap-3 mt-6">';
+        html += '<button onclick="App.startNewOrder()" class="btn-primary text-lg py-6"><i class="fa-solid fa-cart-plus ml-2"></i>بيع سريع</button>';
         html += '<button onclick="App.openQuickInventory()" class="bg-amber-600 text-white text-lg py-6 rounded-2xl shadow-lg font-bold"><i class="fa-solid fa-clipboard-check ml-2"></i>جرد سريع</button>';
         html += '</div>';
-
         html += '</div>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
 
@@ -406,35 +417,24 @@ var App = {
 
     loadHomeStockSummary: function() {
         var self = this;
-        var branchCode = this.vanBranch ? (this.vanBranch.branch_code || 'MAIN') : 'MAIN';
+        var branchId = this.vanBranch ? this.vanBranch.id : null;
+        if (!branchId) { RW_UI.showEmptyState('homeStockSummary', 'لا توجد عهدة', '📦'); return; }
         db.stock.toArray().then(function(stockItems) {
-            var branchId = self.vanBranch ? self.vanBranch.id : null;
             var myStock = [];
             for (var i = 0; i < stockItems.length; i++) {
-                if (branchId && stockItems[i].branch_id === branchId) {
-                    myStock.push(stockItems[i]);
+                if (stockItems[i].branch_id === branchId) myStock.push(stockItems[i]);
+            }
+            if (myStock.length === 0) { RW_UI.showEmptyState('homeStockSummary', 'لا توجد عهدة حالياً', '📦'); return; }
+            var proms = [];
+            for (var j = 0; j < Math.min(myStock.length, 5); j++) proms.push(db.items.get(myStock[j].item_id));
+            Promise.all(proms).then(function(items) {
+                var summary = '';
+                for (var k = 0; k < items.length; k++) {
+                    if (items[k]) summary += '<span class="inline-block bg-orange-50 text-orange-700 px-2 py-1 rounded-lg text-xs font-bold ml-1 mb-1">' + items[k].name + ': ' + myStock[k].qty + '</span>';
                 }
-            }
-            if (myStock.length === 0) {
-                RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">لا توجد عهدة حالياً</p>');
-                return;
-            }
-            var summary = '';
-            var count = 0;
-            for (var j = 0; j < Math.min(myStock.length, 5); j++) {
-                var item = myStock[j];
-                db.items.get(item.item_id).then(function(it) {
-                    if (it) {
-                        summary += '<span class="inline-block bg-orange-50 text-orange-700 px-2 py-1 rounded-lg text-xs font-bold ml-1 mb-1">' + it.name + ': ' + item.qty + '</span>';
-                    }
-                });
-                count++;
-            }
-            if (myStock.length > 5) summary += '<span class="text-xs text-gray-400">... وأكثر</span>';
-            setTimeout(function() {
+                if (myStock.length > 5) summary += '<span class="text-xs text-gray-400">... وأكثر</span>';
                 RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), summary || '<p class="text-gray-400">اضغط للتفاصيل</p>');
-            }, 500);
-            RW_UI.safeText(RW_UI.byId('homeStockLastUpdate'), '🟢 آخر تحديث: الآن');
+            });
         });
     },
 
@@ -444,12 +444,12 @@ var App = {
         if (!this.currentUser) return;
         supabase.from('orders').select('total_amount, payment_type').eq('created_by', this.currentUser.email).eq('order_date', today).then(function(res) {
             var orders = res.data || [];
-            var total = 0, countCash = 0, countCredit = 0, totalCash = 0, totalCredit = 0;
+            var total = 0, totalCash = 0, totalCredit = 0;
             for (var i = 0; i < orders.length; i++) {
                 var amt = Number(orders[i].total_amount) || 0;
                 total += amt;
-                if (orders[i].payment_type === 'نقدي') { countCash++; totalCash += amt; }
-                else { countCredit++; totalCredit += amt; }
+                if (orders[i].payment_type === 'نقدي') totalCash += amt;
+                else totalCredit += amt;
             }
             var html = '<div class="text-2xl font-black text-orange-600">' + RW_UI.formatNumber(total) + ' ج.م</div>';
             html += '<div class="text-xs text-gray-500 mt-1">' + orders.length + ' فواتير | 💵 نقدي: ' + RW_UI.formatNumber(totalCash) + ' | 📋 آجل: ' + RW_UI.formatNumber(totalCredit) + '</div>';
@@ -482,39 +482,24 @@ var App = {
 
     // ==================== شاشة العملاء ====================
     renderCustomersView: function() {
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">👥 عملائي</h2>';
-        html += '<input type="text" id="myCustSearch" oninput="App.filterMyCustomers()" placeholder="🔍 ابحث عن عميل..." class="w-full p-3 bg-white rounded-xl border mb-4">';
-        html += '<div id="myCustomersList" class="space-y-2"><div class="text-center text-gray-400 py-8">جاري تحميل العملاء...</div></div>';
-        html += '</div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        this.renderMyCustomersList();
-    },
-
-    renderMyCustomersList: function() {
         var self = this;
-        var container = RW_UI.byId('myCustomersList');
-        if (!container) return;
+        RW_UI.showSkeleton('mainContent', 3, 'card');
+        var html = '<div class="p-4"><h2 class="text-xl font-bold mb-4">👥 عملائي</h2>';
+        html += '<input type="text" id="myCustSearch" oninput="App.filterMyCustomers()" placeholder="🔍 ابحث عن عميل..." class="w-full p-3 bg-white rounded-xl border mb-4">';
+        html += '<div id="myCustomersList" class="space-y-2"></div></div>';
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         db.myCustomers.toArray().then(function(list) {
-            if (!list.length) {
-                RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا يوجد عملاء بعد</div>');
-                return;
-            }
-            var html = '';
+            if (!list.length) { RW_UI.showEmptyState('myCustomersList', 'لا يوجد عملاء بعد', '👥'); return; }
+            var html2 = '';
             for (var i = 0; i < list.length; i++) {
                 var c = list[i];
                 var daysSinceLast = 999;
-                if (c.lastOrderDate) {
-                    daysSinceLast = Math.floor((new Date() - new Date(c.lastOrderDate)) / (1000 * 60 * 60 * 24));
-                }
+                if (c.lastOrderDate) daysSinceLast = Math.floor((new Date() - new Date(c.lastOrderDate)) / 86400000);
                 var debtClass = c.totalDebt > 0 ? (daysSinceLast > 30 ? 'badge-red' : 'badge-yellow') : 'badge-green';
                 var debtIcon = c.totalDebt > 0 ? (daysSinceLast > 30 ? '🔴' : '🟡') : '🟢';
-                html += '<div class="card cursor-pointer hover:bg-orange-50 transition" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\', \'' + (c.name || '').replace(/'/g, "\\'") + '\')">';
-                html += '<div class="flex justify-between items-center">';
-                html += '<div><span class="font-bold">' + debtIcon + ' ' + (c.name || '') + '</span><p class="text-xs text-gray-400">آخر بيع: ' + (c.lastOrderDate ? new Date(c.lastOrderDate).toLocaleDateString('ar-EG') : '---') + '</p></div>';
-                html += '<div class="text-left"><span class="font-black text-sm">' + RW_UI.formatNumber(c.totalDebt) + ' ج.م</span><br><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + debtClass + '">' + (c.totalDebt > 0 ? 'مديونية' : 'لا توجد') + '</span></div>';
-                html += '</div></div>';
+                html2 += '<div class="card cursor-pointer hover:bg-orange-50 transition slide-in" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\',\'' + (c.name || '').replace(/'/g, "\\'") + '\')"><div class="flex justify-between items-center"><div><span class="font-bold">' + debtIcon + ' ' + (c.name || '') + '</span><p class="text-xs text-gray-400">آخر بيع: ' + (c.lastOrderDate ? new Date(c.lastOrderDate).toLocaleDateString('ar-EG') : '---') + '</p></div><div class="text-left"><span class="font-black text-sm">' + RW_UI.formatNumber(c.totalDebt) + ' ج.م</span><br><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + debtClass + '">' + (c.totalDebt > 0 ? 'مديونية' : 'لا توجد') + '</span></div></div></div>';
             }
-            RW_UI.safeHTML(container, html);
+            RW_UI.safeHTML(RW_UI.byId('myCustomersList'), html2);
         });
     },
 
@@ -523,21 +508,12 @@ var App = {
         var container = RW_UI.byId('myCustomersList');
         if (!container) return;
         db.myCustomers.toArray().then(function(list) {
-            var filtered = list;
-            if (q) {
-                filtered = list.filter(function(c) {
-                    return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.customer_code || '').toLowerCase().indexOf(q) !== -1;
-                });
-            }
-            if (!filtered.length) {
-                RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد نتائج</div>');
-                return;
-            }
+            var filtered = q ? list.filter(function(c) { return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.customer_code || '').toLowerCase().indexOf(q) !== -1; }) : list;
+            if (!filtered.length) { RW_UI.showEmptyState('myCustomersList', 'لا توجد نتائج', '🔍'); return; }
             var html = '';
             for (var i = 0; i < filtered.length; i++) {
                 var c = filtered[i];
-                html += '<div class="card cursor-pointer hover:bg-orange-50 transition" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\', \'' + (c.name || '').replace(/'/g, "\\'") + '\')">';
-                html += '<div class="flex justify-between items-center"><div><span class="font-bold">' + (c.name || '') + '</span></div><span class="font-black text-sm">' + RW_UI.formatNumber(c.totalDebt) + ' ج.م</span></div></div>';
+                html += '<div class="card cursor-pointer hover:bg-orange-50 transition slide-in" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\',\'' + (c.name || '').replace(/'/g, "\\'") + '\')"><div class="flex justify-between items-center"><span class="font-bold">' + (c.name || '') + '</span><span class="font-black text-sm">' + RW_UI.formatNumber(c.totalDebt) + ' ج.م</span></div></div>';
             }
             RW_UI.safeHTML(container, html);
         });
@@ -563,7 +539,7 @@ var App = {
                 html += '</tbody></table></div>';
                 html += '<div class="mt-3 text-left font-black text-lg">الإجمالي: ' + RW_UI.formatNumber(totalDebt) + ' ج.م</div>';
             }
-            html += '<div class="flex gap-2 mt-4 pt-3 border-t"><button onclick="App.openQuickSaleForCustomer(\'' + (code || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-orange-600 text-white py-2 rounded-lg font-bold text-sm">بيع له</button><button onclick="App.collectPayment(\'' + (code || '').replace(/'/g, "\\'") + '\', \'' + (name || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold text-sm">تحصيل نقدية</button></div>';
+            html += '<div class="flex gap-2 mt-4 pt-3 border-t"><button onclick="App.openQuickSaleForCustomer(\'' + (code || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-orange-600 text-white py-2 rounded-lg font-bold text-sm">بيع له</button><button onclick="App.collectPayment(\'' + (code || '').replace(/'/g, "\\'") + '\',\'' + (name || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold text-sm">تحصيل نقدية</button></div>';
             html += '</div>';
             Swal.fire({ title: 'تفاصيل العميل', html: html, width: '600px', showCloseButton: true, showConfirmButton: false });
         }).catch(function() {
@@ -609,35 +585,38 @@ var App = {
     },
 
     // ==================== بيع سريع ====================
-    openQuickSale: function() {
-        this.openQuickSaleForCustomer('');
-    },
-
     openQuickSaleForCustomer: function(customerCode) {
-        var self = this;
         this.cart = [];
         this.selCust = null;
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">🛒 بيع سريع</h2>';
-        html += '<div class="mb-4"><select id="quickCustSelect" class="w-full p-3 bg-white rounded-xl border"><option value="">-- اختر عميلاً --</option></select></div>';
-        html += '<div class="mb-3"><input type="text" id="quickSearch" oninput="App.searchQuickItems(this.value)" placeholder="ابحث عن صنف..." class="w-full p-3 bg-white rounded-xl border"></div>';
+        if (customerCode) {
+            db.myCustomers.get(customerCode).then(function(c) {
+                if (c) { App.selCust = { customer_code: c.customer_code, name: c.name, area: c.area || '', payment_type: c.payment_type || 'نقدي' }; }
+            });
+        }
+        this.showView('new-order');
+    },
+
+    renderNewOrderView: function() {
+        var self = this;
+        RW_UI.showSkeleton('mainContent', 4, 'card');
+        var html = '<div class="p-4"><h2 class="text-xl font-bold mb-4">🛒 أوردر جديد</h2>';
+        html += '<div class="mb-4"><label class="text-xs font-bold block mb-1">العميل</label><select id="quickCustSelect" class="w-full p-3 bg-white rounded-xl border"><option value="">-- اختر عميلاً --</option></select></div>';
+        html += '<div class="mb-3"><label class="text-xs font-bold block mb-1">بحث عن صنف</label><input type="text" id="quickSearch" oninput="App.searchQuickItems(this.value)" placeholder="ابحث عن صنف..." class="w-full p-3 bg-white rounded-xl border"></div>';
         html += '<div id="quickItemResults" class="grid grid-cols-2 gap-2 mb-4"></div>';
-        html += '<div class="bg-white p-4 rounded-2xl border mb-4"><h3 class="font-bold mb-2">السلة</h3><div id="quickCartItems"><p class="text-gray-400 text-center">السلة فارغة</p></div></div>';
-        html += '<button onclick="App.submitQuickSale()" class="btn-primary text-lg py-4">حفظ الفاتورة</button>';
+        html += '<div class="bg-white p-4 rounded-2xl border mb-4"><h3 class="font-bold mb-2">السلة <span id="quickCartCount" class="text-xs text-gray-400">(0)</span></h3><div id="quickCartItems"><p class="text-gray-400 text-center">السلة فارغة</p></div></div>';
+        html += '<button onclick="App.submitQuickSale()" class="btn-primary text-lg py-4"><i class="fa-solid fa-save ml-2"></i> حفظ الفاتورة</button>';
         html += '</div>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        
+
         db.myCustomers.toArray().then(function(list) {
             var sel = RW_UI.byId('quickCustSelect');
             if (sel) {
                 var opts = '<option value="">-- اختر عميلاً --</option>';
                 for (var i = 0; i < list.length; i++) {
-                    var selAttr = (list[i].customer_code === customerCode) ? ' selected' : '';
+                    var selAttr = (self.selCust && list[i].customer_code === self.selCust.customer_code) ? ' selected' : '';
                     opts += '<option value="' + list[i].customer_code + '"' + selAttr + '>' + list[i].name + '</option>';
                 }
                 RW_UI.safeHTML(sel, opts);
-                if (customerCode) {
-                    self.selCust = { customer_code: customerCode, name: list.find(function(c) { return c.customer_code === customerCode; })?.name || '' };
-                }
             }
         });
     },
@@ -662,8 +641,7 @@ var App = {
                 var it = filtered[j];
                 html += '<div onclick="App.addToQuickCart(\'' + it.item_code + '\')" class="bg-white p-3 rounded-xl border cursor-pointer hover:bg-orange-50"><div class="font-bold text-sm">' + it.name + '</div><div class="text-orange-600 font-black text-sm">' + RW_UI.formatNumber(it.sales_price) + '</div></div>';
             }
-            if (!html) html = '<div class="col-span-2 text-center text-gray-400 p-4">لا توجد نتائج</div>';
-            RW_UI.safeHTML(container, html);
+            RW_UI.safeHTML(container, html || '<div class="col-span-2 text-center text-gray-400">لا توجد نتائج</div>');
         });
     },
 
@@ -678,7 +656,16 @@ var App = {
             if (existing) { existing.qty++; }
             else { self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 }); }
             self.renderQuickCart();
+            self.updateFloatingCart();
         });
+    },
+
+    decQuickCart: function(code) {
+        for (var i = 0; i < this.cart.length; i++) {
+            if (this.cart[i].code === code) { this.cart[i].qty--; if (this.cart[i].qty <= 0) this.cart.splice(i, 1); break; }
+        }
+        this.renderQuickCart();
+        this.updateFloatingCart();
     },
 
     renderQuickCart: function() {
@@ -686,6 +673,7 @@ var App = {
         if (!container) return;
         if (!this.cart.length) {
             RW_UI.safeHTML(container, '<p class="text-gray-400 text-center">السلة فارغة</p>');
+            RW_UI.safeText(RW_UI.byId('quickCartCount'), '(0)');
             return;
         }
         var html = '';
@@ -698,94 +686,40 @@ var App = {
         }
         html += '<div class="flex justify-between font-black text-lg pt-2 border-t mt-2"><span>الإجمالي:</span><span class="text-orange-600">' + RW_UI.formatNumber(total) + '</span></div>';
         RW_UI.safeHTML(container, html);
+        RW_UI.safeText(RW_UI.byId('quickCartCount'), '(' + this.cart.length + ')');
     },
 
-    decQuickCart: function(code) {
-        for (var i = 0; i < this.cart.length; i++) {
-            if (this.cart[i].code === code) { this.cart[i].qty--; if (this.cart[i].qty <= 0) this.cart.splice(i, 1); break; }
-        }
-        this.renderQuickCart();
+    updateFloatingCart: function() {
+        var bar = RW_UI.byId('floatingCart');
+        if (!bar) return;
+        if (this.cart.length === 0) { bar.classList.add('hidden'); return; }
+        bar.classList.remove('hidden');
+        var total = 0;
+        for (var i = 0; i < this.cart.length; i++) { total += this.cart[i].price * this.cart[i].qty; }
+        RW_UI.safeText(RW_UI.byId('cartBadgeCount'), this.cart.length);
+        RW_UI.safeText(RW_UI.byId('cartBadgeSummary'), this.cart.length === 1 ? this.cart[0].name : (this.cart.length + ' أصناف'));
+        RW_UI.safeText(RW_UI.byId('cartBadgeTotal'), RW_UI.formatNumber(total));
     },
-
-    submitQuickSale: function() {
-        var custCode = RW_UI.byId('quickCustSelect') ? RW_UI.byId('quickCustSelect').value : '';
-        if (!custCode) { RW_UI.toast('اختر عميلاً', 'warning'); return; }
-        if (!this.cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
-        var self = this;
-        db.customers.get(custCode).then(function(c) {
-            if (!c) { RW_UI.toast('العميل غير موجود', 'error'); return; }
-            var items = [];
-            var sub = 0;
-            for (var i = 0; i < self.cart.length; i++) {
-                items.push({ code: self.cart[i].code, name: self.cart[i].name, price: self.cart[i].price, qty: self.cart[i].qty, unit: self.cart[i].unit });
-                sub += self.cart[i].price * self.cart[i].qty;
-            }
-            var total = sub;
-            var hdr = {
-                customer_code: c.customer_code,
-                custName: c.name,
-                area: c.area || '',
-                total: total,
-                deliveryFees: 0,
-                status: 'Invoiced',
-                paymentType: c.payment_type || 'نقدي',
-                taxAmount: 0,
-                taxRate: 0,
-                source: 'van-sales'
-            };
-            RW_UI.showLoader();
-            RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: self.vanBranch ? self.vanBranch.branch_code : 'MAIN' }, function(json) {
-                RW_UI.hideLoader();
-                if (json.success) {
-                    Swal.fire({ icon: 'success', title: '✅ تم الحفظ', html: '<div class="text-right"><p>الفاتورة: <strong>' + json.orderID + '</strong></p><p>العميل: <strong>' + c.name + '</strong></p><p>المبلغ: <strong>' + RW_UI.formatNumber(total) + ' ج.م</strong></p></div>', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-orange-600' } });
-                    self.cart = [];
-                    self.loadMyCustomers();
-                    self.showView('home');
-                } else {
-                    RW_UI.showError(json.msg || 'فشل');
-                }
-            });
-        });
-    },
-
-    // ==================== جرد سريع ====================
+        // ==================== جرد سريع ====================
     openQuickInventory: function() {
         var self = this;
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">🔍 جرد سريع</h2>';
-        html += '<div id="invItems"><div class="text-center text-gray-400 py-8">جاري تحميل العهدة...</div></div>';
-        html += '<button onclick="App.submitQuickInventory()" class="bg-amber-600 text-white w-full py-4 rounded-xl font-black mt-4">حفظ الجرد</button>';
-        html += '</div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        
-        var branchCode = this.vanBranch ? (this.vanBranch.branch_code || 'MAIN') : 'MAIN';
+        RW_UI.showSkeleton('mainContent', 3, 'card');
         var branchId = this.vanBranch ? this.vanBranch.id : null;
-        db.stock.toArray().then(function(stockItems) {
-            var myStock = [];
-            for (var i = 0; i < stockItems.length; i++) {
-                if (branchId && stockItems[i].branch_id === branchId) {
-                    myStock.push(stockItems[i]);
-                }
-            }
-            if (myStock.length === 0) {
-                RW_UI.safeHTML(RW_UI.byId('invItems'), '<p class="text-gray-400 text-center">لا توجد عهدة</p>');
-                return;
-            }
-            var promises = [];
-            for (var j = 0; j < myStock.length; j++) {
-                promises.push(db.items.get(myStock[j].item_id));
-            }
-            Promise.all(promises).then(function(items) {
-                var html = '';
+        if (!branchId) { setTimeout(function() { RW_UI.showEmptyState('mainContent', 'لا يوجد فرع للسيارة', '🚛'); }, 300); return; }
+        db.stock.where('branch_id').equals(branchId).toArray().then(function(myStock) {
+            if (!myStock.length) { RW_UI.showEmptyState('mainContent', 'لا توجد عهدة', '📦'); return; }
+            var proms = [];
+            for (var j = 0; j < myStock.length; j++) proms.push(db.items.get(myStock[j].item_id));
+            Promise.all(proms).then(function(items) {
+                var html = '<div class="p-4"><h2 class="text-xl font-bold mb-4">🔍 جرد سريع</h2><div id="invItems">';
                 for (var k = 0; k < myStock.length; k++) {
                     var it = items[k];
                     var st = myStock[k];
-                    var itemName = it ? it.name : (st.item_id || '---');
-                    html += '<div class="flex items-center justify-between p-3 bg-white rounded-xl border mb-2">';
-                    html += '<div><span class="font-bold text-sm">' + itemName + '</span><p class="text-xs text-gray-400">الرصيد الدفتري: ' + st.qty + '</p></div>';
-                    html += '<input type="number" id="inv_qty_' + k + '" value="' + st.qty + '" class="w-20 p-2 border rounded-lg text-center font-bold" min="0">';
-                    html += '</div>';
+                    var nm = it ? it.name : (st.item_id || '---');
+                    html += '<div class="flex items-center justify-between p-3 bg-white rounded-xl border mb-2"><div><span class="font-bold text-sm">' + nm + '</span><p class="text-xs text-gray-400">الرصيد الدفتري: ' + st.qty + '</p></div><input type="number" id="inv_qty_' + k + '" value="' + st.qty + '" class="w-20 p-2 border rounded-lg text-center font-bold" min="0"></div>';
                 }
-                RW_UI.safeHTML(RW_UI.byId('invItems'), html);
+                html += '</div><button onclick="App.submitQuickInventory()" class="bg-amber-600 text-white w-full py-4 rounded-xl font-black mt-4">حفظ الجرد</button></div>';
+                RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
             });
         });
     },
@@ -818,44 +752,53 @@ var App = {
         });
     },
 
-    // ==================== شاشة الفواتير ====================
-    renderInvoicesView: function() {
-        var today = new Date().toISOString().split('T')[0];
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">📄 فواتيري</h2>';
-        html += '<div class="bg-white p-3 rounded-2xl border mb-4"><div class="flex gap-2"><input type="date" id="invDateFilter" value="' + today + '" onchange="App.loadMyInvoices()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><button onclick="RW_UI.byId(\'invDateFilter\').value=\'' + today + '\';App.loadMyInvoices();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">اليوم</button></div></div>';
-        html += '<div id="myInvoicesList" class="space-y-3"><div class="text-center text-gray-400 py-8">جاري التحميل...</div></div></div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        this.loadMyInvoices();
-    },
-
-    loadMyInvoices: function() {
+    // ==================== حفظ الفاتورة ====================
+    submitQuickSale: function() {
+        var custCode = RW_UI.byId('quickCustSelect') ? RW_UI.byId('quickCustSelect').value : '';
+        if (!custCode) { RW_UI.toast('اختر عميلاً', 'warning'); return; }
+        if (!this.cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
         var self = this;
-        var container = RW_UI.byId('myInvoicesList');
-        if (!container) return;
-        RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8">جاري التحميل...</div>');
-        var dateFilter = RW_UI.byId('invDateFilter') ? RW_UI.byId('invDateFilter').value : new Date().toISOString().split('T')[0];
-        if (!this.currentUser) return;
-        supabase.from('orders').select('*').eq('created_by', this.currentUser.email).eq('order_date', dateFilter).order('order_date', { ascending: false }).then(function(res) {
-            var invoices = res.data || [];
-            if (!invoices.length) {
-                RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد فواتير لهذا اليوم</div>');
-                return;
+        db.customers.get(custCode).then(function(c) {
+            if (!c) { RW_UI.toast('العميل غير موجود', 'error'); return; }
+            var items = [];
+            var sub = 0;
+            for (var i = 0; i < self.cart.length; i++) {
+                items.push({ code: self.cart[i].code, name: self.cart[i].name, price: self.cart[i].price, qty: self.cart[i].qty, unit: self.cart[i].unit });
+                sub += self.cart[i].price * self.cart[i].qty;
             }
-            var html = '';
-            for (var i = 0; i < invoices.length; i++) {
-                var inv = invoices[i];
-                var paymentClass = inv.payment_type === 'نقدي' ? 'badge-green' : 'badge-yellow';
-                html += '<div class="card"><div class="flex justify-between items-start"><div><span class="font-black text-orange-600 text-sm">' + (inv.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (inv.order_date || '') + '</span></div><span class="font-black text-orange-600">' + RW_UI.formatNumber(inv.total_amount) + ' ج.م</span></div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold">' + (inv.customer_name || '') + '</span><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + paymentClass + '">' + (inv.payment_type || '') + '</span></div></div>';
-            }
-            RW_UI.safeHTML(container, html);
-        }).catch(function() {
-            RW_UI.safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الفواتير</div>');
+            var hdr = {
+                customer_code: c.customer_code,
+                custName: c.name,
+                area: c.area || '',
+                total: sub + self.delFee,
+                deliveryFees: self.delFee,
+                status: 'Invoiced',
+                paymentType: c.payment_type || 'نقدي',
+                taxAmount: 0,
+                taxRate: self.taxRate,
+                source: 'van-sales'
+            };
+            RW_UI.showLoader();
+            RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: self.vanBranch ? self.vanBranch.branch_code : 'MAIN' }, function(json) {
+                RW_UI.hideLoader();
+                if (json.success) {
+                    Swal.fire({ icon: 'success', title: '✅ تم الحفظ', html: '<div class="text-right"><p>الفاتورة: <strong>' + json.orderID + '</strong></p><p>العميل: <strong>' + c.name + '</strong></p><p>المبلغ: <strong>' + RW_UI.formatNumber(hdr.total) + ' ج.م</strong></p></div>', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-orange-600' } });
+                    self.cart = [];
+                    self.selCust = null;
+                    self.updateFloatingCart();
+                    self.loadMyCustomers();
+                    self.showView('home');
+                } else {
+                    RW_UI.showError(json.msg || 'فشل');
+                }
+            });
         });
     },
 
     // ==================== شاشة سيارتي ====================
     renderVehicleStockView: function() {
-        var self = this; RW_UI.showSkeleton('mainContent', 4, 'card');
+        var self = this;
+        RW_UI.showSkeleton('mainContent', 4, 'card');
         var branchId = this.vanBranch ? this.vanBranch.id : null;
         if (!branchId) { setTimeout(function() { RW_UI.showEmptyState('mainContent', 'لا يوجد فرع للسيارة', '🚛'); }, 300); return; }
         var today = new Date().toISOString().split('T')[0];
@@ -864,28 +807,82 @@ var App = {
             supabase.from('orders').select('id').eq('created_by', self.currentUser.email).eq('order_date', today).then(function(oRes) {
                 var orderIds = (oRes.data || []).map(function(o) { return o.id; });
                 if (!orderIds.length) { self._renderVehicleStock(myStock, {}); return; }
-                supabase.from('order_details').select('item_code, qty').in('order_id', orderIds).then(function(dRes) { var soldMap = {}; var details = dRes.data || []; for (var d = 0; d < details.length; d++) { var it = details[d]; soldMap[it.item_code] = (soldMap[it.item_code] || 0) + (Number(it.qty) || 0); } self._renderVehicleStock(myStock, soldMap); });
+                supabase.from('order_details').select('item_code, qty').in('order_id', orderIds).then(function(dRes) {
+                    var soldMap = {};
+                    var details = dRes.data || [];
+                    for (var d = 0; d < details.length; d++) {
+                        var it = details[d];
+                        soldMap[it.item_code] = (soldMap[it.item_code] || 0) + (Number(it.qty) || 0);
+                    }
+                    self._renderVehicleStock(myStock, soldMap);
+                });
             });
         });
     },
 
     _renderVehicleStock: function(myStock, soldMap) {
-        var self = this, proms = []; for (var k = 0; k < myStock.length; k++) proms.push(db.items.get(myStock[k].item_id));
+        var self = this;
+        var proms = [];
+        for (var k = 0; k < myStock.length; k++) proms.push(db.items.get(myStock[k].item_id));
         Promise.all(proms).then(function(items) {
-            var totalValue = 0, h = '<div class="p-4"><h2 class="text-xl font-black mb-2">🚛 رصيد سيارتي</h2><div class="bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl p-5 mb-4 text-center"><p class="text-sm opacity-80">قيمة البضاعة المتبقية</p><p class="text-3xl font-black" id="vehicleTotalValue">---</p></div><h3 class="font-bold text-lg mb-3">📦 تفاصيل الأصناف</h3><div id="vehicleItemsList"></div></div>';
-            RW_UI.safeHTML(RW_UI.byId('mainContent'), h);
+            var totalValue = 0;
+            var html = '<div class="p-4"><h2 class="text-xl font-black mb-2">🚛 رصيد سيارتي</h2><div class="bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl p-5 mb-4 text-center"><p class="text-sm opacity-80">قيمة البضاعة المتبقية</p><p class="text-3xl font-black" id="vehicleTotalValue">---</p></div><h3 class="font-bold text-lg mb-3">📦 تفاصيل الأصناف</h3><div id="vehicleItemsList"></div></div>';
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
             var rows = '';
-            for (var m = 0; m < myStock.length; m++) { var it = items[m], st = myStock[m], nm = it ? it.name : (st.item_id || '---'), ic = it ? it.item_code : (st.item_id || '---'), stockQty = Number(st.qty) || 0, soldQty = soldMap[ic] || 0, remaining = Math.max(0, stockQty - soldQty), price = it ? (Number(it.sales_price) || 0) : 0; totalValue += remaining * price; var color = remaining > 10 ? 'text-green-600' : remaining > 0 ? 'text-amber-600' : 'text-red-600'; rows += '<div class="card mb-2"><div class="flex items-center gap-3">' + RW_ImageCache.getImageHTML(ic, 'w-12', 'h-12') + '<div><p class="font-bold text-sm">' + nm + '</p><p class="text-xs text-gray-400">الرصيد: <strong>' + stockQty + '</strong> | المباع: <strong class="text-red-500">' + soldQty + '</strong> | المتبقي: <strong class="' + color + '">' + remaining + '</strong></p></div></div></div>'; }
+            for (var m = 0; m < myStock.length; m++) {
+                var it = items[m];
+                var st = myStock[m];
+                var nm = it ? it.name : (st.item_id || '---');
+                var ic = it ? it.item_code : (st.item_id || '---');
+                var stockQty = Number(st.qty) || 0;
+                var soldQty = soldMap[ic] || 0;
+                var remaining = Math.max(0, stockQty - soldQty);
+                var price = it ? (Number(it.sales_price) || 0) : 0;
+                totalValue += remaining * price;
+                var color = remaining > 10 ? 'text-green-600' : remaining > 0 ? 'text-amber-600' : 'text-red-600';
+                rows += '<div class="card mb-2"><div class="flex items-center gap-3">' + RW_ImageCache.getImageHTML(ic, 'w-12', 'h-12') + '<div><p class="font-bold text-sm">' + nm + '</p><p class="text-xs text-gray-400">الرصيد: <strong>' + stockQty + '</strong> | المباع: <strong class="text-red-500">' + soldQty + '</strong> | المتبقي: <strong class="' + color + '">' + remaining + '</strong></p></div></div></div>';
+            }
             RW_UI.safeHTML(RW_UI.byId('vehicleItemsList'), rows);
             RW_UI.safeText(RW_UI.byId('vehicleTotalValue'), RW_UI.formatNumber(totalValue) + ' ج.م');
+        });
+    },
+
+    // ==================== شاشة الفواتير ====================
+    renderInvoicesView: function() {
+        var today = new Date().toISOString().split('T')[0];
+        var html = '<div class="p-4"><h2 class="text-xl font-bold mb-4">📄 فواتيري</h2>';
+        html += '<div class="bg-white p-3 rounded-2xl border mb-4"><div class="flex gap-2"><input type="date" id="invDateFilter" value="' + today + '" onchange="App.loadMyInvoices()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><button onclick="RW_UI.byId(\'invDateFilter\').value=\'' + today + '\';App.loadMyInvoices();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">اليوم</button></div></div>';
+        html += '<div id="myInvoicesList" class="space-y-3"></div></div>';
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+        RW_UI.showSkeleton('myInvoicesList', 3, 'card');
+        this.loadMyInvoices();
+    },
+
+    loadMyInvoices: function() {
+        var self = this;
+        var container = RW_UI.byId('myInvoicesList');
+        if (!container || !this.currentUser) return;
+        var dateFilter = RW_UI.byId('invDateFilter') ? RW_UI.byId('invDateFilter').value : new Date().toISOString().split('T')[0];
+        supabase.from('orders').select('*').eq('created_by', this.currentUser.email).eq('order_date', dateFilter).order('order_date', { ascending: false }).then(function(res) {
+            var invoices = res.data || [];
+            if (!invoices.length) { RW_UI.showEmptyState('myInvoicesList', 'لا توجد فواتير لهذا اليوم', '📄'); return; }
+            var html = '';
+            for (var i = 0; i < invoices.length; i++) {
+                var inv = invoices[i];
+                var paymentClass = inv.payment_type === 'نقدي' ? 'badge-green' : 'badge-yellow';
+                html += '<div class="card slide-in"><div class="flex justify-between items-start"><div><span class="font-black text-orange-600 text-sm">' + (inv.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (inv.order_date || '') + '</span></div><span class="font-black text-orange-600">' + RW_UI.formatNumber(inv.total_amount) + ' ج.م</span></div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold">' + (inv.customer_name || '') + '</span><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + paymentClass + '">' + (inv.payment_type || '') + '</span></div></div>';
+            }
+            RW_UI.safeHTML(container, html);
+        }).catch(function() {
+            RW_UI.showEmptyState('myInvoicesList', 'فشل تحميل الفواتير', '📡');
         });
     },
 
     // ==================== شاشة رصيدي ====================
     renderBalanceView: function() {
         var self = this;
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">⚖️ رصيدي</h2>';
-        html += '<div id="balanceDetail"><div class="text-center text-gray-400 py-8">جاري تحميل الرصيد...</div></div></div>';
+        RW_UI.showSkeleton('mainContent', 1, 'card');
+        var html = '<div class="p-4"><h2 class="text-xl font-bold mb-4">⚖️ رصيدي</h2><div id="balanceDetail"></div></div>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         this.loadBalanceDetail();
     },
@@ -893,15 +890,10 @@ var App = {
     loadBalanceDetail: function() {
         var self = this;
         var container = RW_UI.byId('balanceDetail');
-        if (!container) return;
-        if (!this.currentUser) return;
+        if (!container || !this.currentUser) return;
         supabase.from('driver_ledger').select('*').eq('driver_email', this.currentUser.email).order('entry_date', { ascending: false }).then(function(res) {
             var rows = res.data || [];
             var totalDebit = 0, totalCredit = 0;
-            var html = '';
-            html += '<div class="card mb-4 text-center">';
-            html += '<p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p>';
-            
             for (var i = 0; i < rows.length; i++) {
                 totalDebit += Number(rows[i].debit) || 0;
                 totalCredit += Number(rows[i].credit) || 0;
@@ -909,26 +901,17 @@ var App = {
             var balance = totalDebit - totalCredit;
             var badgeClass = balance <= 0 ? 'badge-green' : (balance < 5000 ? 'badge-yellow' : 'badge-red');
             var badgeText = balance <= 0 ? '🟢 أنا ملتزم بالسداد' : (balance < 5000 ? '🟡 عليّ بعض المستحقات' : '🔴 عليّ مستحقات');
-            
-            html += '<div class="text-4xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</div>';
-            html += '<div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + badgeClass + '">' + badgeText + '</span></div>';
-            html += '</div>';
-
-            html += '<div class="card"><h3 class="font-bold mb-3">📊 تفاصيل رصيدي</h3>';
+            var html = '<div class="card mb-4 text-center slide-in"><p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p><div class="text-4xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</div><div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + badgeClass + '">' + badgeText + '</span></div></div>';
+            html += '<div class="card slide-in"><h3 class="font-bold mb-3">📊 تفاصيل رصيدي</h3>';
             if (rows.length === 0) {
                 html += '<p class="text-gray-400 text-center py-4">لا توجد حركات</p>';
             } else {
-                var runningBalance = 0;
                 html += '<div class="space-y-2 max-h-80 overflow-y-auto">';
                 for (var j = rows.length - 1; j >= 0; j--) {
                     var row = rows[j];
-                    runningBalance += (Number(row.debit) || 0) - (Number(row.credit) || 0);
                     var sign = row.debit > 0 ? '+' : '-';
                     var color = row.debit > 0 ? 'text-red-600' : 'text-green-600';
-                    html += '<div class="flex justify-between items-center p-2 bg-gray-50 rounded-lg">';
-                    html += '<div><span class="text-xs text-gray-400 ml-2">' + (row.entry_date || '') + '</span><span class="font-bold text-sm">' + (row.description || '') + '</span></div>';
-                    html += '<span class="font-bold ' + color + '">' + sign + RW_UI.formatNumber(row.debit || row.credit) + '</span>';
-                    html += '</div>';
+                    html += '<div class="flex justify-between items-center p-2 bg-gray-50 rounded-lg"><div><span class="text-xs text-gray-400 ml-2">' + (row.entry_date || '') + '</span><span class="font-bold text-sm">' + (row.description || '') + '</span></div><span class="font-bold ' + color + '">' + sign + RW_UI.formatNumber(row.debit || row.credit) + '</span></div>';
                 }
                 html += '</div>';
                 html += '<div class="flex justify-between font-black text-lg pt-3 border-t mt-3"><span>📋 صافي المستحق:</span><span class="' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</span></div>';
@@ -936,35 +919,39 @@ var App = {
             html += '</div>';
             RW_UI.safeHTML(container, html);
         }).catch(function() {
-            RW_UI.safeHTML(container, '<div class="card text-center text-red-400">فشل تحميل الرصيد</div>');
+            RW_UI.showEmptyState('balanceDetail', 'فشل تحميل الرصيد', '📡');
         });
     },
 
     // ==================== الخريطة ====================
     renderMapView: function() {
         var self = this;
-        var h = '<div class="flex-1 flex flex-col overflow-hidden p-2"><div class="map-wrapper flex-1"><div id="mapContainer" style="width:100%;height:100%;border-radius:16px;"></div></div></div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), h);
+        var html = '<div class="flex-1 flex flex-col overflow-hidden p-2"><div class="map-wrapper flex-1"><div id="mapContainer" style="width:100%;height:100%;border-radius:16px;"></div></div></div>';
+        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
         setTimeout(function() { self._initMap(); }, 300);
     },
 
     _initMap: function() {
         var self = this;
         if (self._mapInstance) { self._mapInstance.remove(); self._mapInstance = null; }
-        var mapEl = RW_UI.byId('mapContainer'); if (!mapEl) return;
+        var mapEl = RW_UI.byId('mapContainer');
+        if (!mapEl) return;
         self._mapInstance = L.map('mapContainer').setView([30.0444, 31.2357], 12);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(self._mapInstance);
         db.myCustomers.toArray().then(function(myCustomers) {
             for (var i = 0; i < self._mapMarkers.length; i++) { self._mapInstance.removeLayer(self._mapMarkers[i]); }
             self._mapMarkers = [];
             db.customers.toArray().then(function(allCustomers) {
-                var custMap = {}; for (var j = 0; j < allCustomers.length; j++) { custMap[allCustomers[j].customer_code] = allCustomers[j]; }
+                var custMap = {};
+                for (var j = 0; j < allCustomers.length; j++) { custMap[allCustomers[j].customer_code] = allCustomers[j]; }
                 var bounds = [];
                 for (var k = 0; k < myCustomers.length; k++) {
-                    var mc = myCustomers[k], cust = custMap[mc.customer_code];
+                    var mc = myCustomers[k];
+                    var cust = custMap[mc.customer_code];
                     if (cust && cust.location_lat && cust.location_lng) {
                         var marker = L.marker([cust.location_lat, cust.location_lng]).addTo(self._mapInstance).bindPopup('<b>' + (cust.name || '') + '</b><br>' + (cust.area || '') + '<br>المديونية: ' + RW_UI.formatNumber(mc.totalDebt) + ' ج.م<br><a href="javascript:void(0)" onclick="App.openQuickSaleForCustomer(\'' + mc.customer_code + '\')">📝 بيع سريع</a>');
-                        self._mapMarkers.push(marker); bounds.push([cust.location_lat, cust.location_lng]);
+                        self._mapMarkers.push(marker);
+                        bounds.push([cust.location_lat, cust.location_lng]);
                     }
                 }
                 if (bounds.length > 0) { self._mapInstance.fitBounds(bounds, { padding: [30, 30] }); }
@@ -986,3 +973,7 @@ document.addEventListener('DOMContentLoaded', function() { App.init(); });
 </script>
 </body>
 </html>
+
+
+
+    
