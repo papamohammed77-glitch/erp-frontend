@@ -240,11 +240,11 @@ var App = (function() {
 
     // ==================== فلترة العملاء حسب المندوب ====================
     self._filterCustomersByAssignment = function(allCustomers) {
-        if (!currentUser) return allCustomers;
-        if (currentUser.isOwner) return allCustomers;
-        if (!_assignedCustomerIds || _assignedCustomerIds.length === 0) return allCustomers;
-        return allCustomers.filter(function(c) { return _assignedCustomerIds.indexOf(c.customer_code) !== -1 || _assignedCustomerIds.indexOf(c.id) !== -1; });
-    };
+    if (!currentUser) return allCustomers;
+    if (currentUser.isOwner) return allCustomers;
+    if (!_assignedCustomerIds || _assignedCustomerIds.length === 0) return allCustomers;
+    return allCustomers.filter(function(c) { return _assignedCustomerIds.indexOf(c.id) !== -1; });
+};    
 
     // ==================== التنقل بين التبويبات ====================
 self.switchTab = function(tab) {
@@ -843,18 +843,42 @@ self.submitOrder = function() {
         taxRate: taxRate
     };
 
-    var oldOrderCode = editingOrderCode; // حفظ القيمة محلياً
+    var oldOrderCode = editingOrderCode;
     var isEdit = !!oldOrderCode;
 
     self.closeCartModal();
     RW_UI.showLoader(isEdit ? 'جاري تحديث الأوردر...' : 'جاري حفظ الأوردر...');
 
-    function doSave() {
+    if (isEdit) {
+        // ✅ استخدام update-order بدلاً من حذف وإعادة إنشاء
+        var updateBody = {
+            order_code: oldOrderCode,
+            orderHeader: hdr,
+            itemsList: items,
+            branchCode: selBranch
+        };
+        RW_API.call('update-order', updateBody, function(json) {
+            RW_UI.hideLoader();
+            if (json.success) {
+                RW_UI.toast('تم تحديث الأوردر (' + (json.orderID || oldOrderCode) + ')', 'success');
+                cart = [];
+                selCust = null;
+                selBranch = null;
+                editingOrderCode = null;
+                self.clearCustomer();
+                self.updateFloatingCart();
+                self.switchTab('today');
+            } else {
+                RW_UI.toast(json.msg || 'فشل التحديث', 'error');
+                editingOrderCode = oldOrderCode;
+            }
+        });
+    } else {
+        // وضع الإنشاء: حفظ مباشر
         RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch }, function(json) {
             RW_UI.hideLoader();
             if (json.success) {
-                var msg = isEdit ? 'تم تحديث الأوردر بنجاح (' + (json.orderID || '') + ')' : 'تم الحفظ: ' + (json.orderID || '');
-                RW_UI.toast(msg, 'success');
+                RW_UI.toast('تم الحفظ: ' + (json.orderID || ''), 'success');
                 cart = [];
                 selCust = null;
                 selBranch = null;
@@ -864,30 +888,10 @@ self.submitOrder = function() {
                 self.switchTab('today');
             } else {
                 RW_UI.toast(json.msg || 'فشل الحفظ', 'error');
-                // إعادة تعيين editingOrderCode حتى يمكن المحاولة مرة أخرى
-                editingOrderCode = oldOrderCode;
             }
         });
-    }
-
-    if (isEdit) {
-        // وضع التعديل: حذف الأوردر القديم أولاً، ثم حفظ الجديد
-        RW_API.call('delete-order', { order_code: oldOrderCode }, function(deleteJson) {
-            if (deleteJson.success) {
-                // تم الحذف بنجاح – الآن احفظ الأوردر الجديد
-                editingOrderCode = null; // نمسحه لأنه سيصبح أوردر جديد
-                doSave();
-            } else {
-                RW_UI.hideLoader();
-                RW_UI.toast('فشل حذف الأوردر القديم: ' + (deleteJson.msg || ''), 'error');
-            }
-        });
-    } else {
-        // وضع الإنشاء: حفظ مباشر
-        doSave();
     }
 };
-
 self.renderCartTab = function() {
     var c = RW_UI.byId('mainContent'); if (!c) return;
 
