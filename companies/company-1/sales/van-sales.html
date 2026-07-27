@@ -898,31 +898,29 @@ var App = {
             var amount = result.value;
             RW_UI.showLoader('جاري حفظ التحصيل...');
 
-            // ١. حفظ سند القبض
+            // ١. حفظ سند القبض (مع إضافة collectedByDriverEmail)
             var payload = {
-                date: new Date().toISOString().split('T')[0],
-                cashBoxId: 'MAIN',
-                mainAccountName: name || code,
-                notes: 'تحصيل من مندوب: ' + (self.currentUser ? self.currentUser.email : ''),
+                header: {
+                    date: new Date().toISOString().split('T')[0],
+                    cashBoxId: 'MAIN',
+                    mainAccountName: name || code,
+                    notes: 'تحصيل من مندوب: ' + (self.currentUser ? self.currentUser.email : ''),
+                    collectedByDriverEmail: self.currentUser ? self.currentUser.email : ''
+                },
                 lines: [{ accountName: name || code, description: 'تحصيل نقدية', amount: amount }]
             };
 
             RW_API.call('save-receipt-voucher', payload, function(json) {
                 if (json.success) {
-                    // ٢. إضافة سجل دائن في driver_ledger
-                    supabase.from('driver_ledger').insert({
-                        driver_email: self.currentUser ? self.currentUser.email : '',
-                        entry_date: new Date().toISOString().split('T')[0],
-                        description: 'تحصيل نقدية من ' + (name || code),
-                        debit: 0,
-                        credit: amount
+                    Swal.fire({
+                        icon: 'success',
+                        title: '✅ تم التحصيل',
+                        html: '<div class="text-right"><p>تم تحصيل <strong>' + RW_UI.formatNumber(amount) + ' ج.م</strong> من ' + (name || code) + '</p></div>',
+                        confirmButtonText: 'حسناً',
+                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-green-600' }
                     }).then(function() {
-                        RW_UI.hideLoader();
-                        Swal.fire({ icon: 'success', title: '✅ تم التحصيل', html: '<div class="text-right"><p>تم تحصيل <strong>' + RW_UI.formatNumber(amount) + ' ج.م</strong> من ' + (name || code) + '</p></div>', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-green-600' } });
-                        self.loadMyCustomers();
-                    }).catch(function() {
-                        RW_UI.hideLoader();
-                        RW_UI.toast('تم التحصيل ولكن فشل تسجيل القيد', 'warning');
+                        self.loadBalanceDetail();
+                        self.loadHomeBalanceSummary();
                     });
                 } else {
                     RW_UI.hideLoader();
