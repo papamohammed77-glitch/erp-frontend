@@ -23,7 +23,8 @@
         .input-field:focus{border-color:#ea580c;box-shadow:0 0 0 3px rgba(234,88,12,0.1)}
         @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         .animate-fadeIn{animation:fadeIn .3s}
-        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
+        .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05);transition:all 0.2s ease}
+        .card:active{transform:scale(0.985)}
         .btn-orange{background:#ea580c;color:#fff;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;border:none;cursor:pointer;width:100%}
         .btn-orange:active{background:#c2410c}
         .btn-green{background:#059669;color:#fff;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;border:none;cursor:pointer;width:100%}
@@ -36,18 +37,15 @@
         @keyframes slideIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
         .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
         @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-        .rw-fly-item{position:fixed;background:#ea580c;color:#fff;padding:4px 10px;border-radius:8px;font-size:13px;font-weight:700;z-index:9999;pointer-events:none;transition:all 0.45s cubic-bezier(0.2,0.8,0.2,1);opacity:1}
-        .rw-fly-item.fly-away{opacity:0;transform:scale(0.4) translate(var(--tx),var(--ty))}
+        .grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem}
         @media(min-width:768px){.grid-cards{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-<!-- ============================================================ -->
 <!-- شاشة الدخول -->
-<!-- ============================================================ -->
 <div id="loginScreen" class="fixed inset-0 z-[100] flex items-center justify-center auth-container p-4">
-    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md">
+    <div class="bg-white rounded-[32px] shadow-2xl p-6 w-[92%] max-w-md slide-in">
         <div class="text-center mb-6">
             <div class="w-20 h-20 bg-gradient-to-br from-orange-600 to-orange-800 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
                 <i class="fa-solid fa-truck-field text-white text-3xl"></i>
@@ -55,89 +53,50 @@
             <h1 class="font-black text-2xl text-gray-800">الروائع</h1>
             <p class="text-xs text-gray-400 font-bold mt-1">مندوب البيع المباشر</p>
         </div>
-        <h2 class="text-lg font-bold text-gray-700 text-center mb-4">تسجيل الدخول إلى حسابك</h2>
         <div class="space-y-3">
-            <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">البريد الإلكتروني <span class="text-red-500">*</span></label>
-                <input id="loginEmail" type="email" placeholder="example@domain.com" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-orange-600 focus:bg-white outline-none font-bold text-sm transition-all">
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-600 mb-1">كلمة السر <span class="text-red-500">*</span></label>
-                <div class="relative">
-                    <input id="loginPass" type="password" placeholder="••••••••" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-orange-600 focus:bg-white outline-none font-bold text-sm transition-all pr-12">
-                    <button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400 hover:text-gray-600">
-                        <i id="passIcon" class="fa-solid fa-eye"></i>
-                    </button>
-                </div>
-            </div>
+            <div><input id="loginEmail" type="email" placeholder="البريد الإلكتروني" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-orange-600 outline-none font-bold text-sm"></div>
+            <div class="relative"><input id="loginPass" type="password" placeholder="كلمة السر" class="input-field w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-orange-600 outline-none font-bold text-sm pr-12"><button type="button" onclick="App.togglePass()" class="absolute left-2 top-1/2 -translate-y-1/2 p-2 text-gray-400"><i id="passIcon" class="fa-solid fa-eye"></i></button></div>
         </div>
-        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-orange-600 to-orange-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-orange-200 hover:shadow-xl transition-all mt-4">
-            تسجيل الدخول
-        </button>
+        <button onclick="App.doLogin()" class="w-full bg-gradient-to-r from-orange-600 to-orange-700 text-white py-3.5 rounded-xl font-black text-sm shadow-lg shadow-orange-200 mt-4">تسجيل الدخول</button>
         <p id="loginMsg" class="text-center text-xs text-red-500 font-bold mt-3 hidden"></p>
     </div>
 </div>
 
-<!-- ============================================================ -->
 <!-- التطبيق الرئيسي -->
-<!-- ============================================================ -->
 <div id="mainApp" class="hidden flex flex-col h-full">
 
     <header class="bg-orange-700 text-white px-3 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0" style="padding-top:max(8px,env(safe-area-inset-top));min-height:52px">
-        <div class="flex items-center gap-2">
-            <span class="font-black text-sm">🚛 فان سيلز</span>
-        </div>
+        <span class="font-black text-sm">🚛 فان سيلز</span>
         <div class="flex items-center gap-1.5 overflow-x-auto">
             <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
             <span id="connLabel" class="text-[11px] font-bold">متصل</span>
-            <button onclick="App.showView('customers')" class="bg-white/10 px-2.5 py-1.5 rounded-full flex items-center gap-1 text-[11px] font-bold flex-shrink-0"><i class="fa-solid fa-users text-xs"></i><span>عملائي</span></button>
-            <button onclick="App.showView('map')" class="bg-white/10 px-2.5 py-1.5 rounded-full flex items-center gap-1 text-[11px] font-bold flex-shrink-0"><i class="fa-solid fa-map-location-dot text-xs"></i><span>الخريطة</span></button>
-            <button onclick="App.syncData()" class="relative bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-rotate text-xs"></i></button>
+            <button onclick="App.showView('customers')" class="bg-white/10 px-2.5 py-1.5 rounded-full text-[11px] font-bold"><i class="fa-solid fa-users text-xs"></i> <span>عملائي</span></button>
+            <button onclick="App.showView('map')" class="bg-white/10 px-2.5 py-1.5 rounded-full text-[11px] font-bold"><i class="fa-solid fa-map-location-dot text-xs"></i> <span>الخريطة</span></button>
+            <button onclick="App.syncData()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-rotate text-xs"></i></button>
             <button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
         </div>
     </header>
 
     <main id="mainContent" class="flex-1 overflow-y-auto pb-20"></main>
 
-    <nav id="bottomNav" class="bg-white border-t fixed bottom-0 left-0 right-0 z-30 h-16 flex justify-around items-center text-gray-400 text-xs flex-shrink-0">
-        <button onclick="App.showView('home')" class="flex flex-col items-center p-2 text-orange-600" id="nav-home"><i class="fa-solid fa-house text-lg mb-1"></i><span>الرئيسية</span></button>
-        <button onclick="App.showView('customers')" class="flex flex-col items-center p-2 text-gray-400" id="nav-customers"><i class="fa-solid fa-users text-lg mb-1"></i><span>عملائي</span></button>
-        <button onclick="App.showView('invoices')" class="flex flex-col items-center p-2 text-gray-400" id="nav-invoices"><i class="fa-solid fa-file-invoice text-lg mb-1"></i><span>فواتيري</span></button>
-        <button onclick="App.showView('balance')" class="flex flex-col items-center p-2 text-gray-400" id="nav-balance"><i class="fa-solid fa-scale-balanced text-lg mb-1"></i><span>رصيدي</span></button>
-    </nav>
+    <!-- الشريط السفلي -->
+    <nav id="bottomNav" class="bg-white border-t fixed bottom-0 left-0 right-0 z-30 h-16 flex justify-around items-center text-gray-400 text-xs flex-shrink-0"></nav>
 
     <!-- السلة العائمة -->
     <div id="floatingCart" class="hidden mx-3 mb-16 bg-gray-900 text-white p-4 rounded-2xl shadow-2xl flex justify-between items-center cursor-pointer active:scale-[0.98] transition z-20 flex-shrink-0" onclick="App.openCartModal()">
-        <div class="flex items-center gap-3">
-            <div class="bg-orange-600 w-10 h-10 rounded-full flex items-center justify-center font-black text-sm" id="cartBadgeCount">0</div>
-            <div>
-                <div class="font-bold text-sm">سلة المشتريات</div>
-                <div class="text-xs text-gray-400" id="cartBadgeSummary">لا توجد أصناف</div>
-            </div>
-        </div>
-        <div class="text-left">
-            <div class="text-xs text-gray-400">الإجمالي</div>
-            <div class="font-black text-lg" id="cartBadgeTotal">0.00</div>
-        </div>
+        <div class="flex items-center gap-3"><div class="bg-orange-600 w-10 h-10 rounded-full flex items-center justify-center font-black text-sm" id="cartBadgeCount">0</div><div><div class="font-bold text-sm">سلة المشتريات</div><div class="text-xs text-gray-400" id="cartBadgeSummary">لا توجد أصناف</div></div></div>
+        <div class="text-left"><div class="text-xs text-gray-400">الإجمالي</div><div class="font-black text-lg" id="cartBadgeTotal">0.00</div></div>
     </div>
 
     <!-- مودال السلة -->
     <div id="cartModal" class="fixed inset-0 z-50 hidden flex flex-col justify-end">
         <div class="absolute inset-0 bg-black/50" onclick="App.closeCartModal()"></div>
         <div class="bg-white rounded-t-3xl flex flex-col animate-slide-up" style="max-height:85vh">
-            <div class="p-4 border-b flex justify-between items-center flex-shrink-0">
-                <h2 class="font-black text-lg">مراجعة الأوردر</h2>
-                <button onclick="App.closeCartModal()" class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div id="cartModalBody" class="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar"></div>
+            <div class="p-4 border-b flex justify-between"><h2 class="font-black text-lg">مراجعة الأوردر</h2><button onclick="App.closeCartModal()" class="w-8 h-8 bg-gray-100 rounded-full"><i class="fa-solid fa-xmark"></i></button></div>
+            <div id="cartModalBody" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
             <div class="p-4 border-t bg-gray-50 flex-shrink-0">
-                <div class="flex justify-between font-bold text-lg mb-3">
-                    <span>الإجمالي النهائي:</span>
-                    <span class="text-emerald-600" id="cartModalTotal">0.00</span>
-                </div>
-                <button onclick="App.submitOrder()" class="w-full bg-orange-600 text-white py-3.5 rounded-xl font-black text-sm shadow-lg active:scale-[0.98] transition">
-                    <i class="fa-solid fa-check ml-2"></i> حفظ الأوردر
-                </button>
+                <div class="flex justify-between font-bold text-lg mb-3"><span>الإجمالي:</span><span class="text-emerald-600" id="cartModalTotal">0.00</span></div>
+                <button onclick="App.submitOrder()" class="w-full bg-orange-600 text-white py-3.5 rounded-xl font-black text-sm"><i class="fa-solid fa-check ml-2"></i> حفظ الأوردر</button>
             </div>
         </div>
     </div>
@@ -146,34 +105,17 @@
 
 <script>
 // ============================================================
-// تهيئة Dexie
-// ============================================================
-var db = new Dexie('RW_VanSales');
-db.version(2).stores({
-    customers: 'customer_code, name, area, phone, visit_day',
-    items: 'item_code, name, sales_price, unit, max_qty, barcode, category, image_url',
-    stock: '[item_id+branch_id], qty, allocated_qty',
-    branches: 'branch_code, name',
-    meta: 'key',
-    orders: '++id, status, created_at',
-    pending_updates: '++id, type, status',
-    myCustomers: 'customer_code, name, area, phone, debt, last_order_date',
-    myLedger: '++id, entry_date, description, debit, credit, balance',
-    customerPatterns: 'customer_code, item_code, frequency'
-});
-
-// ============================================================
-// التطبيق
+// المتغيرات العامة – Van Sales Diamond Edition
 // ============================================================
 var App = {
     currentUser: null,
     vanBranch: null,
+    vanBranchId: null,
     cart: [],
     selCust: null,
     delFee: 0,
     taxRate: 0,
     minAmt: 0,
-    companyName: 'الروائع',
     _mapInstance: null,
     _mapMarkers: [],
     _ghostCartData: [],
@@ -182,469 +124,578 @@ var App = {
     eodLocked: false,
     currentView: 'home',
 
-    // ==================== دوال الدخول ====================
+    // ==================== دوال المصادقة ====================
     togglePass: function() {
-        var passInput = RW_UI.byId('loginPass');
-        var icon = RW_UI.byId('passIcon');
-        if (passInput.type === 'password') {
-            passInput.type = 'text';
-            icon.className = 'fa-solid fa-eye-slash';
-        } else {
-            passInput.type = 'password';
-            icon.className = 'fa-solid fa-eye';
-        }
+        var p = RW_UI.byId('loginPass'), i = RW_UI.byId('passIcon');
+        if (p.type === 'password') { p.type = 'text'; i.className = 'fa-solid fa-eye-slash'; }
+        else { p.type = 'password'; i.className = 'fa-solid fa-eye'; }
     },
 
     doLogin: function() {
-        var email = RW_UI.byId('loginEmail').value.trim();
-        var pass = RW_UI.byId('loginPass').value.trim();
-        
-        if (!email || !pass) {
-            RW_UI.byId('loginMsg').innerText = 'أدخل البريد الإلكتروني وكلمة المرور';
-            RW_UI.byId('loginMsg').classList.remove('hidden');
-            return;
-        }
-
+        var email = RW_UI.byId('loginEmail').value.trim(), pass = RW_UI.byId('loginPass').value.trim();
+        if (!email || !pass) { RW_UI.byId('loginMsg').innerText = 'أدخل البيانات'; RW_UI.byId('loginMsg').classList.remove('hidden'); return; }
         RW_UI.byId('loginMsg').classList.add('hidden');
-        var self = this;
         RW_UI.showLoader('جاري تسجيل الدخول...');
         RW_Auth.doLogin(email, pass, function(user, err) {
             RW_UI.hideLoader();
-            if (err) {
-                RW_UI.byId('loginMsg').innerText = err;
-                RW_UI.byId('loginMsg').classList.remove('hidden');
-            } else {
-                self.init();
-            }
+            if (err) { RW_UI.byId('loginMsg').innerText = err; RW_UI.byId('loginMsg').classList.remove('hidden'); }
+            else App.init();
         });
     },
 
     init: function() {
         var self = this;
         RW_Auth.init(function(user, err) {
-            if (err || !user) {
-                if (err === 'NO_SESSION') return;
-                RW_UI.showError('فشل استعادة الجلسة');
-                return;
-            }
-
-            var isOwner = user.isOwner;
-            var perms = user.permissions;
-            var hasAccess = isOwner || (Array.isArray(perms) && (perms.indexOf('van-sales') !== -1 || perms.indexOf('orders') !== -1));
-
-            if (!hasAccess) {
-                RW_UI.showError('غير مصرح');
-                RW_Auth.doLogout();
-                return;
-            }
-
+            if (err || !user) { if (err !== 'NO_SESSION') RW_UI.showError('فشل استعادة الجلسة'); return; }
+            var isOwner = user.isOwner, perms = user.permissions;
+            if (!isOwner && (!perms || (perms.indexOf('van-sales') === -1 && perms.indexOf('orders') === -1))) { RW_UI.showError('غير مصرح'); RW_Auth.doLogout(); return; }
             self.currentUser = user;
-
-            // التحقق من أن المستخدم هو مندوب سيارة
-            var userBranch = user.activeWarehouseRole || '';
-            if (!isOwner && userBranch.indexOf('VAN-') === -1 && userBranch !== '') {
-                RW_UI.showError('هذا التطبيق مخصص لمناديب السيارات فقط');
-                RW_Auth.doLogout();
-                return;
-            }
-
             self.enterApp();
         });
     },
 
     enterApp: function() {
-        RW_UI.byId('loginScreen').classList.add('hidden');
-        RW_UI.byId('mainApp').classList.remove('hidden');
-        this.loadSettings();
+        RW_UI.byId('loginScreen').classList.add('hidden'); RW_UI.byId('mainApp').classList.remove('hidden');
         this.updateConnectionStatus();
         window.addEventListener('online', function() { App.updateConnectionStatus(); });
         window.addEventListener('offline', function() { App.updateConnectionStatus(); });
         this.renderBottomNav();
-        this.syncDown().then(function() {
-            App.loadVanBranch();
-        });
+        this.syncDown().then(function() { App.loadVanBranch(); });
     },
 
     doLogout: function() {
         var self = this;
         if (this._mapInstance) { this._mapInstance.remove(); this._mapInstance = null; }
-        RW_Auth.doLogout(function() {
-            self.cart = [];
-            self.selCust = null;
-            RW_UI.byId('mainApp').classList.add('hidden');
-            RW_UI.byId('loginScreen').classList.remove('hidden');
-            RW_UI.byId('loginEmail').value = '';
-            RW_UI.byId('loginPass').value = '';
-            RW_UI.byId('loginMsg').classList.add('hidden');
-        });
+        RW_Auth.doLogout(function() { self.cart = []; self.selCust = null; RW_UI.byId('mainApp').classList.add('hidden'); RW_UI.byId('loginScreen').classList.remove('hidden'); });
     },
 
-    updateConnectionStatus: function() {
-        RW_UI.updateConnectionStatus('connDot', 'connLabel');
-    },
+    updateConnectionStatus: function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); },
 
     syncDown: function() {
+        var db = RW_DB.getDB('VanSales');
         return Promise.all([
             supabase.from('customers').select('*').then(function(r) { return db.customers.clear().then(function() { return db.customers.bulkPut(r.data || []); }); }),
             supabase.from('items').select('*').then(function(r) { return db.items.clear().then(function() { return db.items.bulkPut(r.data || []); }); }),
             supabase.from('stock_branches').select('*').then(function(r) { return db.stock.clear().then(function() { return db.stock.bulkPut(r.data || []); }); }),
             supabase.from('branches').select('*').then(function(r) { return db.branches.clear().then(function() { return db.branches.bulkPut(r.data || []); }); }),
-            supabase.from('app_settings').select('*').limit(1).single().then(function(r) {
-                if (r.data) {
-                    db.meta.put({
-                        key: 'settings',
-                        del: Number(r.data.delivery_fee) || 0,
-                        tax: Number(r.data.tax_rate) || 0,
-                        min: Number(r.data.min_invoice_amount) || 0,
-                        name: r.data.company_name || 'الروائع'
-                    });
-                }
-            })
+            supabase.from('app_settings').select('*').limit(1).single().then(function(r) { if (r.data) { App.delFee = Number(r.data.delivery_fee)||0; App.taxRate = Number(r.data.tax_rate)||0; App.minAmt = Number(r.data.min_invoice_amount)||0; } })
         ]);
     },
 
     syncData: function() {
         if (!navigator.onLine) { RW_UI.toast('لا يوجد اتصال', 'warning'); return; }
-        var self = this;
-        RW_UI.showLoader('جاري المزامنة...');
-        this.syncDown().then(function() {
-            RW_UI.hideLoader();
-            self.loadVanBranch();
-            self.loadSettings();
-            RW_UI.toast('تمت المزامنة', 'success');
-        }).catch(function() {
-            RW_UI.hideLoader();
-            RW_UI.toast('فشلت المزامنة', 'error');
-        });
-    },
-
-    loadSettings: function() {
-        var self = this;
-        db.meta.get('settings').then(function(s) {
-            if (s) {
-                self.delFee = s.del || 0;
-                self.taxRate = s.tax || 0;
-                self.minAmt = s.min || 0;
-                self.companyName = s.name || 'الروائع';
-            }
-        });
+        var self = this; RW_UI.showLoader('جاري المزامنة...');
+        this.syncDown().then(function() { RW_UI.hideLoader(); self.loadVanBranch(); RW_UI.toast('تمت المزامنة', 'success'); }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشلت المزامنة', 'error'); });
     },
 
     // ==================== الشريط السفلي ====================
     renderBottomNav: function() {
-        var nav = RW_UI.byId('bottomNav');
-        if (!nav) return;
-        nav.innerHTML = '';
+        var nav = RW_UI.byId('bottomNav'); if (!nav) return;
         var items = [
             { view: 'home', icon: 'fa-home', label: 'الرئيسية' },
             { view: 'customers', icon: 'fa-users', label: 'عملائي' },
             { view: 'invoices', icon: 'fa-file-invoice', label: 'فواتيري' },
             { view: 'balance', icon: 'fa-scale-balanced', label: 'رصيدي' }
         ];
+        var h = '';
         for (var i = 0; i < items.length; i++) {
-            var item = items[i];
-            var activeClass = this.currentView === item.view ? 'text-orange-600' : 'text-gray-400';
-            nav.innerHTML += '<button onclick="App.showView(\'' + item.view + '\')" class="flex flex-col items-center p-2 ' + activeClass + '" id="nav-' + item.view + '"><i class="fa-solid ' + item.icon + ' text-lg mb-1"></i><span>' + item.label + '</span></button>';
+            var item = items[i], activeClass = this.currentView === item.view ? 'text-orange-600' : 'text-gray-400';
+            h += '<button onclick="App.showView(\'' + item.view + '\')" class="flex flex-col items-center p-2 ' + activeClass + '" id="nav-' + item.view + '"><i class="fa-solid ' + item.icon + ' text-lg mb-1"></i><span>' + item.label + '</span></button>';
         }
+        RW_UI.safeHTML(nav, h);
     },
 
-    // ==================== فرع المندوب ====================
+    // ==================== التنقل بين التبويبات ====================
+    showView: function(view) {
+        this.currentView = view; this.renderBottomNav();
+        var fc = RW_UI.byId('floatingCart');
+        if (view === 'home') { if (fc) fc.classList.add('hidden'); this.renderHomeView(); }
+        else if (view === 'customers') { if (fc) fc.classList.add('hidden'); this.renderCustomersView(); }
+        else if (view === 'invoices') { if (fc) fc.classList.add('hidden'); this.renderInvoicesView(); }
+        else if (view === 'vehicle') { if (fc) fc.classList.add('hidden'); this.renderVehicleStockView(); }
+        else if (view === 'map') { if (fc) fc.classList.add('hidden'); this.renderMapView(); }
+        else if (view === 'balance') { if (fc) fc.classList.add('hidden'); this.renderBalanceView(); }
+    }
+};    // ==================== فرع المندوب – VAN-{email} ====================
     loadVanBranch: function() {
         var self = this;
+        var db = RW_DB.getDB('VanSales');
         var vanCode = 'VAN-' + (this.currentUser ? this.currentUser.email : '');
+
+        // ١. البحث عن الفرع في Dexie
         db.branches.toArray().then(function(branches) {
             var found = null;
             for (var i = 0; i < branches.length; i++) {
                 if (branches[i].branch_code === vanCode) { found = branches[i]; break; }
             }
+
             if (found) {
+                // ✅ الفرع موجود محلياً
                 self.vanBranch = found;
+                self.vanBranchId = found.id;
+                self._afterVanBranchReady();
             } else {
-                self.vanBranch = { branch_code: 'MAIN', name: 'المخزن الرئيسي', id: null };
-                for (var j = 0; j < branches.length; j++) {
-                    if (branches[j].branch_code === 'MAIN') { self.vanBranch = branches[j]; break; }
-                }
+                // ٢. البحث عن الفرع في Supabase مباشرة
+                supabase.from('branches').select('*').eq('branch_code', vanCode).maybeSingle().then(function(res) {
+                    if (res.data) {
+                        self.vanBranch = res.data;
+                        self.vanBranchId = res.data.id;
+                        // ✅ حفظ الفرع في Dexie للاستخدام المستقبلي
+                        db.branches.put(res.data);
+                        self._afterVanBranchReady();
+                    } else {
+                        // ٣. الفرع غير موجود – إنشاؤه تلقائياً
+                        self._createVanBranch(vanCode);
+                    }
+                }).catch(function() {
+                    self._createVanBranch(vanCode);
+                });
             }
-            self.loadMyCustomers();
-            self.loadCustomerPatterns();
-            self.showView('home');
         });
     },
 
-    // ==================== التنقل بين التبويبات ====================
-    showView: function(view) {
-        this.currentView = view;
-        this.renderBottomNav();
-        var floatingCart = RW_UI.byId('floatingCart');
-        if (view === 'new-order') {
-            if (floatingCart && this.cart.length > 0) floatingCart.classList.remove('hidden');
-            this.renderNewOrderView();
-        } else if (view === 'home') {
-            if (floatingCart) floatingCart.classList.add('hidden');
-            this.renderHomeView();
-        } else if (view === 'customers') {
-            if (floatingCart) floatingCart.classList.add('hidden');
-            this.renderCustomersView();
-        } else if (view === 'invoices') {
-            if (floatingCart) floatingCart.classList.add('hidden');
-            this.renderInvoicesView();
-        } else if (view === 'vehicle') {
-            if (floatingCart) floatingCart.classList.add('hidden');
-            this.renderVehicleStockView();
-        } else if (view === 'map') {
-            if (floatingCart) floatingCart.classList.add('hidden');
-            this.renderMapView();
-        } else if (view === 'balance') {
-            if (floatingCart) floatingCart.classList.add('hidden');
-            this.renderBalanceView();
-        }
+    _createVanBranch: function(vanCode) {
+        var self = this;
+        var userName = this.currentUser ? (this.currentUser.name || this.currentUser.email) : vanCode;
+
+        RW_UI.showLoader('جاري تهيئة فرع المندوب...');
+
+        // إنشاء الفرع في Supabase عبر REST مباشرة
+        supabase.from('branches').insert({
+            company_id: '00000000-0000-0000-0000-000000000001',
+            branch_code: vanCode,
+            name: 'سيارة ' + userName,
+            is_active: true
+        }).select('id, branch_code, name').single().then(function(res) {
+            if (res.data) {
+                self.vanBranch = res.data;
+                self.vanBranchId = res.data.id;
+                // حفظ في Dexie
+                var db = RW_DB.getDB('VanSales');
+                db.branches.put(res.data);
+
+                // ✅ تهيئة stock_branches للفرع الجديد – نسخ من MAIN
+                supabase.rpc('setup_van_stock', { p_van_branch_id: res.data.id }).then(function() {
+                    RW_UI.hideLoader();
+                    self._afterVanBranchReady();
+                }).catch(function() {
+                    RW_UI.hideLoader();
+                    self._afterVanBranchReady();
+                });
+            } else {
+                // فشل الإنشاء – استخدام MAIN كبديل
+                RW_UI.hideLoader();
+                self.vanBranch = { branch_code: 'MAIN', name: 'المخزن الرئيسي', id: null };
+                self.vanBranchId = null;
+                self._afterVanBranchReady();
+            }
+        }).catch(function() {
+            RW_UI.hideLoader();
+            self.vanBranch = { branch_code: 'MAIN', name: 'المخزن الرئيسي', id: null };
+            self.vanBranchId = null;
+            self._afterVanBranchReady();
+        });
     },
 
-    // ==================== تحميل عملائي ====================
+    _afterVanBranchReady: function() {
+        this.loadMyCustomers();
+        this.loadCustomerPatterns();
+        this.showView('home');
+        RW_UI.toast('🚛 فرع المندوب: ' + (this.vanBranch ? this.vanBranch.branch_code : 'غير محدد'), 'info');
+    },
+
+    // ==================== تحميل عملائي من Supabase ====================
     loadMyCustomers: function() {
         var self = this;
         if (!this.currentUser) return;
-        supabase.from('orders').select('customer_id, customer_name, total_amount, order_date, payment_type').eq('created_by', this.currentUser.email).order('order_date', { ascending: false }).then(function(res) {
-            var orders = res.data || [];
-            var custMap = {};
-            for (var i = 0; i < orders.length; i++) {
-                var o = orders[i];
-                var cid = o.customer_id || o.customer_name;
-                if (!custMap[cid]) {
-                    custMap[cid] = {
-                        customer_code: cid,
-                        name: o.customer_name || cid,
-                        totalDebt: 0,
-                        lastOrderDate: o.order_date,
-                        orderCount: 0
-                    };
+        var db = RW_DB.getDB('VanSales');
+
+        supabase.from('orders')
+            .select('customer_id, customer_name, total_amount, order_date, payment_type')
+            .eq('created_by', this.currentUser.email)
+            .order('order_date', { ascending: false })
+            .then(function(res) {
+                var orders = res.data || [];
+                var custMap = {};
+                for (var i = 0; i < orders.length; i++) {
+                    var o = orders[i];
+                    var cid = o.customer_id || o.customer_name;
+                    if (!custMap[cid]) {
+                        custMap[cid] = {
+                            customer_code: cid,
+                            name: o.customer_name || cid,
+                            totalDebt: 0,
+                            lastOrderDate: o.order_date,
+                            orderCount: 0
+                        };
+                    }
+                    if (o.payment_type === 'أجل') custMap[cid].totalDebt += Number(o.total_amount) || 0;
+                    custMap[cid].orderCount++;
+                    if (o.order_date > custMap[cid].lastOrderDate) custMap[cid].lastOrderDate = o.order_date;
                 }
-                if (o.payment_type === 'أجل') {
-                    custMap[cid].totalDebt += Number(o.total_amount) || 0;
+                var myCustomers = [];
+                for (var key in custMap) {
+                    if (custMap.hasOwnProperty(key)) myCustomers.push(custMap[key]);
                 }
-                custMap[cid].orderCount++;
-                if (o.order_date > custMap[cid].lastOrderDate) {
-                    custMap[cid].lastOrderDate = o.order_date;
+                // ✅ تخزين في Dexie عبر RW_DB الموحد
+                if (db.myCustomers) {
+                    db.myCustomers.clear().then(function() { db.myCustomers.bulkPut(myCustomers); });
                 }
-            }
-            var myCustomers = [];
-            for (var key in custMap) {
-                if (custMap.hasOwnProperty(key)) {
-                    myCustomers.push(custMap[key]);
-                }
-            }
-            db.myCustomers.clear().then(function() {
-                db.myCustomers.bulkPut(myCustomers);
-            });
-        }).catch(function() {
-            console.warn('Failed to load my customers from Supabase');
-        });
+            }).catch(function() {});
     },
 
+    // ==================== تحميل أنماط شراء العملاء ====================
     loadCustomerPatterns: function() {
         var self = this;
         if (!this.currentUser) return;
-        supabase.from('orders').select('id, customer_id, customer_name, order_date').eq('created_by', this.currentUser.email).order('order_date', { ascending: false }).then(function(oRes) {
-            var orders = oRes.data || [];
-            supabase.from('order_details').select('order_id, item_code, item_name, qty').then(function(dRes) {
-                var details = dRes.data || [], orderMap = {}, detailMap = {};
-                for (var i = 0; i < orders.length; i++) orderMap[orders[i].id] = orders[i];
-                for (var j = 0; j < details.length; j++) {
-                    var d = details[j], ord = orderMap[d.order_id]; if (!ord) continue;
-                    var cid = ord.customer_id || ord.customer_name; if (!cid) continue;
-                    if (!detailMap[cid]) detailMap[cid] = {};
-                    if (!detailMap[cid][d.item_code]) detailMap[cid][d.item_code] = { count: 0, totalQty: 0, name: d.item_name };
-                    detailMap[cid][d.item_code].count++;
-                    detailMap[cid][d.item_code].totalQty += Number(d.qty) || 0;
-                }
-                var patterns = [];
-                for (var cid in detailMap) if (detailMap.hasOwnProperty(cid)) {
-                    var items = detailMap[cid];
-                    for (var ic in items) if (items.hasOwnProperty(ic)) patterns.push({ customer_code: cid, item_code: ic, frequency: items[ic].count, avgQty: Math.ceil(items[ic].totalQty / items[ic].count), item_name: items[ic].name });
-                }
-                db.customerPatterns.clear().then(function() { db.customerPatterns.bulkPut(patterns); });
-            });
-        }).catch(function() {});
-    },
+        var db = RW_DB.getDB('VanSales');
 
+        supabase.from('orders')
+            .select('id, customer_id, customer_name, order_date')
+            .eq('created_by', this.currentUser.email)
+            .order('order_date', { ascending: false })
+            .then(function(oRes) {
+                var orders = oRes.data || [];
+                supabase.from('order_details')
+                    .select('order_id, item_code, item_name, qty')
+                    .then(function(dRes) {
+                        var details = dRes.data || [];
+                        var orderMap = {}, detailMap = {};
+                        for (var i = 0; i < orders.length; i++) orderMap[orders[i].id] = orders[i];
+                        for (var j = 0; j < details.length; j++) {
+                            var d = details[j], ord = orderMap[d.order_id];
+                            if (!ord) continue;
+                            var cid = ord.customer_id || ord.customer_name;
+                            if (!cid) continue;
+                            if (!detailMap[cid]) detailMap[cid] = {};
+                            if (!detailMap[cid][d.item_code]) detailMap[cid][d.item_code] = { count: 0, totalQty: 0, name: d.item_name };
+                            detailMap[cid][d.item_code].count++;
+                            detailMap[cid][d.item_code].totalQty += Number(d.qty) || 0;
+                        }
+                        var patterns = [];
+                        for (var cid in detailMap) {
+                            if (detailMap.hasOwnProperty(cid)) {
+                                var items = detailMap[cid];
+                                for (var ic in items) {
+                                    if (items.hasOwnProperty(ic)) {
+                                        patterns.push({
+                                            customer_code: cid,
+                                            item_code: ic,
+                                            frequency: items[ic].count,
+                                            avgQty: Math.ceil(items[ic].totalQty / items[ic].count),
+                                            item_name: items[ic].name
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        if (db.customerPatterns) {
+                            db.customerPatterns.clear().then(function() { db.customerPatterns.bulkPut(patterns); });
+                        }
+                    });
+            }).catch(function() {});
+    }
+};
     // ==================== الشاشة الرئيسية – لوحة القيادة ====================
     renderHomeView: function() {
         var self = this;
         var hour = new Date().getHours();
         var greeting = hour < 12 ? 'صباح الخير' : (hour < 18 ? 'مساء الخير' : 'مساء الخير');
-        var html = '<div class="p-4 animate-fadeIn">';
-        html += '<div class="mb-4"><p class="text-slate-400 text-sm">' + greeting + '، <span class="font-bold text-slate-700">' + (this.currentUser.name || 'زميل') + '</span> 👋</p></div>';
+        var userName = this.currentUser ? (this.currentUser.name || 'زميل') : 'زميل';
 
-        // مؤشرات الأداء (KPIs)
-        html += '<div class="grid grid-cols-2 gap-3 mb-4">';
-        html += '<div class="card text-center"><span class="text-xs text-gray-400">💰 المبيعات</span><p class="text-2xl font-black text-orange-600" id="kpiSales">---</p><div class="w-full bg-gray-200 rounded-full h-2 mt-1"><div id="kpiSalesBar" class="bg-orange-500 h-2 rounded-full" style="width:0%"></div></div><p class="text-xs text-gray-400 mt-1">الهدف: ' + RW_UI.formatNumber(self.dailyTarget) + '</p></div>';
-        html += '<div class="card text-center"><span class="text-xs text-gray-400">👥 الزيارات</span><p class="text-2xl font-black text-blue-600" id="kpiVisits">---</p><p class="text-xs text-gray-400 mt-1">فواتير اليوم</p></div>';
-        html += '<div class="card text-center"><span class="text-xs text-gray-400">📦 العهدة</span><p class="text-2xl font-black text-purple-600" id="kpiStock">---</p><p class="text-xs text-gray-400 mt-1">قيمة البضاعة</p></div>';
-        html += '<div class="card text-center"><span class="text-xs text-gray-400">💳 التحصيل</span><p class="text-2xl font-black text-emerald-600" id="kpiCollection">---</p><div class="w-full bg-gray-200 rounded-full h-2 mt-1"><div id="kpiCollectionBar" class="bg-emerald-500 h-2 rounded-full" style="width:0%"></div></div><p class="text-xs text-gray-400 mt-1">الهدف: ' + RW_UI.formatNumber(self.collectionTarget) + '</p></div>';
+        // ✅ Skeleton Loading أولاً
+        RW_UI.showSkeleton('mainContent', 6, 'card');
+
+        // ✅ بناء HTML الكامل
+        var html = '<div class="p-4 animate-fadeIn">';
+
+        // تحية ترحيبية
+        html += '<div class="mb-4 flex items-center justify-between">';
+        html += '<p class="text-slate-400 text-sm">' + greeting + '، <span class="font-bold text-slate-700">' + userName + '</span> 👋</p>';
+        if (self.vanBranch) {
+            html += '<span class="text-xs bg-orange-50 text-orange-600 px-3 py-1 rounded-full font-bold">🚛 ' + (self.vanBranch.branch_code || '') + '</span>';
+        }
         html += '</div>';
 
+        // مؤشرات الأداء (KPIs) – 4 بطاقات
+        html += '<div class="grid grid-cols-2 gap-3 mb-4">';
+
+        // KPI 1: المبيعات
+        html += '<div class="card text-center">';
+        html += '<div class="flex items-center justify-center gap-1 mb-1"><i class="fa-solid fa-money-bill-wave text-orange-500 text-lg"></i></div>';
+        html += '<span class="text-xs text-gray-400">💰 المبيعات</span>';
+        html += '<p class="text-2xl font-black text-orange-600 mt-1" id="kpiSales">---</p>';
+        html += '<div class="w-full bg-gray-200 rounded-full h-2 mt-2"><div id="kpiSalesBar" class="bg-orange-500 h-2 rounded-full transition-all" style="width:0%"></div></div>';
+        html += '<p class="text-xs text-gray-400 mt-1">الهدف: ' + RW_UI.formatNumber(self.dailyTarget) + ' ج.م</p>';
+        html += '</div>';
+
+        // KPI 2: الزيارات (عدد الفواتير)
+        html += '<div class="card text-center">';
+        html += '<div class="flex items-center justify-center gap-1 mb-1"><i class="fa-solid fa-users text-blue-500 text-lg"></i></div>';
+        html += '<span class="text-xs text-gray-400">👥 الزيارات</span>';
+        html += '<p class="text-2xl font-black text-blue-600 mt-1" id="kpiVisits">---</p>';
+        html += '<p class="text-xs text-gray-400 mt-2">فواتير اليوم</p>';
+        html += '</div>';
+
+        // KPI 3: العهدة
+        html += '<div class="card text-center">';
+        html += '<div class="flex items-center justify-center gap-1 mb-1"><i class="fa-solid fa-boxes-stacked text-purple-500 text-lg"></i></div>';
+        html += '<span class="text-xs text-gray-400">📦 العهدة</span>';
+        html += '<p class="text-2xl font-black text-purple-600 mt-1" id="kpiStock">---</p>';
+        html += '<p class="text-xs text-gray-400 mt-2">قيمة البضاعة</p>';
+        html += '</div>';
+
+        // KPI 4: التحصيل
+        html += '<div class="card text-center">';
+        html += '<div class="flex items-center justify-center gap-1 mb-1"><i class="fa-solid fa-hand-holding-dollar text-emerald-500 text-lg"></i></div>';
+        html += '<span class="text-xs text-gray-400">💳 التحصيل</span>';
+        html += '<p class="text-2xl font-black text-emerald-600 mt-1" id="kpiCollection">---</p>';
+        html += '<div class="w-full bg-gray-200 rounded-full h-2 mt-2"><div id="kpiCollectionBar" class="bg-emerald-500 h-2 rounded-full transition-all" style="width:0%"></div></div>';
+        html += '<p class="text-xs text-gray-400 mt-1">الهدف: ' + RW_UI.formatNumber(self.collectionTarget) + ' ج.م</p>';
+        html += '</div>';
+
+        html += '</div>'; // نهاية صف KPIs
+
         // بطاقة العهدة
-        html += '<div class="card mb-4" onclick="App.showView(\'vehicle\')">';
-        html += '<div class="flex items-center gap-3 mb-3"><span class="text-2xl">📦</span><span class="font-black text-lg">عهدتي الآن</span></div>';
-        html += '<div id="homeStockSummary" class="text-center text-gray-400 text-sm">جاري تحميل العهدة...</div>';
-        html += '<div class="text-xs text-gray-400 mt-2" id="homeStockLastUpdate"></div>';
+        html += '<div class="card mb-4 cursor-pointer hover:shadow-md transition" onclick="App.showView(\'vehicle\')">';
+        html += '<div class="flex items-center gap-3 mb-3">';
+        html += '<div class="w-12 h-12 bg-orange-100 rounded-2xl flex items-center justify-center"><i class="fa-solid fa-boxes-stacked text-orange-600 text-xl"></i></div>';
+        html += '<div><span class="font-black text-lg text-slate-800">عهدتي الآن</span><p class="text-xs text-slate-400">مخزون السيارة الحالي</p></div>';
+        html += '<i class="fa-solid fa-chevron-left text-slate-300 mr-auto"></i>';
+        html += '</div>';
+        html += '<div id="homeStockSummary" class="text-center text-gray-400 text-sm py-2">جاري تحميل العهدة...</div>';
+        html += '<div class="text-xs text-gray-400 mt-2 text-left" id="homeStockLastUpdate"></div>';
         html += '</div>';
 
         // بطاقة مبيعات اليوم
-        html += '<div class="card mb-4" onclick="App.showView(\'invoices\')">';
-        html += '<div class="flex items-center gap-3 mb-3"><span class="text-2xl">💰</span><span class="font-black text-lg">مبيعات اليوم</span></div>';
-        html += '<div id="homeSalesSummary" class="text-center text-gray-400 text-sm">جاري تحميل المبيعات...</div>';
+        html += '<div class="card mb-4 cursor-pointer hover:shadow-md transition" onclick="App.showView(\'invoices\')">';
+        html += '<div class="flex items-center gap-3 mb-3">';
+        html += '<div class="w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center"><i class="fa-solid fa-receipt text-blue-600 text-xl"></i></div>';
+        html += '<div><span class="font-black text-lg text-slate-800">مبيعات اليوم</span><p class="text-xs text-slate-400">الفواتير المنشأة اليوم</p></div>';
+        html += '<i class="fa-solid fa-chevron-left text-slate-300 mr-auto"></i>';
+        html += '</div>';
+        html += '<div id="homeSalesSummary" class="text-center text-gray-400 text-sm py-2">جاري تحميل المبيعات...</div>';
         html += '</div>';
 
         // بطاقة رصيدي
-        html += '<div class="card mb-4" onclick="App.showView(\'balance\')">';
-        html += '<div class="flex items-center gap-3 mb-3"><span class="text-2xl">⚖️</span><span class="font-black text-lg">رصيدي</span></div>';
-        html += '<div id="homeBalanceSummary" class="text-center text-gray-400 text-sm">جاري تحميل الرصيد...</div>';
+        html += '<div class="card mb-4 cursor-pointer hover:shadow-md transition" onclick="App.showView(\'balance\')">';
+        html += '<div class="flex items-center gap-3 mb-3">';
+        html += '<div class="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center"><i class="fa-solid fa-scale-balanced text-emerald-600 text-xl"></i></div>';
+        html += '<div><span class="font-black text-lg text-slate-800">رصيدي</span><p class="text-xs text-slate-400">مسؤوليتي المالية</p></div>';
+        html += '<i class="fa-solid fa-chevron-left text-slate-300 mr-auto"></i>';
+        html += '</div>';
+        html += '<div id="homeBalanceSummary" class="text-center text-gray-400 text-sm py-2">جاري تحميل الرصيد...</div>';
         html += '</div>';
 
         // أزرار سريعة
+        html += '<div class="grid grid-cols-2 gap-3 mb-4">';
+        html += '<button onclick="App.openQuickSale()" class="bg-gradient-to-r from-orange-500 to-orange-600 text-white py-5 rounded-2xl font-black text-sm shadow-lg shadow-orange-200 active:scale-95 transition">';
+        html += '<i class="fa-solid fa-cart-plus ml-2"></i>بيع سريع';
+        html += '</button>';
+        html += '<button onclick="App.openQuickInventory()" class="bg-gradient-to-r from-amber-500 to-amber-600 text-white py-5 rounded-2xl font-black text-sm shadow-lg shadow-amber-200 active:scale-95 transition">';
+        html += '<i class="fa-solid fa-clipboard-check ml-2"></i>جرد سريع';
+        html += '</button>';
+        html += '</div>';
+
+        // أزرار إضافية
         html += '<div class="grid grid-cols-2 gap-3">';
-        html += '<button onclick="App.openQuickSale()" class="btn-orange text-lg py-6 rounded-2xl shadow-lg"><i class="fa-solid fa-cart-plus ml-2"></i>بيع سريع</button>';
-        html += '<button onclick="App.openQuickInventory()" class="bg-amber-600 text-white text-lg py-6 rounded-2xl shadow-lg font-bold"><i class="fa-solid fa-clipboard-check ml-2"></i>جرد سريع</button>';
+        html += '<button onclick="App.showView(\'customers\')" class="bg-white border-2 border-slate-100 text-slate-700 py-4 rounded-2xl font-bold text-sm shadow-sm active:scale-95 transition">';
+        html += '<i class="fa-solid fa-users ml-2 text-blue-500"></i>عملائي';
+        html += '</button>';
+        html += '<button onclick="App.showView(\'map\')" class="bg-white border-2 border-slate-100 text-slate-700 py-4 rounded-2xl font-bold text-sm shadow-sm active:scale-95 transition">';
+        html += '<i class="fa-solid fa-map-location-dot ml-2 text-red-500"></i>الخريطة';
+        html += '</button>';
         html += '</div>';
 
-        html += '</div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+        html += '</div>'; // نهاية الحاوية الرئيسية
 
-        this.loadHomeStockSummary();
-        this.loadHomeSalesSummary();
-        this.loadHomeBalanceSummary();
-        this.loadKPIs();
+        // ✅ عرض HTML بعد تأخير بسيط لمحاكاة Skeleton Loading
+        setTimeout(function() {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+            // تحميل البيانات
+            self.loadKPIs();
+            self.loadHomeStockSummary();
+            self.loadHomeSalesSummary();
+            self.loadHomeBalanceSummary();
+        }, 350);
     },
 
+    // ==================== تحميل مؤشرات الأداء ====================
     loadKPIs: function() {
         var self = this;
         var today = new Date().toISOString().split('T')[0];
         if (!this.currentUser) return;
-        supabase.from('orders').select('total_amount, payment_type').eq('created_by', this.currentUser.email).eq('order_date', today).then(function(res) {
-            var orders = res.data || [];
-            var totalSales = 0, totalCash = 0;
-            for (var i = 0; i < orders.length; i++) {
-                var amt = Number(orders[i].total_amount) || 0;
-                totalSales += amt;
-                if (orders[i].payment_type === 'نقدي') totalCash += amt;
-            }
-            var salesPct = Math.min(Math.round((totalSales / self.dailyTarget) * 100), 100);
-            var collPct = Math.min(Math.round((totalCash / self.collectionTarget) * 100), 100);
-            RW_UI.safeText(RW_UI.byId('kpiSales'), RW_UI.formatNumber(totalSales));
-            RW_UI.safeText(RW_UI.byId('kpiCollection'), RW_UI.formatNumber(totalCash));
-            var salesBar = RW_UI.byId('kpiSalesBar');
-            var collBar = RW_UI.byId('kpiCollectionBar');
-            if (salesBar) salesBar.style.width = salesPct + '%';
-            if (collBar) collBar.style.width = collPct + '%';
-            RW_UI.safeText(RW_UI.byId('kpiVisits'), orders.length);
-        }).catch(function() {});
+
+        supabase.from('orders')
+            .select('total_amount, payment_type')
+            .eq('created_by', this.currentUser.email)
+            .eq('order_date', today)
+            .then(function(res) {
+                var orders = res.data || [];
+                var totalSales = 0, totalCash = 0;
+                for (var i = 0; i < orders.length; i++) {
+                    var amt = Number(orders[i].total_amount) || 0;
+                    totalSales += amt;
+                    if (orders[i].payment_type === 'نقدي') totalCash += amt;
+                }
+                var salesPct = Math.min(Math.round((totalSales / self.dailyTarget) * 100), 100);
+                var collPct = Math.min(Math.round((totalCash / self.collectionTarget) * 100), 100);
+
+                RW_UI.safeText(RW_UI.byId('kpiSales'), RW_UI.formatNumber(totalSales) + ' ج.م');
+                RW_UI.safeText(RW_UI.byId('kpiCollection'), RW_UI.formatNumber(totalCash) + ' ج.م');
+                RW_UI.safeText(RW_UI.byId('kpiVisits'), orders.length);
+
+                var salesBar = RW_UI.byId('kpiSalesBar');
+                var collBar = RW_UI.byId('kpiCollectionBar');
+                if (salesBar) salesBar.style.width = salesPct + '%';
+                if (collBar) collBar.style.width = collPct + '%';
+            }).catch(function() {
+                RW_UI.safeText(RW_UI.byId('kpiSales'), '---');
+                RW_UI.safeText(RW_UI.byId('kpiCollection'), '---');
+                RW_UI.safeText(RW_UI.byId('kpiVisits'), '---');
+            });
     },
 
+    // ==================== تحميل ملخص العهدة ====================
     loadHomeStockSummary: function() {
         var self = this;
-        var branchId = this.vanBranch ? this.vanBranch.id : null;
-        if (!branchId) { RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">لا توجد عهدة حالياً</p>'); return; }
-        db.stock.toArray().then(function(stockItems) {
-            var myStock = [];
-            var totalValue = 0;
-            for (var i = 0; i < stockItems.length; i++) {
-                if (stockItems[i].branch_id === branchId) {
-                    myStock.push(stockItems[i]);
-                }
-            }
-            if (myStock.length === 0) {
-                RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">لا توجد عهدة حالياً</p>');
+        var db = RW_DB.getDB('VanSales');
+        var branchId = this.vanBranchId;
+
+        if (!branchId) {
+            RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">لم يتم تهيئة فرع السيارة بعد. استخدم الجرد السريع.</p>');
+            RW_UI.safeText(RW_UI.byId('kpiStock'), '0 ج.م');
+            return;
+        }
+
+        db.stock.where('branch_id').equals(branchId).toArray().then(function(stockItems) {
+            if (!stockItems || stockItems.length === 0) {
+                RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">لا توجد عهدة حالياً. تواصل مع المشرف.</p>');
+                RW_UI.safeText(RW_UI.byId('kpiStock'), '0 ج.م');
+                RW_UI.safeText(RW_UI.byId('homeStockLastUpdate'), '');
                 return;
             }
+
+            var totalValue = 0;
             var promises = [];
-            for (var j = 0; j < Math.min(myStock.length, 5); j++) {
-                promises.push(db.items.get(myStock[j].item_id));
+            for (var j = 0; j < Math.min(stockItems.length, 5); j++) {
+                promises.push(db.items.get(stockItems[j].item_id));
             }
+
             Promise.all(promises).then(function(items) {
                 var summary = '';
                 for (var k = 0; k < items.length; k++) {
                     if (items[k]) {
-                        summary += '<span class="inline-block bg-orange-50 text-orange-700 px-2 py-1 rounded-lg text-xs font-bold ml-1 mb-1">' + items[k].name + ': ' + myStock[k].qty + '</span>';
-                        totalValue += (myStock[k].qty || 0) * (Number(items[k].sales_price) || 0);
+                        var qty = Number(stockItems[k].qty) || 0;
+                        var price = Number(items[k].sales_price) || 0;
+                        totalValue += qty * price;
+                        summary += '<span class="inline-block bg-orange-50 text-orange-700 px-2 py-1 rounded-lg text-xs font-bold ml-1 mb-1">' + items[k].name + ': ' + qty + '</span>';
                     }
                 }
-                if (myStock.length > 5) summary += '<span class="text-xs text-gray-400">... وأكثر</span>';
+                if (stockItems.length > 5) summary += '<span class="text-xs text-gray-400">... وأكثر</span>';
                 RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), summary || '<p class="text-gray-400">اضغط للتفاصيل</p>');
                 RW_UI.safeText(RW_UI.byId('homeStockLastUpdate'), '🟢 آخر تحديث: الآن');
                 RW_UI.safeText(RW_UI.byId('kpiStock'), RW_UI.formatNumber(totalValue) + ' ج.م');
+            }).catch(function() {
+                RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">تعذر تحميل تفاصيل العهدة</p>');
             });
+        }).catch(function() {
+            RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">تعذر تحميل العهدة</p>');
         });
     },
 
+    // ==================== تحميل ملخص مبيعات اليوم ====================
     loadHomeSalesSummary: function() {
         var self = this;
         var today = new Date().toISOString().split('T')[0];
         if (!this.currentUser) return;
-        supabase.from('orders').select('total_amount, payment_type').eq('created_by', this.currentUser.email).eq('order_date', today).then(function(res) {
-            var orders = res.data || [];
-            var total = 0, countCash = 0, countCredit = 0, totalCash = 0, totalCredit = 0;
-            for (var i = 0; i < orders.length; i++) {
-                var amt = Number(orders[i].total_amount) || 0;
-                total += amt;
-                if (orders[i].payment_type === 'نقدي') { countCash++; totalCash += amt; }
-                else { countCredit++; totalCredit += amt; }
-            }
-            var html = '<div class="text-2xl font-black text-orange-600">' + RW_UI.formatNumber(total) + ' ج.م</div>';
-            html += '<div class="text-xs text-gray-500 mt-1">' + orders.length + ' فواتير | 💵 نقدي: ' + RW_UI.formatNumber(totalCash) + ' | 📋 آجل: ' + RW_UI.formatNumber(totalCredit) + '</div>';
-            RW_UI.safeHTML(RW_UI.byId('homeSalesSummary'), html);
-        }).catch(function() {
-            RW_UI.safeHTML(RW_UI.byId('homeSalesSummary'), '<p class="text-gray-400">تعذر تحميل المبيعات</p>');
-        });
+
+        supabase.from('orders')
+            .select('total_amount, payment_type')
+            .eq('created_by', this.currentUser.email)
+            .eq('order_date', today)
+            .then(function(res) {
+                var orders = res.data || [];
+                var total = 0, totalCash = 0, totalCredit = 0, countCash = 0, countCredit = 0;
+                for (var i = 0; i < orders.length; i++) {
+                    var amt = Number(orders[i].total_amount) || 0;
+                    total += amt;
+                    if (orders[i].payment_type === 'نقدي') { countCash++; totalCash += amt; }
+                    else { countCredit++; totalCredit += amt; }
+                }
+                var html = '<div class="text-2xl font-black text-orange-600">' + RW_UI.formatNumber(total) + ' ج.م</div>';
+                html += '<div class="text-xs text-gray-500 mt-1">' + orders.length + ' فواتير | 💵 نقدي: ' + RW_UI.formatNumber(totalCash) + ' | 📋 آجل: ' + RW_UI.formatNumber(totalCredit) + '</div>';
+                RW_UI.safeHTML(RW_UI.byId('homeSalesSummary'), html);
+            }).catch(function() {
+                RW_UI.safeHTML(RW_UI.byId('homeSalesSummary'), '<p class="text-gray-400">تعذر تحميل المبيعات</p>');
+            });
     },
 
+    // ==================== تحميل ملخص رصيدي من driver_ledger ====================
     loadHomeBalanceSummary: function() {
         var self = this;
         if (!this.currentUser) return;
-        supabase.from('driver_ledger').select('debit, credit').eq('driver_email', this.currentUser.email).then(function(res) {
-            var rows = res.data || [];
-            var totalDebit = 0, totalCredit = 0;
-            for (var i = 0; i < rows.length; i++) {
-                totalDebit += Number(rows[i].debit) || 0;
-                totalCredit += Number(rows[i].credit) || 0;
-            }
-            var balance = totalDebit - totalCredit;
-            var badgeClass = balance <= 0 ? 'badge-green' : (balance < 5000 ? 'badge-yellow' : 'badge-red');
-            var badgeText = balance <= 0 ? '🟢 أنا ملتزم' : (balance < 5000 ? '🟡 عليّ بعض المستحقات' : '🔴 عليّ مستحقات');
-            var html = '<div class="text-2xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</div>';
-            html += '<div class="text-xs mt-1"><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + badgeClass + '">' + badgeText + '</span></div>';
-            RW_UI.safeHTML(RW_UI.byId('homeBalanceSummary'), html);
-        }).catch(function() {
-            RW_UI.safeHTML(RW_UI.byId('homeBalanceSummary'), '<p class="text-gray-400">تعذر تحميل الرصيد</p>');
-        });
-    },
 
-    // ==================== شاشة العملاء ====================
+        supabase.from('driver_ledger')
+            .select('debit, credit')
+            .eq('driver_email', this.currentUser.email)
+            .then(function(res) {
+                var rows = res.data || [];
+                var totalDebit = 0, totalCredit = 0;
+                for (var i = 0; i < rows.length; i++) {
+                    totalDebit += Number(rows[i].debit) || 0;
+                    totalCredit += Number(rows[i].credit) || 0;
+                }
+                var balance = totalDebit - totalCredit;
+                var badgeClass = balance <= 0 ? 'badge-green' : (balance < 5000 ? 'badge-yellow' : 'badge-red');
+                var badgeText = balance <= 0 ? '🟢 أنا ملتزم' : (balance < 5000 ? '🟡 عليّ بعض المستحقات' : '🔴 عليّ مستحقات');
+                var html = '<div class="text-2xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</div>';
+                html += '<div class="text-xs mt-1"><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + badgeClass + '">' + badgeText + '</span></div>';
+                RW_UI.safeHTML(RW_UI.byId('homeBalanceSummary'), html);
+            }).catch(function() {
+                RW_UI.safeHTML(RW_UI.byId('homeBalanceSummary'), '<p class="text-gray-400">تعذر تحميل الرصيد</p>');
+            });
+    },
+        // ==================== تبويب "عملائي" ====================
     renderCustomersView: function() {
         var self = this;
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">👥 عملائي</h2>';
-        html += '<input type="text" id="myCustSearch" oninput="App.filterMyCustomers()" placeholder="🔍 ابحث عن عميل..." class="w-full p-3 bg-white rounded-xl border mb-4">';
-        html += '<div id="myCustomersList" class="space-y-2"><div class="text-center text-gray-400 py-8">جاري تحميل العملاء...</div></div>';
+        // ✅ Skeleton Loading
+        RW_UI.showSkeleton('mainContent', 3, 'card');
+
+        var html = '<div class="p-4 animate-fadeIn">';
+        html += '<h2 class="text-xl font-bold mb-2">👥 عملائي</h2>';
+        html += '<p class="text-xs text-slate-400 mb-4">قائمة العملاء الذين تعاملت معهم سابقاً</p>';
+        html += '<input type="text" id="myCustSearch" oninput="App.filterMyCustomers()" placeholder="🔍 ابحث عن عميل بالاسم أو الكود..." class="w-full p-3 bg-white rounded-xl border-2 border-slate-100 focus:border-orange-400 outline-none font-bold text-sm mb-4">';
+        html += '<div id="myCustomersList" class="space-y-2"></div>';
         html += '</div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        this.renderMyCustomersList();
+
+        setTimeout(function() {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+            self.renderMyCustomersList();
+        }, 300);
     },
 
     renderMyCustomersList: function() {
         var self = this;
         var container = RW_UI.byId('myCustomersList');
         if (!container) return;
+        var db = RW_DB.getDB('VanSales');
+
         db.myCustomers.toArray().then(function(list) {
-            if (!list.length) {
-                RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا يوجد عملاء بعد</div>');
+            if (!list || !list.length) {
+                // ✅ حالة فراغ مبهجة
+                RW_UI.safeHTML(container, '<div class="text-center py-12 bg-white rounded-2xl"><div class="text-6xl mb-4">☕</div><p class="text-slate-400 font-bold">لا يوجد عملاء بعد</p><p class="text-slate-300 text-sm mt-1">ابدأ البيع وسيظهر عملاؤك هنا</p></div>');
                 return;
             }
+
+            // جلب أنماط الشراء
             db.customerPatterns.toArray().then(function(patterns) {
                 var patternMap = {};
                 for (var p = 0; p < patterns.length; p++) {
                     if (!patternMap[patterns[p].customer_code]) patternMap[patterns[p].customer_code] = [];
                     patternMap[patterns[p].customer_code].push(patterns[p]);
                 }
+
                 var html = '';
                 for (var i = 0; i < list.length; i++) {
                     var c = list[i];
@@ -659,28 +710,52 @@ var App = {
                     if (custPatterns && custPatterns.length > 0 && daysSinceLast > 7) {
                         patternBadge = ' <span class="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">' + custPatterns.length + ' أصناف متوقعة</span>';
                     }
-                    html += '<div class="card cursor-pointer hover:bg-orange-50 transition" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\', \'' + (c.name || '').replace(/'/g, "\\'") + '\')">';
+
+                    html += '<div class="card cursor-pointer hover:bg-orange-50 transition slide-in" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\', \'' + (c.name || '').replace(/'/g, "\\'") + '\')">';
                     html += '<div class="flex justify-between items-center">';
-                    html += '<div><span class="font-bold">' + debtIcon + ' ' + (c.name || '') + '</span>' + patternBadge + '<p class="text-xs text-gray-400">آخر بيع: ' + (c.lastOrderDate ? new Date(c.lastOrderDate).toLocaleDateString('ar-EG') : '---') + '</p></div>';
-                    html += '<div class="text-left"><span class="font-black text-sm">' + RW_UI.formatNumber(c.totalDebt) + ' ج.م</span><br><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + debtClass + '">' + (c.totalDebt > 0 ? 'مديونية' : 'لا توجد') + '</span></div>';
+                    html += '<div>';
+                    html += '<span class="font-bold text-slate-800">' + debtIcon + ' ' + (c.name || '') + '</span>' + patternBadge;
+                    html += '<p class="text-xs text-gray-400 mt-1">آخر بيع: ' + (c.lastOrderDate ? new Date(c.lastOrderDate).toLocaleDateString('ar-EG') : '---') + '</p>';
+                    html += '</div>';
+                    html += '<div class="text-left">';
+                    html += '<span class="font-black text-sm">' + RW_UI.formatNumber(c.totalDebt) + ' ج.م</span><br>';
+                    html += '<span class="px-2 py-0.5 rounded-full text-xs font-bold ' + debtClass + '">' + (c.totalDebt > 0 ? 'مديونية' : 'لا توجد') + '</span>';
+                    html += '</div>';
                     html += '</div></div>';
                 }
                 RW_UI.safeHTML(container, html);
             });
+        }).catch(function() {
+            RW_UI.safeHTML(container, '<div class="text-center py-12 bg-white rounded-2xl"><p class="text-slate-400">تعذر تحميل العملاء</p></div>');
         });
     },
 
     filterMyCustomers: function() {
+        var self = this;
         var q = (RW_UI.byId('myCustSearch') ? RW_UI.byId('myCustSearch').value : '').toLowerCase();
         var container = RW_UI.byId('myCustomersList');
         if (!container) return;
+        var db = RW_DB.getDB('VanSales');
+
         db.myCustomers.toArray().then(function(list) {
-            var filtered = q ? list.filter(function(c) { return (c.name || '').toLowerCase().indexOf(q) !== -1 || (c.customer_code || '').toLowerCase().indexOf(q) !== -1; }) : list;
-            if (!filtered.length) { RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد نتائج</div>'); return; }
+            var filtered = list;
+            if (q) {
+                filtered = [];
+                for (var i = 0; i < list.length; i++) {
+                    var c = list[i];
+                    if ((c.name || '').toLowerCase().indexOf(q) !== -1 || (c.customer_code || '').toLowerCase().indexOf(q) !== -1) {
+                        filtered.push(c);
+                    }
+                }
+            }
+            if (!filtered.length) {
+                RW_UI.safeHTML(container, '<div class="text-center py-12 bg-white rounded-2xl"><div class="text-6xl mb-4">🔍</div><p class="text-slate-400 font-bold">لا توجد نتائج</p></div>');
+                return;
+            }
             var html = '';
-            for (var i = 0; i < filtered.length; i++) {
-                var c = filtered[i];
-                html += '<div class="card cursor-pointer hover:bg-orange-50 transition" onclick="App.showCustomerDetail(\'' + (c.customer_code || '').replace(/'/g, "\\'") + '\', \'' + (c.name || '').replace(/'/g, "\\'") + '\')"><div class="flex justify-between items-center"><span class="font-bold">' + (c.name || '') + '</span><span class="font-black text-sm">' + RW_UI.formatNumber(c.totalDebt) + ' ج.م</span></div></div>';
+            for (var j = 0; j < filtered.length; j++) {
+                var c2 = filtered[j];
+                html += '<div class="card cursor-pointer hover:bg-orange-50 transition" onclick="App.showCustomerDetail(\'' + (c2.customer_code || '').replace(/'/g, "\\'") + '\', \'' + (c2.name || '').replace(/'/g, "\\'") + '\')"><div class="flex justify-between items-center"><span class="font-bold">' + (c2.name || '') + '</span><span class="font-black text-sm">' + RW_UI.formatNumber(c2.totalDebt) + ' ج.م</span></div></div>';
             }
             RW_UI.safeHTML(container, html);
         });
@@ -689,50 +764,82 @@ var App = {
     showCustomerDetail: function(code, name) {
         var self = this;
         RW_UI.showLoader('جاري تحميل التفاصيل...');
-        supabase.from('orders').select('*').eq('customer_id', code).eq('payment_type', 'أجل').neq('order_status', 'Cancelled').order('order_date', { ascending: false }).then(function(res) {
-            RW_UI.hideLoader();
-            var orders = res.data || [];
-            var totalDebt = 0;
-            var html = '<div class="text-right"><h3 class="font-black text-lg mb-2">' + (name || code) + '</h3>';
-            html += '<div class="flex gap-2 mb-4"><a href="tel:' + (code || '') + '" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i> اتصال</a><a href="https://wa.me/' + (code || '').replace(/\D/g, '') + '" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i> واتساب</a><a href="https://www.google.com/maps?q=' + encodeURIComponent(name || '') + '" target="_blank" class="bg-blue-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-map-location-dot ml-1"></i> خريطة</a></div>';
 
-            // آخر 3 فواتير
-            supabase.from('orders').select('*').eq('customer_id', code).order('order_date', { ascending: false }).limit(3).then(function(recentRes) {
-                var recentOrders = recentRes.data || [];
-                if (recentOrders.length > 0) {
-                    html += '<div class="bg-blue-50 p-3 rounded-xl mb-3"><p class="text-xs font-bold text-blue-600 mb-2">💡 آخر فواتير – اضغط لإعادة الطلب</p>';
-                    for (var r = 0; r < recentOrders.length; r++) {
-                        var ro = recentOrders[r];
-                        html += '<button onclick="App.repeatOrder(\'' + ro.id + '\')" class="block w-full text-right bg-white p-2 rounded-lg mb-1 text-sm font-bold hover:bg-blue-100 transition">🔄 ' + (ro.order_code || '') + ' – ' + RW_UI.formatNumber(ro.total_amount) + ' ج.م – ' + (ro.order_date ? new Date(ro.order_date).toLocaleDateString('ar-EG') : '') + '</button>';
-                    }
-                    html += '</div>';
-                }
+        // ١. جلب المديونية الآجلة
+        supabase.from('orders')
+            .select('*')
+            .eq('customer_id', code)
+            .eq('payment_type', 'أجل')
+            .neq('order_status', 'Cancelled')
+            .order('order_date', { ascending: false })
+            .then(function(debtRes) {
+                var debtOrders = debtRes.data || [];
+                var totalDebt = 0;
 
-                if (orders.length === 0) {
-                    html += '<p class="text-gray-400">لا توجد مديونية</p>';
-                } else {
-                    html += '<div class="max-h-60 overflow-y-auto"><table class="w-full text-sm border"><thead class="bg-gray-100"><tr><th class="p-2">التاريخ</th><th class="p-2">الفاتورة</th><th class="p-2 text-center">المبلغ</th></tr></thead><tbody>';
-                    for (var i = 0; i < orders.length; i++) {
-                        totalDebt += Number(orders[i].total_amount) || 0;
-                        html += '<tr class="border-t"><td class="p-2">' + (orders[i].order_date ? new Date(orders[i].order_date).toLocaleDateString('ar-EG') : '') + '</td><td class="p-2">' + (orders[i].order_code || '') + '</td><td class="p-2 text-center font-bold">' + RW_UI.formatNumber(orders[i].total_amount) + ' ج.م</td></tr>';
-                    }
-                    html += '</tbody></table></div>';
-                    html += '<div class="mt-3 text-left font-black text-lg">الإجمالي: ' + RW_UI.formatNumber(totalDebt) + ' ج.م</div>';
-                }
-                html += '<div class="flex gap-2 mt-4 pt-3 border-t"><button onclick="App.openQuickSaleForCustomer(\'' + (code || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-orange-600 text-white py-2 rounded-lg font-bold text-sm">بيع له</button><button onclick="App.collectPayment(\'' + (code || '').replace(/'/g, "\\'") + '\', \'' + (name || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold text-sm">تحصيل نقدية</button></div>';
-                html += '</div>';
-                Swal.fire({ title: 'تفاصيل العميل', html: html, width: '600px', showCloseButton: true, showConfirmButton: false });
+                // ٢. جلب آخر 3 فواتير (لإعادة الطلب)
+                supabase.from('orders')
+                    .select('*')
+                    .eq('customer_id', code)
+                    .order('order_date', { ascending: false })
+                    .limit(3)
+                    .then(function(recentRes) {
+                        RW_UI.hideLoader();
+                        var recentOrders = recentRes.data || [];
+
+                        var html = '<div class="text-right">';
+                        html += '<h3 class="font-black text-lg mb-2">' + (name || code) + '</h3>';
+
+                        // أزرار اتصال سريعة
+                        html += '<div class="flex gap-2 mb-4">';
+                        html += '<a href="tel:' + (code || '') + '" class="bg-green-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-phone ml-1"></i>اتصال</a>';
+                        html += '<a href="https://wa.me/' + (code || '').replace(/\D/g, '') + '" target="_blank" class="bg-emerald-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-brands fa-whatsapp ml-1"></i>واتساب</a>';
+                        html += '<a href="https://www.google.com/maps?q=' + encodeURIComponent(name || '') + '" target="_blank" class="bg-blue-500 text-white px-3 py-1 rounded-lg text-xs font-bold"><i class="fa-solid fa-map-location-dot ml-1"></i>خريطة</a>';
+                        html += '</div>';
+
+                        // آخر 3 فواتير
+                        if (recentOrders.length > 0) {
+                            html += '<div class="bg-blue-50 p-3 rounded-xl mb-3"><p class="text-xs font-bold text-blue-600 mb-2">💡 آخر فواتير – اضغط لإعادة الطلب</p>';
+                            for (var r = 0; r < recentOrders.length; r++) {
+                                var ro = recentOrders[r];
+                                html += '<button onclick="App.repeatOrder(\'' + ro.id + '\')" class="block w-full text-right bg-white p-2 rounded-lg mb-1 text-sm font-bold hover:bg-blue-100 transition">🔄 ' + (ro.order_code || '') + ' – ' + RW_UI.formatNumber(ro.total_amount) + ' ج.م – ' + (ro.order_date ? new Date(ro.order_date).toLocaleDateString('ar-EG') : '') + '</button>';
+                            }
+                            html += '</div>';
+                        }
+
+                        // جدول المديونية
+                        if (debtOrders.length === 0) {
+                            html += '<p class="text-gray-400 text-center py-4">لا توجد مديونية</p>';
+                        } else {
+                            html += '<div class="max-h-60 overflow-y-auto"><table class="w-full text-sm border"><thead class="bg-gray-100"><tr><th class="p-2">التاريخ</th><th class="p-2">الفاتورة</th><th class="p-2 text-center">المبلغ</th></tr></thead><tbody>';
+                            for (var d = 0; d < debtOrders.length; d++) {
+                                totalDebt += Number(debtOrders[d].total_amount) || 0;
+                                html += '<tr class="border-t"><td class="p-2">' + (debtOrders[d].order_date ? new Date(debtOrders[d].order_date).toLocaleDateString('ar-EG') : '') + '</td><td class="p-2">' + (debtOrders[d].order_code || '') + '</td><td class="p-2 text-center font-bold">' + RW_UI.formatNumber(debtOrders[d].total_amount) + ' ج.م</td></tr>';
+                            }
+                            html += '</tbody></table></div>';
+                            html += '<div class="mt-3 text-left font-black text-lg">الإجمالي: ' + RW_UI.formatNumber(totalDebt) + ' ج.م</div>';
+                        }
+
+                        // أزرار الإجراءات
+                        html += '<div class="flex gap-2 mt-4 pt-3 border-t">';
+                        html += '<button onclick="App.openQuickSaleForCustomer(\'' + (code || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-orange-600 text-white py-2 rounded-lg font-bold text-sm">بيع له</button>';
+                        html += '<button onclick="App.collectPayment(\'' + (code || '').replace(/'/g, "\\'") + '\', \'' + (name || '').replace(/'/g, "\\'") + '\')" class="flex-1 bg-green-600 text-white py-2 rounded-lg font-bold text-sm">تحصيل نقدية</button>';
+                        html += '</div>';
+                        html += '</div>';
+
+                        Swal.fire({ title: 'تفاصيل العميل', html: html, width: '600px', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl' } });
+                    });
+            }).catch(function() {
+                RW_UI.hideLoader();
+                RW_UI.toast('فشل تحميل التفاصيل', 'error');
             });
-        }).catch(function() {
-            RW_UI.hideLoader();
-            RW_UI.toast('فشل تحميل التفاصيل', 'error');
-        });
     },
 
+    // ==================== إعادة الطلب من فاتورة سابقة ====================
     repeatOrder: function(orderId) {
         var self = this;
         Swal.close();
         RW_UI.showLoader('جاري تحميل الأوردر...');
+
         supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
             var order = oRes.data;
             if (!order) { RW_UI.hideLoader(); RW_UI.toast('الأوردر غير موجود', 'error'); return; }
@@ -749,21 +856,27 @@ var App = {
                         qty: Number(details[i].qty) || 1
                     });
                 }
+                // تعيين العميل
                 if (order.customer_id) {
+                    var db = RW_DB.getDB('VanSales');
                     db.myCustomers.where('customer_code').equals(order.customer_id).first().then(function(c) {
                         if (c) {
                             self.selCust = { customer_code: c.customer_code, name: c.name, area: c.area || '', payment_type: c.payment_type || 'نقدي' };
-                            self.selectCustomer(c.customer_code);
+                        } else {
+                            self.selCust = { customer_code: order.customer_id, name: order.customer_name || '', area: order.area || '', payment_type: order.payment_type || 'نقدي' };
                         }
+                        self.openQuickSaleForCustomer(self.selCust.customer_code);
+                        RW_UI.toast('تم نسخ الأوردر للسلة', 'success');
                     });
+                } else {
+                    self.openQuickSale();
+                    RW_UI.toast('تم نسخ الأوردر للسلة', 'success');
                 }
-                self.updateFloatingCart();
-                self.showView('new-order');
-                RW_UI.toast('تم نسخ الأوردر للسلة', 'success');
             });
-        }).catch(function() { RW_UI.hideLoader(); });
+        }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
     },
 
+    // ==================== تحصيل نقدية من عميل ====================
     collectPayment: function(code, name) {
         var self = this;
         Swal.fire({
@@ -772,6 +885,7 @@ var App = {
             showCancelButton: true,
             confirmButtonText: 'حفظ التحصيل',
             cancelButtonText: 'إلغاء',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-green-600', cancelButton: '!rounded-xl' },
             preConfirm: function() {
                 var popup = Swal.getPopup();
                 var amtEl = popup ? popup.querySelector('#collectAmount') : null;
@@ -781,114 +895,764 @@ var App = {
             }
         }).then(function(result) {
             if (!result.isConfirmed) return;
+            var amount = result.value;
             RW_UI.showLoader('جاري حفظ التحصيل...');
+
+            // ١. حفظ سند القبض
             var payload = {
                 date: new Date().toISOString().split('T')[0],
                 cashBoxId: 'MAIN',
                 mainAccountName: name || code,
-                notes: 'تحصيل من مندوب: ' + (App.currentUser ? App.currentUser.email : ''),
-                lines: [{ accountName: name || code, description: 'تحصيل نقدية', amount: result.value }]
+                notes: 'تحصيل من مندوب: ' + (self.currentUser ? self.currentUser.email : ''),
+                lines: [{ accountName: name || code, description: 'تحصيل نقدية', amount: amount }]
             };
+
             RW_API.call('save-receipt-voucher', payload, function(json) {
-                RW_UI.hideLoader();
                 if (json.success) {
-                    RW_UI.toast('تم تسجيل التحصيل', 'success');
-                    App.loadMyCustomers();
+                    // ٢. إضافة سجل دائن في driver_ledger
+                    supabase.from('driver_ledger').insert({
+                        driver_email: self.currentUser ? self.currentUser.email : '',
+                        entry_date: new Date().toISOString().split('T')[0],
+                        description: 'تحصيل نقدية من ' + (name || code),
+                        debit: 0,
+                        credit: amount
+                    }).then(function() {
+                        RW_UI.hideLoader();
+                        Swal.fire({ icon: 'success', title: '✅ تم التحصيل', html: '<div class="text-right"><p>تم تحصيل <strong>' + RW_UI.formatNumber(amount) + ' ج.م</strong> من ' + (name || code) + '</p></div>', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-green-600' } });
+                        self.loadMyCustomers();
+                    }).catch(function() {
+                        RW_UI.hideLoader();
+                        RW_UI.toast('تم التحصيل ولكن فشل تسجيل القيد', 'warning');
+                    });
                 } else {
-                    RW_UI.toast(json.error || 'فشل', 'error');
+                    RW_UI.hideLoader();
+                    RW_UI.toast(json.error || json.msg || 'فشل', 'error');
                 }
             });
         });
     },
+        // ==================== تبويب "فواتيري" ====================
+    renderInvoicesView: function() {
+        var self = this;
+        RW_UI.showSkeleton('mainContent', 3, 'card');
+        var today = new Date().toISOString().split('T')[0];
 
-    // ==================== بيع سريع ====================
+        var html = '<div class="p-4 animate-fadeIn">';
+        html += '<h2 class="text-xl font-bold mb-2">📄 فواتيري</h2>';
+        html += '<p class="text-xs text-slate-400 mb-4">الفواتير التي أنشأتها اليوم</p>';
+        html += '<div class="bg-white p-3 rounded-2xl shadow-sm border mb-4">';
+        html += '<div class="flex gap-2">';
+        html += '<input type="date" id="invDateFilter" value="' + today + '" onchange="App.loadMyInvoices()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold">';
+        html += '<button onclick="var d=document.getElementById(\'invDateFilter\');if(d)d.value=\'' + today + '\';App.loadMyInvoices();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">اليوم</button>';
+        html += '</div></div>';
+        html += '<div id="myInvoicesList" class="space-y-3"></div>';
+        html += '</div>';
+
+        setTimeout(function() {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+            self.loadMyInvoices();
+        }, 300);
+    },
+
+    loadMyInvoices: function() {
+        var self = this;
+        var container = RW_UI.byId('myInvoicesList');
+        if (!container || !this.currentUser) return;
+
+        var dateFilter = RW_UI.byId('invDateFilter') ? RW_UI.byId('invDateFilter').value : new Date().toISOString().split('T')[0];
+
+        supabase.from('orders')
+            .select('*')
+            .eq('created_by', this.currentUser.email)
+            .eq('order_date', dateFilter)
+            .order('order_date', { ascending: false })
+            .then(function(res) {
+                var invoices = res.data || [];
+                if (!invoices.length) {
+                    RW_UI.safeHTML(container, '<div class="text-center py-12 bg-white rounded-2xl"><div class="text-6xl mb-4">📋</div><p class="text-slate-400 font-bold">لا توجد فواتير لهذا اليوم</p><p class="text-slate-300 text-sm mt-1">ابدأ البيع وستظهر فواتيرك هنا</p></div>');
+                    return;
+                }
+                var html = '';
+                for (var i = 0; i < invoices.length; i++) {
+                    var inv = invoices[i];
+                    var paymentClass = inv.payment_type === 'نقدي' ? 'badge-green' : 'badge-yellow';
+                    html += '<div class="card slide-in">';
+                    html += '<div class="flex justify-between items-start">';
+                    html += '<div><span class="font-black text-orange-600 text-sm">' + (inv.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (inv.order_date || '') + '</span></div>';
+                    html += '<span class="font-black text-orange-600">' + RW_UI.formatNumber(inv.total_amount) + ' ج.م</span>';
+                    html += '</div>';
+                    html += '<div class="flex justify-between items-center mt-1">';
+                    html += '<span class="text-sm font-bold">' + (inv.customer_name || '') + '</span>';
+                    html += '<span class="px-2 py-0.5 rounded-full text-xs font-bold ' + paymentClass + '">' + (inv.payment_type || '') + '</span>';
+                    html += '</div></div>';
+                }
+                RW_UI.safeHTML(container, html);
+            }).catch(function() {
+                RW_UI.safeHTML(container, '<div class="text-center py-12 bg-white rounded-2xl"><p class="text-red-400">فشل تحميل الفواتير</p></div>');
+            });
+    },
+
+    // ==================== تبويب "سيارتي" – رصيد المخزون ====================
+    renderVehicleStockView: function() {
+        var self = this;
+        RW_UI.showSkeleton('mainContent', 3, 'card');
+
+        var html = '<div class="p-4 animate-fadeIn">';
+        html += '<h2 class="text-xl font-bold mb-2">🚛 رصيد سيارتي</h2>';
+        html += '<p class="text-xs text-slate-400 mb-4">المخزون الحالي في السيارة</p>';
+        html += '<div id="vehicleDetail"></div>';
+        html += '</div>';
+
+        setTimeout(function() {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+            self._loadVehicleStock();
+        }, 300);
+    },
+
+    _loadVehicleStock: function() {
+        var self = this;
+        var db = RW_DB.getDB('VanSales');
+        var branchId = this.vanBranchId;
+        var container = RW_UI.byId('vehicleDetail');
+        if (!container) return;
+
+        if (!branchId) {
+            RW_UI.safeHTML(container, '<div class="text-center py-12 bg-white rounded-2xl"><div class="text-6xl mb-4">🚛</div><p class="text-slate-400 font-bold">لم يتم تهيئة فرع السيارة بعد</p><p class="text-slate-300 text-sm mt-1">استخدم الجرد السريع لتهيئة المخزون</p></div>');
+            return;
+        }
+
+        db.stock.where('branch_id').equals(branchId).toArray().then(function(myStock) {
+            if (!myStock || !myStock.length) {
+                RW_UI.safeHTML(container, '<div class="text-center py-12 bg-white rounded-2xl"><div class="text-6xl mb-4">📦</div><p class="text-slate-400 font-bold">السيارة فارغة – لا توجد عهدة</p><p class="text-slate-300 text-sm mt-1">تواصل مع المشرف لاستلام عهدة</p></div>');
+                return;
+            }
+
+            // جلب أسماء الأصناف
+            var promises = [];
+            for (var k = 0; k < myStock.length; k++) {
+                promises.push(db.items.get(myStock[k].item_id));
+            }
+
+            Promise.all(promises).then(function(items) {
+                var today = new Date().toISOString().split('T')[0];
+
+                // جلب مبيعات اليوم لحساب المباع
+                supabase.from('orders').select('id').eq('created_by', self.currentUser.email).eq('order_date', today).then(function(oRes) {
+                    var orderIds = [];
+                    var ordersData = oRes.data || [];
+                    for (var oi = 0; oi < ordersData.length; oi++) orderIds.push(ordersData[oi].id);
+
+                    var soldMap = {};
+                    if (orderIds.length > 0) {
+                        supabase.from('order_details').select('item_code, qty').in('order_id', orderIds).then(function(dRes) {
+                            var details = dRes.data || [];
+                            for (var d = 0; d < details.length; d++) {
+                                var it = details[d];
+                                soldMap[it.item_code] = (soldMap[it.item_code] || 0) + (Number(it.qty) || 0);
+                            }
+                            self._renderVehicleStockHTML(container, myStock, items, soldMap);
+                        });
+                    } else {
+                        self._renderVehicleStockHTML(container, myStock, items, soldMap);
+                    }
+                });
+            });
+        }).catch(function() {
+            RW_UI.safeHTML(container, '<div class="text-center py-12"><p class="text-red-400">فشل تحميل المخزون</p></div>');
+        });
+    },
+
+    _renderVehicleStockHTML: function(container, myStock, items, soldMap) {
+        var self = this;
+        var totalValue = 0;
+        var rows = '';
+
+        for (var m = 0; m < myStock.length; m++) {
+            var it = items[m];
+            var st = myStock[m];
+            var nm = it ? it.name : (st.item_id || '---');
+            var ic = it ? it.item_code : (st.item_id || '---');
+            var stockQty = Number(st.qty) || 0;
+            var soldQty = soldMap[ic] || 0;
+            var remaining = Math.max(0, stockQty - soldQty);
+            var price = it ? (Number(it.sales_price) || 0) : 0;
+            totalValue += remaining * price;
+            var color = remaining > 10 ? 'text-green-600' : remaining > 0 ? 'text-amber-600' : 'text-red-600';
+            var imgHtml = RW_ImageCache.getImageHTML(ic, 'w-12', 'h-12');
+
+            rows += '<div class="card mb-2 slide-in">';
+            rows += '<div class="flex items-center gap-3">';
+            rows += '<div class="flex-shrink-0">' + imgHtml + '</div>';
+            rows += '<div class="flex-1">';
+            rows += '<p class="font-bold text-sm">' + nm + '</p>';
+            rows += '<p class="text-xs text-gray-400">الرصيد: <strong>' + stockQty + '</strong> | المباع: <strong class="text-red-500">' + soldQty + '</strong> | المتبقي: <strong class="' + color + '">' + remaining + '</strong></p>';
+            rows += '</div>';
+            rows += '<div class="text-left"><span class="font-bold text-sm">' + RW_UI.formatNumber(remaining * price) + ' ج.م</span></div>';
+            rows += '</div></div>';
+        }
+
+        var html = '<div class="bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl p-5 mb-4 text-center">';
+        html += '<p class="text-sm opacity-80">قيمة البضاعة المتبقية</p>';
+        html += '<p class="text-3xl font-black">' + RW_UI.formatNumber(totalValue) + ' ج.م</p>';
+        html += '</div>';
+        html += '<button onclick="App.openQuickInventory()" class="w-full bg-amber-600 text-white py-3 rounded-xl font-black text-sm mb-4 shadow-lg shadow-amber-200 active:scale-95 transition">🔍 جرد سريع للسيارة</button>';
+        html += rows;
+
+        RW_UI.safeHTML(container, html);
+    },
+
+    // ==================== تبويب "رصيدي" – المسؤولية المالية ====================
+    renderBalanceView: function() {
+        var self = this;
+        RW_UI.showSkeleton('mainContent', 3, 'card');
+
+        var html = '<div class="p-4 animate-fadeIn">';
+        html += '<h2 class="text-xl font-bold mb-2">⚖️ رصيدي</h2>';
+        html += '<p class="text-xs text-slate-400 mb-4">مسؤوليتي المالية تجاه الشركة</p>';
+        html += '<div id="balanceDetail"></div>';
+        html += '</div>';
+
+        setTimeout(function() {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+            self.loadBalanceDetail();
+        }, 300);
+    },
+
+    loadBalanceDetail: function() {
+        var self = this;
+        var container = RW_UI.byId('balanceDetail');
+        if (!container || !this.currentUser) return;
+
+        supabase.from('driver_ledger')
+            .select('*')
+            .eq('driver_email', this.currentUser.email)
+            .order('entry_date', { ascending: false })
+            .then(function(res) {
+                var rows = res.data || [];
+                var totalDebit = 0, totalCredit = 0;
+                for (var i = 0; i < rows.length; i++) {
+                    totalDebit += Number(rows[i].debit) || 0;
+                    totalCredit += Number(rows[i].credit) || 0;
+                }
+                var balance = totalDebit - totalCredit;
+                var badgeClass = balance <= 0 ? 'badge-green' : (balance < 5000 ? 'badge-yellow' : 'badge-red');
+                var badgeText = balance <= 0 ? '🟢 أنا ملتزم بالسداد' : (balance < 5000 ? '🟡 عليّ بعض المستحقات' : '🔴 عليّ مستحقات');
+                var balanceColor = balance <= 0 ? 'text-green-600' : 'text-red-600';
+
+                var html = '';
+
+                // بطاقة الرصيد الرئيسية
+                html += '<div class="bg-gradient-to-br from-slate-700 to-slate-800 text-white rounded-2xl p-6 mb-4 text-center shadow-xl">';
+                html += '<p class="text-sm opacity-70">المطلوب مني للشركة</p>';
+                html += '<p class="text-4xl font-black mt-2">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</p>';
+                html += '<div class="mt-3"><span class="px-3 py-1 rounded-full text-sm font-bold ' + badgeClass + '">' + badgeText + '</span></div>';
+                html += '</div>';
+
+                // تفاصيل الحركات
+                html += '<div class="card"><h3 class="font-bold mb-3 text-slate-700">📊 تفاصيل رصيدي</h3>';
+                if (rows.length === 0) {
+                    html += '<p class="text-gray-400 text-center py-4">لا توجد حركات حتى الآن</p>';
+                } else {
+                    html += '<div class="space-y-2 max-h-80 overflow-y-auto">';
+                    var runningBalance = 0;
+                    for (var j = rows.length - 1; j >= 0; j--) {
+                        var row = rows[j];
+                        runningBalance += (Number(row.debit) || 0) - (Number(row.credit) || 0);
+                        var sign = row.debit > 0 ? '+' : '-';
+                        var color = row.debit > 0 ? 'text-red-600' : 'text-green-600';
+                        html += '<div class="flex justify-between items-center p-2 bg-gray-50 rounded-lg">';
+                        html += '<div><span class="text-xs text-gray-400 ml-2">' + (row.entry_date || '') + '</span><span class="font-bold text-sm">' + (row.description || '') + '</span></div>';
+                        html += '<span class="font-bold ' + color + '">' + sign + RW_UI.formatNumber(row.debit || row.credit) + '</span>';
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                    html += '<div class="flex justify-between font-black text-lg pt-3 border-t mt-3">';
+                    html += '<span>📋 صافي المستحق:</span>';
+                    html += '<span class="' + balanceColor + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</span>';
+                    html += '</div>';
+                }
+                html += '</div>';
+
+                // زر إقفال الوردية
+                html += '<div class="mt-4">';
+                html += '<button id="btnEOD" onclick="App.initiateEndOfDay()" class="btn-green" ' + (self.eodLocked || balance !== 0 ? 'disabled' : '') + '>';
+                html += '<i class="fa-solid fa-lock ml-2"></i> إقفال الوردية وإنهاء اليوم';
+                html += '</button>';
+                if (self.eodLocked) {
+                    html += '<p class="text-xs text-green-600 text-center mt-2 font-bold">✅ تم إقفال الوردية لهذا اليوم</p>';
+                } else if (balance !== 0) {
+                    html += '<p class="text-xs text-amber-600 text-center mt-2 font-bold">⚠️ يجب تصفير الرصيد قبل إقفال الوردية</p>';
+                } else {
+                    html += '<p class="text-xs text-gray-400 text-center mt-2">الرصيد مصفّر – يمكنك إقفال الوردية</p>';
+                }
+                html += '</div>';
+
+                RW_UI.safeHTML(container, html);
+            }).catch(function() {
+                RW_UI.safeHTML(container, '<div class="text-center py-12"><p class="text-red-400">فشل تحميل الرصيد</p></div>');
+            });
+    },
+
+    // ==================== إقفال الوردية ====================
+    initiateEndOfDay: function() {
+        var self = this;
+        if (this.eodLocked) { RW_UI.toast('الوردية مقفلة بالفعل', 'warning'); return; }
+
+        // التحقق من الرصيد أولاً
+        supabase.from('driver_ledger')
+            .select('debit, credit')
+            .eq('driver_email', this.currentUser.email)
+            .then(function(res) {
+                var rows = res.data || [];
+                var totalDebit = 0, totalCredit = 0;
+                for (var i = 0; i < rows.length; i++) {
+                    totalDebit += Number(rows[i].debit) || 0;
+                    totalCredit += Number(rows[i].credit) || 0;
+                }
+                var balance = totalDebit - totalCredit;
+                if (balance !== 0) {
+                    RW_UI.toast('يجب تصفير الرصيد أولاً. المتبقي: ' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م', 'warning');
+                    return;
+                }
+
+                RW_UI.showConfirm(
+                    'أنت على وشك إقفال وردية اليوم. سيتم منع إنشاء فواتير جديدة. هل أنت متأكد؟',
+                    function() {
+                        self.eodLocked = true;
+                        // تحديث زر الإقفال
+                        var btn = RW_UI.byId('btnEOD');
+                        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-check ml-2"></i> تم إقفال الوردية'; }
+
+                        Swal.fire({
+                            icon: 'success',
+                            title: '✅ تم إقفال الوردية',
+                            text: 'تم إقفال الوردية بنجاح. لا يمكن إنشاء فواتير جديدة.',
+                            confirmButtonText: 'حسناً',
+                            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-green-600' }
+                        });
+
+                        self.showView('home');
+                    }
+                );
+            });
+    },
+        // ==================== بيع سريع – فتح الشاشة ====================
     openQuickSale: function() {
         this.openQuickSaleForCustomer('');
     },
 
     openQuickSaleForCustomer: function(customerCode) {
         var self = this;
+        if (this.eodLocked) { RW_UI.toast('تم إقفال الوردية. لا يمكن إنشاء فواتير جديدة.', 'warning'); return; }
+
         this.cart = [];
         this.selCust = null;
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">🛒 بيع سريع</h2>';
-        html += '<div class="mb-4"><select id="quickCustSelect" class="w-full p-3 bg-white rounded-xl border"><option value="">-- اختر عميلاً --</option></select></div>';
-        html += '<div id="ghostCartContainer" class="hidden mb-4 bg-blue-50 p-3 rounded-xl"><p class="text-xs font-bold text-blue-600 mb-2">💡 منتجات مقترحة لهذا العميل</p><div id="ghostCartItems"></div><button onclick="App.applyGhostCart()" class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-bold mt-2">تأكيد وإضافة للعربة</button></div>';
-        html += '<div id="forgottenItemsContainer" class="hidden mb-4 bg-amber-50 p-3 rounded-xl border border-amber-200"><p class="text-xs font-bold text-amber-700 mb-2">⚠️ هل نسيت شيئاً؟</p><div id="forgottenItems"></div></div>';
-        html += '<div class="mb-3"><input type="text" id="quickSearch" oninput="App.searchQuickItems(this.value)" placeholder="ابحث عن صنف..." class="w-full p-3 bg-white rounded-xl border"></div>';
-        html += '<div id="quickItemResults" class="grid grid-cols-2 gap-2 mb-4"></div>';
-        html += '<div class="bg-white p-4 rounded-2xl border mb-4"><h3 class="font-bold mb-2">السلة</h3><div id="quickCartItems"><p class="text-gray-400 text-center">السلة فارغة</p></div></div>';
-        html += '<button onclick="App.submitQuickSale()" class="btn-orange text-lg py-4">حفظ الفاتورة</button>';
+        this.currentView = 'new-order';
+        this.renderBottomNav();
+
+        // ✅ Skeleton Loading
+        RW_UI.showSkeleton('mainContent', 4, 'card');
+
+        var html = '<div class="p-4 animate-fadeIn">';
+        html += '<div class="flex items-center gap-3 mb-4">';
+        html += '<button onclick="App.showView(\'home\')" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-orange-600 shadow-sm border"><i class="fa-solid fa-arrow-right"></i></button>';
+        html += '<h2 class="text-xl font-bold">🛒 بيع سريع</h2>';
         html += '</div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        
+
+        // اختيار العميل
+        html += '<div class="card mb-4"><label class="text-xs font-bold text-slate-500 block mb-2">اختيار العميل</label>';
+        html += '<select id="quickCustSelect" class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-100 focus:border-orange-400 outline-none font-bold text-sm"><option value="">-- اختر عميلاً --</option></select></div>';
+
+        // السلة الشبحية – منتجات مقترحة
+        html += '<div id="ghostCartContainer" class="hidden mb-4 bg-blue-50 p-4 rounded-2xl border border-blue-200">';
+        html += '<p class="text-xs font-bold text-blue-600 mb-2 flex items-center"><i class="fa-solid fa-lightbulb ml-1"></i> 💡 منتجات مقترحة لهذا العميل</p>';
+        html += '<div id="ghostCartItems"></div>';
+        html += '<button onclick="App.applyGhostCart()" class="w-full bg-blue-600 text-white py-2 rounded-xl text-sm font-bold mt-3 shadow-sm active:scale-95 transition"><i class="fa-solid fa-check ml-1"></i> إضافة المقترحة للسلة</button>';
+        html += '</div>';
+
+        // كشف المنسيات
+        html += '<div id="forgottenItemsContainer" class="hidden mb-4 bg-amber-50 p-4 rounded-2xl border border-amber-200">';
+        html += '<p class="text-xs font-bold text-amber-700 mb-2 flex items-center"><i class="fa-solid fa-triangle-exclamation ml-1"></i> ⚠️ هل نسيت شيئاً؟</p>';
+        html += '<div id="forgottenItems"></div>';
+        html += '</div>';
+
+        // بحث عن منتج
+        html += '<div class="card mb-4"><label class="text-xs font-bold text-slate-500 block mb-2">بحث عن صنف</label>';
+        html += '<input type="text" id="quickSearch" oninput="App.searchQuickItems(this.value)" placeholder="🔍 ابحث بالاسم أو الباركود..." class="w-full p-3 bg-slate-50 rounded-xl border-2 border-slate-100 focus:border-orange-400 outline-none font-bold text-sm">';
+        html += '</div>';
+
+        // نتائج البحث
+        html += '<div id="quickItemResults" class="grid grid-cols-2 gap-2 mb-4"></div>';
+
+        // السلة
+        html += '<div class="bg-white rounded-2xl border p-4 mb-4"><h3 class="font-bold text-slate-700 mb-3">🧺 السلة <span id="quickCartBadge" class="text-xs text-slate-400">(0)</span></h3>';
+        html += '<div id="quickCartItems"><p class="text-slate-400 text-center py-4">السلة فارغة – أضف منتجات</p></div></div>';
+
+        // زر الحفظ
+        html += '<button onclick="App.submitQuickSale()" class="btn-orange text-lg py-4 shadow-lg shadow-orange-200"><i class="fa-solid fa-check ml-2"></i> حفظ الفاتورة</button>';
+        html += '</div>';
+
+        setTimeout(function() {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+            self._loadQuickSaleCustomers(customerCode);
+        }, 300);
+    },
+
+    // ==================== تحميل قائمة العملاء للبيع السريع ====================
+    _loadQuickSaleCustomers: function(customerCode) {
+        var self = this;
+        var db = RW_DB.getDB('VanSales');
+        var sel = RW_UI.byId('quickCustSelect');
+        if (!sel) return;
+
         db.myCustomers.toArray().then(function(list) {
-            var sel = RW_UI.byId('quickCustSelect');
-            if (sel) {
-                var opts = '<option value="">-- اختر عميلاً --</option>';
-                for (var i = 0; i < list.length; i++) {
-                    var selAttr = (list[i].customer_code === customerCode) ? ' selected' : '';
-                    opts += '<option value="' + list[i].customer_code + '"' + selAttr + '>' + list[i].name + '</option>';
+            var opts = '<option value="">-- اختر عميلاً --</option>';
+            for (var i = 0; i < list.length; i++) {
+                var selAttr = (list[i].customer_code === customerCode) ? ' selected' : '';
+                opts += '<option value="' + list[i].customer_code + '"' + selAttr + '>' + list[i].name + '</option>';
+            }
+            RW_UI.safeHTML(sel, opts);
+
+            // مستمع حدث التغيير
+            sel.onchange = function() {
+                var cc = this.value;
+                if (cc) {
+                    db.myCustomers.get(cc).then(function(c) {
+                        if (c) {
+                            self.selCust = { customer_code: c.customer_code, name: c.name, area: c.area || '', payment_type: c.payment_type || 'نقدي' };
+                            self.loadGhostCart(cc);
+                            self.checkForgottenItems(cc);
+                        }
+                    });
+                } else {
+                    self.selCust = null;
+                    var gc = RW_UI.byId('ghostCartContainer'); if (gc) gc.classList.add('hidden');
+                    var fc = RW_UI.byId('forgottenItemsContainer'); if (fc) fc.classList.add('hidden');
                 }
-                RW_UI.safeHTML(sel, opts);
-                sel.addEventListener('change', function() {
-                    var cc = this.value;
-                    if (cc) {
-                        db.myCustomers.get(cc).then(function(c) {
-                            if (c) {
-                                self.selCust = { customer_code: c.customer_code, name: c.name, area: c.area || '', payment_type: c.payment_type || 'نقدي' };
-                                self.loadGhostCart(cc);
-                                self.checkForgottenItems(cc);
-                            }
-                        });
-                    } else {
-                        self.selCust = null;
-                        var gc = RW_UI.byId('ghostCartContainer'); if (gc) gc.classList.add('hidden');
-                        var fc = RW_UI.byId('forgottenItemsContainer'); if (fc) fc.classList.add('hidden');
+            };
+
+            // إذا كان هناك عميل محدد مسبقاً
+            if (customerCode && sel.value === customerCode) {
+                db.myCustomers.get(customerCode).then(function(c) {
+                    if (c) {
+                        self.selCust = { customer_code: c.customer_code, name: c.name, area: c.area || '', payment_type: c.payment_type || 'نقدي' };
+                        self.loadGhostCart(customerCode);
+                        self.checkForgottenItems(customerCode);
                     }
                 });
-                if (customerCode) {
-                    self.loadGhostCart(customerCode);
-                    self.checkForgottenItems(customerCode);
-                }
             }
         });
     },
 
+    // ==================== البحث عن منتج ====================
+    searchQuickItems: function(q) {
+        var self = this;
+        var container = RW_UI.byId('quickItemResults');
+        if (!container) return;
+        if (!q || !q.trim()) { RW_UI.safeHTML(container, ''); return; }
+
+        var db = RW_DB.getDB('VanSales');
+        db.items.toArray().then(function(all) {
+            var s = q.toLowerCase();
+            var filtered = [];
+            for (var i = 0; i < all.length; i++) {
+                var it = all[i];
+                if ((it.name || '').toLowerCase().indexOf(s) !== -1 || (it.item_code || '').toLowerCase().indexOf(s) !== -1 || (it.barcode || '').indexOf(s) !== -1) {
+                    filtered.push(it);
+                }
+            }
+            filtered = filtered.slice(0, 12);
+            if (!filtered.length) {
+                RW_UI.safeHTML(container, '<div class="col-span-2 text-center text-gray-400 p-4 bg-white rounded-xl">🔍 لا توجد نتائج</div>');
+                return;
+            }
+            var html = '';
+            for (var j = 0; j < filtered.length; j++) {
+                var it = filtered[j];
+                var imgHtml = RW_ImageCache.getImageHTML(it.item_code, 'w-16', 'h-16');
+                html += '<div onclick="App.addToQuickCart(\'' + it.item_code + '\')" class="bg-white p-3 rounded-xl border-2 border-slate-100 cursor-pointer hover:border-orange-300 hover:bg-orange-50 active:scale-95 transition slide-in">';
+                html += '<div class="flex flex-col items-center text-center">';
+                html += imgHtml;
+                html += '<p class="font-bold text-xs text-slate-700 mt-2 line-clamp-2">' + (it.name || '') + '</p>';
+                html += '<p class="text-orange-600 font-black text-sm mt-1">' + RW_UI.formatNumber(it.sales_price) + ' ج.م</p>';
+                html += '</div></div>';
+            }
+            RW_UI.safeHTML(container, html);
+        });
+    },
+
+    // ==================== إضافة للسلة ====================
+    addToQuickCart: function(code) {
+        var self = this;
+        var db = RW_DB.getDB('VanSales');
+        db.items.get(code).then(function(it) {
+            if (!it) return;
+            var existing = null;
+            for (var i = 0; i < self.cart.length; i++) { if (self.cart[i].code === code) { existing = self.cart[i]; break; } }
+            var cur = existing ? existing.qty : 0, nq = cur + 1;
+            var mx = it.max_qty ? Number(it.max_qty) : 0;
+            if (mx > 0 && nq > mx) { RW_UI.toast('الحد الأقصى للطلب: ' + mx, 'warning'); return; }
+            if (existing) { existing.qty = nq; }
+            else {
+                self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 });
+            }
+            self._renderQuickCart();
+            self._updateFloatingCart();
+            // تحديث كشف المنسيات
+            if (self.selCust) self.checkForgottenItems(self.selCust.customer_code);
+            if (navigator.vibrate) navigator.vibrate(15);
+            // مسح حقل البحث
+            var searchInput = RW_UI.byId('quickSearch');
+            if (searchInput) searchInput.value = '';
+            RW_UI.safeHTML(RW_UI.byId('quickItemResults'), '');
+        });
+    },
+
+    decQuickCart: function(code) {
+        for (var i = 0; i < this.cart.length; i++) {
+            if (this.cart[i].code === code) { this.cart[i].qty--; if (this.cart[i].qty <= 0) this.cart.splice(i, 1); break; }
+        }
+        this._renderQuickCart();
+        this._updateFloatingCart();
+    },
+
+    // ==================== عرض السلة في شاشة البيع السريع ====================
+    _renderQuickCart: function() {
+        var container = RW_UI.byId('quickCartItems');
+        var badge = RW_UI.byId('quickCartBadge');
+        if (!container) return;
+
+        if (!this.cart.length) {
+            RW_UI.safeHTML(container, '<p class="text-slate-400 text-center py-4">السلة فارغة – أضف منتجات</p>');
+            if (badge) RW_UI.safeText(badge, '(0)');
+            return;
+        }
+
+        var html = '';
+        var total = 0;
+        for (var i = 0; i < this.cart.length; i++) {
+            var item = this.cart[i];
+            var lt = item.price * item.qty;
+            total += lt;
+            html += '<div class="flex justify-between items-center py-2 border-b border-slate-100">';
+            html += '<div><span class="font-bold text-sm text-slate-700">' + item.name + '</span><span class="text-xs text-gray-400 mr-2">' + RW_UI.formatNumber(item.price) + ' × ' + item.qty + '</span></div>';
+            html += '<div class="flex items-center gap-1">';
+            html += '<button onclick="App.decQuickCart(\'' + item.code + '\')" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black text-slate-600 active:scale-90 transition">-</button>';
+            html += '<span class="w-5 text-center font-black text-sm">' + item.qty + '</span>';
+            html += '<button onclick="App.addToQuickCart(\'' + item.code + '\')" class="w-6 h-6 bg-orange-600 text-white rounded-full text-xs font-black active:scale-90 transition">+</button>';
+            html += '</div></div>';
+        }
+        html += '<div class="flex justify-between font-black text-lg pt-2 mt-2"><span>الإجمالي:</span><span class="text-orange-600">' + RW_UI.formatNumber(total) + ' ج.م</span></div>';
+        RW_UI.safeHTML(container, html);
+        if (badge) RW_UI.safeText(badge, '(' + this.cart.length + ')');
+    },
+
+    // ==================== السلة العائمة ====================
+    _updateFloatingCart: function() {
+        var bar = RW_UI.byId('floatingCart');
+        if (!bar) return;
+        if (this.cart.length === 0) { bar.classList.add('hidden'); return; }
+        bar.classList.remove('hidden');
+        var total = 0;
+        for (var i = 0; i < this.cart.length; i++) { total += this.cart[i].price * this.cart[i].qty; }
+        RW_UI.safeText(RW_UI.byId('cartBadgeCount'), this.cart.length);
+        RW_UI.safeText(RW_UI.byId('cartBadgeSummary'), this.cart.length === 1 ? this.cart[0].name : (this.cart.length + ' أصناف'));
+        RW_UI.safeText(RW_UI.byId('cartBadgeTotal'), RW_UI.formatNumber(total));
+    },
+
+    // ==================== مودال السلة للمراجعة ====================
+    openCartModal: function() {
+        if (this.cart.length === 0) return;
+        RW_UI.byId('cartModal').classList.remove('hidden');
+        this._renderCartModalBody();
+    },
+
+    closeCartModal: function() { RW_UI.byId('cartModal').classList.add('hidden'); },
+
+    _renderCartModalBody: function() {
+        var html = '';
+        var total = 0;
+        for (var i = 0; i < this.cart.length; i++) {
+            var item = this.cart[i];
+            var lt = item.price * item.qty;
+            total += lt;
+            html += '<div class="flex items-center justify-between bg-gray-50 p-3 rounded-xl">';
+            html += '<div class="flex-1 min-w-0"><div class="font-bold text-sm">' + item.name + '</div><div class="text-xs text-gray-400">' + RW_UI.formatNumber(item.price) + ' × ' + item.qty + '</div></div>';
+            html += '<div class="flex items-center gap-2 mr-3"><button onclick="App.decQuickCart(\'' + item.code + '\');App._renderCartModalBody()" class="w-7 h-7 bg-red-100 text-red-600 rounded-full text-xs font-black">-</button><span class="text-sm font-black w-6 text-center">' + item.qty + '</span><button onclick="App.addToQuickCart(\'' + item.code + '\');App._renderCartModalBody()" class="w-7 h-7 bg-orange-600 text-white rounded-full text-xs font-black">+</button></div>';
+            html += '</div>';
+        }
+        RW_UI.safeHTML(RW_UI.byId('cartModalBody'), html || '<div class="text-center text-gray-400 py-10">السلة فارغة</div>');
+        RW_UI.safeText(RW_UI.byId('cartModalTotal'), RW_UI.formatNumber(total));
+    },
+
+    submitOrder: function() { this.submitQuickSale(); },
+
+    // ==================== حفظ الفاتورة ====================
+    submitQuickSale: function() {
+        if (this.eodLocked) { RW_UI.toast('تم إقفال الوردية. لا يمكن إنشاء فواتير جديدة.', 'warning'); return; }
+        var custCode = RW_UI.byId('quickCustSelect') ? RW_UI.byId('quickCustSelect').value : '';
+        if (!custCode) { RW_UI.toast('اختر عميلاً', 'warning'); return; }
+        if (!this.cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
+        var self = this;
+        this.closeCartModal();
+
+        var db = RW_DB.getDB('VanSales');
+        db.customers.get(custCode).then(function(c) {
+            if (!c) { RW_UI.toast('العميل غير موجود', 'error'); return; }
+            var items = [], sub = 0;
+            for (var i = 0; i < self.cart.length; i++) {
+                items.push({ code: self.cart[i].code, name: self.cart[i].name, price: self.cart[i].price, qty: self.cart[i].qty, unit: self.cart[i].unit });
+                sub += self.cart[i].price * self.cart[i].qty;
+            }
+
+            var hdr = {
+                customer_code: c.customer_code,
+                custName: c.name,
+                area: c.area || '',
+                total: sub,
+                deliveryFees: 0,
+                status: 'Invoiced',
+                paymentType: c.payment_type || 'نقدي',
+                taxAmount: 0,
+                taxRate: 0
+            };
+
+            RW_UI.showLoader('جاري حفظ الفاتورة...');
+
+            // ✅ استخدام الفرع الصحيح للمندوب
+            var branchCode = self.vanBranch ? self.vanBranch.branch_code : 'MAIN';
+
+            RW_API.call('save-sales-invoice', {
+                orderHeader: hdr,
+                itemsList: items,
+                branchCode: branchCode
+            }, function(json) {
+                RW_UI.hideLoader();
+                if (json.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: '✅ تم الحفظ',
+                        html: '<div class="text-right"><p>الفاتورة: <strong>' + json.orderID + '</strong></p><p>العميل: <strong>' + c.name + '</strong></p><p>المبلغ: <strong>' + RW_UI.formatNumber(sub) + ' ج.م</strong></p></div>',
+                        confirmButtonText: 'حسناً',
+                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-orange-600' }
+                    });
+                    self.cart = [];
+                    self.selCust = null;
+                    self._updateFloatingCart();
+                    self.loadMyCustomers();
+                    self.showView('home');
+                } else {
+                    RW_UI.showError(json.msg || 'فشل الحفظ');
+                }
+            });
+        });
+    },
+        // ==================== السلة الشبحية – منتجات مقترحة من أنماط الشراء ====================
     loadGhostCart: function(customerCode) {
         var self = this;
         var ghostDiv = RW_UI.byId('ghostCartContainer');
         var ghostItems = RW_UI.byId('ghostCartItems');
         if (!ghostDiv || !ghostItems) return;
 
+        var db = RW_DB.getDB('VanSales');
         db.customerPatterns.where('customer_code').equals(customerCode).toArray().then(function(patterns) {
-            if (patterns.length === 0) { ghostDiv.classList.add('hidden'); return; }
-            var topItems = patterns.sort(function(a, b) { return b.frequency - a.frequency; }).slice(0, 8);
+            if (!patterns || patterns.length === 0) {
+                ghostDiv.classList.add('hidden');
+                return;
+            }
+
+            // ترتيب تنازلي حسب التكرار
+            patterns.sort(function(a, b) { return b.frequency - a.frequency; });
+            var topItems = patterns.slice(0, 8);
+
             var html = '';
             self._ghostCartData = [];
             for (var i = 0; i < topItems.length; i++) {
                 var it = topItems[i];
                 self._ghostCartData.push({ code: it.item_code, name: it.item_name, avgQty: it.avgQty || 1 });
-                html += '<label class="flex items-center p-2 bg-white rounded-lg mb-1 cursor-pointer"><input type="checkbox" class="ghost-check ml-2" data-code="' + it.item_code + '" data-qty="' + (it.avgQty || 1) + '" checked> <span class="text-sm font-medium">' + it.item_name + '</span><span class="mr-auto text-xs text-gray-500 ml-2">× ' + (it.avgQty || 1) + '</span></label>';
+                html += '<label class="flex items-center p-2 bg-white rounded-lg mb-1 cursor-pointer hover:bg-blue-50 transition">';
+                html += '<input type="checkbox" class="ghost-check ml-2" data-code="' + it.item_code + '" data-qty="' + (it.avgQty || 1) + '" checked>';
+                html += '<span class="text-sm font-medium text-slate-700">' + (it.item_name || it.item_code) + '</span>';
+                html += '<span class="mr-auto text-xs text-gray-500 ml-2">× ' + (it.avgQty || 1) + '</span>';
+                html += '</label>';
             }
             RW_UI.safeHTML(ghostItems, html);
             ghostDiv.classList.remove('hidden');
+        }).catch(function() {
+            ghostDiv.classList.add('hidden');
         });
     },
 
+    // ==================== تطبيق السلة الشبحية ====================
+    applyGhostCart: function() {
+        var self = this;
+        var checks = document.querySelectorAll('.ghost-check:checked');
+        var addedCount = 0;
+
+        for (var i = 0; i < checks.length; i++) {
+            var code = checks[i].getAttribute('data-code');
+            var qty = parseInt(checks[i].getAttribute('data-qty')) || 1;
+
+            var existing = null;
+            for (var j = 0; j < self.cart.length; j++) {
+                if (self.cart[j].code === code) { existing = self.cart[j]; break; }
+            }
+
+            if (existing) {
+                existing.qty += qty;
+                addedCount++;
+            } else {
+                var gi = null;
+                if (self._ghostCartData) {
+                    for (var g = 0; g < self._ghostCartData.length; g++) {
+                        if (self._ghostCartData[g].code === code) { gi = self._ghostCartData[g]; break; }
+                    }
+                }
+                if (gi) {
+                    var db = RW_DB.getDB('VanSales');
+                    db.items.get(code).then(function(it) {
+                        var price = it ? (Number(it.sales_price) || 0) : 0;
+                        self.cart.push({ code: code, name: gi.name, price: price, unit: 'حبة', qty: qty });
+                        addedCount++;
+                        self._renderQuickCart();
+                        self._updateFloatingCart();
+                    });
+                }
+            }
+        }
+
+        // تحديث السلة بعد كل الإضافات
+        self._renderQuickCart();
+        self._updateFloatingCart();
+
+        var gc = RW_UI.byId('ghostCartContainer');
+        if (gc) gc.classList.add('hidden');
+
+        if (addedCount > 0) {
+            RW_UI.toast('✅ تمت إضافة ' + addedCount + ' منتج للسلة', 'success');
+            if (navigator.vibrate) navigator.vibrate(30);
+        }
+    },
+
+    // ==================== كشف المنسيات – تنبيه للمنتجات المعتادة غير الموجودة في السلة ====================
     checkForgottenItems: function(customerCode) {
         var self = this;
         var fc = RW_UI.byId('forgottenItemsContainer');
         var fi = RW_UI.byId('forgottenItems');
         if (!fc || !fi) return;
 
+        var db = RW_DB.getDB('VanSales');
         db.customerPatterns.where('customer_code').equals(customerCode).toArray().then(function(patterns) {
-            if (patterns.length === 0) { fc.classList.add('hidden'); return; }
+            if (!patterns || patterns.length === 0) { fc.classList.add('hidden'); return; }
+
+            // المنتجات ذات التردد العالي (>= 3 مرات)
             var highFreq = [];
             for (var i = 0; i < patterns.length; i++) {
                 if (patterns[i].frequency >= 3) highFreq.push(patterns[i]);
             }
             if (highFreq.length === 0) { fc.classList.add('hidden'); return; }
 
+            // البحث عن المنسيات
             var forgotten = [];
             for (var j = 0; j < highFreq.length; j++) {
                 var found = false;
@@ -903,250 +1667,82 @@ var App = {
             var html = '';
             for (var f = 0; f < Math.min(forgotten.length, 5); f++) {
                 var it = forgotten[f];
-                html += '<button onclick="App.quickAddForgotten(\'' + it.item_code + '\', ' + (it.avgQty || 1) + ')" class="inline-block bg-white text-amber-700 px-3 py-1 rounded-lg text-xs font-bold ml-1 mb-1 hover:bg-amber-100 transition">+ ' + it.item_name + ' (' + (it.avgQty || 1) + ')</button>';
+                html += '<button onclick="App.quickAddForgotten(\'' + it.item_code + '\', ' + (it.avgQty || 1) + ')" class="inline-block bg-white text-amber-700 px-3 py-1 rounded-lg text-xs font-bold ml-1 mb-1 border border-amber-200 hover:bg-amber-100 active:scale-95 transition">';
+                html += '+ ' + (it.item_name || it.item_code) + ' (' + (it.avgQty || 1) + ')';
+                html += '</button>';
             }
             RW_UI.safeHTML(fi, html);
             fc.classList.remove('hidden');
+        }).catch(function() {
+            fc.classList.add('hidden');
         });
     },
 
+    // ==================== إضافة سريعة لمنتج منسي ====================
     quickAddForgotten: function(code, qty) {
         var self = this;
         var existing = null;
         for (var i = 0; i < this.cart.length; i++) {
             if (this.cart[i].code === code) { existing = this.cart[i]; break; }
         }
-        if (existing) { existing.qty += qty; }
-        else {
+        if (existing) {
+            existing.qty += qty;
+        } else {
+            var db = RW_DB.getDB('VanSales');
             db.items.get(code).then(function(it) {
                 if (it) {
                     self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: qty });
-                    self.renderQuickCart();
-                    self.updateFloatingCart();
+                    self._renderQuickCart();
+                    self._updateFloatingCart();
                 }
             });
         }
-        self.renderQuickCart();
-        self.updateFloatingCart();
-        self.checkForgottenItems(self.selCust ? self.selCust.customer_code : '');
+        this._renderQuickCart();
+        this._updateFloatingCart();
+        // إعادة فحص المنسيات
+        if (this.selCust) this.checkForgottenItems(this.selCust.customer_code);
+        if (navigator.vibrate) navigator.vibrate(15);
     },
 
-    applyGhostCart: function() {
-        var checks = document.querySelectorAll('.ghost-check:checked');
-        for (var i = 0; i < checks.length; i++) {
-            var code = checks[i].getAttribute('data-code');
-            var qty = parseInt(checks[i].getAttribute('data-qty')) || 1;
-            var existing = null;
-            for (var j = 0; j < this.cart.length; j++) {
-                if (this.cart[j].code === code) { existing = this.cart[j]; break; }
-            }
-            if (existing) { existing.qty += qty; }
-            else {
-                var gi = null;
-                if (this._ghostCartData) {
-                    for (var g = 0; g < this._ghostCartData.length; g++) {
-                        if (this._ghostCartData[g].code === code) { gi = this._ghostCartData[g]; break; }
-                    }
-                }
-                if (gi) {
-                    db.items.get(code).then(function(it) {
-                        var price = it ? (Number(it.sales_price) || 0) : 0;
-                        self.cart.push({ code: code, name: gi.name, price: price, unit: 'حبة', qty: qty });
-                    });
-                }
-            }
-        }
-        this.renderQuickCart();
-        this.updateFloatingCart();
-        var gc = RW_UI.byId('ghostCartContainer');
-        if (gc) gc.classList.add('hidden');
-        RW_UI.toast('تمت إضافة المنتجات للسلة', 'success');
-    },
-
-    searchQuickItems: function(q) {
-        var self = this;
-        var container = RW_UI.byId('quickItemResults');
-        if (!container) return;
-        if (!q || !q.trim()) { RW_UI.safeHTML(container, ''); return; }
-        db.items.toArray().then(function(all) {
-            var s = q.toLowerCase();
-            var filtered = [];
-            for (var i = 0; i < all.length; i++) {
-                var it = all[i];
-                if ((it.name || '').toLowerCase().indexOf(s) !== -1 || (it.item_code || '').toLowerCase().indexOf(s) !== -1 || (it.barcode || '').indexOf(s) !== -1) {
-                    filtered.push(it);
-                }
-            }
-            filtered = filtered.slice(0, 12);
-            var html = '';
-            for (var j = 0; j < filtered.length; j++) {
-                var it = filtered[j];
-                html += '<div onclick="App.addToQuickCart(\'' + it.item_code + '\')" class="bg-white p-3 rounded-xl border cursor-pointer hover:bg-orange-50"><div class="font-bold text-sm">' + it.name + '</div><div class="text-orange-600 font-black text-sm">' + RW_UI.formatNumber(it.sales_price) + '</div></div>';
-            }
-            if (!html) html = '<div class="col-span-2 text-center text-gray-400 p-4">لا توجد نتائج</div>';
-            RW_UI.safeHTML(container, html);
-        });
-    },
-
-    addToQuickCart: function(code) {
-        var self = this;
-        db.items.get(code).then(function(it) {
-            if (!it) return;
-            var existing = null;
-            for (var i = 0; i < self.cart.length; i++) {
-                if (self.cart[i].code === code) { existing = self.cart[i]; break; }
-            }
-            var cur = existing ? existing.qty : 0;
-            var nq = cur + 1;
-            var mx = it.max_qty ? Number(it.max_qty) : 0;
-            if (mx > 0 && nq > mx) { RW_UI.toast('الحد الأقصى: ' + mx, 'warning'); return; }
-            if (existing) { existing.qty = nq; }
-            else { self.cart.push({ code: it.item_code, name: it.name, price: Number(it.sales_price) || 0, unit: it.unit || 'حبة', qty: 1 }); }
-            self.renderQuickCart();
-            self.updateFloatingCart();
-            self.checkForgottenItems(self.selCust ? self.selCust.customer_code : '');
-            if (navigator.vibrate) navigator.vibrate(15);
-        });
-    },
-
-    decQuickCart: function(code) {
-        for (var i = 0; i < this.cart.length; i++) {
-            if (this.cart[i].code === code) { this.cart[i].qty--; if (this.cart[i].qty <= 0) this.cart.splice(i, 1); break; }
-        }
-        this.renderQuickCart();
-        this.updateFloatingCart();
-    },
-
-    renderQuickCart: function() {
-        var container = RW_UI.byId('quickCartItems');
-        if (!container) return;
-        if (!this.cart.length) {
-            RW_UI.safeHTML(container, '<p class="text-gray-400 text-center">السلة فارغة</p>');
-            return;
-        }
-        var html = '';
-        var total = 0;
-        for (var i = 0; i < this.cart.length; i++) {
-            var item = this.cart[i];
-            var lt = item.price * item.qty;
-            total += lt;
-            html += '<div class="flex justify-between items-center py-2 border-b"><span class="font-bold text-sm">' + item.name + ' × ' + item.qty + '</span><div class="flex items-center gap-1"><button onclick="App.decQuickCart(\'' + item.code + '\')" class="w-6 h-6 bg-gray-100 rounded-full text-xs font-black">-</button><span class="w-5 text-center font-black text-sm">' + item.qty + '</span><button onclick="App.addToQuickCart(\'' + item.code + '\')" class="w-6 h-6 bg-orange-600 text-white rounded-full text-xs font-black">+</button></div></div>';
-        }
-        html += '<div class="flex justify-between font-black text-lg pt-2 border-t mt-2"><span>الإجمالي:</span><span class="text-orange-600">' + RW_UI.formatNumber(total) + '</span></div>';
-        RW_UI.safeHTML(container, html);
-    },
-
-    updateFloatingCart: function() {
-        var bar = RW_UI.byId('floatingCart');
-        if (!bar) return;
-        if (this.cart.length === 0) { bar.classList.add('hidden'); return; }
-        bar.classList.remove('hidden');
-        var total = 0;
-        for (var i = 0; i < this.cart.length; i++) { total += this.cart[i].price * this.cart[i].qty; }
-        RW_UI.safeText(RW_UI.byId('cartBadgeCount'), this.cart.length);
-        RW_UI.safeText(RW_UI.byId('cartBadgeSummary'), this.cart.length === 1 ? this.cart[0].name : (this.cart.length + ' أصناف'));
-        RW_UI.safeText(RW_UI.byId('cartBadgeTotal'), RW_UI.formatNumber(total));
-    },
-
-    openCartModal: function() {
-        if (this.cart.length === 0) return;
-        RW_UI.byId('cartModal').classList.remove('hidden');
-        this.renderCartModalBody();
-    },
-
-    closeCartModal: function() {
-        RW_UI.byId('cartModal').classList.add('hidden');
-    },
-
-    renderCartModalBody: function() {
-        var html = '';
-        var total = 0;
-        for (var i = 0; i < this.cart.length; i++) {
-            var item = this.cart[i];
-            var lt = item.price * item.qty;
-            total += lt;
-            html += '<div class="flex items-center justify-between bg-gray-50 p-3 rounded-xl">';
-            html += '<div class="flex-1 min-w-0"><div class="font-bold text-sm">' + item.name + '</div><div class="text-xs text-gray-400">' + RW_UI.formatNumber(item.price) + ' × ' + item.qty + '</div></div>';
-            html += '<div class="flex items-center gap-2 mr-3"><button onclick="App.decQuickCart(\'' + item.code + '\');App.renderCartModalBody()" class="w-7 h-7 bg-red-100 text-red-600 rounded-full text-xs font-black">-</button><span class="text-sm font-black w-6 text-center">' + item.qty + '</span><button onclick="App.addToQuickCart(\'' + item.code + '\');App.renderCartModalBody()" class="w-7 h-7 bg-orange-600 text-white rounded-full text-xs font-black">+</button></div>';
-            html += '</div>';
-        }
-        RW_UI.safeHTML(RW_UI.byId('cartModalBody'), html || '<div class="text-center text-gray-400 py-10">السلة فارغة</div>');
-        RW_UI.safeText(RW_UI.byId('cartModalTotal'), RW_UI.formatNumber(total));
-    },
-
-    // ==================== حفظ الأوردر ====================
-    submitOrder: function() {
-        this.submitQuickSale();
-    },
-
-    submitQuickSale: function() {
-        if (this.eodLocked) { RW_UI.toast('تم إقفال الوردية. لا يمكن إنشاء فواتير جديدة.', 'warning'); return; }
-        var custCode = RW_UI.byId('quickCustSelect') ? RW_UI.byId('quickCustSelect').value : '';
-        if (!custCode) { RW_UI.toast('اختر عميلاً', 'warning'); return; }
-        if (!this.cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
-        var self = this;
-        this.closeCartModal();
-        db.customers.get(custCode).then(function(c) {
-            if (!c) { RW_UI.toast('العميل غير موجود', 'error'); return; }
-            var items = [];
-            var sub = 0;
-            for (var i = 0; i < self.cart.length; i++) {
-                items.push({ code: self.cart[i].code, name: self.cart[i].name, price: self.cart[i].price, qty: self.cart[i].qty, unit: self.cart[i].unit });
-                sub += self.cart[i].price * self.cart[i].qty;
-            }
-            var total = sub;
-            var hdr = {
-                customer_code: c.customer_code,
-                custName: c.name,
-                area: c.area || '',
-                total: total,
-                deliveryFees: 0,
-                status: 'Invoiced',
-                paymentType: c.payment_type || 'نقدي',
-                taxAmount: 0,
-                taxRate: 0
-            };
-            RW_UI.showLoader('جاري حفظ الفاتورة...');
-            RW_API.call('save-sales-invoice', {
-                orderHeader: hdr,
-                itemsList: items,
-                branchCode: self.vanBranch ? self.vanBranch.branch_code : 'MAIN'
-            }, function(json) {
-                RW_UI.hideLoader();
-                if (json.success) {
-                    Swal.fire({ icon: 'success', title: '✅ تم الحفظ', html: '<div class="text-right"><p>الفاتورة: <strong>' + json.orderID + '</strong></p><p>العميل: <strong>' + c.name + '</strong></p><p>المبلغ: <strong>' + RW_UI.formatNumber(total) + ' ج.م</strong></p></div>', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-orange-600' } });
-                    self.cart = [];
-                    self.selCust = null;
-                    self.updateFloatingCart();
-                    self.loadMyCustomers();
-                    self.showView('home');
-                } else {
-                    RW_UI.showError(json.msg || 'فشل الحفظ');
-                }
-            });
-        });
-    },
-
-    // ==================== جرد سريع ====================
+    // ==================== جرد سريع للسيارة ====================
     openQuickInventory: function() {
         var self = this;
-        var branchId = this.vanBranch ? this.vanBranch.id : null;
-        if (!branchId) { RW_UI.showError('لا يوجد فرع للسيارة'); return; }
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">🔍 جرد سريع</h2>';
-        html += '<div id="invItems"><div class="text-center text-gray-400 py-8">جاري تحميل العهدة...</div></div>';
-        html += '<button onclick="App.submitQuickInventory()" class="bg-amber-600 text-white w-full py-4 rounded-xl font-black mt-4">حفظ الجرد</button>';
+        var branchId = this.vanBranchId;
+        if (!branchId) { RW_UI.showError('لا يوجد فرع للسيارة. تواصل مع المشرف.'); return; }
+
+        RW_UI.showSkeleton('mainContent', 4, 'card');
+
+        var html = '<div class="p-4 animate-fadeIn">';
+        html += '<div class="flex items-center gap-3 mb-4">';
+        html += '<button onclick="App.showView(\'home\')" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-orange-600 shadow-sm border"><i class="fa-solid fa-arrow-right"></i></button>';
+        html += '<h2 class="text-xl font-bold">🔍 جرد سريع للسيارة</h2>';
         html += '</div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        
+        html += '<p class="text-xs text-slate-400 mb-4">أدخل الكميات الفعلية الموجودة في السيارة الآن</p>';
+        html += '<div id="invItems"><div class="text-center text-gray-400 py-8">جاري تحميل العهدة...</div></div>';
+        html += '<button onclick="App.submitQuickInventory()" class="bg-amber-600 text-white w-full py-4 rounded-xl font-black mt-4 shadow-lg shadow-amber-200 active:scale-95 transition"><i class="fa-solid fa-check ml-2"></i> حفظ الجرد</button>';
+        html += '</div>';
+
+        setTimeout(function() {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+            self._loadInventoryItems(branchId);
+        }, 300);
+    },
+
+    _loadInventoryItems: function(branchId) {
+        var self = this;
+        var db = RW_DB.getDB('VanSales');
+
         db.stock.where('branch_id').equals(branchId).toArray().then(function(myStock) {
-            if (myStock.length === 0) {
-                RW_UI.safeHTML(RW_UI.byId('invItems'), '<p class="text-gray-400 text-center">لا توجد عهدة</p>');
+            if (!myStock || myStock.length === 0) {
+                RW_UI.safeHTML(RW_UI.byId('invItems'), '<div class="text-center py-12"><div class="text-6xl mb-4">📦</div><p class="text-slate-400 font-bold">لا توجد عهدة في السيارة</p><p class="text-slate-300 text-sm mt-1">تواصل مع المشرف لاستلام عهدة</p></div>');
                 return;
             }
+
             var promises = [];
             for (var j = 0; j < myStock.length; j++) {
                 promises.push(db.items.get(myStock[j].item_id));
             }
+
             Promise.all(promises).then(function(items) {
                 var html = '';
                 for (var k = 0; k < myStock.length; k++) {
@@ -1154,13 +1750,20 @@ var App = {
                     var st = myStock[k];
                     var itemName = it ? it.name : (st.item_id || '---');
                     var itemCode = it ? it.item_code : (st.item_id || '---');
-                    html += '<div class="flex items-center justify-between p-3 bg-white rounded-xl border mb-2 inv-count-row" data-item-code="' + itemCode + '">';
-                    html += '<div><span class="font-bold text-sm">' + itemName + '</span><p class="text-xs text-gray-400">الرصيد الدفتري: ' + st.qty + '</p></div>';
-                    html += '<input type="number" id="inv_qty_' + k + '" value="' + st.qty + '" class="w-20 p-2 border rounded-lg text-center font-bold" min="0">';
+                    var imgHtml = it ? RW_ImageCache.getImageHTML(itemCode, 'w-12', 'h-12') : '<div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></div>';
+
+                    html += '<div class="flex items-center justify-between p-3 bg-white rounded-xl border-2 border-slate-100 mb-2 inv-count-row" data-item-code="' + itemCode + '">';
+                    html += '<div class="flex items-center gap-3">';
+                    html += '<div class="flex-shrink-0">' + imgHtml + '</div>';
+                    html += '<div><span class="font-bold text-sm text-slate-700">' + itemName + '</span><p class="text-xs text-gray-400">الرصيد الدفتري: <strong>' + st.qty + '</strong></p></div>';
+                    html += '</div>';
+                    html += '<input type="number" id="inv_qty_' + k + '" value="' + st.qty + '" class="w-20 p-2 border-2 border-slate-200 rounded-xl text-center font-bold text-slate-700 focus:border-amber-400 outline-none" min="0">';
                     html += '</div>';
                 }
                 RW_UI.safeHTML(RW_UI.byId('invItems'), html);
             });
+        }).catch(function() {
+            RW_UI.safeHTML(RW_UI.byId('invItems'), '<div class="text-center py-12"><p class="text-red-400">فشل تحميل العهدة</p></div>');
         });
     },
 
@@ -1169,15 +1772,19 @@ var App = {
         var items = [];
         var rows = document.querySelectorAll('.inv-count-row');
         var allZero = true;
+
         for (var i = 0; i < rows.length; i++) {
             var input = rows[i].querySelector('input[type="number"]');
-            var qty = parseInt(input.value) || 0;
+            var qty = input ? (parseInt(input.value) || 0) : 0;
             if (qty > 0) allZero = false;
             var itemCode = rows[i].getAttribute('data-item-code') || '';
             items.push({ itemCode: itemCode, itemName: '', qty: qty, unit: 'حبة', unitPrice: 0, notes: '' });
         }
+
         if (allZero) { RW_UI.toast('أدخل كميات الجرد', 'warning'); return; }
+
         RW_UI.showLoader('جاري حفظ الجرد...');
+
         RW_API.call('save-inventory-count', {
             type: 'vehicle',
             entityId: self.currentUser ? self.currentUser.email : '',
@@ -1188,184 +1795,85 @@ var App = {
             if (json.success) {
                 var totalQty = 0;
                 for (var k = 0; k < items.length; k++) { totalQty += items[k].qty; }
-                Swal.fire({ icon: 'success', title: '✅ تم حفظ الجرد', html: '<div class="text-right"><p>تم جرد <strong>' + items.length + ' صنف</strong> بنجاح.</p><p>إجمالي الكميات: <strong>' + totalQty + ' قطعة</strong>.</p></div>', confirmButtonText: 'حسناً', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-600' } });
+
+                Swal.fire({
+                    icon: 'success',
+                    title: '✅ تم حفظ الجرد',
+                    html: '<div class="text-right"><p>تم جرد <strong>' + items.length + ' صنف</strong> بنجاح.</p><p>إجمالي الكميات: <strong>' + totalQty + ' قطعة</strong>.</p></div>',
+                    confirmButtonText: 'حسناً',
+                    customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-600' }
+                });
+
+                // تحديث المخزون في Dexie بعد الجرد
+                var branchId = self.vanBranchId;
+                if (branchId) {
+                    var db = RW_DB.getDB('VanSales');
+                    for (var j = 0; j < items.length; j++) {
+                        db.stock.where('branch_id').equals(branchId).and(function(s) { return s.item_id === items[j].itemCode; }).modify({ qty: items[j].qty });
+                    }
+                }
+
                 self.showView('home');
             } else {
                 RW_UI.showError(json.msg || 'فشل الحفظ');
             }
         });
     },
-
-    // ==================== فواتيري ====================
-    renderInvoicesView: function() {
-        var today = new Date().toISOString().split('T')[0];
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">📄 فواتيري</h2>';
-        html += '<div class="bg-white p-3 rounded-2xl shadow-sm border mb-4"><div class="flex gap-2"><input type="date" id="invDateFilter" value="' + today + '" onchange="App.loadMyInvoices()" class="p-2 bg-gray-50 border rounded-lg text-sm font-bold"><button onclick="RW_UI.byId(\'invDateFilter\').value=\'' + today + '\';App.loadMyInvoices();" class="p-2 bg-gray-100 border rounded-lg text-sm font-bold">اليوم</button></div></div>';
-        html += '<div id="myInvoicesList" class="space-y-3"><div class="text-center text-gray-400 py-8">جاري التحميل...</div></div></div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        this.loadMyInvoices();
-    },
-
-    loadMyInvoices: function() {
-        var self = this;
-        var container = RW_UI.byId('myInvoicesList');
-        if (!container || !this.currentUser) return;
-        var dateFilter = RW_UI.byId('invDateFilter') ? RW_UI.byId('invDateFilter').value : new Date().toISOString().split('T')[0];
-        supabase.from('orders').select('*').eq('created_by', this.currentUser.email).eq('order_date', dateFilter).order('order_date', { ascending: false }).then(function(res) {
-            var invoices = res.data || [];
-            if (!invoices.length) {
-                RW_UI.safeHTML(container, '<div class="text-center text-gray-400 py-8 bg-white rounded-2xl">لا توجد فواتير لهذا اليوم</div>');
-                return;
-            }
-            var html = '';
-            for (var i = 0; i < invoices.length; i++) {
-                var inv = invoices[i];
-                var paymentClass = inv.payment_type === 'نقدي' ? 'badge-green' : 'badge-yellow';
-                html += '<div class="card"><div class="flex justify-between items-start"><div><span class="font-black text-orange-600 text-sm">' + (inv.order_code || '') + '</span><span class="text-xs text-gray-400 mr-2">' + (inv.order_date || '') + '</span></div><span class="font-black text-orange-600">' + RW_UI.formatNumber(inv.total_amount) + ' ج.م</span></div><div class="flex justify-between items-center mt-1"><span class="text-sm font-bold">' + (inv.customer_name || '') + '</span><span class="px-2 py-0.5 rounded-full text-xs font-bold ' + paymentClass + '">' + (inv.payment_type || '') + '</span></div></div>';
-            }
-            RW_UI.safeHTML(container, html);
-        }).catch(function() {
-            RW_UI.safeHTML(container, '<div class="text-center text-red-400 py-8 bg-white rounded-2xl">فشل تحميل الفواتير</div>');
-        });
-    },
-
-    // ==================== شاشة سيارتي ====================
-    renderVehicleStockView: function() {
-        var self = this;
-        var branchId = this.vanBranch ? this.vanBranch.id : null;
-        if (!branchId) { RW_UI.showError('لا يوجد فرع للسيارة'); return; }
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">🚛 رصيد سيارتي</h2><div id="vehicleDetail"><div class="text-center text-gray-400 py-8">جاري تحميل الرصيد...</div></div></div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        var today = new Date().toISOString().split('T')[0];
-        db.stock.where('branch_id').equals(branchId).toArray().then(function(myStock) {
-            if (!myStock.length) { RW_UI.safeHTML(RW_UI.byId('vehicleDetail'), '<div class="card text-center text-gray-500">السيارة فارغة – لا توجد عهدة</div>'); return; }
-            supabase.from('orders').select('id').eq('created_by', self.currentUser.email).eq('order_date', today).then(function(oRes) {
-                var orderIds = (oRes.data || []).map(function(o) { return o.id; });
-                if (!orderIds.length) { self._renderVehicleStock(myStock, {}); return; }
-                supabase.from('order_details').select('item_code, qty').in('order_id', orderIds).then(function(dRes) {
-                    var soldMap = {};
-                    var details = dRes.data || [];
-                    for (var d = 0; d < details.length; d++) {
-                        var it = details[d];
-                        soldMap[it.item_code] = (soldMap[it.item_code] || 0) + (Number(it.qty) || 0);
-                    }
-                    self._renderVehicleStock(myStock, soldMap);
-                });
-            });
-        });
-    },
-
-    _renderVehicleStock: function(myStock, soldMap) {
-        var self = this;
-        var promises = [];
-        for (var k = 0; k < myStock.length; k++) promises.push(db.items.get(myStock[k].item_id));
-        Promise.all(promises).then(function(items) {
-            var totalValue = 0;
-            var rows = '';
-            for (var m = 0; m < myStock.length; m++) {
-                var it = items[m];
-                var st = myStock[m];
-                var nm = it ? it.name : (st.item_id || '---');
-                var ic = it ? it.item_code : (st.item_id || '---');
-                var stockQty = Number(st.qty) || 0;
-                var soldQty = soldMap[ic] || 0;
-                var remaining = Math.max(0, stockQty - soldQty);
-                var price = it ? (Number(it.sales_price) || 0) : 0;
-                totalValue += remaining * price;
-                var color = remaining > 10 ? 'text-green-600' : remaining > 0 ? 'text-amber-600' : 'text-red-600';
-                rows += '<div class="card mb-2"><div class="flex items-center gap-3">' + RW_ImageCache.getImageHTML(ic, 'w-12', 'h-12') + '<div><p class="font-bold text-sm">' + nm + '</p><p class="text-xs text-gray-400">الرصيد: <strong>' + stockQty + '</strong> | المباع: <strong class="text-red-500">' + soldQty + '</strong> | المتبقي: <strong class="' + color + '">' + remaining + '</strong> | القيمة: <strong>' + RW_UI.formatNumber(remaining * price) + ' ج.م</strong></p></div></div></div>';
-            }
-            var html = '<div class="bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl p-5 mb-4 text-center"><p class="text-sm opacity-80">قيمة البضاعة المتبقية</p><p class="text-3xl font-black">' + RW_UI.formatNumber(totalValue) + ' ج.م</p></div><button onclick="App.openQuickInventory()" class="w-full bg-amber-600 text-white py-3 rounded-xl font-black text-sm mb-4">🔍 جرد سريع للسيارة</button>' + rows;
-            RW_UI.safeHTML(RW_UI.byId('vehicleDetail'), html);
-        });
-    },
-
-    // ==================== رصيدي ====================
-    renderBalanceView: function() {
-        var self = this;
-        var html = '<div class="p-4 animate-fadeIn"><h2 class="text-xl font-bold mb-4">⚖️ رصيدي</h2>';
-        html += '<div id="balanceDetail"><div class="text-center text-gray-400 py-8">جاري تحميل الرصيد...</div></div></div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        this.loadBalanceDetail();
-    },
-
-    loadBalanceDetail: function() {
-        var self = this;
-        var container = RW_UI.byId('balanceDetail');
-        if (!container || !this.currentUser) return;
-        supabase.from('driver_ledger').select('*').eq('driver_email', this.currentUser.email).order('entry_date', { ascending: false }).then(function(res) {
-            var rows = res.data || [];
-            var totalDebit = 0, totalCredit = 0;
-            for (var i = 0; i < rows.length; i++) {
-                totalDebit += Number(rows[i].debit) || 0;
-                totalCredit += Number(rows[i].credit) || 0;
-            }
-            var balance = totalDebit - totalCredit;
-            var badgeClass = balance <= 0 ? 'badge-green' : (balance < 5000 ? 'badge-yellow' : 'badge-red');
-            var badgeText = balance <= 0 ? '🟢 أنا ملتزم بالسداد' : (balance < 5000 ? '🟡 عليّ بعض المستحقات' : '🔴 عليّ مستحقات');
-            var html = '<div class="card mb-4 text-center"><p class="text-gray-500 text-sm mb-1">المطلوب مني للشركة</p><div class="text-4xl font-black ' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</div><div class="mt-2"><span class="px-3 py-1 rounded-full text-sm font-bold ' + badgeClass + '">' + badgeText + '</span></div></div>';
-            html += '<div class="card"><h3 class="font-bold mb-3">📊 تفاصيل رصيدي</h3>';
-            if (rows.length === 0) {
-                html += '<p class="text-gray-400 text-center py-4">لا توجد حركات</p>';
-            } else {
-                html += '<div class="space-y-2 max-h-80 overflow-y-auto">';
-                for (var j = rows.length - 1; j >= 0; j--) {
-                    var row = rows[j];
-                    var sign = row.debit > 0 ? '+' : '-';
-                    var color = row.debit > 0 ? 'text-red-600' : 'text-green-600';
-                    html += '<div class="flex justify-between items-center p-2 bg-gray-50 rounded-lg"><div><span class="text-xs text-gray-400 ml-2">' + (row.entry_date || '') + '</span><span class="font-bold text-sm">' + (row.description || '') + '</span></div><span class="font-bold ' + color + '">' + sign + RW_UI.formatNumber(row.debit || row.credit) + '</span></div>';
-                }
-                html += '</div>';
-                html += '<div class="flex justify-between font-black text-lg pt-3 border-t mt-3"><span>📋 صافي المستحق:</span><span class="' + (balance <= 0 ? 'text-green-600' : 'text-red-600') + '">' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م</span></div>';
-            }
-            html += '</div>';
-
-            // زر إقفال الوردية
-            html += '<div class="mt-4"><button id="btnEOD" onclick="App.initiateEndOfDay()" class="btn-green" ' + (self.eodLocked || balance !== 0 ? 'disabled' : '') + '><i class="fa-solid fa-lock ml-2"></i> إقفال الوردية وإنهاء اليوم</button>';
-            if (self.eodLocked) html += '<p class="text-xs text-gray-400 text-center mt-2">✅ تم إقفال الوردية لهذا اليوم</p>';
-            else if (balance !== 0) html += '<p class="text-xs text-amber-600 text-center mt-2">⚠️ يجب تصفير الرصيد قبل إقفال الوردية</p>';
-            html += '</div>';
-
-            RW_UI.safeHTML(container, html);
-        }).catch(function() {
-            RW_UI.safeHTML(container, '<div class="card text-center text-red-400">فشل تحميل الرصيد</div>');
-        });
-    },
-
-    // ==================== إقفال الوردية ====================
-    initiateEndOfDay: function() {
-        var self = this;
-        if (this.eodLocked) { RW_UI.toast('الوردية مقفلة بالفعل', 'warning'); return; }
-        RW_UI.showConfirm('أنت على وشك إقفال وردية اليوم. سيتم منع إنشاء فواتير جديدة. تأكد من أنك قمت بالجرد السريع للسيارة.', function() {
-            self.eodLocked = true;
-            RW_UI.toast('تم إقفال الوردية بنجاح', 'success');
-            var btn = RW_UI.byId('btnEOD');
-            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-check ml-2"></i> تم إقفال الوردية'; }
-            self.showView('home');
-        });
-    },
-
-    // ==================== الخريطة ====================
+        // ==================== تبويب الخريطة ====================
     renderMapView: function() {
         var self = this;
-        var html = '<div class="flex-1 flex flex-col overflow-hidden p-2"><div class="map-wrapper flex-1"><div id="mapContainer" style="width:100%;height:100%;border-radius:16px;"></div></div></div>';
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-        setTimeout(function() { self._initMap(); }, 300);
+        RW_UI.showSkeleton('mainContent', 1, 'card');
+
+        var html = '<div class="flex-1 flex flex-col overflow-hidden p-2">';
+        html += '<div class="bg-white rounded-2xl shadow-sm border overflow-hidden flex-1">';
+        html += '<div id="mapContainer" style="width:100%;height:100%;min-height:300px;border-radius:16px;"></div>';
+        html += '</div>';
+        html += '</div>';
+
+        setTimeout(function() {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+            setTimeout(function() { self._initMap(); }, 200);
+        }, 300);
     },
 
     _initMap: function() {
         var self = this;
         if (self._mapInstance) { self._mapInstance.remove(); self._mapInstance = null; }
+
         var mapEl = RW_UI.byId('mapContainer');
         if (!mapEl) return;
+
+        // افتراضي: وسط القاهرة
         self._mapInstance = L.map('mapContainer').setView([30.0444, 31.2357], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(self._mapInstance);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap',
+            maxZoom: 19
+        }).addTo(self._mapInstance);
+
+        var db = RW_DB.getDB('VanSales');
+
+        // جلب عملاء المندوب
         db.myCustomers.toArray().then(function(myCustomers) {
-            for (var i = 0; i < self._mapMarkers.length; i++) { self._mapInstance.removeLayer(self._mapMarkers[i]); }
+            // تنظيف العلامات القديمة
+            for (var i = 0; i < self._mapMarkers.length; i++) {
+                if (self._mapInstance && self._mapMarkers[i]) {
+                    self._mapInstance.removeLayer(self._mapMarkers[i]);
+                }
+            }
             self._mapMarkers = [];
+
+            if (!myCustomers || !myCustomers.length) {
+                // لا يوجد عملاء – تبقى الخريطة فارغة
+                return;
+            }
+
+            // جلب بيانات العملاء الكاملة (للإحداثيات)
             db.customers.toArray().then(function(allCustomers) {
                 var custMap = {};
-                for (var j = 0; j < allCustomers.length; j++) { custMap[allCustomers[j].customer_code] = allCustomers[j]; }
+                for (var j = 0; j < allCustomers.length; j++) {
+                    custMap[allCustomers[j].customer_code] = allCustomers[j];
+                }
+
                 var bounds = [];
                 for (var k = 0; k < myCustomers.length; k++) {
                     var mc = myCustomers[k];
@@ -1375,25 +1883,74 @@ var App = {
                         var markerIcon = L.icon({
                             iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-' + markerColor + '.png',
                             shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+                            iconSize: [25, 41],
+                            iconAnchor: [12, 41],
+                            popupAnchor: [1, -34],
+                            shadowSize: [41, 41]
                         });
-                        var marker = L.marker([cust.location_lat, cust.location_lng], { icon: markerIcon }).addTo(self._mapInstance).bindPopup('<b>' + (cust.name || '') + '</b><br>' + (cust.area || '') + '<br>المديونية: ' + RW_UI.formatNumber(mc.totalDebt) + ' ج.م<br><a href="javascript:void(0)" onclick="App.openQuickSaleForCustomer(\'' + mc.customer_code + '\')">📝 بيع سريع</a>');
+
+                        var popupContent = '<div style="text-align:right;font-family:Cairo,sans-serif;font-size:13px">';
+                        popupContent += '<b>' + (cust.name || '') + '</b><br>';
+                        popupContent += (cust.area || '') + '<br>';
+                        popupContent += 'المديونية: ' + RW_UI.formatNumber(mc.totalDebt) + ' ج.م<br>';
+                        popupContent += '<a href="javascript:void(0)" onclick="App.openQuickSaleForCustomer(\'' + mc.customer_code + '\')" style="color:#ea580c;font-weight:bold">📝 بيع سريع</a>';
+                        popupContent += '</div>';
+
+                        var marker = L.marker([cust.location_lat, cust.location_lng], { icon: markerIcon })
+                            .addTo(self._mapInstance)
+                            .bindPopup(popupContent);
+
                         self._mapMarkers.push(marker);
                         bounds.push([cust.location_lat, cust.location_lng]);
                     }
                 }
-                if (bounds.length > 0) { self._mapInstance.fitBounds(bounds, { padding: [30, 30] }); }
+
+                if (bounds.length > 0) {
+                    self._mapInstance.fitBounds(bounds, { padding: [30, 30] });
+                }
             });
+        }).catch(function() {
+            // فشل تحميل العملاء – الخريطة تبقى فارغة
         });
-        setTimeout(function() { if (self._mapInstance) self._mapInstance.invalidateSize(); }, 200);
+
+        // إعادة تحجيم الخريطة بعد الظهور
+        setTimeout(function() {
+            if (self._mapInstance) self._mapInstance.invalidateSize();
+        }, 400);
+    },
+        // ==================== دالة مساعدة: تحديث السلة من المودال ====================
+    _forceRenderQuickCart: function() {
+        this._renderQuickCart();
+        this._updateFloatingCart();
     }
 };
 
 // ============================================================
 // بدء التشغيل
 // ============================================================
-if ('serviceWorker' in navigator) { navigator.serviceWorker.register('../sw.js').catch(function() {}); }
-document.addEventListener('DOMContentLoaded', function() { App.init(); });
+RW_SW.register('../sw.js');
+
+document.addEventListener('DOMContentLoaded', function() {
+    // محاولة استعادة الجلسة تلقائياً
+    RW_Auth.init(function(user, err) {
+        if (user) {
+            App.currentUser = user;
+            App.enterApp();
+        }
+    });
+});
+
+// مستمعي الاتصال بالإنترنت
+window.addEventListener('online', function() {
+    RW_UI.updateConnectionStatus('connDot', 'connLabel');
+    RW_UI.toast('تم استعادة الاتصال', 'success');
+});
+
+window.addEventListener('offline', function() {
+    RW_UI.updateConnectionStatus('connDot', 'connLabel');
+    RW_UI.toast('أنت غير متصل حالياً', 'warning');
+});
 </script>
+<script src="../register-sw.js"></script>
 </body>
 </html>
