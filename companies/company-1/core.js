@@ -164,27 +164,32 @@ var RW_Auth = (function() {
 var RW_DB = (function() {
     var dbInstances = {};
 
-    function getDB(appName) {
-        if (dbInstances[appName]) {
-            return dbInstances[appName];
-        }
-        if (typeof Dexie === 'undefined') {
-            console.error('❌ Dexie.js غير محمّل');
-            return null;
-        }
-        var db = new Dexie('RW_' + appName);
-        db.version(1).stores({
-            customers: 'customer_code, name, area, phone, visit_day',
-            items: 'item_code, name, sales_price, unit, max_qty, barcode, category, image_url',
-            stock: '[item_id+branch_id], qty, allocated_qty',
-            branches: 'branch_code, name',
-            meta: 'key',
-            orders: '++id, status, created_at',
-            pending_updates: '++id, type, status'
-        });
-        dbInstances[appName] = db;
-        return db;
+function getDB(appName) {
+    if (dbInstances[appName]) {
+        return dbInstances[appName];
     }
+    if (typeof Dexie === 'undefined') {
+        console.error('❌ Dexie.js غير محمّل');
+        return null;
+    }
+    var db = new Dexie('RW_' + appName);
+    var schema = {
+        customers: 'customer_code, name, area, phone, visit_day',
+        items: 'item_code, name, sales_price, unit, max_qty, barcode, category, image_url',
+        stock: '[item_id+branch_id], qty, allocated_qty',
+        branches: 'branch_code, name',
+        meta: 'key',
+        orders: '++id, status, created_at',
+        pending_updates: '++id, type, status'
+    };
+    if (appName === 'VanSales') {
+        schema.myCustomers = 'customer_code, name, area, phone, totalDebt, lastOrderDate, orderCount';
+        schema.customerPatterns = '++id, customer_code, item_code, frequency, avgQty, item_name';
+    }
+    db.version(1).stores(schema);
+    dbInstances[appName] = db;
+    return db;
+}
 
     function syncDown(appName, callback) {
         var db = getDB(appName);
