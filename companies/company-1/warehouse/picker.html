@@ -106,6 +106,7 @@ var App = {
     currentUser: null,
     currentTab: 'pending',
     pubUserId: null,
+    companyId: null,
     session: null,
     timerInterval: null,
     searchTimer: null,
@@ -159,34 +160,75 @@ var App = {
                     supabase.auth.signOut();
                     return;
                 }
-                supabase.from('items').select('item_code, image_url').then(function(imgRes){
-                    var items = imgRes.data || [];
-                    for(var i = 0; i < items.length; i++){
-                        if(items[i].item_code && items[i].image_url) ITEMS_IMAGE_CACHE[items[i].item_code] = items[i].image_url;
-                    }
-                }).catch(function(){});
-                supabase.from('users').select('id, name, active_warehouse_role').eq('email', self.currentUser.email).maybeSingle().then(function(uRes){
-                    var userData = uRes.data || {};
-                    self.pubUserId = userData.id || null;
-                    var userName = userData.name || meta.name || self.currentUser.email;
-                    var activeRole = userData.active_warehouse_role || meta.active_warehouse_role || '';
-                    if(!isOwner && activeRole !== 'تحضير'){
-                        Swal.fire({ title: 'تنبيه', text: 'دورك النشط حالياً هو "' + (activeRole || 'غير محدد') + '". الرجاء التواصل مع مشرف المخازن.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
-                        supabase.auth.signOut();
-                        return;
-                    }
-                    safeText(byId('headerUserName'), userName);
-                    self.enterApp();
-                }).catch(function(){
-                    var activeRole = meta.active_warehouse_role || '';
-                    if(!isOwner && activeRole !== 'تحضير'){
-                        Swal.fire({ title: 'تنبيه', text: 'تعذر التحقق من دورك النشط.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
-                        supabase.auth.signOut();
-                        return;
-                    }
-                    safeText(byId('headerUserName'), meta.name || self.currentUser.email);
-                    self.enterApp();
-                });
+                supabase.from('users')
+    .select('id, name, company_id, active_warehouse_role')
+    .eq('auth_id', self.currentUser.id)
+    .maybeSingle()
+    .then(function(uRes){
+        if(uRes.error){
+            throw uRes.error;
+        }
+
+        var userData = uRes.data || {};
+
+        if(!userData.id || !userData.company_id){
+            throw new Error('تعذر تحديد المستخدم أو سياق الشركة');
+        }
+
+        self.pubUserId = userData.id;
+        self.companyId = userData.company_id;
+
+        supabase
+    .from('items')
+    .select('item_code, image_url')
+    .eq('company_id', self.companyId)
+    .then(function(imgRes){
+        if(imgRes.error){
+            console.error('Picker items/company context error:', imgRes.error);
+            return;
+        }
+
+        var items = imgRes.data || [];
+
+        for(var i = 0; i < items.length; i++){
+            if(items[i].item_code && items[i].image_url){
+                ITEMS_IMAGE_CACHE[items[i].item_code] = items[i].image_url;
+            }
+        }
+    })
+    .catch(function(err){
+        console.error('Picker items cache error:', err);
+    });
+        var userName = userData.name || meta.name || self.currentUser.email;
+        var activeRole = userData.active_warehouse_role || meta.active_warehouse_role || '';
+
+        if(!isOwner && activeRole !== 'تحضير'){
+            Swal.fire({
+                title: 'تنبيه',
+                text: 'دورك النشط حالياً هو "' + (activeRole || 'غير محدد') + '". الرجاء التواصل مع مشرف المخازن.',
+                icon: 'warning',
+                customClass: { popup: '!rounded-3xl' }
+            });
+            supabase.auth.signOut();
+            return;
+        }
+
+        safeText(byId('headerUserName'), userName);
+        self.enterApp();
+
+    })
+    .catch(function(err){
+        console.error('Picker user/company context error:', err);
+
+        Swal.fire({
+            title: 'تعذر الدخول',
+            text: 'تعذر تحديد المستخدم أو الشركة المرتبطة بحسابك.',
+            icon: 'error',
+            customClass: { popup: '!rounded-3xl' }
+        });
+
+        supabase.auth.signOut();
+    });
             }
         });
     },
@@ -211,23 +253,58 @@ var App = {
         else if(tab === 'account') this.renderAccount();
     },
 
-    renderPendingTab: function(){
-        var self = this;
-        safeHTML(byId('mainContent'),
-            '<div class="mb-6"><div class="skeleton h-14 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>'
+renderPendingTab: function(){
+    var self = this;
+
+    safeHTML(
+        byId('mainContent'),
+        '<div class="mb-6">' +
+            '<div class="skeleton h-14 w-full mb-4"></div>' +
+            '<div class="skeleton h-32 w-full mb-3"></div>' +
+        '</div>'
+    );
+
+    if(!this.pubUserId || !this.companyId){
+        safeHTML(
+            byId('mainContent'),
+            '<div class="text-center py-20 text-red-400">تعذر تحديد سياق الشركة للمستخدم.</div>'
         );
-        // ✅ جلب عدد الأصناف مع الرانشيت
-        var p1 = supabase.from('runsheets').select('runsheet_code, status, run_date, picker_id, run_sheet_details(count)').eq('status', 'Picking').eq('picker_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
-        var p2 = supabase.from('runsheets').select('runsheet_code, status, run_date, run_sheet_details(count)').eq('status', 'Open').order('run_date', { ascending: false }).limit(50);
-        Promise.all([p1, p2]).then(function(results){
+        return;
+    }
+
+    // ✅ جميع قراءات Runsheet أصبحت Company-Scoped
+    var p1 = supabase
+        .from('runsheets')
+        .select('runsheet_code, status, run_date, picker_id, run_sheet_details(count)')
+        .eq('company_id', this.companyId)
+        .eq('status', 'Picking')
+        .eq('picker_id', this.pubUserId)
+        .order('run_date', { ascending: false })
+        .limit(20);
+
+    var p2 = supabase
+        .from('runsheets')
+        .select('runsheet_code, status, run_date, run_sheet_details(count)')
+        .eq('company_id', this.companyId)
+        .in('status', ['Open', 'Confirmed'])
+        .order('run_date', { ascending: false })
+        .limit(50);
+
+    Promise.all([p1, p2])
+        .then(function(results){
             var myRunsheets = results[0].data || [];
             var openRunsheets = results[1].data || [];
+
             self.allRunsheets = myRunsheets.concat(openRunsheets);
             self.renderRunsheetLists(myRunsheets, openRunsheets);
-        }).catch(function(){
-            safeHTML(byId('mainContent'), '<div class="text-center py-20 text-red-400">فشل تحميل البيانات. تأكد من الاتصال.</div>');
+        })
+        .catch(function(){
+            safeHTML(
+                byId('mainContent'),
+                '<div class="text-center py-20 text-red-400">فشل تحميل البيانات. تأكد من الاتصال.</div>'
+            );
         });
-    },
+},
 
     renderRunsheetLists: function(myRunsheets, openRunsheets){
         var html = '';
@@ -257,9 +334,19 @@ var App = {
         var code = rs.runsheet_code || '';
         // ✅ استخراج عدد الأصناف
         var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
-        var statusIcon = isActive ? '🔄' : '📋';
-        var statusLabel = isActive ? 'قيد التحضير' : 'مفتوح';
-        var statusColor = isActive ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600';
+var statusIcon = isActive
+    ? '🔄'
+    : (rs.status === 'Confirmed' ? '✅' : '📋');
+
+var statusLabel = isActive
+    ? 'قيد التحضير'
+    : (rs.status === 'Confirmed' ? 'مؤكد' : 'مفتوح');
+
+var statusColor = isActive
+    ? 'bg-amber-50 text-amber-600'
+    : (rs.status === 'Confirmed'
+        ? 'bg-emerald-50 text-emerald-600'
+        : 'bg-blue-50 text-blue-600');
         var actionBtn = '';
         if(isActive){
             actionBtn = '<button onclick="event.stopPropagation(); App.cancelPicking(\'' + code + '\')" class="btn-danger mt-3 text-xs px-3 py-1.5"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التحضير</button>';
@@ -281,16 +368,47 @@ var App = {
         '</div>';
     },
 
-    onSearchInput: function(query){
-        var self = this;
-        if(this.searchTimer) clearTimeout(this.searchTimer);
-        if(!query || query.trim().length < 1){ byId('searchDropdown').classList.add('hidden'); return; }
-        this.searchTimer = setTimeout(function(){
-            supabase.from('runsheets').select('runsheet_code, status, run_date, picker_id, run_sheet_details(count)').ilike('runsheet_code', '%' + query.trim() + '%').limit(10).then(function(res){
-                self.searchResults = res.data || []; self.renderSearchDropdown();
+onSearchInput: function(query){
+    var self = this;
+
+    if(this.searchTimer) clearTimeout(this.searchTimer);
+
+    if(!query || query.trim().length < 1){
+        byId('searchDropdown').classList.add('hidden');
+        return;
+    }
+
+    if(!this.companyId){
+        byId('searchDropdown').classList.add('hidden');
+        return;
+    }
+
+    this.searchTimer = setTimeout(function(){
+
+        supabase
+            .from('runsheets')
+            .select('runsheet_code, status, run_date, picker_id, run_sheet_details(count)')
+            .eq('company_id', self.companyId)
+            .in('status', ['Open', 'Confirmed', 'Picking'])
+            .ilike('runsheet_code', '%' + query.trim() + '%')
+            .limit(10)
+            .then(function(res){
+
+                if(res.error){
+                    throw res.error;
+                }
+
+                self.searchResults = res.data || [];
+                self.renderSearchDropdown();
+            })
+            .catch(function(err){
+                console.error('Runsheet search error:', err);
+                self.searchResults = [];
+                self.renderSearchDropdown();
             });
-        }, 300);
-    },
+
+    }, 300);
+},
 
     renderSearchDropdown: function(){
         var dropdown = byId('searchDropdown'); if(!dropdown) return;
@@ -303,12 +421,25 @@ var App = {
         for(var i = 0; i < results.length; i++){
             var rs = results[i];
             var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
-            var isMine = (rs.status === 'Picking' && (rs.picker_id === this.pubUserId || rs.picker_id === this.currentUser.email));
-            var isTaken = (rs.status === 'Picking' && !isMine);
-            var icon = isMine ? '🔄' : (isTaken ? '🔒' : '📋');
-            var label = isMine ? 'قيد تحضيرك' : (isTaken ? 'مع زميل آخر' : 'مفتوح');
-            var bg = isMine ? 'bg-amber-50' : (isTaken ? 'bg-red-50' : 'bg-blue-50');
-            var textColor = isMine ? 'text-amber-600' : (isTaken ? 'text-red-500' : 'text-blue-600');
+            var isMine = (rs.status === 'Picking' && rs.picker_id === this.pubUserId);
+var isTaken = (rs.status === 'Picking' && !isMine);
+var isConfirmed = (rs.status === 'Confirmed');
+
+var icon = isMine
+    ? '🔄'
+    : (isTaken ? '🔒' : (isConfirmed ? '✅' : '📋'));
+
+var label = isMine
+    ? 'قيد تحضيرك'
+    : (isTaken ? 'مع زميل آخر' : (isConfirmed ? 'مؤكد' : 'مفتوح'));
+
+var bg = isMine
+    ? 'bg-amber-50'
+    : (isTaken ? 'bg-red-50' : (isConfirmed ? 'bg-emerald-50' : 'bg-blue-50'));
+
+var textColor = isMine
+    ? 'text-amber-600'
+    : (isTaken ? 'text-red-500' : (isConfirmed ? 'text-emerald-600' : 'text-blue-600'));
             html += '<div onclick="App.openRunsheet(\'' + rs.runsheet_code + '\')" class="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex justify-between items-center">';
             html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><br><span class="text-xs text-slate-400">' + (rs.run_date || '') + ' | ' + itemCount + ' صنف</span></div>';
             html += '<span class="px-2 py-0.5 rounded-full text-xs font-bold ' + bg + ' ' + textColor + '">' + icon + ' ' + label + '</span>';
@@ -322,13 +453,47 @@ var App = {
         var self = this;
         byId('searchDropdown').classList.add('hidden');
         safeHTML(byId('mainContent'), '<div class="text-center py-20"><div class="skeleton h-48 w-full mb-4"></div></div>');
-        supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle().then(function(rsRes){
-            if(!rsRes.data){ toast('الرانشيت غير موجود', 'error'); self.renderPendingTab(); return; }
-            var rs = rsRes.data;
-            supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id).then(function(detRes){
+     
+        if(!self.companyId){
+        toast('سياق الشركة غير محدد', 'error');
+        self.renderPendingTab();
+        return;
+    }
+        supabase
+    .from('runsheets')
+    .select('*')
+    .eq('company_id', self.companyId)
+    .eq('runsheet_code', code)
+    .maybeSingle()
+    .then(function(rsRes){
+            if(!rsRes.data){ toast('الرانشيت غير موجود', 'error'); self.renderPendingTab(); return; }var rs = rsRes.data;
+
+if(
+    rs.status === 'Picking' &&
+    rs.picker_id !== self.pubUserId
+){
+    toast('الرانشيت قيد التحضير بواسطة موظف آخر', 'warning');
+    self.renderPendingTab();
+    return;
+}
+
+if(
+    rs.status === 'Picked' &&
+    rs.picker_id !== self.pubUserId
+){
+    toast('هذا الرانشيت مكتمل بواسطة موظف آخر', 'warning');
+    self.renderPendingTab();
+    return;
+}
+
+supabase
+    .from('run_sheet_details')
+    .select('*')
+    .eq('runsheet_id', rs.id)
+    .then(function(detRes){
                 var items = detRes.data || [];
                 var itemCount = items.length;
-                if(rs.status === 'Picking' && (rs.picker_id === self.pubUserId || rs.picker_id === self.currentUser.email)){
+                if(rs.status === 'Picking' && rs.picker_id === self.pubUserId){
                     self.session = { runsheet_code: code, runsheet_id: rs.id, start_time: rs.picker_start || new Date().toISOString(), items: [] };
                     for(var i = 0; i < items.length; i++){
                         self.session.items.push({
@@ -346,9 +511,9 @@ var App = {
                 }
                 var html = '';
                 html += '<div class="flex items-center gap-3 mb-6"><button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + ' | عدد الأصناف: ' + itemCount + '</span></div>';
-                if(rs.status === 'Open'){
-                    html += '<button onclick="App.startPicking(\'' + code + '\')" class="btn-primary mb-6 sticky-top"><i class="fa-solid fa-play ml-2"></i> بدء التحضير</button>';
-                }
+                if(rs.status === 'Open' || rs.status === 'Confirmed'){
+    html += '<button onclick="App.startPicking(\'' + code + '\')" class="btn-primary mb-6 sticky-top"><i class="fa-solid fa-play ml-2"></i> بدء التحضير</button>';
+}
                 html += '<p class="text-sm text-slate-400 mb-6">اضغط على الصنف لرؤية التفاصيل</p>';
                 for(var k = 0; k < items.length; k++){
                     var it = items[k];
@@ -372,8 +537,11 @@ var App = {
 
     startPicking: function(code){
         var self = this;
-        window._rwHasActiveSession = true;
-        if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
+
+    if(!navigator.onLine){
+        toast('أنت غير متصل', 'warning');
+        return;
+    }
         Swal.fire({ title: 'جاري بدء التحضير...', allowOutsideClick: false, didOpen: function(){ Swal.showLoading(); } });
         supabase.auth.getSession().then(function(sessionRes){
             var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
@@ -385,9 +553,15 @@ var App = {
             return res.json();
         }).then(function(json){
             Swal.close();
-            if(!json || !json.success){ toast((json && json.msg) || 'فشل', 'error'); return; }
-            toast('تم بنجاح', 'success');
-            self.openRunsheet(code);
+if(!json || !json.success){
+    window._rwHasActiveSession = false;
+    toast((json && json.msg) || 'فشل', 'error');
+    return;
+}
+
+window._rwHasActiveSession = true;
+toast('تم بنجاح', 'success');
+self.openRunsheet(code);
         }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
     },
 
@@ -528,14 +702,47 @@ self.renderPendingTab();
     },
 
     // ==================== تبويب مكتملة ====================
-    renderCompletedTab: function(){
-        var self = this;
-        safeHTML(byId('mainContent'), '<div class="text-center py-20"><div class="skeleton h-12 w-3/4 mb-3"></div></div>');
-        supabase.from('runsheets').select('runsheet_code, run_date, status').eq('status', 'Picked').eq('picker_id', this.pubUserId || this.currentUser.email).order('run_date', { ascending: false }).limit(50).then(function(res){
+renderCompletedTab: function(){
+    var self = this;
+
+    safeHTML(
+        byId('mainContent'),
+        '<div class="text-center py-20"><div class="skeleton h-12 w-3/4 mb-3"></div></div>'
+    );
+
+    if(!this.pubUserId || !this.companyId){
+        safeHTML(
+            byId('mainContent'),
+            '<div class="text-center py-20 text-red-400">تعذر تحديد سياق الشركة للمستخدم.</div>'
+        );
+        return;
+    }
+
+    supabase
+        .from('runsheets')
+        .select('runsheet_code, run_date, status')
+        .eq('company_id', this.companyId)
+        .eq('status', 'Picked')
+        .eq('picker_id', this.pubUserId)
+        .order('run_date', { ascending: false })
+        .limit(50)
+        .then(function(res){
+
+            if(res.error){
+                throw res.error;
+            }
+
             self.completedRunsheets = res.data || [];
             self.renderCompletedList(self.completedRunsheets);
-        }).catch(function(){ safeHTML(byId('mainContent'), '<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>'); });
-    },
+
+        })
+        .catch(function(){
+            safeHTML(
+                byId('mainContent'),
+                '<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>'
+            );
+        });
+},
 
     renderCompletedList: function(list){
         var html = '<h2 class="text-lg font-black text-slate-800 mb-4">✅ الرانشيتات التي أنهيتها</h2>';
@@ -563,30 +770,117 @@ self.renderPendingTab();
     },
 
     reopenPicking: function(code){
-        var self = this;
-        supabase.from('runsheets').select('status').eq('runsheet_code', code).maybeSingle().then(function(res){
-            if(!res.data || res.data.status !== 'Picked'){
-                Swal.fire({ title: 'لا يمكن التعديل', text: 'الرانشيت لم يعد في حالة مكتمل التحضير. قد يكون قيد التحميل.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
+    var self = this;
+
+    if(!this.pubUserId || !this.companyId){
+        toast('تعذر تحديد المستخدم أو سياق الشركة', 'error');
+        return;
+    }
+
+    supabase
+        .from('runsheets')
+        .select('status, picker_id')
+        .eq('company_id', self.companyId)
+        .eq('runsheet_code', code)
+        .maybeSingle()
+        .then(function(res){
+
+            if(res.error){
+                throw res.error;
+            }
+
+            if(
+                !res.data ||
+                res.data.status !== 'Picked' ||
+                res.data.picker_id !== self.pubUserId
+            ){
+                Swal.fire({
+                    title: 'لا يمكن التعديل',
+                    text: 'الرانشيت لم يعد في حالة مكتمل التحضير أو لا يتبع المستخدم الحالي.',
+                    icon: 'warning',
+                    customClass: { popup: '!rounded-3xl' }
+                });
+
                 self.renderCompletedTab();
                 return;
             }
-            Swal.fire({ title: 'تأكيد التعديل', text: 'سيتم إعادة فتح الرانشيت ' + code + ' للتعديل. سيُفرج عن الحجز. متابعة؟', icon: 'question', showCancelButton: true, confirmButtonText: 'نعم، تعديل', cancelButtonText: 'إلغاء', customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-8', cancelButton: '!rounded-xl' } }).then(function(r){
+
+            Swal.fire({
+                title: 'تأكيد التعديل',
+                text: 'سيتم إعادة فتح الرانشيت ' + code + ' للتعديل. سيُفرج عن الحجز. متابعة؟',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'نعم، تعديل',
+                cancelButtonText: 'إلغاء',
+                customClass: {
+                    popup: '!rounded-3xl',
+                    confirmButton: '!rounded-xl !bg-amber-500 !px-8',
+                    cancelButton: '!rounded-xl'
+                }
+            }).then(function(r){
+
                 if(!r.isConfirmed) return;
+
                 Swal.showLoading();
+
                 supabase.auth.getSession().then(function(ses){
-                    var token = ses.data.session ? ses.data.session.access_token : null;
-                    if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                    return fetch(SUPABASE_URL + '/functions/v1/reopen-picking', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: code }) });
+
+                    var token = ses.data.session
+                        ? ses.data.session.access_token
+                        : null;
+
+                    if(!token){
+                        Swal.close();
+                        toast('انتهت الجلسة', 'error');
+                        return;
+                    }
+
+                    return fetch(
+                        SUPABASE_URL + '/functions/v1/reopen-picking',
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': 'Bearer ' + token
+                            },
+                            body: JSON.stringify({
+                                runsheet_code: code
+                            })
+                        }
+                    );
+
                 }).then(function(res){
-                    if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
+
+                    if(!res) return;
+
+                    if(!res.ok){
+                        return res.json().then(function(err){
+                            throw new Error(err.msg || 'خطأ');
+                        });
+                    }
+
+                    return res.json();
+
                 }).then(function(json){
+
                     Swal.close();
-                    if(json && json.success){ toast('تم إعادة فتح الرانشيت للتعديل', 'success'); self.renderPendingTab(); }
-                    else { toast((json && json.msg) || 'فشل', 'error'); self.renderCompletedTab(); }
-                }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); self.renderCompletedTab(); });
+
+                    if(json && json.success){
+                        toast('تم إعادة فتح الرانشيت للتعديل', 'success');
+                        self.renderPendingTab();
+                    } else {
+                        toast((json && json.msg) || 'فشل', 'error');
+                        self.renderCompletedTab();
+                    }
+
+                }).catch(function(err){
+                    Swal.close();
+                    toast(err.message || 'فشل الاتصال', 'error');
+                    self.renderCompletedTab();
+                });
             });
         });
-    },
+},
 
     // ==================== تبويب حسابي ====================
     renderAccount: function(){
