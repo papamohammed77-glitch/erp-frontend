@@ -65,10 +65,10 @@
 
 <script>
 var App = {
-    currentUser: null, staffList: [], currentTab: 'dashboard', chartInstance: null,
+    currentUser: null, companyId: null, staffList: [], currentTab: 'dashboard', chartInstance: null,
     togglePass: function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash'}else{p.type='password';i.className='fa-solid fa-eye'}},
     doLogin: function(){var e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.byId('loginMsg').innerText='أدخل البيانات';RW_UI.byId('loginMsg').classList.remove('hidden');return}RW_UI.byId('loginMsg').classList.add('hidden');var s=this;RW_UI.showLoader('جاري تسجيل الدخول...');RW_Auth.doLogin(e,p,function(user,err){RW_UI.hideLoader();if(err){RW_UI.byId('loginMsg').innerText=err;RW_UI.byId('loginMsg').classList.remove('hidden')}else{s.init()}});},
-    init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return}var isO=user.isOwner,perms=user.permissions,has=isO||perms.indexOf('warehouse_supervisor')!==-1||perms.indexOf('warehouse')!==-1;if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;s.enterApp()})},
+    init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return}var isO=user.isOwner,perms=user.permissions,has=isO||perms.indexOf('warehouse_supervisor')!==-1;if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;supabase.from('users').select('company_id').eq('auth_id',user.id||'').maybeSingle().then(function(r){if(r.error||!r.data||!r.data.company_id)throw new Error('سياق الشركة غير محدد');s.companyId=r.data.company_id;s.enterApp()}).catch(function(e){RW_UI.showError(e.message||'تعذر تحديد الشركة')})})},
     enterApp: function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.loadStaff();this.switchTab('dashboard')},
     doLogout: function(){var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden')})},
 
@@ -76,19 +76,21 @@ var App = {
 
     loadStaff: function(){
         var s=this;
-        supabase.from('users').select('id,name,email,role,active_warehouse_role').then(function(r){
+        supabase.from('users').select('id,name,email,role,active_warehouse_role').eq('company_id',s.companyId).eq('role','مخزني').order('name').then(function(r){
+            if(r.error){Swal.fire({title:'خطأ',text:r.error.message,icon:'error'});return}
             s.staffList = r.data || [];
+            if(s.currentTab==='roster')s.renderRoster();
         });
     },
 
     renderDashboard: function(){
         var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="mb-6"><div class="skeleton h-20 w-full mb-4"></div><div class="skeleton h-20 w-full mb-3"></div></div>');
         Promise.all([
-            supabase.from('purchase_orders').select('id').in('status',['Sent','Partially Received']),
-            supabase.from('runsheets').select('id').eq('status','Picking'),
-            supabase.from('runsheets').select('id').eq('status','Loading'),
-            supabase.from('runsheets').select('id').eq('status','Returning'),
-            supabase.from('runsheets').select('id').eq('status','Loaded')
+            supabase.from('purchase_orders').select('id').eq('company_id',s.companyId).in('status',['Sent','Partially Received']),
+            supabase.from('runsheets').select('id').eq('company_id',s.companyId).eq('status','Picking'),
+            supabase.from('runsheets').select('id').eq('company_id',s.companyId).eq('status','Loading'),
+            supabase.from('runsheets').select('id').eq('company_id',s.companyId).eq('status','Returning'),
+            supabase.from('runsheets').select('id').eq('company_id',s.companyId).eq('status','Loaded')
         ]).then(function(r){
             var d = {
                 receiving: (r[0].data||[]).length,
@@ -122,10 +124,10 @@ var App = {
         var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-400"></i></div>');
         var roles=['استلام','تحضير','تحميل','مرتجعات','تفريغ','أذونات','جرد','احتياطي'];
         var icons={'استلام':'📦','تحضير':'📋','تحميل':'🚛','مرتجعات':'↩️','تفريغ':'🔄','أذونات':'📄','جرد':'🔍','احتياطي':'🪑'};
-        var html='<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-slate-400 mb-4">اختر دوراً لكل موظف. التغيير فوري.</p>';
-        if(!s.staffList.length){html+='<div class="card text-center text-slate-400">لا يوجد موظفون</div>'}
+        var html='<h2 class="text-lg font-black mb-4">👥 فريق المخازن</h2><p class="text-sm text-slate-400 mb-4">اختر دوراً لكل موظف مخزني. الدور يحدد التطبيق التشغيلي النشط.</p>';
+        if(!s.staffList.length){html+='<div class="card text-center text-slate-400">لا يوجد موظفون مخزنيون</div>'}
         else {for(var i=0;i<s.staffList.length;i++){var emp=s.staffList[i];var role=emp.active_warehouse_role||'احتياطي';
-            html+='<div class="card mb-3 slide-in"><div class="flex justify-between items-center mb-3"><div><span class="font-bold">'+emp.name+'</span><br><span class="text-xs text-slate-400">'+emp.email+'</span></div><span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">'+(icons[role]||'')+' '+role+'</span></div><select class="w-full p-3 bg-slate-50 rounded-xl border font-bold text-sm" onchange="App.updateRole(\''+emp.id+'\',this.value)">';
+            html+='<div class="card mb-3 slide-in"><div class="flex justify-between items-center mb-3"><div><span class="font-bold">'+emp.name+'</span><br><span class="text-xs text-slate-400">'+emp.email+'</span><br><span class="text-[11px] text-slate-400">Base Permission: warehouse</span></div><span class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">'+(icons[role]||'')+' '+role+'</span></div><select class="w-full p-3 bg-slate-50 rounded-xl border font-bold text-sm" onchange="App.updateRole(\\''+emp.id+'\\',this.value)">';
             for(var j=0;j<roles.length;j++){html+='<option value="'+roles[j]+'"'+(roles[j]===role?' selected':'')+'>'+(icons[roles[j]]||'')+' '+roles[j]+'</option>'}
             html+='</select></div>';
         }}
@@ -133,11 +135,14 @@ var App = {
     },
 
     updateRole: function(userId,newRole){
-        var s=this; Swal.showLoading();
-        supabase.from('users').update({active_warehouse_role:newRole}).eq('id',userId).then(function(r){
-            Swal.close();
-            if(r.error){Swal.fire({title:'خطأ',text:r.error.message,icon:'error'})}
-            else {for(var i=0;i<s.staffList.length;i++){if(s.staffList[i].id===userId){s.staffList[i].active_warehouse_role=newRole;break}}s.renderRoster()}
+        var s=this;
+        RW_UI.showLoader('جاري حفظ الدور...');
+        supabase.rpc('set_active_warehouse_role',{p_user_id:userId,p_role:newRole}).then(function(r){
+            RW_UI.hideLoader();
+            if(r.error){Swal.fire({title:'تعذر تغيير الدور',text:r.error.message,icon:'error'});return}
+            for(var i=0;i<s.staffList.length;i++){if(s.staffList[i].id===userId){s.staffList[i].active_warehouse_role=newRole;break}}
+            RW_UI.toast('تم تعيين الدور: '+newRole,'success');
+            s.renderRoster();
         });
     },
 
@@ -147,11 +152,11 @@ var App = {
         html+='<div class="grid grid-cols-2 gap-3" id="liveGrid"></div>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
         Promise.all([
-            supabase.from('purchase_orders').select('po_code,supplier_name').in('status',['Sent','Partially Received']),
-            supabase.from('runsheets').select('runsheet_code,picker_id').eq('status','Picking'),
-            supabase.from('runsheets').select('runsheet_code,loader_id').eq('status','Loading'),
-            supabase.from('runsheets').select('runsheet_code,return_handler_id').eq('status','Returning'),
-            supabase.from('runsheets').select('runsheet_code').eq('status','Loaded')
+            supabase.from('purchase_orders').select('po_code,supplier_name').eq('company_id',s.companyId).in('status',['Sent','Partially Received']),
+            supabase.from('runsheets').select('runsheet_code,picker_id').eq('company_id',s.companyId).eq('status','Picking'),
+            supabase.from('runsheets').select('runsheet_code,loader_id').eq('company_id',s.companyId).eq('status','Loading'),
+            supabase.from('runsheets').select('runsheet_code,return_handler_id').eq('company_id',s.companyId).eq('status','Returning'),
+            supabase.from('runsheets').select('runsheet_code').eq('company_id',s.companyId).eq('status','Loaded')
         ]).then(function(r){
             var staffMap={};for(var i=0;i<s.staffList.length;i++){staffMap[s.staffList[i].id]=s.staffList[i].name}
             var cats=[
