@@ -1,43 +1,63 @@
-// sw.js – إصدار 2.0 محسَّن (إدارة ذكية للكاش)
-// متوافق مع دستور الروائع: Network Only لـ HTML و API، Cache First مع حد أقصى للموارد الثابتة
+// sw.js – إصدار 2.2 FINAL
+// RAWAEA ERP — Production Service Worker
+//
+// Contract:
+// - Network Only: HTML/navigation, Supabase/API, runtime code (JS/MJS/TS)
+// - Cache First: immutable/static presentation assets only
+// - Network First + cache fallback: other GET resources
+// - Scope-safe: this file is intended to be served from the deployment path
+//   that owns /companies/ (normally /companies/sw.js).
+// - No authentication or business-data caching.
 
-var STATIC_CACHE = 'rw-static-v1';
-var STATIC_EXTENSIONS = ['.css', '.woff', '.woff2', '.ttf', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp', '.js'];
-var MAX_STATIC_ITEMS = 200; // الحد الأقصى لعدد الملفات المخزنة في الكاش
+var STATIC_CACHE = 'rw-static-v3';
+var STATIC_EXTENSIONS = [
+    '.css',
+    '.woff',
+    '.woff2',
+    '.ttf',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.svg',
+    '.ico',
+    '.webp'
+];
+var MAX_STATIC_ITEMS = 200;
+var SW_BUILD = 'RAWAEA_SW_P137_FINAL';
 
-// ==================== حدث التثبيت ====================
+// ==================== INSTALL ====================
 self.addEventListener('install', function(event) {
-    // تفعيل الـ SW فوراً دون انتظار إغلاق النوافذ القديمة
-    self.skipWaiting();
+    // Activate the new worker without waiting for old tabs to close.
+    event.waitUntil(self.skipWaiting());
 });
 
-// ==================== حدث التفعيل ====================
+// ==================== ACTIVATE ====================
 self.addEventListener('activate', function(event) {
     event.waitUntil(
-        Promise.all([
-            // 1. تنظيف الكاشات القديمة (يحذف أي كاش لا يحمل اسم STATIC_CACHE)
-            caches.keys().then(function(keys) {
-                return Promise.all(keys.map(function(key) {
-                    if (key !== STATIC_CACHE) {
-                        console.log('[SW] حذف الكاش القديم:', key);
-                        return caches.delete(key);
-                    }
-                }));
-            }),
-            // 2. السيطرة على جميع النوافذ المفتوحة فوراً
-            self.clients.claim()
-        ]).then(function() {
-            // إشعار النوافذ بوجود تحديث
+        caches.keys().then(function(keys) {
+            return Promise.all(keys.map(function(key) {
+                if (key !== STATIC_CACHE) {
+                    return caches.delete(key);
+                }
+                return Promise.resolve(false);
+            }));
+        }).then(function() {
+            return self.clients.claim();
+        }).then(function() {
             return self.clients.matchAll({ type: 'window' });
         }).then(function(clientsList) {
             for (var i = 0; i < clientsList.length; i++) {
-                clientsList[i].postMessage({ type: 'RW_SW_UPDATED', at: Date.now() });
+                clientsList[i].postMessage({
+                    type: 'RW_SW_UPDATED',
+                    build: SW_BUILD,
+                    at: Date.now()
+                });
             }
         })
     );
 });
 
-// ==================== دوال مساعدة ====================
+// ==================== CLASSIFIERS ====================
 function isHTMLRequest(request) {
     if (request.mode === 'navigate') return true;
     var accept = request.headers.get('accept') || '';
@@ -45,82 +65,104 @@ function isHTMLRequest(request) {
 }
 
 function isAPIRequest(url) {
+    // Supabase REST/Auth/Storage/realtime endpoints must never be cached here.
     if (url.hostname.indexOf('supabase.co') !== -1) return true;
+
+    // Supabase Edge Functions / compatible function gateways.
     if (url.pathname.indexOf('/functions/v1/') !== -1) return true;
+
     return false;
+}
+
+function isRuntimeRequest(url) {
+    var pathname = url.pathname.toLowerCase();
+    return pathname.indexOf('.js') !== -1 ||
+           pathname.indexOf('.mjs') !== -1 ||
+           pathname.indexOf('.ts') !== -1;
 }
 
 function isStaticAsset(pathname) {
     var lowerPath = pathname.toLowerCase();
+
     for (var i = 0; i < STATIC_EXTENSIONS.length; i++) {
         if (lowerPath.indexOf(STATIC_EXTENSIONS[i]) !== -1) return true;
     }
+
     return false;
 }
 
-// دالة مساعدة للتحقق من حجم الكاش وتنظيف أقدم الملفات إذا تجاوز الحد
 function trimCache(cache) {
     return cache.keys().then(function(keys) {
-        if (keys.length >= MAX_STATIC_ITEMS) {
-            // حذف أقدم ملف (أول ملف في القائمة)
-            console.warn('[SW] الكاش ممتلئ، جاري حذف أقدم ملف...');
-            return cache.delete(keys[0]).then(function() {
-                return cache;
-            });
-        }
-        return cache;
+        if (keys.length < MAX_STATIC_ITEMS) return cache;
+
+        // Delete the oldest entry returned by Cache.keys().
+        return cache.delete(keys[0]).then(function() {
+            return cache;
+        });
     });
 }
 
-// ==================== حدث الطلب ====================
+function isCacheableStaticResponse(response) {
+    return !!response && response.status === 200 && response.type !== 'opaque';
+}
+
+function putStatic(cache, request, response) {
+    if (!isCacheableStaticResponse(response)) {
+        return Promise.resolve();
+    }
+
+    return trimCache(cache).then(function() {
+        return cache.put(request, response.clone());
+    }).catch(function(error) {
+        // Caching is an optimization. Never let quota/cache failures break runtime.
+        console.warn('[SW] تعذر تخزين المورد:', request.url, error);
+    });
+}
+
+// ==================== FETCH ====================
 self.addEventListener('fetch', function(event) {
     var request = event.request;
-    var url = new URL(request.url);
 
-    // تجاهل الطلبات غير GET
+    // The SW only handles safe GET requests.
     if (request.method !== 'GET') return;
 
-    // 1. طلبات API و Supabase: Network Only (لا تخزين)
+    var url = new URL(request.url);
+
+    // 1) API / Supabase: always network, never cache.
     if (isAPIRequest(url)) {
         event.respondWith(fetch(request));
         return;
     }
 
-    // 2. ملفات HTML: Network Only (لا تخزين، لضمان وصول التحديثات)
+    // 2) HTML/navigation: always network, never cache.
+    // This prevents stale application shells after deployment.
     if (isHTMLRequest(request)) {
         event.respondWith(fetch(request));
         return;
     }
 
-// 3. الموارد الثابتة: Cache First مع حماية من تجاوز الحصة
+    // 3) Runtime code: always network, never cache.
+    // A stale JS bundle can freeze the application on an older release.
+    if (isRuntimeRequest(url)) {
+        event.respondWith(fetch(request));
+        return;
+    }
+
+    // 4) Presentation/static assets: Cache First.
     if (isStaticAsset(url.pathname)) {
         event.respondWith(
             caches.open(STATIC_CACHE).then(function(cache) {
                 return cache.match(request).then(function(cached) {
-                    if (cached) {
-                        // موجود في الكاش، استخدمه
-                        return cached;
-                    }
-                    // غير موجود، اجلبه من الشبكة وحاول تخزينه
+                    if (cached) return cached;
+
                     return fetch(request).then(function(networkResponse) {
-                        // تأكد من أن الاستجابة صالحة
-                        if (!networkResponse || networkResponse.status !== 200) {
-                            return networkResponse;
-                        }
-                        // حاول التخزين مع حماية من تجاوز الحصة
-                        var copy = networkResponse.clone();
-                        trimCache(cache).then(function() {
-                            try {
-                                cache.put(request, copy);
-                            } catch (e) {
-                                // إذا فشل التخزين (مثلاً QuotaExceeded)، نتجاهل بهدوء
-                                console.warn('[SW] تعذر تخزين الملف (تجاوز الحصة):', url.pathname);
-                            }
-                        });
+                        putStatic(cache, request, networkResponse);
                         return networkResponse;
                     }).catch(function() {
-                        // إذا فشل الاتصال بالشبكة وكان الملف غير موجود في الكاش، لا نستطيع فعل شيء
-                        return new Response('غير متصل', { status: 503, statusText: 'Service Unavailable' });
+                        return new Response('غير متصل', {
+                            status: 503,
+                            statusText: 'Service Unavailable'
+                        });
                     });
                 });
             })
@@ -128,20 +170,15 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
-    // 4. أي موارد أخرى: Network First مع fallback للكاش
+    // 5) Other GET resources: Network First with cache fallback.
+    // Nothing here is considered authoritative business data.
     event.respondWith(
         fetch(request).then(function(networkResponse) {
-            var copy = networkResponse.clone();
-            caches.open(STATIC_CACHE).then(function(cache) {
-                trimCache(cache).then(function() {
-                    try {
-                        cache.put(request, copy);
-                    } catch (e) {
-                        console.warn('[SW] تعذر تخزين الملف:', url.pathname);
-                    }
+            return caches.open(STATIC_CACHE).then(function(cache) {
+                return putStatic(cache, request, networkResponse).then(function() {
+                    return networkResponse;
                 });
             });
-            return networkResponse;
         }).catch(function() {
             return caches.match(request);
         })
