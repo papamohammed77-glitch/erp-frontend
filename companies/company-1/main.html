@@ -22,8 +22,7 @@
 <script>
 (function(){'use strict';
 var RW_SUPABASE_URL='https://fiilmooggumokxanwiyx.supabase.co';
-var RW_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIyIsInR5cCI6IkpXVCJ9';
-RW_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJmaWlsbW9vZ2d1bW9reGFud2l5eCIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4IiwiaWF0IjoxNzc4NzA5MDkyLCJleHAiOjIwOTQyODUwOTJ9.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBc5kOc4';
+var RW_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4IiwiaWF0IjoxNzc4NzA5MDkyLCJleHAiOjIwOTQyODUwOTJ9.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 var supabase=window.supabase.createClient(RW_SUPABASE_URL,RW_SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
 var RW_STATE={app:{initialized:false,authenticated:false,loading:false,currentView:'dashboard',currentUser:null,company:{name:'الروائع ERP',logo:null}},data:{items:[],customers:[],suppliers:[],branches:[]},permissions:[],ui:{sidebarOpen:false,sidebarCollapsed:false}};
 window.RW_STATE=RW_STATE;
@@ -4159,7 +4158,7 @@ var RW_OwnerLicense = (function () {
             });
     }
     function authUser() {
-        return window.supabase.auth.getUser().then(function (r) {
+        return supabase.auth.getUser().then(function (r) {
             if (r.error || !r.data || !r.data.user) throw new Error('SESSION_INVALID');
             return r.data.user;
         });
@@ -4246,7 +4245,7 @@ var RW_OwnerLicense = (function () {
             authUser().then(function (u) {
                 if (n === String(u.email||'').trim().toLowerCase()) throw new Error('البريد الإلكتروني الجديد مطابق للحالي');
                 loader('جاري تغيير البريد الإلكتروني...');
-                return window.supabase.auth.updateUser({email:n});
+                return supabase.auth.updateUser({email:n});
             }).then(function (r) {
                 unload(); if (r && r.error) throw r.error;
                 if (byId('owner-new-email')) byId('owner-new-email').value='';
@@ -4260,7 +4259,7 @@ var RW_OwnerLicense = (function () {
             if (n.length < 6) return toast('كلمة المرور يجب ألا تقل عن 6 أحرف.','error');
             if (n !== c) return toast('تأكيد كلمة المرور غير مطابق.','error');
             loader('جاري تغيير كلمة المرور...');
-            window.supabase.auth.updateUser({password:n}).then(function(r){
+            supabase.auth.updateUser({password:n}).then(function(r){
                 unload(); if (r.error) throw r.error;
                 if (byId('owner-new-password')) byId('owner-new-password').value='';
                 if (byId('owner-confirm-password')) byId('owner-confirm-password').value='';
@@ -4270,7 +4269,7 @@ var RW_OwnerLicense = (function () {
     }
     function saveSettings(payload) {
         cid(); loader('جاري حفظ إعدادات الترخيص...');
-        window.supabase.auth.getSession().then(function (r) {
+        supabase.auth.getSession().then(function (r) {
             if (!r.data || !r.data.session) throw new Error('SESSION_INVALID');
             return fetch(window.RW_SUPABASE_URL+'/functions/v1/save-settings',{
                 method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+r.data.session.access_token},
@@ -5106,12 +5105,12 @@ window.RW_Views = RW_Views;
             console.log('RAWAEA ERP BOOTING...');
             bindEvents();
 
-            if (!window.supabase || !window.supabase.auth) {
+            if (!window.supabase || !supabase.auth) {
                 console.error('MAIN11_SUPABASE_UNAVAILABLE');
                 return;
             }
 
-            var sessionResult = await window.supabase.auth.getSession();
+            var sessionResult = await supabase.auth.getSession();
 
             if (sessionResult &&
                 sessionResult.data &&
@@ -5193,7 +5192,7 @@ window.RW_Views = RW_Views;
 
         _rwShowLoader('جاري إرسال رابط إعادة التعيين...');
 
-        window.supabase.auth.resetPasswordForEmail(email)
+        supabase.auth.resetPasswordForEmail(email)
             .then(function (result) {
                 _rwHideLoader();
 
@@ -5307,7 +5306,7 @@ window.RW_Views = RW_Views;
     return !!(window.RW_STATE&&window.RW_STATE.app&&window.RW_STATE.app.currentUser&&window.RW_STATE.app.currentUser.isOwner===true);
   }
   function permFor(view){
-    var m={dashboard:'dashboard',telesales:'telesales',customers:'customers',pos:'pos',orders:'orders',runsheets:'runsheets',suppliers:'suppliers',purchases:'purchases',receiving:'receiving',items:'items',inventory:'warehouse',vouchers:'vouchers',picking:'picking',loading:'loading',delivery:'delivery',returns:'return',return:'return',unloading:'unloading',finance:'finance',reports:'reports',audit:'owner',hr:'users',crm:'customers',users:'users',roles:'roles',license:'owner',settings:'settings',notifications:'notifications',branches:'branches','online-store':'online-store','purchase-pos':'purchases','vehicle-count':'warehouse','branch-count':'warehouse','general-count':'warehouse',settlement:'finance'};
+    var m={dashboard:'dashboard',telesales:'telesales',customers:'customers',pos:'pos',orders:'orders',runsheets:'runsheets',suppliers:'suppliers',purchases:'purchases',receiving:'receiving',items:'items',inventory:'warehouse',vouchers:'vouchers',picking:'picking',loading:'loading',delivery:'delivery',returns:'return',return:'return',unloading:'unloading',finance:'finance',reports:'reports','reports-dashboard':'reports','reports-detailed':'reports','reports-comprehensive':'reports',audit:'owner',hr:'users',crm:'customers',users:'users',roles:'roles',license:'owner',settings:'settings',notifications:'notifications',branches:'branches','online-store':'online-store','purchase-pos':'purchases','vehicle-count':'warehouse','branch-count':'warehouse','general-count':'warehouse',settlement:'finance'};
     return m[view]||view;
   }
   function allowed(view){
@@ -5349,7 +5348,7 @@ window.RW_Views = RW_Views;
     receiving:[window.RW_Warehouse,'loadReceiving'],vouchers:[window.RW_Warehouse,'loadVouchers'],
     'vehicle-count':[window.RW_Warehouse,'loadVehicleCount'],'branch-count':[window.RW_Warehouse,'loadBranchCount'],
     'general-count':[window.RW_Warehouse,'loadGeneralCount'],settlement:[window.RW_Warehouse,'loadSettlement'],
-    finance:[window.RW_Finance,'render'],reports:[window.RW_Reports,'render'],audit:[null,null],notifications:[window.RW_Notification,'showPanel']
+    finance:[window.RW_Finance,'render'],'reports-dashboard':[window.RW_Reports,'renderDashboard'],'reports-detailed':[window.RW_Reports,'renderDetailedReports'],'reports-comprehensive':[window.RW_Reports_Comprehensive,'render'],reports:[window.RW_Reports,'render'],audit:[null,null],notifications:[window.RW_Notification,'showPanel']
   };
   nav.navigate=function(view){
     window.RW_STATE.app.currentView=view;
