@@ -72,29 +72,22 @@ jobs:
               mt=re.search(r'\btype\s*=\s*["\']([^"\']+)',attrs,re.I)
               typ=(mt.group(1) if mt else '').lower()
               if typ in ('','text/javascript','application/javascript','application/ecmascript','text/ecmascript'):
-                start=raw[:m.start()].count(chr(10))+1
-                js_blocks.append((n,start,m.start(),m.end(),m.group('b')))
+                start_line=raw[:m.start()].count(chr(10))+1
+                js_blocks.append((n,start_line,m.start(),m.end()))
           print('INLINE_JS_BLOCKS='+str(len(js_blocks)))
           if not js_blocks: raise SystemExit('NO_INLINE_JS_FOUND')
 
-          # Preserve original main.html line numbers: blank all non-JS bytes but keep line breaks.
-          positioned=list(raw)
-          for i,ch in enumerate(positioned):
-            if ch != chr(10): positioned[i]=' '
-          for _,_,a,b,body in js_blocks:
-            # Locate exact script-body start/end without changing line count.
-            prefix=raw[:a]; open_end=raw.find('>',a)+1
-            body_start=open_end; body_end=b-len('</script>')
-            positioned[body_start:body_end]=list(raw[body_start:body_end])
+          positioned=list(' ' if ch!=chr(10) else ch for ch in raw)
+          for _,_,script_start,script_end in js_blocks:
+            open_end=raw.find('>',script_start)+1
+            close_start=script_end-len('</script>')
+            positioned[open_end:close_start]=list(raw[open_end:close_start])
           Path('/tmp/main-positioned.js').write_text(''.join(positioned),encoding='utf-8')
 
           print('SERVICE_WORKER_REGISTER_COUNT='+str(raw.count('navigator.serviceWorker.register')))
-          rwhr=len(re.findall(r'(?m)^\s*(?:(?:var|let|const)\s+RW_HR\s*=|(?:async\s+)?function\s+RW_HR\s*\()',raw))
-          rwcrm=len(re.findall(r'(?m)^\s*(?:(?:var|let|const)\s+RW_CRM\s*=|(?:async\s+)?function\s+RW_CRM\s*\()',raw))
-          print('RW_HR_DECLARATIONS='+str(rwhr))
-          print('RW_CRM_DECLARATIONS='+str(rwcrm))
+          print('RW_HR_DECLARATIONS='+str(len(re.findall(r'(?m)^\s*(?:(?:var|let|const)\s+RW_HR\s*=|(?:async\s+)?function\s+RW_HR\s*\()',raw))))
+          print('RW_CRM_DECLARATIONS='+str(len(re.findall(r'(?m)^\s*(?:(?:var|let|const)\s+RW_CRM\s*=|(?:async\s+)?function\s+RW_CRM\s*\()',raw))))
 
-          # Direct physical-stock writer discovery.
           direct=[]
           for pattern,window_size,label in [(r"\.from\(\s*['\"]stock_branches['\"]",1800,'stock'),(r"\.from\(\s*['\"]inventory_log['\"]",1500,'inventory_log')]:
             for m in re.finditer(pattern,raw):
