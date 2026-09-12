@@ -33,6 +33,13 @@ jobs:
           p=Path('companies/company-1/main.html')
           raw=p.read_text(encoding='utf-8')
           lines=raw.splitlines()
+          print('FILE=companies/company-1/main.html')
+          print('BYTES='+str(len(raw.encode('utf-8'))))
+          print('LINES='+str(len(lines)))
+          print('SHA256='+hashlib.sha256(raw.encode('utf-8')).hexdigest())
+          print('EOF_LAST_3='+repr(lines[-3:] if len(lines)>=3 else lines))
+          if len(lines) < 17000: raise SystemExit('MAIN_HTML_LINE_COUNT_BELOW_EXPECTED')
+          if lines[-3:] != ['</script>','</body>','</html>']: raise SystemExit('MAIN_HTML_EOF_ORDER_INVALID')
 
           class P(HTMLParser):
             def __init__(self):
@@ -43,14 +50,6 @@ jobs:
             def handle_endtag(self, tag): self.ends.append(tag.lower())
 
           parser=P(); parser.feed(raw); parser.close()
-          print('FILE=companies/company-1/main.html')
-          print('BYTES='+str(len(raw.encode('utf-8'))))
-          print('LINES='+str(len(lines)))
-          print('SHA256='+hashlib.sha256(raw.encode('utf-8')).hexdigest())
-          print('EOF_LAST_3='+repr(lines[-3:] if len(lines)>=3 else lines))
-          if len(lines) < 17000: raise SystemExit('MAIN_HTML_LINE_COUNT_BELOW_EXPECTED')
-          if lines[-3:] != ['</script>','</body>','</html>']: raise SystemExit('MAIN_HTML_EOF_ORDER_INVALID')
-
           from collections import Counter
           sc=Counter(parser.starts); ec=Counter(parser.ends)
           for tag in ['html','head','body','style','script']:
@@ -70,14 +69,24 @@ jobs:
           for n,m in enumerate(scripts,1):
             attrs=m.group('a') or ''
             if not re.search(r'\bsrc\s*=',attrs,re.I):
-              typ=''
               mt=re.search(r'\btype\s*=\s*["\']([^"\']+)',attrs,re.I)
               typ=(mt.group(1) if mt else '').lower()
               if typ in ('','text/javascript','application/javascript','application/ecmascript','text/ecmascript'):
                 start=raw[:m.start()].count(chr(10))+1
-                js_blocks.append((n,start,m.group('b')))
+                js_blocks.append((n,start,m.start(),m.end(),m.group('b')))
           print('INLINE_JS_BLOCKS='+str(len(js_blocks)))
-          Path('/tmp/main-inline-all.js').write_text('\n\n'.join(x[2] for x in js_blocks),encoding='utf-8')
+          if not js_blocks: raise SystemExit('NO_INLINE_JS_FOUND')
+
+          # Preserve original main.html line numbers: blank all non-JS bytes but keep line breaks.
+          positioned=list(raw)
+          for i,ch in enumerate(positioned):
+            if ch != chr(10): positioned[i]=' '
+          for _,_,a,b,body in js_blocks:
+            # Locate exact script-body start/end without changing line count.
+            prefix=raw[:a]; open_end=raw.find('>',a)+1
+            body_start=open_end; body_end=b-len('</script>')
+            positioned[body_start:body_end]=list(raw[body_start:body_end])
+          Path('/tmp/main-positioned.js').write_text(''.join(positioned),encoding='utf-8')
 
           print('SERVICE_WORKER_REGISTER_COUNT='+str(raw.count('navigator.serviceWorker.register')))
           rwhr=len(re.findall(r'(?m)^\s*(?:(?:var|let|const)\s+RW_HR\s*=|(?:async\s+)?function\s+RW_HR\s*\()',raw))
@@ -85,7 +94,7 @@ jobs:
           print('RW_HR_DECLARATIONS='+str(rwhr))
           print('RW_CRM_DECLARATIONS='+str(rwcrm))
 
-          # Static direct physical-stock writer discovery with line numbers.
+          # Direct physical-stock writer discovery.
           direct=[]
           for pattern,window_size,label in [(r"\.from\(\s*['\"]stock_branches['\"]",1800,'stock'),(r"\.from\(\s*['\"]inventory_log['\"]",1500,'inventory_log')]:
             for m in re.finditer(pattern,raw):
@@ -96,7 +105,7 @@ jobs:
           if direct: raise SystemExit('DIRECT_PHYSICAL_STOCK_WRITER_FOUND')
           PY
 
-          node --check /tmp/main-inline-all.js
+          node --check /tmp/main-positioned.js
           echo 'NODE_CHECK=PASS'
           echo 'FULL_FILE_READ=PASS'
 
