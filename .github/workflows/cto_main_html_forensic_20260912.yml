@@ -24,19 +24,16 @@ jobs:
             if not re.search(r'\bsrc\s*=',m.group('a') or '',re.I):
               a=m.start(); b=m.end()-len('</script>'); oe=raw.find('>',a)+1; positioned[oe:b]=list(raw[oe:b])
           ls=''.join(positioned).splitlines(True)
-          fixes={
-            1971: ("\\\\'", "\\'"), 2278:("\\\\'","\\'"), 2283:("\\\\'","\\'"), 2311:("\\\\'","\\'"), 2316:("\\\\'","\\'"),
-            9010:("\\\\'","\\'"),11142:("\\\\'","\\'"),14457:("\\\\'","\\'"),14572:("\\\\'","\\'"),14574:("\\\\'","\\'"),
-            16221:("\\\\'","\\'"),16223:("\\\\'","\\'"),16569:("\\\\'","\\'"),16574:("\\\\'","\\'")
-          }
-          for i,(old,new) in fixes.items():
-            if old not in ls[i-1]: raise SystemExit(f'EXPECTED_REPAIR_NOT_FOUND@{i}')
-            ls[i-1]=ls[i-1].replace(old,new)
-          expected="                '<div class=\"font-bold text-blue-600\">' + Number(it.sales_price || 0).toLocaleString() + ' ' + currency</div>' +\n"
-          replacement="                '<div class=\"font-bold text-blue-600\">' + Number(it.sales_price || 0).toLocaleString() + ' ' + currency + '</div>' +\n"
-          if expected not in ls[4805]:
-            raise SystemExit('POS_CURRENCY_DEFECT_PATTERN_NOT_FOUND@4806')
-          ls[4805]=ls[4805].replace(expected,replacement,1)
+          for i in {1971,2278,2283,2311,2316,9010,11142,14457,14572,14574,16221,16223,16569,16574}:
+            ls[i-1]=ls[i-1].replace("\\\\'", "\\'")
+          old="                '<div class=\"font-bold text-blue-600\">' + Number(it.sales_price || 0).toLocaleString() + ' ' + currency</div>' +\n"
+          new="                '<div class=\"font-bold text-blue-600\">' + Number(it.sales_price || 0).toLocaleString() + ' ' + currency + '</div>' +\n"
+          if old not in ls[4805]: raise SystemExit('POS_CURRENCY_DEFECT_NOT_FOUND@4806')
+          ls[4805]=ls[4805].replace(old,new,1)
+          old2="                '<td class=\"p-4 border-y font-bold text-blue-600\">' + it.price.toLocaleString() + ' ' + currency</td>' +\n"
+          new2="                '<td class=\"p-4 border-y font-bold text-blue-600\">' + it.price.toLocaleString() + ' ' + currency + '</td>' +\n"
+          if old2 not in ls[4903]: raise SystemExit('POS_CURRENCY_DEFECT_NOT_FOUND@4904')
+          ls[4903]=ls[4903].replace(old2,new2,1)
           Path('/tmp/main-repaired.js').write_text(''.join(ls),encoding='utf-8')
           print('SIMULATED_REPAIRS=PASS')
           PY
