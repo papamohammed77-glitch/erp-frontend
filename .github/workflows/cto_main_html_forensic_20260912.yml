@@ -21,13 +21,14 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Full-file structural audit and JavaScript syntax gate
+      - name: Full-file forensic scan and simulated syntax repair
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           from html.parser import HTMLParser
+          from collections import Counter
           import re, hashlib
 
           p=Path('companies/company-1/main.html')
@@ -37,67 +38,71 @@ jobs:
           print('BYTES='+str(len(raw.encode('utf-8'))))
           print('LINES='+str(len(lines)))
           print('SHA256='+hashlib.sha256(raw.encode('utf-8')).hexdigest())
-          print('EOF_LAST_3='+repr(lines[-3:] if len(lines)>=3 else lines))
-          if len(lines) < 17000: raise SystemExit('MAIN_HTML_LINE_COUNT_BELOW_EXPECTED')
-          if lines[-3:] != ['</script>','</body>','</html>']: raise SystemExit('MAIN_HTML_EOF_ORDER_INVALID')
+          print('EOF_LAST_3='+repr(lines[-3:]))
+          if len(lines)<17000: raise SystemExit('MAIN_HTML_LINE_COUNT_BELOW_EXPECTED')
+          if lines[-3:]!=['</script>','</body>','</html>']: raise SystemExit('MAIN_HTML_EOF_ORDER_INVALID')
 
           class P(HTMLParser):
-            def __init__(self):
-              super().__init__(convert_charrefs=False)
-              self.starts=[]; self.ends=[]
-            def handle_starttag(self, tag, attrs): self.starts.append(tag.lower())
-            def handle_startendtag(self, tag, attrs): self.starts.append(tag.lower())
-            def handle_endtag(self, tag): self.ends.append(tag.lower())
-
-          parser=P(); parser.feed(raw); parser.close()
-          from collections import Counter
-          sc=Counter(parser.starts); ec=Counter(parser.ends)
+            def __init__(self): super().__init__(convert_charrefs=False); self.starts=[]; self.ends=[]
+            def handle_starttag(self,tag,attrs): self.starts.append(tag.lower())
+            def handle_startendtag(self,tag,attrs): self.starts.append(tag.lower())
+            def handle_endtag(self,tag): self.ends.append(tag.lower())
+          parser=P(); parser.feed(raw); parser.close(); sc=Counter(parser.starts); ec=Counter(parser.ends)
           for tag in ['html','head','body','style','script']:
             print(tag.upper()+'_OPEN/CLOSE='+str(sc[tag])+'/'+str(ec[tag]))
           for tag in ['html','head','body','script']:
-            if sc[tag] != ec[tag]: raise SystemExit(tag.upper()+'_TAG_BALANCE_INVALID')
+            if sc[tag]!=ec[tag]: raise SystemExit(tag.upper()+'_TAG_BALANCE_INVALID')
 
-          bad=[]
-          for phrase in ['(قيد التطوير)','قيد التطوير','TODO','FIXME','Coming Soon']:
-            if phrase in raw: bad.append(phrase)
+          bad=[x for x in ['(قيد التطوير)','قيد التطوير','TODO','FIXME','Coming Soon'] if x in raw]
           print('INCOMPLETE_MARKERS='+repr(bad))
           if bad: raise SystemExit('INCOMPLETE_MARKERS_FOUND')
 
           scripts=list(re.finditer(r'<script(?P<a>[^>]*)>(?P<b>[\s\S]*?)</script>',raw,re.I))
-          print('SCRIPT_BLOCKS='+str(len(scripts)))
-          js_blocks=[]
-          for n,m in enumerate(scripts,1):
-            attrs=m.group('a') or ''
-            if not re.search(r'\bsrc\s*=',attrs,re.I):
-              mt=re.search(r'\btype\s*=\s*["\']([^"\']+)',attrs,re.I)
-              typ=(mt.group(1) if mt else '').lower()
+          js=[]
+          for m in scripts:
+            if not re.search(r'\bsrc\s*=',m.group('a') or '',re.I):
+              typm=re.search(r'\btype\s*=\s*["\']([^"\']+)',m.group('a') or '',re.I)
+              typ=(typm.group(1) if typm else '').lower()
               if typ in ('','text/javascript','application/javascript','application/ecmascript','text/ecmascript'):
-                start_line=raw[:m.start()].count(chr(10))+1
-                js_blocks.append((n,start_line,m.start(),m.end()))
-          print('INLINE_JS_BLOCKS='+str(len(js_blocks)))
-          if not js_blocks: raise SystemExit('NO_INLINE_JS_FOUND')
+                a=m.start(); b=m.end()-len('</script>')
+                js.append((raw[a:raw.find('>',a)+1].count(chr(10))+raw[:raw.find('>',a)+1].count(chr(10))+1,a,b))
+          print('SCRIPT_BLOCKS='+str(len(scripts)))
+          print('INLINE_JS_BLOCKS='+str(len(js)))
+          if not js: raise SystemExit('NO_INLINE_JS_FOUND')
 
-          positioned=list(' ' if ch!=chr(10) else ch for ch in raw)
-          for _,_,script_start,script_end in js_blocks:
-            open_end=raw.find('>',script_start)+1
-            close_start=script_end-len('</script>')
-            positioned[open_end:close_start]=list(raw[open_end:close_start])
+          # Preserve main.html line mapping and isolate JavaScript bodies.
+          positioned=[' ' if ch!=chr(10) else ch for ch in raw]
+          for _,a,b in js:
+            open_end=raw.find('>',a)+1
+            positioned[open_end:b]=list(raw[open_end:b])
           test=''.join(positioned)
 
-          # This is a local verification copy only. Published main.html is never modified by this workflow.
-          old='onclick="RW_Items._switchSubTab(\\\\\'movement\\\\\'); setTimeout(function(){ RW_Items._renderStockMovementReport('
-          new='onclick="RW_Items._switchSubTab(\\\'movement\\\'); setTimeout(function(){ RW_Items._renderStockMovementReport('
-          exact='onclick="RW_Items._switchSubTab(\\\\\'movement\\\\\');'
-          replacement='onclick="RW_Items._switchSubTab(\\\'movement\\\');'
-          if exact not in test:
-            raise SystemExit('EXPECTED_SYNTAX_DEFECT_PATTERN_NOT_FOUND')
-          test=test.replace(exact,replacement,1)
-          Path('/tmp/main-positioned-owner-fix.js').write_text(test,encoding='utf-8')
-          print('OWNER_FIX_SIMULATION=APPLIED_TO_TEMP_COPY_ONLY')
+          # Find every literal double-backslash + single-quote occurrence in JavaScript.
+          hits=[]
+          for m in re.finditer(r"\\\\'", test):
+            line=test[:m.start()].count(chr(10))+1
+            context=test.splitlines()[line-1].strip()
+            hits.append((line,context))
+          print('DOUBLE_BACKSLASH_SINGLE_QUOTE_COUNT='+str(len(hits)))
+          for line,context in hits:
+            print(f'DOUBLE_BACKSLASH_SINGLE_QUOTE@{line}: {context}')
+
+          # Simulate the surgical correction in memory only; published main.html is untouched.
+          fixed=test.replace("\\\\'", "\\'")
+          Path('/tmp/main-positioned-owner-fix-all.js').write_text(fixed,encoding='utf-8')
+          print('ALL_DOUBLE_BACKSLASH_QUOTE_FIXES_SIMULATED='+str(len(hits)))
+
+          direct=[]
+          for pattern,window_size,label in [(r"\.from\(\s*['\"]stock_branches['\"]",1800,'stock'),(r"\.from\(\s*['\"]inventory_log['\"]",1500,'inventory_log')]:
+            for m in re.finditer(pattern,raw):
+              window=raw[m.start():m.start()+window_size]
+              if re.search(r'\.(?:insert|update|upsert|delete)\s*\(',window): direct.append((label,raw[:m.start()].count(chr(10))+1))
+          print('DIRECT_PHYSICAL_WRITERS='+repr(direct))
+          if direct: raise SystemExit('DIRECT_PHYSICAL_STOCK_WRITER_FOUND')
           PY
 
-          node --check /tmp/main-positioned-owner-fix.js
-          echo 'NODE_CHECK_SIMULATED_OWNER_FIX=PASS'
+          node --check /tmp/main-positioned-owner-fix-all.js
+          echo 'NODE_CHECK_SIMULATED_ALL_QUOTE_FIXES=PASS'
           echo 'FULL_FILE_READ=PASS'
 
       - name: Exact incomplete marker gate
