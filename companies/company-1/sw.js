@@ -1,13 +1,14 @@
-// sw.js – إصدار 3.1 AUTO-UPDATE FINAL
+// sw.js – إصدار 3.2 AUTO-UPDATE FINAL
 // RAWAEA ERP — Production Service Worker
 // Contract:
 // - HTML/navigation/API/runtime code are network-backed and never cached.
 // - The shared update coordinator is injected into controlled HTML.
 // - Static presentation assets use a versioned cache.
 // - Every new SW build activates immediately and reloads in-scope windows.
+// - Manifest is network-backed so PWA metadata cannot remain stale.
 // - No authentication or business-data caching.
 
-var SW_BUILD = 'RAWAEA_SW_P151_AUTO_UPDATE_COORDINATOR';
+var SW_BUILD = 'RAWAEA_SW_P152_HELPER_ALIGNMENT_20260912';
 var STATIC_CACHE = 'rw-static-' + SW_BUILD;
 var STATIC_EXTENSIONS = ['.css', '.woff', '.woff2', '.ttf', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp'];
 var MAX_STATIC_ITEMS = 200;
@@ -65,6 +66,11 @@ function isAPIRequest(url) {
 function isRuntimeRequest(url) {
     var pathname = url.pathname.toLowerCase();
     return pathname.indexOf('.js') !== -1 || pathname.indexOf('.mjs') !== -1 || pathname.indexOf('.ts') !== -1;
+}
+
+function isNeverCacheRequest(url) {
+    var pathname = url.pathname.toLowerCase();
+    return pathname.endsWith('/manifest.json') || pathname.endsWith('/sw.js');
 }
 
 function isStaticAsset(pathname) {
@@ -126,7 +132,7 @@ self.addEventListener('fetch', function(event) {
 
     var url = new URL(request.url);
 
-    if (isAPIRequest(url) || isRuntimeRequest(url)) {
+    if (isNeverCacheRequest(url) || isAPIRequest(url) || isRuntimeRequest(url)) {
         event.respondWith(fetch(request));
         return;
     }
