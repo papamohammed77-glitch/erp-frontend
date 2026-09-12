@@ -21,6 +21,25 @@ jobs:
       - name: Validate manifest JSON
         run: |
           node -e "JSON.parse(require('fs').readFileSync('companies/company-1/manifest.json','utf8')); console.log('manifest.json=PASS')"
+      - name: Validate Service Worker cache contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          text=Path('companies/company-1/sw.js').read_text(encoding='utf-8')
+          static_marker="if (isStaticAsset(url.pathname)) {"
+          fallback="event.respondWith(fetch(request));"
+          if static_marker not in text:
+              raise SystemExit('STATIC_ASSET_GATE_MISSING')
+          static_pos=text.index(static_marker)
+          if fallback not in text[static_pos:]:
+              raise SystemExit('STATIC_FALLBACK_MISSING')
+          tail=text[text.index('    event.respondWith(', static_pos + len(static_marker)):]
+          if 'caches.open(STATIC_CACHE)' in tail:
+              raise SystemExit('NON_STATIC_CACHE_PATH_DETECTED')
+          if 'putStatic(cache, request, networkResponse)' in tail:
+              raise SystemExit('NON_STATIC_PUTSTATIC_DETECTED')
+          print('SW_CACHE_CONTRACT=PASS')
+          PY
       - name: Validate published main structure
         run: |
           test -s companies/company-1/main.html
