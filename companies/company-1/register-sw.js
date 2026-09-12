@@ -24,6 +24,7 @@ if (location.pathname.indexOf('/vouchers.html') === -1 && 'serviceWorker' in nav
     navigator.serviceWorker.addEventListener('controllerchange', function() {
         if (_rwReloadTriggered) return;
         _rwReloadTriggered = true;
+        // The new worker is responsible for activation; reload automatically.
         window._rwPendingReload = false;
         window.location.reload();
     });
