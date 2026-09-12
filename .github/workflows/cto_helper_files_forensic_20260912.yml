@@ -27,13 +27,13 @@ jobs:
           from pathlib import Path
           text=Path('companies/company-1/sw.js').read_text(encoding='utf-8')
           static_marker="if (isStaticAsset(url.pathname)) {"
-          fallback="event.respondWith(fetch(request));"
+          fallback="    event.respondWith(fetch(request));"
           if static_marker not in text:
               raise SystemExit('STATIC_ASSET_GATE_MISSING')
-          static_pos=text.index(static_marker)
-          if fallback not in text[static_pos:]:
+          if fallback not in text:
               raise SystemExit('STATIC_FALLBACK_MISSING')
-          tail=text[text.index('    event.respondWith(', static_pos + len(static_marker)):]
+          fallback_pos=text.rfind(fallback)
+          tail=text[fallback_pos:]
           if 'caches.open(STATIC_CACHE)' in tail:
               raise SystemExit('NON_STATIC_CACHE_PATH_DETECTED')
           if 'putStatic(cache, request, networkResponse)' in tail:
