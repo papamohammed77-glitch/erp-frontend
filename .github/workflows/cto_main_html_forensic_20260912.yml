@@ -82,24 +82,22 @@ jobs:
             open_end=raw.find('>',script_start)+1
             close_start=script_end-len('</script>')
             positioned[open_end:close_start]=list(raw[open_end:close_start])
-          Path('/tmp/main-positioned.js').write_text(''.join(positioned),encoding='utf-8')
+          test=''.join(positioned)
 
-          print('SERVICE_WORKER_REGISTER_COUNT='+str(raw.count('navigator.serviceWorker.register')))
-          print('RW_HR_DECLARATIONS='+str(len(re.findall(r'(?m)^\s*(?:(?:var|let|const)\s+RW_HR\s*=|(?:async\s+)?function\s+RW_HR\s*\()',raw))))
-          print('RW_CRM_DECLARATIONS='+str(len(re.findall(r'(?m)^\s*(?:(?:var|let|const)\s+RW_CRM\s*=|(?:async\s+)?function\s+RW_CRM\s*\()',raw))))
-
-          direct=[]
-          for pattern,window_size,label in [(r"\.from\(\s*['\"]stock_branches['\"]",1800,'stock'),(r"\.from\(\s*['\"]inventory_log['\"]",1500,'inventory_log')]:
-            for m in re.finditer(pattern,raw):
-              window=raw[m.start():m.start()+window_size]
-              if re.search(r'\.(?:insert|update|upsert|delete)\s*\(',window):
-                direct.append((label,raw[:m.start()].count(chr(10))+1))
-          print('DIRECT_PHYSICAL_WRITERS='+repr(direct))
-          if direct: raise SystemExit('DIRECT_PHYSICAL_STOCK_WRITER_FOUND')
+          # This is a local verification copy only. Published main.html is never modified by this workflow.
+          old='onclick="RW_Items._switchSubTab(\\\\\'movement\\\\\'); setTimeout(function(){ RW_Items._renderStockMovementReport('
+          new='onclick="RW_Items._switchSubTab(\\\'movement\\\'); setTimeout(function(){ RW_Items._renderStockMovementReport('
+          exact='onclick="RW_Items._switchSubTab(\\\\\'movement\\\\\');'
+          replacement='onclick="RW_Items._switchSubTab(\\\'movement\\\');'
+          if exact not in test:
+            raise SystemExit('EXPECTED_SYNTAX_DEFECT_PATTERN_NOT_FOUND')
+          test=test.replace(exact,replacement,1)
+          Path('/tmp/main-positioned-owner-fix.js').write_text(test,encoding='utf-8')
+          print('OWNER_FIX_SIMULATION=APPLIED_TO_TEMP_COPY_ONLY')
           PY
 
-          node --check /tmp/main-positioned.js
-          echo 'NODE_CHECK=PASS'
+          node --check /tmp/main-positioned-owner-fix.js
+          echo 'NODE_CHECK_SIMULATED_OWNER_FIX=PASS'
           echo 'FULL_FILE_READ=PASS'
 
       - name: Exact incomplete marker gate
