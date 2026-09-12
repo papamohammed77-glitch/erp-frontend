@@ -1,0 +1,29 @@
+name: CTO Helper Files Forensic 20260912
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  helper-forensic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate JavaScript syntax
+        run: |
+          node --check companies/company-1/core.js
+          node --check companies/company-1/sw.js
+          node --check companies/company-1/register-sw.js
+      - name: Validate manifest JSON
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('companies/company-1/manifest.json','utf8')); console.log('manifest.json=PASS')"
+      - name: Validate published main structure
+        run: |
+          test -s companies/company-1/main.html
+          grep -q '<!DOCTYPE html>' companies/company-1/main.html
+          tail -n 5 companies/company-1/main.html | grep -q '</html>'
+          ! grep -q 'قيد التطوير\|(قيد التطوير)' companies/company-1/main.html
