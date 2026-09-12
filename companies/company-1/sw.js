@@ -8,7 +8,7 @@
 // - Manifest is network-backed so PWA metadata cannot remain stale.
 // - No authentication or business-data caching.
 
-var SW_BUILD = 'RAWAEA_SW_P152_HELPER_ALIGNMENT_20260912';
+var SW_BUILD = 'RAWAEA_SW_P153_HELPER_CACHE_HARDENING_20260912';
 var STATIC_CACHE = 'rw-static-' + SW_BUILD;
 var STATIC_EXTENSIONS = ['.css', '.woff', '.woff2', '.ttf', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp'];
 var MAX_STATIC_ITEMS = 200;
@@ -158,15 +158,5 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
-    event.respondWith(
-        fetch(request).then(function(networkResponse) {
-            return caches.open(STATIC_CACHE).then(function(cache) {
-                return putStatic(cache, request, networkResponse).then(function() {
-                    return networkResponse;
-                });
-            });
-        }).catch(function() {
-            return caches.match(request);
-        })
-    );
+    event.respondWith(fetch(request));
 });
