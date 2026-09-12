@@ -31,15 +31,17 @@ jobs:
           p=Path('companies/company-1/main.html')
           raw=p.read_text(encoding='utf-8')
           lines=raw.splitlines()
+          tag=lambda name,close=False: len(re.findall(r'</?'+name+r'\\b[^>]*>',raw,re.I))
           print('FILE=companies/company-1/main.html')
           print('BYTES='+str(len(raw.encode('utf-8'))))
           print('LINES='+str(len(lines)))
           print('SHA256='+hashlib.sha256(raw.encode('utf-8')).hexdigest())
           print('EOF_LAST_LINE='+repr(lines[-1] if lines else ''))
-          print('HTML_OPEN/CLOSE='+str(raw.lower().count('<html'))+'/'+str(raw.lower().count('</html>')))
-          print('HEAD_OPEN/CLOSE='+str(raw.lower().count('<head'))+'/'+str(raw.lower().count('</head>')))
-          print('BODY_OPEN/CLOSE='+str(raw.lower().count('<body'))+'/'+str(raw.lower().count('</body>')))
-          print('STYLE_OPEN/CLOSE='+str(raw.lower().count('<style'))+'/'+str(raw.lower().count('</style>')))
+          for name in ['html','head','body','style','script']:
+            opens=len(re.findall(r'<'+name+r'(?=\\s|>)',raw,re.I))
+            closes=len(re.findall(r'</'+name+r'>',raw,re.I))
+            print(name.upper()+'_OPEN/CLOSE='+str(opens)+'/'+str(closes))
+            if opens!=closes: raise SystemExit(name.upper()+'_TAG_BALANCE_INVALID')
           scripts=list(re.finditer(r'<script(?P<a>[^>]*)>(?P<b>[\\s\\S]*?)</script>',raw,re.I))
           print('SCRIPT_BLOCKS='+str(len(scripts)))
           inline=[]
@@ -55,27 +57,27 @@ jobs:
           for phrase in ['(قيد التطوير)','قيد التطوير','TODO','FIXME','Coming Soon']:
             if phrase in raw: bad.append(phrase)
           print('INCOMPLETE_MARKERS='+repr(bad))
+          if bad: raise SystemExit('INCOMPLETE_MARKERS_FOUND')
           print('SERVICE_WORKER_REGISTER_COUNT='+str(len(re.findall(r'navigator\\.serviceWorker\\.register',raw))))
-          print('RW_HR_DECLARATIONS='+str(len(re.findall(r'\\b(?:var|let|const)\\s+RW_HR\\s*=|function\\s+RW_HR\\s*\\(',raw))))
-          print('RW_CRM_DECLARATIONS='+str(len(re.findall(r'\\b(?:var|let|const)\\s+RW_CRM\\s*=|function\\s+RW_CRM\\s*\\(',raw))))
+          print('RW_HR_DECLARATIONS='+str(len(re.findall(r'(?m)\\b(?:var|let|const)\\s+RW_HR\\s*=|(?m)^\\s*(?:async\\s+)?function\\s+RW_HR\\s*\\(',raw))))
+          print('RW_CRM_DECLARATIONS='+str(len(re.findall(r'(?m)\\b(?:var|let|const)\\s+RW_CRM\\s*=|(?m)^\\s*(?:async\\s+)?function\\s+RW_CRM\\s*\\(',raw))))
           if not inline: raise SystemExit('NO_INLINE_SCRIPT_FOUND')
-          Path('/tmp/main-inline.js').write_text(inline[-1][2],encoding='utf-8')
-          # Exact direct physical-stock writes in the published file.
+          Path('/tmp/main-inline-all.js').write_text('\\n\\n'.join(x[2] for x in inline),encoding='utf-8')
           stock=[m.start() for m in re.finditer(r"\\.from\\(\\s*['\"]stock_branches['\"]",raw)]
           inv=[m.start() for m in re.finditer(r"\\.from\\(\\s*['\"]inventory_log['\"]",raw)]
           direct_stock=[]
           for pos in stock:
-            window=raw[pos:pos+1600]
+            window=raw[pos:pos+1800]
             if re.search(r'\\.(?:insert|update|upsert|delete)\\s*\\(',window): direct_stock.append(raw[:pos].count('\\n')+1)
           direct_inv=[]
           for pos in inv:
-            window=raw[pos:pos+1200]
+            window=raw[pos:pos+1500]
             if re.search(r'\\.(?:insert|update|upsert|delete)\\s*\\(',window): direct_inv.append(raw[:pos].count('\\n')+1)
           print('DIRECT_STOCK_WRITER_LINES='+repr(direct_stock))
           print('DIRECT_INVENTORY_LOG_WRITER_LINES='+repr(direct_inv))
           if direct_stock or direct_inv: raise SystemExit('DIRECT_PHYSICAL_STOCK_WRITER_FOUND')
           PY
-          node --check /tmp/main-inline.js
+          node --check /tmp/main-inline-all.js
           echo 'NODE_CHECK=PASS'
           echo 'FULL_FILE_READ=PASS'
 
@@ -99,15 +101,9 @@ jobs:
           import hashlib
           p=Path('companies/company-1/main.html')
           raw=p.read_text(encoding='utf-8')
-          out=Path('main-html-forensic-summary.txt')
-          out.write_text(
-              'RAWAEA ERP — published main.html forensic validation\\n'
-              +'path=companies/company-1/main.html\\n'
-              +f'bytes={len(raw.encode(\"utf-8\"))}\\n'
-              +f'lines={len(raw.splitlines())}\\n'
-              +f'sha256={hashlib.sha256(raw.encode(\"utf-8\")).hexdigest()}\\n'
-              +'source_of_truth=erp-frontend/companies/company-1/main.html\\n',
-              encoding='utf-8')
-          print(out.read_text())
+          print('sha256='+hashlib.sha256(raw.encode('utf-8')).hexdigest())
+          print('lines='+str(len(raw.splitlines())))
+          print('bytes='+str(len(raw.encode('utf-8'))))
+          print('source_of_truth=erp-frontend/companies/company-1/main.html')
           PY
           git diff --check
