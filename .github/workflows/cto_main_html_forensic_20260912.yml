@@ -21,7 +21,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Full-file forensic scan and simulated syntax repair
+      - name: Full-file forensic scan and simulated onclick syntax repair
         shell: bash
         run: |
           set -euo pipefail
@@ -65,32 +65,30 @@ jobs:
               typ=(typm.group(1) if typm else '').lower()
               if typ in ('','text/javascript','application/javascript','application/ecmascript','text/ecmascript'):
                 a=m.start(); b=m.end()-len('</script>')
-                js.append((raw[a:raw.find('>',a)+1].count(chr(10))+raw[:raw.find('>',a)+1].count(chr(10))+1,a,b))
+                js.append((a,b))
           print('SCRIPT_BLOCKS='+str(len(scripts)))
           print('INLINE_JS_BLOCKS='+str(len(js)))
           if not js: raise SystemExit('NO_INLINE_JS_FOUND')
 
-          # Preserve main.html line mapping and isolate JavaScript bodies.
           positioned=[' ' if ch!=chr(10) else ch for ch in raw]
-          for _,a,b in js:
+          for a,b in js:
             open_end=raw.find('>',a)+1
             positioned[open_end:b]=list(raw[open_end:b])
           test=''.join(positioned)
 
-          # Find every literal double-backslash + single-quote occurrence in JavaScript.
-          hits=[]
-          for m in re.finditer(r"\\\\'", test):
-            line=test[:m.start()].count(chr(10))+1
-            context=test.splitlines()[line-1].strip()
-            hits.append((line,context))
-          print('DOUBLE_BACKSLASH_SINGLE_QUOTE_COUNT='+str(len(hits)))
-          for line,context in hits:
-            print(f'DOUBLE_BACKSLASH_SINGLE_QUOTE@{line}: {context}')
-
-          # Simulate the surgical correction in memory only; published main.html is untouched.
-          fixed=test.replace("\\\\'", "\\'")
-          Path('/tmp/main-positioned-owner-fix-all.js').write_text(fixed,encoding='utf-8')
-          print('ALL_DOUBLE_BACKSLASH_QUOTE_FIXES_SIMULATED='+str(len(hits)))
+          # Only inside source lines that actually construct an onclick attribute,
+          # convert invalid double-backslash quote escapes to a single-backslash JS escape.
+          fixed_lines=[]; hit_lines=[]
+          for n,line in enumerate(test.splitlines(True),1):
+            if 'onclick=' in line and re.search(r"\\\\'",line):
+              new_line=line.replace("\\\\'", "\\'")
+              if new_line!=line: hit_lines.append(n)
+              fixed_lines.append(new_line)
+            else:
+              fixed_lines.append(line)
+          fixed=''.join(fixed_lines)
+          print('ONCLICK_ESCAPING_FIX_LINES='+repr(hit_lines))
+          Path('/tmp/main-positioned-onclick-fix.js').write_text(fixed,encoding='utf-8')
 
           direct=[]
           for pattern,window_size,label in [(r"\.from\(\s*['\"]stock_branches['\"]",1800,'stock'),(r"\.from\(\s*['\"]inventory_log['\"]",1500,'inventory_log')]:
@@ -101,8 +99,8 @@ jobs:
           if direct: raise SystemExit('DIRECT_PHYSICAL_STOCK_WRITER_FOUND')
           PY
 
-          node --check /tmp/main-positioned-owner-fix-all.js
-          echo 'NODE_CHECK_SIMULATED_ALL_QUOTE_FIXES=PASS'
+          node --check /tmp/main-positioned-onclick-fix.js
+          echo 'NODE_CHECK_SIMULATED_ONCLICK_FIXES=PASS'
           echo 'FULL_FILE_READ=PASS'
 
       - name: Exact incomplete marker gate
