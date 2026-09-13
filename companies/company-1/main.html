@@ -5029,18 +5029,24 @@ mainBranchCode = mainBranchRes.data.branch_code;
                 break;
             }
         }
-        var orderHeader = {
-            operation_id: crypto.randomUUID(),
-            custId: cust,
-            custName: customer ? customer.name : '',
-            area: customer ? customer.area : '',
-            total: total,
-            deliveryFees: del,
-            status: 'Invoiced',
-            paymentType: 'نقدي',
-            taxAmount: taxAmt,
-            taxRate: taxRate
-        };
+var operationId = window.__rwPosOperationId || null;
+if (!operationId) {
+    operationId = crypto.randomUUID();
+    window.__rwPosOperationId = operationId;
+}
+
+var orderHeader = {
+    operation_id: operationId,
+    custId: cust,
+    custName: customer ? customer.name : '',
+    area: customer ? customer.area : '',
+    total: total,
+    deliveryFees: del,
+    status: 'Invoiced',
+    paymentType: 'نقدي',
+    taxAmount: taxAmt,
+    taxRate: taxRate
+};
         var itemsList = cart.map(function(it) {
             return {
                 code: it.code,
@@ -5086,6 +5092,7 @@ mainBranchCode = mainBranchRes.data.branch_code;
             if (json.success) {
                 showToast('تم حفظ الفاتورة بنجاح: ' + json.orderID, 'success');
                 cart = [];
+				window.__rwPosOperationId = null;
                 renderCart();
                 var posCust = byId('pos-customer');
                 if (posCust) posCust.value = '';
@@ -6002,18 +6009,24 @@ async function _saveOrder() {
             }
         }
 
-        var orderHeader = {
-            operation_id: crypto.randomUUID(),
-            customer_code: selectedCustomer.customer_code,
-            custName: selectedCustomer.name,
-            area: selectedCustomer.area || '',
-            total: total,
-            deliveryFees: deliveryFee,
-            status: 'Confirmed',
-            paymentType: selectedCustomer.payment_type || 'أجل',
-            taxAmount: taxAmt,
-            taxRate: taxRate
-        };
+var operationId = window.__rwTeleSalesOperationId || null;
+if (!operationId) {
+    operationId = crypto.randomUUID();
+    window.__rwTeleSalesOperationId = operationId;
+}
+
+var orderHeader = {
+    operation_id: operationId,
+    customer_code: selectedCustomer.customer_code,
+    custName: selectedCustomer.name,
+    area: selectedCustomer.area || '',
+    total: total,
+    deliveryFees: deliveryFee,
+    status: 'Confirmed',
+    paymentType: selectedCustomer.payment_type || 'أجل',
+    taxAmount: taxAmt,
+    taxRate: taxRate
+};
 
         var ses = await supabase.auth.getSession();
         var token = ses.data.session
@@ -6060,6 +6073,7 @@ async function _saveOrder() {
         );
 
         cart = [];
+		window.__rwTeleSalesOperationId = null;
         selectedCustomer = null;
 
         byId('ts-customer-search').value = '';
