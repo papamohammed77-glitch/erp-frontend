@@ -36,37 +36,73 @@ jobs:
               typ=(tm.group(1) if tm else '').lower()
               if typ in ('','text/javascript','application/javascript','application/ecmascript','text/ecmascript'):
                 blocks+=1
-                a=m.start(); b=m.end()-len('</script>'); oe=raw.find('>',a)+1
+                b=m.end()-len('</script>'); oe=raw.find('>',m.start())+1
                 positioned[oe:b]=list(raw[oe:b])
           print('INLINE_JS_BLOCKS='+str(blocks))
           Path('/tmp/main-positioned.js').write_text(''.join(positioned),encoding='utf-8')
-          Path('/tmp/main.html').write_text(raw,encoding='utf-8')
           PY
           node --check /tmp/main-positioned.js 2>&1 | tee /tmp/node-check.txt
 
-      - name: Parser-bisect around reported area
+      - name: Lexical root-cause scan
         if: failure()
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import subprocess
-          lines=Path('/tmp/main-positioned.js').read_text(encoding='utf-8').splitlines(True)
-          print('TOTAL_LINES',len(lines))
-          target=5592
-          lo=max(1,target-500); hi=min(len(lines),target+50)
-          for n in range(target, lo-1, -1):
-              p=Path('/tmp/probe.js')
-              altered=list(lines)
-              altered[n-1]=' ' * max(0,len(altered[n-1])-1)+'\n'
-              p.write_text(''.join(altered),encoding='utf-8')
-              r=subprocess.run(['node','--check',str(p)],capture_output=True,text=True)
-              if r.returncode==0:
-                  print('FIRST_LINE_WHERE_REMOVAL_RESTORES_PARSE',n)
-                  print('REMOVED_LINE',lines[n-1].rstrip('\n'))
-                  break
-          else:
-              print('NO_SINGLE_LINE_REMOVAL_IN_WINDOW_RESTORED_PARSE')
-          print('ORIGINAL_NODE_ERROR')
+          import re
+          s=Path('/tmp/main-positioned.js').read_text(encoding='utf-8')
+          lines=s.splitlines(True)
+          state='code'; start=None; esc=False; cls=False
+          i=0; line=1; findings=[]
+          regex_prev=set('=(:,[!&|?;{}')
+          while i<len(s):
+              c=s[i]; n=s[i+1] if i+1<len(s) else ''
+              if c=='\n': line+=1
+              if state=='code':
+                  if c=='/' and n=='/': state='line_comment'; i+=1
+                  elif c=='/' and n=='*': state='block_comment'; start=(line,i); i+=1
+                  elif c=="'": state='single'; start=(line,i); esc=False
+                  elif c=='"': state='double'; start=(line,i); esc=False
+                  elif c=='`': state='template'; start=(line,i); esc=False
+                  elif c=='/':
+                      j=i-1
+                      while j>=0 and s[j].isspace(): j-=1
+                      p=s[j] if j>=0 else ''
+                      k=j
+                      while k>=0 and (s[k].isalnum() or s[k] in '_$'): k-=1
+                      word=s[k+1:j+1]
+                      if p in regex_prev or word in ('return','throw','case','delete','void','typeof','instanceof','in','of','yield','await'):
+                          state='regex'; start=(line,i); esc=False; cls=False
+              elif state=='line_comment':
+                  if c=='\n': state='code'
+              elif state=='block_comment':
+                  if c=='*' and n=='/': state='code'; i+=1; start=None
+              elif state in ('single','double','template'):
+                  if esc: esc=False
+                  elif c=='\\': esc=True
+                  elif (state=='single' and c=="'") or (state=='double' and c=='"') or (state=='template' and c=='`'):
+                      state='code'; start=None
+                  elif c=='\n' and state!='template':
+                      findings.append(('unterminated_string',state,start,line))
+                      state='code'; start=None
+              elif state=='regex':
+                  if esc: esc=False
+                  elif c=='\\': esc=True
+                  elif cls:
+                      if c==']': cls=False
+                  elif c=='[': cls=True
+                  elif c=='/': state='code'; start=None
+                  elif c=='\n':
+                      findings.append(('regex_crossed_newline','regex',start,line))
+                      state='code'; start=None
+              i+=1
+          if state!='code': findings.append(('eof_open_state',state,start,line))
+          print('FINDINGS')
+          for f in findings[:50]: print(f)
+          for target in [5592] + ([findings[0][3]] if findings and isinstance(findings[0][3],int) else []):
+              lo=max(1,target-15); hi=min(len(lines),target+6)
+              print(f'\\n---SOURCE {lo}-{hi}---')
+              for n in range(lo,hi+1): print(f'{n}: {lines[n-1].rstrip()}')
+          print('\\nNODE_ERROR')
           print(Path('/tmp/node-check.txt').read_text(encoding='utf-8'))
           PY
