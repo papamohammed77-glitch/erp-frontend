@@ -1139,7 +1139,7 @@ var RW_Data = {
 const RW_Navigation = {
     menuTree: [
     { view: 'dashboard', icon: 'fa-chart-pie', label: 'لوحة التحكم' },
-    { icon: 'fa-chart-line', label: 'إدارة المبيعات', submenu: [{ view: 'telesales', label: 'التلي سيلز' }, { view: 'customers', label: 'العملاء' }, { view: 'online-store', label: 'المتجر الإلكتروني' }, { view: 'pos', label: 'نقطة البيع' }, { view: 'orders', label: 'أوردرات المبيعات' }, { view: 'runsheets', label: 'الرانشيتات' }] },
+    { icon: 'fa-chart-line', label: 'إدارة المبيعات', submenu: [{ view: 'telesales', label: 'التلي سيلز' }, { view: 'customers', label: 'العملاء' }, { view: 'online-store', label: 'المتجر الإلكتروني' }, { view: 'pos', label: 'نقطة البيع' }, { view: 'orders', label: 'أوردرات المبيعات' }, { view: 'runsheets', label: 'الرانشيتات' }, { view: 'sales-returns', label: 'إدارة مرتجعات المبيعات' }] },
     { icon: 'fa-truck', label: 'إدارة المشتريات', submenu: [{ view: 'suppliers', label: 'الموردين' }, { view: 'purchase-pos', label: 'نقطة شراء' }, { view: 'purchases', label: 'أوردرات الشراء' }] },
     { icon: 'fa-warehouse', label: 'إدارة المخازن والمخزون', submenu: [{ view: 'items', label: 'الأصناف' }, { view: 'branches', label: 'المخازن والفروع' }, { label: 'العمليات المخزنية', icon: 'fa-timeline', submenu: [{ view: 'receiving', label: 'الاستلام' }, { view: 'picking', label: 'التحضير' }, { view: 'loading', label: 'التحميل' }, { view: 'delivery', label: 'التوصيل' }, { view: 'return', label: 'المرتجعات' }, { view: 'unloading', label: 'التفريغ' }] }, { label: 'الأذونات المخزنية', icon: 'fa-file-signature', submenu: [{ view: 'transfer', label: 'تحويل مخزني' }, { view: 'direct-sale', label: 'صرف سيارة بيع مباشر' }, { view: 'direct-return', label: 'استلام مرتجع سيارة' }, { view: 'supplier-return', label: 'مرتجع لمورد' }, { view: 'vouchers', label: 'عرض الأذونات' }] }, { label: 'الجرد', icon: 'fa-clipboard-check', submenu: [{ view: 'vehicle-count', label: 'جرد سيارة' }, { view: 'branch-count', label: 'جرد فرع' }, { view: 'general-count', label: 'جرد عام' }] }] },
     { icon: 'fa-coins', label: 'إدارة الحسابات والمالية', submenu: [{ action: 'showFinanceTab', arg: 'treasury', label: 'الخزائن والبنوك', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'accounts', label: 'دليل الحسابات', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'journal', label: 'قيود يومية', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'receipts', label: 'سندات القبض', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'payments', label: 'سندات الصرف', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'transfers', label: 'التحويلات', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'reports', label: 'التقارير المالية', perm: ['finance', 'finance_manager'] }, { view: 'settlement', label: 'إغلاق اليومية' }] },
@@ -17092,6 +17092,7 @@ var RW_Views = {
             'loading': 'loading',
             'delivery': 'delivery',
             'return': 'return',
+			'sales-returns': 'return',
             'unloading': 'unloading',
             'vouchers': 'vouchers',
             'transfer': 'transfer',
@@ -17151,6 +17152,7 @@ var RW_Views = {
             'loading':'التحميل',
             'delivery':'التوصيل',
             'return':'المرتجعات',
+			'sales-returns':'إدارة مرتجعات المبيعات',
             'unloading':'التفريغ',
             'vouchers':'الأذونات المخزنية',
             'transfer':'تحويل مخزني',
@@ -17192,6 +17194,7 @@ var RW_Views = {
         if (view === 'loading') { RW_Warehouse.loadLoading(); return; }
         if (view === 'delivery') { RW_Warehouse.loadDelivery(); return; }
         if (view === 'return') { RW_Warehouse.loadReturn(); return; }
+		if (view === 'sales-returns') { RW_SalesReturnsManagement.render(); return; }
         if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
         if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
         if (view === 'vouchers') { RW_Warehouse.loadVouchers(); return; }
@@ -17612,6 +17615,317 @@ var RW_CRM = (function() {
     return {render:render,_openFollowupModal:_openFollowupModal};
 })();
 window.RW_CRM = RW_CRM;
+	// ============================================================
+// RW_SalesReturnsManagement – Parent Management for Sales Returns
+// ============================================================
+var RW_SalesReturnsManagement = (function() {
+    'use strict';
+
+    var state = {
+        rows: [],
+        assignees: [],
+        page: 0,
+        limit: 50,
+        timer: null
+    };
+
+    function _esc(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function _companyId() {
+        if (typeof _rwCompanyId === 'function') return _rwCompanyId();
+        if (typeof RW_STATE !== 'undefined' && RW_STATE) {
+            if (RW_STATE.app && RW_STATE.app.companyId) return RW_STATE.app.companyId;
+            if (RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id) return RW_STATE.app.company.id;
+            if (RW_STATE.user && RW_STATE.user.companyId) return RW_STATE.user.companyId;
+        }
+        return null;
+    }
+
+    function _today() {
+        return new Date().toISOString().slice(0, 10);
+    }
+
+    async function _token() {
+        var s = await supabase.auth.getSession();
+        if (!s || s.error || !s.data || !s.data.session || !s.data.session.access_token) {
+            throw new Error('انتهت الجلسة. يرجى إعادة تسجيل الدخول.');
+        }
+        return s.data.session.access_token;
+    }
+
+    async function _api(action, payload) {
+        var token = await _token();
+        var body = payload || {};
+        body.action = action;
+        var res = await fetch(RW_SUPABASE_URL + '/functions/v1/sales-return-management', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify(body)
+        });
+        var json = await res.json().catch(function() { return {}; });
+        if (!res.ok || !json.success) {
+            throw new Error(json.msg || json.error || 'فشل تنفيذ العملية');
+        }
+        return json;
+    }
+
+    function _filters() {
+        return {
+            from_date: byId('srm-from') ? byId('srm-from').value || null : null,
+            to_date: byId('srm-to') ? byId('srm-to').value || null : null,
+            review_status: byId('srm-status') ? byId('srm-status').value || null : null,
+            source_type: byId('srm-source') ? byId('srm-source').value || null : null,
+            query: byId('srm-query') ? byId('srm-query').value.trim() || null : null
+        };
+    }
+
+    async function _loadAssignees() {
+        var res = await _api('assignees');
+        state.assignees = res.rows || [];
+    }
+
+    async function _load() {
+        var f = _filters();
+        var list = await _api('list', {
+            from_date: f.from_date,
+            to_date: f.to_date,
+            review_status: f.review_status,
+            source_type: f.source_type,
+            query: f.query,
+            limit: state.limit,
+            offset: state.page * state.limit
+        });
+        var summary = await _api('summary', {
+            from_date: f.from_date,
+            to_date: f.to_date
+        });
+        state.rows = list.rows || [];
+        _renderKpi(summary.kpi || {});
+        _renderTable();
+    }
+
+    function _renderKpi(k) {
+        var host = byId('srm-kpis');
+        if (!host) return;
+        var cards = [
+            ['إجمالي المرتجعات', k.total || 0, 'text-indigo-600'],
+            ['مفتوحة', k.open || 0, 'text-amber-600'],
+            ['قيد المراجعة', k.reviewing || 0, 'text-blue-600'],
+            ['تمت التسوية', k.resolved || 0, 'text-emerald-600'],
+            ['متنازع عليها', k.disputed || 0, 'text-red-600'],
+            ['قيمة المرتجعات', Number(k.total_value || 0).toLocaleString('ar-EG') + ' EGP', 'text-slate-800']
+        ];
+        var html = '';
+        for (var i = 0; i < cards.length; i++) {
+            html += '<div class="bg-white border rounded-2xl p-5 shadow-sm">' +
+                '<div class="text-xs text-gray-500">' + _esc(cards[i][0]) + '</div>' +
+                '<div class="text-2xl font-black mt-2 ' + cards[i][2] + '">' + _esc(cards[i][1]) + '</div>' +
+            '</div>';
+        }
+        safeHTML(host, html);
+    }
+
+    function _statusLabel(s) {
+        var map = {
+            open: 'مفتوح',
+            reviewing: 'قيد المراجعة',
+            resolved: 'تمت التسوية',
+            disputed: 'متنازع عليها',
+            cancelled: 'ملغاة'
+        };
+        return map[s] || s || 'مفتوح';
+    }
+
+    function _statusClass(s) {
+        if (s === 'resolved') return 'bg-emerald-100 text-emerald-700';
+        if (s === 'reviewing') return 'bg-blue-100 text-blue-700';
+        if (s === 'disputed') return 'bg-red-100 text-red-700';
+        if (s === 'cancelled') return 'bg-slate-200 text-slate-700';
+        return 'bg-amber-100 text-amber-700';
+    }
+
+    function _renderTable() {
+        var host = byId('srm-table');
+        if (!host) return;
+        if (!state.rows.length) {
+            safeHTML(host, '<tr><td colspan="10" class="p-10 text-center text-gray-400">لا توجد مرتجعات مستوفية للفلاتر الحالية.</td></tr>');
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < state.rows.length; i++) {
+            var r = state.rows[i];
+            var source = r.source_type === 'RUNSHEET' ? 'رانشيت' : (r.source_type === 'ORDER' ? 'أوردر' : 'غير محدد');
+            html += '<tr class="border-t hover:bg-slate-50 cursor-pointer" data-srm-id="' + _esc(r.credit_note_id) + '">' +
+                '<td class="p-3 font-black">' + _esc(r.cn_code) + '</td>' +
+                '<td class="p-3">' + _esc(r.cn_date) + '</td>' +
+                '<td class="p-3">' + _esc(source) + '</td>' +
+                '<td class="p-3">' + _esc(r.order_code || r.runsheet_code || '-') + '</td>' +
+                '<td class="p-3">' + _esc(r.customer_name || '-') + '</td>' +
+                '<td class="p-3 text-center font-bold">' + _esc(r.returned_qty || 0) + '</td>' +
+                '<td class="p-3 text-left font-black">' + Number(r.returned_value || r.total_amount || 0).toLocaleString('ar-EG') + '</td>' +
+                '<td class="p-3 text-center">' + Number(r.physical_return_qty || 0).toLocaleString('ar-EG') + '</td>' +
+                '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs font-black ' + _statusClass(r.review_status) + '">' + _esc(_statusLabel(r.review_status)) + '</span></td>' +
+                '<td class="p-3">' + _esc(r.assigned_to_name || r.assigned_to_email || '-') + '</td>' +
+            '</tr>';
+        }
+        safeHTML(host, html);
+        var rows = host.querySelectorAll('[data-srm-id]');
+        for (var j = 0; j < rows.length; j++) {
+            rows[j].addEventListener('click', function() {
+                _openDetail(this.getAttribute('data-srm-id'));
+            });
+        }
+    }
+
+    function _assigneeOptions(selected) {
+        var html = '<option value="">بدون تكليف</option>';
+        for (var i = 0; i < state.assignees.length; i++) {
+            var a = state.assignees[i];
+            html += '<option value="' + _esc(a.id) + '"' + (selected === a.id ? ' selected' : '') + '>' + _esc(a.name || a.email) + ' — ' + _esc(a.role || '') + '</option>';
+        }
+        return html;
+    }
+
+    async function _openDetail(id) {
+        showLoader('جاري تحميل تفاصيل المرتجع...');
+        try {
+            var res = await _api('detail', { credit_note_id: id });
+            hideLoader();
+            var h = res.header || {};
+            var lines = res.lines || [];
+            var events = res.events || [];
+            var lineHtml = '<div class="overflow-auto max-h-[35vh]"><table class="w-full text-sm border"><thead class="bg-slate-100"><tr>' +
+                '<th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border">الوحدة</th><th class="p-2 border">الأصلي</th><th class="p-2 border">مرتجع</th><th class="p-2 border">الحالة</th></tr></thead><tbody>';
+            if (!lines.length) lineHtml += '<tr><td colspan="6" class="p-6 text-center text-gray-400">لا توجد تفاصيل كمية مرتبطة بهذا المستند.</td></tr>';
+            for (var i = 0; i < lines.length; i++) {
+                var l = lines[i];
+                lineHtml += '<tr class="border-t"><td class="p-2">' + _esc(l.item_code) + '</td><td class="p-2 font-bold">' + _esc(l.item_name) + '</td><td class="p-2 text-center">' + _esc(l.unit) + '</td><td class="p-2 text-center">' + _esc(l.original_qty || 0) + '</td><td class="p-2 text-center font-black text-rose-600">' + _esc(l.qty_returned || 0) + '</td><td class="p-2 text-center">' + _esc(l.return_condition || '—') + '</td></tr>';
+            }
+            lineHtml += '</tbody></table></div>';
+            var eventHtml = '<div class="max-h-[22vh] overflow-auto space-y-2">';
+            if (!events.length) eventHtml += '<div class="text-center text-gray-400 py-4">لا يوجد سجل مراجعة سابق.</div>';
+            for (var e = 0; e < events.length; e++) {
+                var ev = events[e];
+                eventHtml += '<div class="border rounded-xl p-3 bg-slate-50"><div class="flex justify-between gap-3"><b>' + _esc(ev.action) + '</b><span class="text-xs text-gray-500">' + _esc(new Date(ev.created_at).toLocaleString('ar-EG')) + '</span></div><div class="text-xs mt-1">' + _esc(ev.from_status || '—') + ' → ' + _esc(ev.to_status || '—') + ' | ' + _esc(ev.actor_email || '') + '</div><div class="text-sm mt-1">' + _esc(ev.note || ev.resolution || '') + '</div></div>';
+            }
+            eventHtml += '</div>';
+
+            var html = '<div class="text-right space-y-4">' +
+                '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
+                    '<div class="bg-indigo-50 border rounded-xl p-3"><div class="text-xs text-gray-500">رقم المستند</div><div class="font-black">' + _esc(h.cn_code) + '</div></div>' +
+                    '<div class="bg-slate-50 border rounded-xl p-3"><div class="text-xs text-gray-500">المصدر</div><div class="font-bold">' + _esc(h.source_type) + '</div></div>' +
+                    '<div class="bg-slate-50 border rounded-xl p-3"><div class="text-xs text-gray-500">العميل</div><div class="font-bold">' + _esc(h.customer_name || '-') + '</div></div>' +
+                    '<div class="bg-rose-50 border rounded-xl p-3"><div class="text-xs text-gray-500">القيمة</div><div class="font-black text-rose-700">' + Number(h.total_amount || 0).toLocaleString('ar-EG') + ' EGP</div></div>' +
+                '</div>' +
+                '<div><h4 class="font-black mb-2">تفاصيل الأصناف</h4>' + lineHtml + '</div>' +
+                '<div class="bg-white border rounded-2xl p-4"><h4 class="font-black mb-3">المراجعة الإدارية</h4>' +
+                    '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">' +
+                        '<div><label class="text-xs font-bold block mb-1">الحالة</label><select id="srm-modal-status" class="w-full p-3 border rounded-xl"><option value="open">مفتوح</option><option value="reviewing">قيد المراجعة</option><option value="resolved">تمت التسوية</option><option value="disputed">متنازع عليها</option><option value="cancelled">ملغاة</option></select></div>' +
+                        '<div><label class="text-xs font-bold block mb-1">المكلف</label><select id="srm-modal-assignee" class="w-full p-3 border rounded-xl">' + _assigneeOptions(h.assigned_to) + '</select></div>' +
+                        '<div><label class="text-xs font-bold block mb-1">الإجراء</label><button id="srm-modal-save" class="w-full p-3 bg-indigo-600 text-white rounded-xl font-black">حفظ المراجعة</button></div>' +
+                    '</div>' +
+                    '<input id="srm-modal-note" class="w-full p-3 border rounded-xl mt-3" placeholder="ملاحظة المراجعة" value="' + _esc(h.review_note || '') + '">' +
+                    '<textarea id="srm-modal-resolution" class="w-full p-3 border rounded-xl mt-3" rows="3" placeholder="قرار / تسوية / معالجة">' + _esc(h.resolution || '') + '</textarea>' +
+                '</div>' +
+                '<div><h4 class="font-black mb-2">سجل المراجعة</h4>' + eventHtml + '</div>' +
+            '</div>';
+
+            Swal.fire({
+                title: 'إدارة المرتجع: ' + _esc(h.cn_code || ''),
+                html: html,
+                width: '1100px',
+                showCloseButton: true,
+                showConfirmButton: false,
+                didOpen: function() {
+                    var st = byId('srm-modal-status');
+                    if (st) st.value = h.review_status || 'open';
+                    var save = byId('srm-modal-save');
+                    if (save) save.addEventListener('click', async function() {
+                        showLoader('جاري حفظ المراجعة...');
+                        try {
+                            await _api('review', {
+                                credit_note_id: id,
+                                status: byId('srm-modal-status').value,
+                                assigned_to: byId('srm-modal-assignee').value || null,
+                                note: byId('srm-modal-note').value.trim() || null,
+                                resolution: byId('srm-modal-resolution').value.trim() || null
+                            });
+                            hideLoader();
+                            Swal.close();
+                            showToast('تم حفظ مراجعة المرتجع', 'success');
+                            await _load();
+                        } catch (e2) {
+                            hideLoader();
+                            showToast(e2.message || 'فشل الحفظ', 'error');
+                        }
+                    });
+                }
+            });
+        } catch (e) {
+            hideLoader();
+            showToast(e.message || 'فشل تحميل التفاصيل', 'error');
+        }
+    }
+
+    function _bind() {
+        var refresh = byId('srm-refresh');
+        if (refresh) refresh.addEventListener('click', function() { state.page = 0; _load().catch(function(e){showToast(e.message,'error');}); });
+        var exportBtn = byId('srm-refresh-live');
+        if (exportBtn) exportBtn.addEventListener('click', function() { _load().catch(function(e){showToast(e.message,'error');}); });
+        ['srm-from','srm-to','srm-status','srm-source'].forEach(function(id){var el=byId(id);if(el)el.addEventListener('change',function(){state.page=0;_load().catch(function(e){showToast(e.message,'error');});});});
+        var search = byId('srm-query');
+        if (search) search.addEventListener('input', function(){ clearTimeout(state.searchTimer); state.searchTimer=setTimeout(function(){state.page=0;_load().catch(function(e){showToast(e.message,'error');});},350); });
+    }
+
+    async function render() {
+        var c = byId('rw-page-container');
+        if (!c) return;
+        safeText(byId('rw-header-title'), 'إدارة مرتجعات المبيعات');
+        safeText(byId('rw-header-subtitle'), 'رقابة ومراجعة ومتابعة المرتجعات المنفذة ميدانيًا دون نقل تنفيذ العمليات إلى النظام الأم');
+        safeHTML(c, '<div class="p-4 space-y-5">' +
+            '<div id="srm-kpis" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3"></div>' +
+            '<div class="bg-white border rounded-2xl p-4 shadow-sm">' +
+                '<div class="grid grid-cols-1 md:grid-cols-6 gap-3">' +
+                    '<input id="srm-query" class="p-3 border rounded-xl" placeholder="بحث برقم المرتجع / الأوردر / الرانشيت / العميل">' +
+                    '<input id="srm-from" type="date" class="p-3 border rounded-xl" value="">' +
+                    '<input id="srm-to" type="date" class="p-3 border rounded-xl" value="' + _today() + '">' +
+                    '<select id="srm-status" class="p-3 border rounded-xl"><option value="">كل حالات المراجعة</option><option value="open">مفتوح</option><option value="reviewing">قيد المراجعة</option><option value="resolved">تمت التسوية</option><option value="disputed">متنازع عليها</option><option value="cancelled">ملغاة</option></select>' +
+                    '<select id="srm-source" class="p-3 border rounded-xl"><option value="">كل المصادر</option><option value="RUNSHEET">رانشيت</option><option value="ORDER">أوردر</option></select>' +
+                    '<div class="flex gap-2"><button id="srm-refresh" class="flex-1 bg-indigo-600 text-white rounded-xl font-black">تطبيق</button><button id="srm-refresh-live" class="px-4 bg-slate-700 text-white rounded-xl font-black">تحديث</button></div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="bg-white border rounded-2xl shadow-sm overflow-hidden">' +
+                '<div class="p-4 border-b flex items-center justify-between"><div><h3 class="font-black text-xl">سجل مرتجعات المبيعات</h3><p class="text-xs text-gray-500 mt-1">المصدر الإداري مرتبط بالـCredit Note مع Evidence من تفاصيل الطلب/الرانشيت والمخزون.</p></div><span class="text-xs font-bold text-slate-500">Parent Management</span></div>' +
+                '<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3">المرتجع</th><th class="p-3">التاريخ</th><th class="p-3">المصدر</th><th class="p-3">المرجع</th><th class="p-3">العميل</th><th class="p-3">كمية المرتجع</th><th class="p-3">القيمة</th><th class="p-3">حركة المخزون</th><th class="p-3">المراجعة</th><th class="p-3">المكلف</th></tr></thead><tbody id="srm-table"><tr><td colspan="10" class="p-10 text-center">جاري التحميل...</td></tr></tbody></table></div>' +
+            '</div>' +
+        '</div>');
+
+        try {
+            await _loadAssignees();
+            _bind();
+            await _load();
+            clearInterval(state.timer);
+            state.timer = setInterval(function(){
+                if (document.getElementById('srm-table')) _load().catch(function(){});
+            }, 30000);
+        } catch (e) {
+            showToast(e.message || 'فشل تحميل إدارة المرتجعات', 'error');
+        }
+    }
+
+    return { render: render };
+})();
+window.RW_SalesReturnsManagement = RW_SalesReturnsManagement;
 // ============================================================
 // EVENTS & BOOT
 // ============================================================
