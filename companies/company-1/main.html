@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-13 07:00 UTC -->
+<!-- 2026-09-13 08:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -11752,8 +11752,188 @@ function _balanceSheet() {
         safeHTML(out, '<div class="text-center py-8 text-red-500">' + _esc(e.message || 'فشل تحميل الميزانية') + '</div>');
     });
 }
+    function _cashFlow() {
+        var out = byId('report-output');
+        if (!out) return;
 
-    function _costCenterProfitLoss() {
+        var fromEl = byId('rp-from');
+        var toEl = byId('rp-to');
+        var fromDate = fromEl && fromEl.value
+            ? fromEl.value
+            : new Date().toISOString().slice(0, 10);
+        var toDate = toEl && toEl.value
+            ? toEl.value
+            : new Date().toISOString().slice(0, 10);
+
+        if (!fromDate || !toDate || fromDate > toDate) {
+            safeHTML(
+                out,
+                '<div class="text-center py-8 text-red-500">نطاق التاريخ غير صالح.</div>'
+            );
+            return;
+        }
+
+        safeHTML(
+            out,
+            '<div class="text-center py-8">' +
+                '<i class="fa-solid fa-spinner fa-spin"></i> ' +
+                'جاري تحميل التدفقات النقدية...' +
+            '</div>'
+        );
+
+        supabase.rpc('get_cash_flow', {
+            p_from_date: fromDate,
+            p_to_date: toDate
+        }).then(function(res) {
+            if (res.error) throw res.error;
+
+            var rows = Array.isArray(res.data) ? res.data : [];
+            var categoryLabels = {
+                operating_inflow: 'تدفقات تشغيلية داخلة',
+                operating_outflow: 'تدفقات تشغيلية خارجة',
+                investing: 'أنشطة استثمارية',
+                financing: 'أنشطة تمويلية'
+            };
+            var categoryTotals = {
+                operating_inflow: 0,
+                operating_outflow: 0,
+                investing: 0,
+                financing: 0
+            };
+
+            for (var i = 0; i < rows.length; i++) {
+                var category = String(rows[i].category || '');
+                var amount = Number(rows[i].amount || 0);
+                if (!isFinite(amount)) amount = 0;
+                if (!Object.prototype.hasOwnProperty.call(categoryTotals, category)) {
+                    categoryTotals[category] = 0;
+                }
+                categoryTotals[category] += amount;
+            }
+
+            var operatingNet =
+                Number(categoryTotals.operating_inflow || 0) -
+                Number(categoryTotals.operating_outflow || 0);
+            var investingNet = Number(categoryTotals.investing || 0);
+            var financingNet = Number(categoryTotals.financing || 0);
+            var netCashFlow = operatingNet + investingNet + financingNet;
+
+            var html =
+                '<div class="bg-white rounded-2xl shadow-sm border p-5">' +
+                    '<div class="flex flex-wrap items-center justify-between gap-3 mb-5">' +
+                        '<div>' +
+                            '<h3 class="font-black text-xl">قائمة التدفقات النقدية</h3>' +
+                            '<p class="text-sm text-gray-500 mt-1">من ' +
+                                _esc(fromDate) +
+                                ' إلى ' +
+                                _esc(toDate) +
+                            '</p>' +
+                        '</div>' +
+                        '<div class="text-sm text-gray-500">عقد Production الحالي</div>' +
+                    '</div>' +
+
+                    '<div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">' +
+                        '<div class="bg-emerald-50 border rounded-xl p-4">' +
+                            '<div class="text-xs text-gray-500 mb-1">التشغيلي الصافي</div>' +
+                            '<div class="text-xl font-black ' +
+                                (operatingNet >= 0 ? 'text-emerald-700' : 'text-red-700') +
+                            '">' +
+                                _fmtNum(operatingNet) +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="bg-indigo-50 border rounded-xl p-4">' +
+                            '<div class="text-xs text-gray-500 mb-1">الاستثماري</div>' +
+                            '<div class="text-xl font-black ' +
+                                (investingNet >= 0 ? 'text-indigo-700' : 'text-red-700') +
+                            '">' +
+                                _fmtNum(investingNet) +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="bg-violet-50 border rounded-xl p-4">' +
+                            '<div class="text-xs text-gray-500 mb-1">التمويلي</div>' +
+                            '<div class="text-xl font-black ' +
+                                (financingNet >= 0 ? 'text-violet-700' : 'text-red-700') +
+                            '">' +
+                                _fmtNum(financingNet) +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="bg-cyan-50 border rounded-xl p-4">' +
+                            '<div class="text-xs text-gray-500 mb-1">صافي التدفق</div>' +
+                            '<div class="text-xl font-black ' +
+                                (netCashFlow >= 0 ? 'text-cyan-700' : 'text-red-700') +
+                            '">' +
+                                _fmtNum(netCashFlow) +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+
+                    '<div class="overflow-x-auto">' +
+                        '<table class="w-full text-sm border">' +
+                            '<thead>' +
+                                '<tr class="bg-gray-50">' +
+                                    '<th class="p-2 border">التصنيف</th>' +
+                                    '<th class="p-2 border">الحساب</th>' +
+                                    '<th class="p-2 border text-left">المبلغ</th>' +
+                                '</tr>' +
+                            '</thead>' +
+                            '<tbody>';
+
+            if (!rows.length) {
+                html +=
+                    '<tr>' +
+                        '<td colspan="3" class="p-6 text-center text-gray-500">' +
+                            'لا توجد حركة مسجلة في الفترة المحددة.' +
+                        '</td>' +
+                    '</tr>';
+            } else {
+                for (var r = 0; r < rows.length; r++) {
+                    var rowCategory = String(rows[r].category || '');
+                    var rowAmount = Number(rows[r].amount || 0);
+                    if (!isFinite(rowAmount)) rowAmount = 0;
+                    html +=
+                        '<tr class="border-t">' +
+                            '<td class="p-2 font-bold">' +
+                                _esc(categoryLabels[rowCategory] || rowCategory || 'غير محدد') +
+                            '</td>' +
+                            '<td class="p-2">' +
+                                _esc(rows[r].account_name || '') +
+                                ' (' +
+                                _esc(rows[r].account_id || '') +
+                                ')' +
+                            '</td>' +
+                            '<td class="p-2 text-left font-black ' +
+                                (rowAmount >= 0 ? 'text-gray-800' : 'text-red-700') +
+                            '">' +
+                                _fmtNum(rowAmount) +
+                            '</td>' +
+                        '</tr>';
+                }
+            }
+
+            html +=
+                            '</tbody>' +
+                        '</table>' +
+                    '</div>' +
+
+                    '<div class="mt-4 text-xs text-gray-500">' +
+                        'التصنيف والقيم أعلاه معروضة وفق دالة Production الحالية get_cash_flow، ' +
+                        'دون إنشاء محرك محاسبي موازٍ في الواجهة.' +
+                    '</div>' +
+                '</div>';
+
+            safeHTML(out, html);
+        }).catch(function(e) {
+            console.error('RW_Finance._cashFlow', e);
+            safeHTML(
+                out,
+                '<div class="text-center py-8 text-red-500">' +
+                    _esc(e && e.message ? e.message : 'فشل تحميل التدفقات النقدية') +
+                '</div>'
+            );
+        });
+    }
+
+	function _costCenterProfitLoss() {
         var out = byId('report-output'); if (!out) return;
         safeHTML(out, '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
         var fromDate = byId('rp-from') ? byId('rp-from').value : '';
