@@ -1,6 +1,8 @@
 name: RAWAEA forensic temporary parser probe
 
 on:
+  push:
+    branches: [forensic/e2e-login-20260913]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -25,12 +27,12 @@ jobs:
           import re
           raw=Path('companies/company-1/main.html').read_text(encoding='utf-8')
           scripts=list(re.finditer(r'<script(?P<a>[^>]*)>(?P<b>[\s\S]*?)</script>',raw,re.I))
-          positioned=[' ' if ch!='\\n' else ch for ch in raw]
+          positioned=[' ' if ch!='\n' else ch for ch in raw]
           blocks=0
           for m in scripts:
             attrs=m.group('a') or ''
-            if not re.search(r'\\bsrc\\s*=',attrs,re.I):
-              tm=re.search(r'\\btype\\s*=\\s*[\"\\\']([^\"\\\']+)',attrs,re.I)
+            if not re.search(r'\bsrc\s*=',attrs,re.I):
+              tm=re.search(r'\btype\s*=\s*["\']([^"\']+)',attrs,re.I)
               typ=(tm.group(1) if tm else '').lower()
               if typ in ('','text/javascript','application/javascript','application/ecmascript','text/ecmascript'):
                 blocks+=1
@@ -52,18 +54,16 @@ jobs:
           lines=Path('/tmp/main-positioned.js').read_text(encoding='utf-8').splitlines(True)
           print('TOTAL_LINES',len(lines))
           target=5592
-          lo=max(1,target-300); hi=min(len(lines),target+50)
-          # Probe windows by replacing each candidate line with a harmless string literal.
-          # This is diagnostic only; it never modifies repository files.
+          lo=max(1,target-500); hi=min(len(lines),target+50)
           for n in range(target, lo-1, -1):
               p=Path('/tmp/probe.js')
               altered=list(lines)
-              altered[n-1]=' ' * max(0,len(altered[n-1])-1)+'\\n'
+              altered[n-1]=' ' * max(0,len(altered[n-1])-1)+'\n'
               p.write_text(''.join(altered),encoding='utf-8')
               r=subprocess.run(['node','--check',str(p)],capture_output=True,text=True)
               if r.returncode==0:
                   print('FIRST_LINE_WHERE_REMOVAL_RESTORES_PARSE',n)
-                  print('REMOVED_LINE',lines[n-1].rstrip('\\n'))
+                  print('REMOVED_LINE',lines[n-1].rstrip('\n'))
                   break
           else:
               print('NO_SINGLE_LINE_REMOVAL_IN_WINDOW_RESTORED_PARSE')
