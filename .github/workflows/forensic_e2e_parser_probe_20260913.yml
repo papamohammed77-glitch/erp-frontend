@@ -43,23 +43,27 @@ jobs:
           PY
           node --check /tmp/main-positioned.js 2>&1 | tee /tmp/node-check.txt
 
-      - name: Parser diagnostics with TypeScript
+      - name: Apply known repairs to a diagnostic copy and re-parse
         if: failure()
         shell: bash
         run: |
-          set +e
-          npm init -y >/dev/null 2>&1
-          npm install --silent typescript@5.9.2
-          node <<'NODE'
-          const fs=require('fs'), ts=require('typescript');
-          const s=fs.readFileSync('/tmp/main-positioned.js','utf8');
-          const sf=ts.createSourceFile('main.js',s,ts.ScriptTarget.ES2022,true,ts.ScriptKind.JS);
-          for(const d of sf.parseDiagnostics){
-            const pos=d.start??0, lc=sf.getLineAndCharacterOfPosition(pos);
-            const msg=ts.flattenDiagnosticMessageText(d.messageText,' ');
-            console.log('TS_DIAGNOSTIC',JSON.stringify({code:d.code,line:lc.line+1,column:lc.character+1,start:pos,length:d.length,message:msg}));
-            const lo=Math.max(0,lc.line-10), hi=Math.min(sf.getLineStarts().length-1,lc.line+8);
-            for(let n=lo;n<=hi;n++) console.log(String(n+1)+': '+sf.text.slice(sf.getPositionOfLineAndCharacter(n,0), sf.getPositionOfLineAndCharacter(n+1,0)).replace(/\n$/,''));
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/main-positioned.js')
+          s=p.read_text(encoding='utf-8')
+          reps={
+            "_fmtNum(c.debt) + ' ' + currency</div>';":"_fmtNum(c.debt) + ' ' + currency + '</div>';",
+            "_fmtNum(selectedCustomer.debt) + currency</strong></div>';":"_fmtNum(selectedCustomer.debt) + currency + '</strong></div>';",
+            "_fmtNum(it.sales_price)+ ' ' + currency</div>';":"_fmtNum(it.sales_price)+ ' ' + currency + '</div>';",
+            "_fmtNum(it.price)+ ' ' + currency</td>';":"_fmtNum(it.price)+ ' ' + currency + '</td>';",
+            "_fmtNum(line)+ ' ' + currency</td>';":"_fmtNum(line)+ ' ' + currency + '</td>';",
+            "_fmtNum(orders[o].total_amount) + ' ' + currency + ')'</span>';":"_fmtNum(orders[o].total_amount) + ' ' + currency + ')</span>';",
+            ".join(''))}</select></div>":".join('')}</select></div>"
           }
-          process.exit(0);
-          NODE
+          for a,b in reps.items():
+            n=s.count(a)
+            print('REPAIR_TARGET',a,'COUNT',n)
+            s=s.replace(a,b)
+          Path('/tmp/main-repaired.js').write_text(s,encoding='utf-8')
+          PY
+          node --check /tmp/main-repaired.js 2>&1 | tee /tmp/repaired-check.txt
