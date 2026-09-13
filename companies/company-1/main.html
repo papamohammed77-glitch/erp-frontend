@@ -874,6 +874,23 @@ const hideLoader = () => { try { Swal.close(); } catch(e) {} };
 const showToast = (message, type = 'success') => { try { Swal.fire({ title: message, icon: type, timer: 2000, showConfirmButton: false }); } catch(e) { alert(message); } };
 
 const RW_STATE = { app: { initialized: false, authenticated: false, loading: false, currentView: 'dashboard', currentUser: null, company: { id: null, name: 'الروائع ERP', logo: 'ر' } }, data: { items: [], customers: [], suppliers: [], branches: [] }, permissions: [], ui: { sidebarOpen: false, sidebarCollapsed: false } };
+Object.defineProperty(RW_STATE.app, 'companyId', {
+    configurable: true,
+    enumerable: true,
+    get: function() {
+        return this.company && this.company.id ? this.company.id : null;
+    },
+    set: function(value) {
+        if (!this.company) {
+            this.company = {
+                id: null,
+                name: 'الروائع ERP',
+                logo: 'ر'
+            };
+        }
+        this.company.id = value || null;
+    }
+});
 window.RW_STATE = RW_STATE;
 const RW_Auth = {
     login: function(username, password) {
@@ -950,6 +967,7 @@ enterSystem: function() {
     try {
         byId('rw-login-page').style.display = 'none';
         byId('rw-main-shell').style.display = 'flex';
+	    RW_Navigation.buildSidebar();
         
         var user = RW_STATE.app.currentUser;
         var userName = user ? (user.name || user.email) : 'مستخدم';
