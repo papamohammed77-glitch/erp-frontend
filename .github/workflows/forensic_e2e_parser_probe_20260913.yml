@@ -1,0 +1,72 @@
+name: RAWAEA forensic temporary parser probe
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parser-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Extract inline JavaScript preserving line numbers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          raw=Path('companies/company-1/main.html').read_text(encoding='utf-8')
+          scripts=list(re.finditer(r'<script(?P<a>[^>]*)>(?P<b>[\s\S]*?)</script>',raw,re.I))
+          positioned=[' ' if ch!='\\n' else ch for ch in raw]
+          blocks=0
+          for m in scripts:
+            attrs=m.group('a') or ''
+            if not re.search(r'\\bsrc\\s*=',attrs,re.I):
+              tm=re.search(r'\\btype\\s*=\\s*[\"\\\']([^\"\\\']+)',attrs,re.I)
+              typ=(tm.group(1) if tm else '').lower()
+              if typ in ('','text/javascript','application/javascript','application/ecmascript','text/ecmascript'):
+                blocks+=1
+                a=m.start(); b=m.end()-len('</script>'); oe=raw.find('>',a)+1
+                positioned[oe:b]=list(raw[oe:b])
+          print('INLINE_JS_BLOCKS='+str(blocks))
+          Path('/tmp/main-positioned.js').write_text(''.join(positioned),encoding='utf-8')
+          Path('/tmp/main.html').write_text(raw,encoding='utf-8')
+          PY
+          node --check /tmp/main-positioned.js 2>&1 | tee /tmp/node-check.txt
+
+      - name: Parser-bisect around reported area
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          lines=Path('/tmp/main-positioned.js').read_text(encoding='utf-8').splitlines(True)
+          print('TOTAL_LINES',len(lines))
+          target=5592
+          lo=max(1,target-300); hi=min(len(lines),target+50)
+          # Probe windows by replacing each candidate line with a harmless string literal.
+          # This is diagnostic only; it never modifies repository files.
+          for n in range(target, lo-1, -1):
+              p=Path('/tmp/probe.js')
+              altered=list(lines)
+              altered[n-1]=' ' * max(0,len(altered[n-1])-1)+'\\n'
+              p.write_text(''.join(altered),encoding='utf-8')
+              r=subprocess.run(['node','--check',str(p)],capture_output=True,text=True)
+              if r.returncode==0:
+                  print('FIRST_LINE_WHERE_REMOVAL_RESTORES_PARSE',n)
+                  print('REMOVED_LINE',lines[n-1].rstrip('\\n'))
+                  break
+          else:
+              print('NO_SINGLE_LINE_REMOVAL_IN_WINDOW_RESTORED_PARSE')
+          print('ORIGINAL_NODE_ERROR')
+          print(Path('/tmp/node-check.txt').read_text(encoding='utf-8'))
+          PY
