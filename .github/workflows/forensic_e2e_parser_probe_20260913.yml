@@ -47,8 +47,9 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          npx --yes typescript@5.9.2 --version
-          npm install --no-save --silent typescript@5.9.2
+          set +e
+          npm init -y >/dev/null 2>&1
+          npm install --silent typescript@5.9.2
           node <<'NODE'
           const fs=require('fs'), ts=require('typescript');
           const s=fs.readFileSync('/tmp/main-positioned.js','utf8');
@@ -57,7 +58,8 @@ jobs:
             const pos=d.start??0, lc=sf.getLineAndCharacterOfPosition(pos);
             const msg=ts.flattenDiagnosticMessageText(d.messageText,' ');
             console.log('TS_DIAGNOSTIC',JSON.stringify({code:d.code,line:lc.line+1,column:lc.character+1,start:pos,length:d.length,message:msg}));
-            const lo=Math.max(0,lc.line-8), hi=Math.min(s.length,sf.getPositionOfLineAndCharacter(Math.min(sf.getLineStarts().length-1,lc.line+8),0));
-            console.log(s.slice(sf.getPositionOfLineAndCharacter(lo,0),hi));
+            const lo=Math.max(0,lc.line-10), hi=Math.min(sf.getLineStarts().length-1,lc.line+8);
+            for(let n=lo;n<=hi;n++) console.log(String(n+1)+': '+sf.text.slice(sf.getPositionOfLineAndCharacter(n,0), sf.getPositionOfLineAndCharacter(n+1,0)).replace(/\n$/,''));
           }
+          process.exit(0);
           NODE
