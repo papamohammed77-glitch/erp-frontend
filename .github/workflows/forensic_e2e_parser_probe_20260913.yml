@@ -43,29 +43,21 @@ jobs:
           PY
           node --check /tmp/main-positioned.js 2>&1 | tee /tmp/node-check.txt
 
-      - name: Isolate exact malformed slash token
+      - name: Parser diagnostics with TypeScript
         if: failure()
         shell: bash
         run: |
+          npx --yes typescript@5.9.2 --version
+          npm install --no-save --silent typescript@5.9.2
           node <<'NODE'
-          const fs=require('fs'), vm=require('vm');
+          const fs=require('fs'), ts=require('typescript');
           const s=fs.readFileSync('/tmp/main-positioned.js','utf8');
-          const lines=s.split('\n');
-          function test(src){ try { new vm.Script(src,{filename:'probe.js'}); return null; } catch(e){ return String(e); } }
-          console.log('BASE',test(s));
-          const candidates=[];
-          for(let i=0,ln=1;i<s.length;i++){ if(s[i]=='\n') ln++; if(s[i]=='/') candidates.push({i,ln}); }
-          console.log('SLASH_COUNT',candidates.length);
-          // High-value candidates: slash before reported line, plus same lexical neighborhood.
-          const targets=candidates.filter(x=>x.ln>=5000 && x.ln<=5593);
-          console.log('TARGET_COUNT',targets.length);
-          for(const x of targets){
-            const a=s.slice(0,x.i)+' '+s.slice(x.i+1);
-            if(test(a)===null){
-              const lo=Math.max(1,x.ln-6), hi=Math.min(lines.length,x.ln+6);
-              console.log('ROOT_SLASH_CANDIDATE',JSON.stringify(x));
-              for(let n=lo;n<=hi;n++) console.log(String(n)+': '+lines[n-1]);
-              break;
-            }
+          const sf=ts.createSourceFile('main.js',s,ts.ScriptTarget.ES2022,true,ts.ScriptKind.JS);
+          for(const d of sf.parseDiagnostics){
+            const pos=d.start??0, lc=sf.getLineAndCharacterOfPosition(pos);
+            const msg=ts.flattenDiagnosticMessageText(d.messageText,' ');
+            console.log('TS_DIAGNOSTIC',JSON.stringify({code:d.code,line:lc.line+1,column:lc.character+1,start:pos,length:d.length,message:msg}));
+            const lo=Math.max(0,lc.line-8), hi=Math.min(s.length,sf.getPositionOfLineAndCharacter(Math.min(sf.getLineStarts().length-1,lc.line+8),0));
+            console.log(s.slice(sf.getPositionOfLineAndCharacter(lo,0),hi));
           }
           NODE
