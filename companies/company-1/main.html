@@ -957,40 +957,73 @@ enterSystem: function() {
         safeText(byId('rw-sidebar-company-name'), RW_STATE.app.company.name || 'الروائع ERP');
         safeText(byId('rw-header-user-display'), userName);
         
-        // تحديث اسم الشركة والشعار من الإعدادات (اختياري)
+        // تحميل هوية الشركة من Production Settings بعد تثبيت company context
         RW_SUPABASE_CLIENT
             .from('app_settings')
-            .select('*')
+            .select('company_name,company_logo,store_name,store_logo')
             .eq('company_id', RW_STATE.app.company.id)
             .order('created_at', { ascending: true })
             .limit(1)
-            .then(function(r){
-
+            .then(function(r) {
                 console.log('APP_SETTINGS_RESULT', r);
 
-                if (!r || !r.data || !r.data.length) return;
+                if (!r || r.error) {
+                    console.error(
+                        'APP_SETTINGS_ERROR',
+                        r && r.error ? r.error : 'unknown settings error'
+                    );
+                    return;
+                }
 
-                var row = r.data[0];
+                var row = r.data && r.data.length ? r.data[0] : null;
+                var companyName = row && (
+                    row.company_name ||
+                    row.store_name
+                );
+                var companyLogo = row && (
+                    row.company_logo ||
+                    row.store_logo
+                );
+
+                companyName =
+                    companyName ||
+                    RW_STATE.app.company.name ||
+                    'الروائع ERP';
+
+                RW_STATE.app.company.name = companyName;
+                RW_STATE.app.company.logo =
+                    companyLogo ||
+                    RW_STATE.app.company.logo ||
+                    'ر';
 
                 safeText(
                     byId('rw-sidebar-company-name'),
-                    row.company_name || 'الروائع ERP'
+                    companyName
                 );
 
                 var logoImg = byId('rw-sidebar-brand-logo');
 
-                if (logoImg && row.company_logo) {
-                    logoImg.src = row.company_logo;
-                    logoImg.style.objectFit = 'contain';
-                    logoImg.style.backgroundColor = '#f8fafc';
+                if (logoImg) {
+                    if (
+                        companyLogo &&
+                        /^(data:|https?:\/\/|blob:)/i.test(
+                            String(companyLogo)
+                        )
+                    ) {
+                        logoImg.src = String(companyLogo);
+                        logoImg.alt = companyName;
+                        logoImg.style.display = 'block';
+                        logoImg.style.objectFit = 'contain';
+                        logoImg.style.backgroundColor = '#f8fafc';
+                    } else {
+                        logoImg.removeAttribute('src');
+                        logoImg.alt = companyName;
+                    }
                 }
-
             })
-            .catch(function(e){
+            .catch(function(e) {
                 console.error('APP_SETTINGS_ERROR', e);
             });
-        
-        RW_Navigation.buildSidebar();
         RW_Workflow.loadRules();
         RW_Notification.init();
         // ✅ Bootstrap: تحميل البيانات الأساسية مرة واحدة لجميع التبويبات
@@ -1734,8 +1767,13 @@ var RW_Items = (function() {
     var currentSubTab = 'list';
 
     function _esc(s) {
-    return esc(s == null ? '' : String(s));
-}
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
 function _jsString(s) {
     return JSON.stringify(s == null ? '' : String(s));
@@ -17565,12 +17603,28 @@ function boot() {
                     isOwner: meta.isOwner === true || meta.isOwner === 'true'
                 };
                 RW_STATE.permissions = meta.permissions || ['*'];
-                RW_STATE.app.company = {
-                    name: meta.companyName || 'الروائع ERP',
-                    logo: meta.companyLogo || 'ر'
-                };
-                
-                RW_Auth.enterSystem();
+                return RW_SUPABASE_CLIENT
+                    .from('users')
+                    .select('company_id, status')
+                    .eq('auth_id', user.id)
+                    .maybeSingle()
+                    .then(function(profileRes) {
+                        if (profileRes.error) throw profileRes.error;
+                        if (!profileRes.data || !profileRes.data.company_id) {
+                            throw new Error('بيانات سياق الشركة للمستخدم غير مكتملة');
+                        }
+                        if (profileRes.data.status === 'Inactive') {
+                            throw new Error('حساب المستخدم غير نشط');
+                        }
+
+                        RW_STATE.app.company = {
+                            id: profileRes.data.company_id,
+                            name: meta.companyName || 'الروائع ERP',
+                            logo: meta.companyLogo || 'ر'
+                        };
+
+                        RW_Auth.enterSystem();
+                    });
             }
         }).catch(function() {
             console.log('No session found');
