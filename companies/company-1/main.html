@@ -11386,6 +11386,44 @@ function _renderReceipts() {
             _hideLoader();
         }
     }
+			
+	function _startCustomerPaymentRealtime() {
+    if (_customerPaymentRealtimeChannel) {
+        try { supabase.removeChannel(_customerPaymentRealtimeChannel); } catch (e) {}
+        _customerPaymentRealtimeChannel = null;
+    }
+
+    var companyId = _companyId();
+    if (!companyId || !supabase || typeof supabase.channel !== 'function') return;
+
+    _customerPaymentRealtimeChannel = supabase
+        .channel('rw-customer-payment-' + companyId)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'sales_payment_receipts',
+            filter: 'company_id=eq.' + companyId
+        }, function () {
+            _customerPaymentFetch({ action: 'list' })
+                .then(function (data) {
+                    _renderCustomerPaymentReceiptList(data);
+                })
+                .catch(function () {});
+        })
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'sales_payment_allocations',
+            filter: 'company_id=eq.' + companyId
+        }, function () {
+            _customerPaymentFetch({ action: 'list' })
+                .then(function (data) {
+                    _renderCustomerPaymentReceiptList(data);
+                })
+                .catch(function () {});
+        })
+        .subscribe();
+}
 function _customerPaymentEndpoint() {
     return RW_SUPABASE_URL + '/functions/v1/sales-payment-allocation';
 }
@@ -12641,7 +12679,7 @@ async function _loadDashboardData(fromDate, toDate) {
 
     try {
         var companyId = _companyId();
-
+		_startCustomerPaymentRealtime()
         if (!fromDate || !toDate || fromDate > toDate) {
             throw new Error('نطاق التاريخ غير صالح');
         }
