@@ -1139,7 +1139,7 @@ var RW_Data = {
 const RW_Navigation = {
     menuTree: [
     { view: 'dashboard', icon: 'fa-chart-pie', label: 'لوحة التحكم' },
-    { icon: 'fa-chart-line', label: 'إدارة المبيعات', submenu: [{ view: 'telesales', label: 'التلي سيلز' }, { view: 'customers', label: 'العملاء' }, { view: 'online-store', label: 'المتجر الإلكتروني' }, { view: 'pos', label: 'نقطة البيع' }, { view: 'orders', label: 'أوردرات المبيعات' }, { view: 'quotes', label: 'عروض الأسعار' },{ view: 'price-lists', label: 'قوائم الأسعار' },{ view: 'promotions', label: 'العروض والخصومات' }, { view: 'runsheets', label: 'الرانشيتات' }, { view: 'sales-returns', label: 'إدارة مرتجعات المبيعات' }] },
+    { icon: 'fa-chart-line', label: 'إدارة المبيعات', submenu: [{ view: 'telesales', label: 'التلي سيلز' }, { view: 'customers', label: 'العملاء' }, { view: 'online-store', label: 'المتجر الإلكتروني' }, { view: 'pos', label: 'نقطة البيع' }, { view: 'orders', label: 'أوردرات المبيعات' }, { view: 'quotes', label: 'عروض الأسعار' },{ view: 'price-lists', label: 'قوائم الأسعار' },{ view: 'promotions', label: 'العروض والخصومات' }, { view: 'sales-targets', label: 'أهداف المبيعات', perm: ['sales_manager','sales_supervisor','general_manager','reports'] }, { view: 'runsheets', label: 'الرانشيتات' }, { view: 'sales-returns', label: 'إدارة مرتجعات المبيعات' }] },
     { icon: 'fa-truck', label: 'إدارة المشتريات', submenu: [{ view: 'suppliers', label: 'الموردين' }, { view: 'purchase-pos', label: 'نقطة شراء' }, { view: 'purchases', label: 'أوردرات الشراء' }] },
     { icon: 'fa-warehouse', label: 'إدارة المخازن والمخزون', submenu: [{ view: 'items', label: 'الأصناف' }, { view: 'branches', label: 'المخازن والفروع' }, { label: 'العمليات المخزنية', icon: 'fa-timeline', submenu: [{ view: 'receiving', label: 'الاستلام' }, { view: 'picking', label: 'التحضير' }, { view: 'loading', label: 'التحميل' }, { view: 'delivery', label: 'التوصيل' }, { view: 'return', label: 'المرتجعات' }, { view: 'unloading', label: 'التفريغ' }] }, { label: 'الأذونات المخزنية', icon: 'fa-file-signature', submenu: [{ view: 'transfer', label: 'تحويل مخزني' }, { view: 'direct-sale', label: 'صرف سيارة بيع مباشر' }, { view: 'direct-return', label: 'استلام مرتجع سيارة' }, { view: 'supplier-return', label: 'مرتجع لمورد' }, { view: 'vouchers', label: 'عرض الأذونات' }] }, { label: 'الجرد', icon: 'fa-clipboard-check', submenu: [{ view: 'vehicle-count', label: 'جرد سيارة' }, { view: 'branch-count', label: 'جرد فرع' }, { view: 'general-count', label: 'جرد عام' }] }] },
     { icon: 'fa-coins', label: 'إدارة الحسابات والمالية', submenu: [{ action: 'showFinanceTab', arg: 'treasury', label: 'الخزائن والبنوك', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'accounts', label: 'دليل الحسابات', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'journal', label: 'قيود يومية', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'receipts', label: 'سندات القبض', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'payments', label: 'سندات الصرف', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'transfers', label: 'التحويلات', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'reports', label: 'التقارير المالية', perm: ['finance', 'finance_manager'] },
@@ -1306,6 +1306,178 @@ toggleSidebar() { const sidebar = byId('rw-sidebar'), main = byId('rw-main-conte
     });
 })();
 window.RW_Navigation = RW_Navigation;
+var RW_SalesTargetsMain = (function(){
+    var realtimeChannel = null;
+    var postOperationId = null;
+
+    function endpoint(name){ return RW_SUPABASE_URL + '/functions/v1/' + name; }
+    function esc(v){
+        return String(v==null?'':v).replace(/[&<>\"']/g,function(c){
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+    function num(v){ return (Number(v)||0).toLocaleString('ar-EG',{maximumFractionDigits:2}); }
+    function uid(){ return window.crypto&&crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+'-'+Math.random(); }
+
+    async function call(name,payload){
+        var ses=await supabase.auth.getSession();
+        var token=ses&&ses.data&&ses.data.session?ses.data.session.access_token:null;
+        if(!token) throw new Error('انتهت الجلسة');
+        var r=await fetch(endpoint(name),{
+            method:'POST',
+            headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+            body:JSON.stringify(payload||{})
+        });
+        var j=await r.json().catch(function(){return {};});
+        if(!r.ok || !j || j.success===false) throw new Error((j&&j.msg)||'فشل تنفيذ العملية');
+        return j;
+    }
+
+    async function op(operation,planId,payload,operationId){
+        return call('sales-target-engine',{
+            operation:operation,
+            plan_id:planId||null,
+            payload:payload||{},
+            operation_id:operationId||null
+        });
+    }
+
+    async function loadPlans(){
+        return op('LIST_PLANS',null,{},null);
+    }
+
+    async function renderDashboard(planId){
+        var box=byId('rw-sales-target-dashboard');
+        if(!box || !planId) return;
+        try{
+            var j=await call('sales-target-dashboard',{plan_id:planId});
+            var t=j.totals||{}, a=j.assignments||[], r=j.ranking||[], runsResult=await op('LIST_RUNS',null,{},null);
+            var runs=(runsResult.runs||[]).filter(function(x){return x.plan_id===planId;});
+            var h='<div class="rw-kpi-grid">';
+            h+='<div class="rw-kpi-card"><div class="rw-kpi-card-top"><span>هدف القيمة</span></div><div class="rw-kpi-value">'+num(t.target_amount)+' ج.م</div></div>';
+            h+='<div class="rw-kpi-card"><div class="rw-kpi-card-top"><span>المحقق</span></div><div class="rw-kpi-value">'+num(t.actual_amount)+' ج.م</div></div>';
+            h+='<div class="rw-kpi-card"><div class="rw-kpi-card-top"><span>إنجاز القيمة</span></div><div class="rw-kpi-value">'+num(t.amount_pct)+'%</div></div>';
+            h+='<div class="rw-kpi-card"><div class="rw-kpi-card-top"><span>إنجاز الكمية</span></div><div class="rw-kpi-value">'+num(t.qty_pct)+'%</div></div>';
+            h+='</div>';
+            h+='<div class="rw-card"><h3>أداء التخصيصات</h3><div style="overflow:auto"><table class="rw-table"><thead><tr><th>المندوب</th><th>الفرع</th><th>هدف القيمة</th><th>المحقق</th><th>الإنجاز</th></tr></thead><tbody>';
+            for(var i=0;i<a.length;i++){
+                var z=a[i];
+                h+='<tr><td>'+esc(z.sales_rep_name||'عام')+'</td><td>'+esc(z.branch_name||'كل الفروع')+'</td><td>'+num(z.target_amount)+'</td><td>'+num(z.actual_amount)+'</td><td>'+num(z.achievement_pct)+'%</td></tr>';
+            }
+            if(!a.length) h+='<tr><td colspan="5">لا توجد تخصيصات</td></tr>';
+            h+='</tbody></table></div></div>';
+            h+='<div class="rw-card"><h3>ترتيب المندوبين</h3>';
+            for(var k=0;k<r.length;k++) h+='<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:10px 0"><b>'+esc(r[k].rep_name||'غير محدد')+'</b><span>'+num(r[k].actual_amount)+' ج.م</span></div>';
+            if(!r.length) h+='<div>لا توجد نتائج</div>';
+            h+='</div>';
+            h+='<div class="rw-card"><h3>عمليات الترحيل</h3><div style="overflow:auto"><table class="rw-table"><thead><tr><th>التاريخ</th><th>الحالة</th><th>القيمة</th><th>الكمية</th><th>الإجراء</th></tr></thead><tbody>';
+            for(var n=0;n<runs.length;n++){
+                var run=runs[n];
+                h+='<tr><td>'+esc(run.evaluated_at||run.created_at||'')+'</td><td>'+esc(run.status||'')+'</td><td>'+num(run.total_actual_amount)+'</td><td>'+num(run.total_actual_qty)+'</td><td>'+
+                '<button class="rw-btn" onclick="RW_SalesTargetsMain.approveRun(\''+esc(run.id)+'\')">اعتماد</button> '+
+                '<button class="rw-btn rw-btn-danger" onclick="RW_SalesTargetsMain.reverseRun(\''+esc(run.id)+'\')">عكس</button></td></tr>';
+            }
+            if(!runs.length) h+='<tr><td colspan="5">لا توجد عمليات ترحيل</td></tr>';
+            h+='</tbody></table></div></div>';
+            RW_UI.safeHTML(box,h);
+        }catch(e){ RW_UI.safeHTML(box,'<div class="rw-error">'+esc(e.message)+'</div>'); }
+    }
+
+    async function render(){
+        if(realtimeChannel){ try{supabase.removeChannel(realtimeChannel);}catch(e){} realtimeChannel=null; }
+        var c=byId('rw-page-content');
+        if(!c) return;
+        RW_UI.safeHTML(c,'<div class="rw-card"><div class="rw-loading">جاري تحميل محرك أهداف المبيعات...</div></div>');
+        try{
+            var r=await loadPlans(), plans=r.plans||[];
+            var h='<div class="rw-page-header"><div><h1>🎯 أهداف المبيعات</h1><p>إدارة الخطة والتخصيص والاعتماد والترحيل والمتابعة من المحرك المركزي.</p></div><button class="rw-btn" onclick="RW_SalesTargetsMain.render()">تحديث</button></div>';
+            h+='<div class="rw-card"><h3>إنشاء / تعديل خطة</h3><div class="rw-form-grid">';
+            h+='<input id="st-main-plan-id" type="hidden">';
+            h+='<input id="st-main-plan-code" placeholder="كود الخطة">';
+            h+='<input id="st-main-plan-name" placeholder="اسم الخطة">';
+            h+='<input id="st-main-plan-start" type="date">';
+            h+='<input id="st-main-plan-end" type="date">';
+            h+='<select id="st-main-plan-metric"><option value="amount">قيمة</option><option value="qty">كمية</option><option value="gross_profit">مجمل الربح</option><option value="mixed">مختلط</option></select>';
+            h+='</div><textarea id="st-main-plan-notes" placeholder="ملاحظات الخطة"></textarea>';
+            h+='<div class="rw-actions"><button class="rw-btn" onclick="RW_SalesTargetsMain.savePlan()">حفظ الخطة</button><button class="rw-btn" onclick="RW_SalesTargetsMain.previewPlan()">معاينة</button></div></div>';
+            h+='<div class="rw-card"><h3>الخطط</h3><select id="st-main-plan-select" onchange="RW_SalesTargetsMain.selectPlan(this.value)"><option value="">اختر الخطة</option>';
+            for(var i=0;i<plans.length;i++) h+='<option value="'+esc(plans[i].id)+'">'+esc(plans[i].plan_code+' — '+plans[i].name+' ['+plans[i].status+']')+'</option>';
+            h+='</select><div class="rw-actions"><button class="rw-btn" onclick="RW_SalesTargetsMain.approvePlan()">اعتماد</button><button class="rw-btn rw-btn-danger" onclick="RW_SalesTargetsMain.cancelPlan()">إلغاء Draft</button><button class="rw-btn" onclick="RW_SalesTargetsMain.closePlan()">إغلاق</button><button class="rw-btn rw-btn-success" onclick="RW_SalesTargetsMain.postRun()">ترحيل النتائج</button></div></div>';
+            h+='<div id="rw-sales-target-dashboard"></div>';
+            RW_UI.safeHTML(c,h);
+            if(plans.length) await this.selectPlan(plans[0].id);
+            var companyId=_rwCompanyId();
+            if(companyId){
+                realtimeChannel=supabase.channel('rw-sales-target-main-'+companyId)
+                  .on('postgres_changes',{event:'*',schema:'public',table:'sales_target_plans',filter:'company_id=eq.'+companyId},function(){render();})
+                  .on('postgres_changes',{event:'*',schema:'public',table:'sales_target_assignments',filter:'company_id=eq.'+companyId},function(){render();})
+                  .on('postgres_changes',{event:'*',schema:'public',table:'sales_target_runs',filter:'company_id=eq.'+companyId},function(){var id=byId('st-main-plan-select');if(id&&id.value)renderDashboard(id.value);})
+                  .on('postgres_changes',{event:'*',schema:'public',table:'sales_target_run_lines',filter:'company_id=eq.'+companyId},function(){var id=byId('st-main-plan-select');if(id&&id.value)renderDashboard(id.value);})
+                  .subscribe();
+            }
+        }catch(e){ RW_UI.safeHTML(c,'<div class="rw-error">'+esc(e.message)+'</div>'); }
+    }
+
+    return {
+        render:render,
+        async selectPlan(id){
+            if(!id) return;
+            var r=await loadPlans(), p=(r.plans||[]).find(function(x){return x.id===id;});
+            if(!p) return;
+            byId('st-main-plan-id').value=p.id||'';
+            byId('st-main-plan-code').value=p.plan_code||'';
+            byId('st-main-plan-name').value=p.name||'';
+            byId('st-main-plan-start').value=p.period_start||'';
+            byId('st-main-plan-end').value=p.period_end||'';
+            byId('st-main-plan-metric').value=p.metric||'amount';
+            byId('st-main-plan-notes').value=p.notes||'';
+            await renderDashboard(id);
+        },
+        async savePlan(){
+            try{
+                showLoader('جاري حفظ الخطة...');
+                await op('SAVE_PLAN',byId('st-main-plan-id').value||null,{plan_code:byId('st-main-plan-code').value.trim(),name:byId('st-main-plan-name').value.trim(),period_start:byId('st-main-plan-start').value,period_end:byId('st-main-plan-end').value,metric:byId('st-main-plan-metric').value,notes:byId('st-main-plan-notes').value.trim()},null);
+                showToast('تم حفظ الخطة','success');
+                await render();
+            }catch(e){showToast(e.message,'error');}finally{hideLoader();}
+        },
+        async previewPlan(){
+            try{
+                var id=byId('st-main-plan-select').value||byId('st-main-plan-id').value;
+                if(!id) throw new Error('اختر خطة');
+                showLoader('جاري المعاينة...');
+                var j=await op('PREVIEW',id,{},null);
+                showToast('تمت معاينة الخطة: '+(j.status||'Preview'),'success');
+            }catch(e){showToast(e.message,'error');}finally{hideLoader();}
+        },
+        async approvePlan(){
+            try{var id=byId('st-main-plan-select').value;if(!id)throw new Error('اختر خطة');showLoader('جاري اعتماد الخطة...');await op('APPROVE_PLAN',id,{},null);await render();showToast('تم اعتماد الخطة','success');}catch(e){showToast(e.message,'error');}finally{hideLoader();}
+        },
+        async cancelPlan(){
+            try{var id=byId('st-main-plan-select').value;if(!id)throw new Error('اختر خطة');showLoader('جاري إلغاء الخطة...');await op('CANCEL_PLAN',id,{},null);await render();showToast('تم إلغاء الخطة','success');}catch(e){showToast(e.message,'error');}finally{hideLoader();}
+        },
+        async closePlan(){
+            try{var id=byId('st-main-plan-select').value;if(!id)throw new Error('اختر خطة');showLoader('جاري إغلاق الخطة...');await op('CLOSE_PLAN',id,{},null);await render();showToast('تم إغلاق الخطة','success');}catch(e){showToast(e.message,'error');}finally{hideLoader();}
+        },
+        async postRun(){
+            try{
+                var id=byId('st-main-plan-select').value;if(!id)throw new Error('اختر خطة');
+                if(!postOperationId) postOperationId=uid();
+                showLoader('جاري ترحيل النتائج...');
+                var j=await op('POST',id,{},postOperationId);
+                postOperationId=null;
+                await renderDashboard(id);
+                showToast(j.duplicate?'تم منع التكرار وإعادة نفس النتيجة':'تم الترحيل بنجاح','success');
+            }catch(e){showToast(e.message,'error');}finally{hideLoader();}
+        },
+        async approveRun(runId){
+            try{showLoader('جاري اعتماد العملية...');await op('APPROVE_RUN',runId,{},null);var id=byId('st-main-plan-select');if(id)await renderDashboard(id.value);showToast('تم اعتماد العملية','success');}catch(e){showToast(e.message,'error');}finally{hideLoader();}
+        },
+        async reverseRun(runId){
+            try{showLoader('جاري عكس العملية...');await op('REVERSE_RUN',runId,{},uid());var id=byId('st-main-plan-select');if(id)await renderDashboard(id.value);showToast('تم عكس العملية','success');}catch(e){showToast(e.message,'error');}finally{hideLoader();}
+        }
+    };
+})();
 function _rwCompanyId() {
     return window.RW_STATE && RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id ? RW_STATE.app.company.id : null;
 }
@@ -17954,6 +18126,7 @@ var RW_Views = {
         if (view === 'delivery') { RW_Warehouse.loadDelivery(); return; }
         if (view === 'return') { RW_Warehouse.loadReturn(); return; }
 		if (view === 'sales-returns') { RW_SalesReturnsManagement.render(); return; }
+		if (view === 'sales-targets') { RW_SalesTargetsMain.render(); return; }
         if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
         if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
         if (view === 'vouchers') { RW_Warehouse.loadVouchers(); return; }
