@@ -1143,7 +1143,7 @@ const RW_Navigation = {
     { icon: 'fa-truck', label: 'إدارة المشتريات', submenu: [{ view: 'suppliers', label: 'الموردين' }, { view: 'purchase-pos', label: 'نقطة شراء' }, { view: 'purchases', label: 'أوردرات الشراء' }] },
     { icon: 'fa-warehouse', label: 'إدارة المخازن والمخزون', submenu: [{ view: 'items', label: 'الأصناف' }, { view: 'branches', label: 'المخازن والفروع' }, { label: 'العمليات المخزنية', icon: 'fa-timeline', submenu: [{ view: 'receiving', label: 'الاستلام' }, { view: 'picking', label: 'التحضير' }, { view: 'loading', label: 'التحميل' }, { view: 'delivery', label: 'التوصيل' }, { view: 'return', label: 'المرتجعات' }, { view: 'unloading', label: 'التفريغ' }] }, { label: 'الأذونات المخزنية', icon: 'fa-file-signature', submenu: [{ view: 'transfer', label: 'تحويل مخزني' }, { view: 'direct-sale', label: 'صرف سيارة بيع مباشر' }, { view: 'direct-return', label: 'استلام مرتجع سيارة' }, { view: 'supplier-return', label: 'مرتجع لمورد' }, { view: 'vouchers', label: 'عرض الأذونات' }] }, { label: 'الجرد', icon: 'fa-clipboard-check', submenu: [{ view: 'vehicle-count', label: 'جرد سيارة' }, { view: 'branch-count', label: 'جرد فرع' }, { view: 'general-count', label: 'جرد عام' }] }] },
     { icon: 'fa-coins', label: 'إدارة الحسابات والمالية', submenu: [{ action: 'showFinanceTab', arg: 'treasury', label: 'الخزائن والبنوك', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'accounts', label: 'دليل الحسابات', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'journal', label: 'قيود يومية', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'receipts', label: 'سندات القبض', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'payments', label: 'سندات الصرف', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'transfers', label: 'التحويلات', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'reports', label: 'التقارير المالية', perm: ['finance', 'finance_manager'] },
-{ action: 'showFinanceTab', arg: 'installments', label: 'التقسيط والتحصيل الآجل', perm: ['finance', 'finance_manager'] }, { view: 'settlement', label: 'إغلاق اليومية' }] },
+{ action: 'showFinanceTab', arg: 'installments', label: 'التقسيط والتحصيل الآجل', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'commission', label: 'العمولات', perm: ['finance', 'finance_manager'] }, { view: 'settlement', label: 'إغلاق اليومية' }] },
     { icon: 'fa-chart-simple', label: 'التقارير الذكية', submenu: [
     { view: 'reports-dashboard', label: 'لوحة القيادة' },
     { view: 'reports-detailed', label: 'التقارير التفصيلية' },
@@ -10404,7 +10404,7 @@ var RW_Finance = (function() {
                 { id: 'treasury', label: 'الخزائن والبنوك' }, { id: 'accounts', label: 'دليل الحسابات' },
                 { id: 'journal', label: 'قيود يومية' }, { id: 'receipts', label: 'سندات القبض' },
                 { id: 'payments', label: 'سندات الصرف' }, { id: 'transfers', label: 'التحويلات' },
-                { id: 'reports', label: 'التقارير المالية' }, { id: 'installments', label: 'التقسيط والتحصيل الآجل' }, { id: 'budgets', label: 'الموازنات' }
+                { id: 'reports', label: 'التقارير المالية' }, { id: 'installments', label: 'التقسيط والتحصيل الآجل' }, { id: 'commission', label: 'العمولات' }, { id: 'budgets', label: 'الموازنات' }
             ];
             var html = '<div class="p-4"><div class="flex flex-wrap gap-2 border-b pb-3 mb-4">';
             for (var i = 0; i < tabs.length; i++) {
@@ -10421,6 +10421,7 @@ var RW_Finance = (function() {
             else if (tab === 'transfers') _renderTransfers();
             else if (tab === 'reports') _renderReports();
 			else if (tab === 'installments') _renderInstallments();
+else if (tab === 'commission') _renderCommission();
             else if (tab === 'budgets') _renderBudgets();
         });
     }
@@ -12287,7 +12288,100 @@ async function _cancelInstallmentPlan(planId) {
         _hideLoader();
     }
 }
-    function _renderBudgets() {
+function _commissionEndpoint() {
+    return RW_SUPABASE_URL + '/functions/v1/commission-engine';
+}
+function _commissionOperationId() {
+    return window.crypto && crypto.randomUUID ? crypto.randomUUID() : (String(Date.now()) + '-' + Math.random());
+}
+var _commissionLastPostOperationId = null;
+var _commissionRealtimeChannel = null;
+async function _commissionFetch(payload) {
+    var ses = await supabase.auth.getSession();
+    var token = ses && ses.data && ses.data.session ? ses.data.session.access_token : null;
+    if (!token) throw new Error('انتهت الجلسة');
+    var res = await fetch(_commissionEndpoint(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify(payload || {})
+    });
+    var json = await res.json().catch(function(){ return {}; });
+    if (!res.ok || !json || json.success === false) throw new Error((json && (json.msg || json.error)) || 'فشل تنفيذ عملية العمولة');
+    return json;
+}
+function _renderCommission() {
+    var content = byId('finance-content');
+    if (!content) return;
+    if (_commissionRealtimeChannel) { try { supabase.removeChannel(_commissionRealtimeChannel); } catch(e) {} }
+    var today = new Date().toISOString().slice(0,10);
+    var html = '' +
+        '<div class="space-y-4">' +
+        '<div class="bg-white rounded-2xl shadow-sm border p-5">' +
+        '<div class="flex flex-wrap justify-between items-center gap-3 mb-5">' +
+        '<div><h2 class="text-xl font-black"><i class="fa-solid fa-percent ml-2 text-indigo-600"></i>محرك العمولات</h2>' +
+        '<p class="text-sm text-gray-500 mt-1">خطط العمولة، الشرائح، الأهداف، المعاينة، الترحيل، الاعتماد والصرف والعكس.</p></div>' +
+        '<button type="button" onclick="RW_Finance._loadCommissionRuns()" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>' +
+        '</div>' +
+        '<input type="hidden" id="comm-plan-id" value="">' +
+        '<div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">' +
+        '<div><label class="block text-sm font-bold mb-1">كود الخطة</label><input id="comm-plan-code" class="border rounded-xl p-2.5 w-full" placeholder="COMM-001"></div>' +
+        '<div><label class="block text-sm font-bold mb-1">اسم الخطة</label><input id="comm-plan-name" class="border rounded-xl p-2.5 w-full" placeholder="عمولة المبيعات"></div>' +
+        '<div><label class="block text-sm font-bold mb-1">أساس الخطة</label><select id="comm-basis-type" class="border rounded-xl p-2.5 w-full"><option value="achievement">Achievement</option><option value="target">Target</option></select></div>' +
+        '<div><label class="block text-sm font-bold mb-1">Metric</label><select id="comm-basis-metric" class="border rounded-xl p-2.5 w-full"><option value="invoiced_amount">قيمة الفواتير</option><option value="gross_profit">مجمل الربح</option><option value="invoiced_qty">الكميات</option></select></div>' +
+        '</div>' +
+        '<div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">' +
+        '<div><label class="block text-sm font-bold mb-1">طريقة الصرف</label><select id="comm-payout-method" class="border rounded-xl p-2.5 w-full"><option value="percentage">نسبة</option><option value="fixed_tier">مبلغ ثابت للشريحة</option></select></div>' +
+        '<div><label class="block text-sm font-bold mb-1">النسبة الافتراضية %</label><input id="comm-default-rate" type="number" step="0.01" min="0" value="0" class="border rounded-xl p-2.5 w-full"></div>' +
+        '<div><label class="block text-sm font-bold mb-1">Target</label><input id="comm-target" type="number" step="0.01" min="0" value="0" class="border rounded-xl p-2.5 w-full"></div>' +
+        '<div><label class="block text-sm font-bold mb-1">من</label><input id="comm-from" type="date" value="' + today + '" class="border rounded-xl p-2.5 w-full"></div>' +
+        '<div><label class="block text-sm font-bold mb-1">إلى</label><input id="comm-to" type="date" class="border rounded-xl p-2.5 w-full"></div>' +
+        '</div>' +
+        '<div class="border rounded-2xl p-4 mb-4"><h3 class="font-black mb-3">شرائح العمولة</h3><div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm font-bold mb-2"><div>من %</div><div>إلى %</div><div>النسبة %</div><div>مبلغ ثابت</div></div>' +
+        '<div class="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2"><input id="comm-r1-min" type="number" value="0" class="border rounded-lg p-2"><input id="comm-r1-max" type="number" value="99.99" class="border rounded-lg p-2"><input id="comm-r1-rate" type="number" value="0" step="0.01" class="border rounded-lg p-2"><input id="comm-r1-fixed" type="number" value="0" step="0.01" class="border rounded-lg p-2"></div>' +
+        '<div class="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2"><input id="comm-r2-min" type="number" value="100" class="border rounded-lg p-2"><input id="comm-r2-max" type="number" value="199.99" class="border rounded-lg p-2"><input id="comm-r2-rate" type="number" value="0" step="0.01" class="border rounded-lg p-2"><input id="comm-r2-fixed" type="number" value="0" step="0.01" class="border rounded-lg p-2"></div>' +
+        '<div class="grid grid-cols-1 md:grid-cols-4 gap-2"><input id="comm-r3-min" type="number" value="200" class="border rounded-lg p-2"><input id="comm-r3-max" type="number" placeholder="بدون حد" class="border rounded-lg p-2"><input id="comm-r3-rate" type="number" value="0" step="0.01" class="border rounded-lg p-2"><input id="comm-r3-fixed" type="number" value="0" step="0.01" class="border rounded-lg p-2"></div></div>' +
+        '<div class="border rounded-2xl p-4 mb-4"><h3 class="font-black mb-3">تخصيص الخطة</h3><div class="grid grid-cols-1 md:grid-cols-4 gap-3"><select id="comm-rep" class="border rounded-xl p-2.5"><option value="">اختر مندوبًا</option></select><input id="comm-rep-target" type="number" step="0.01" min="0" placeholder="Target للمندوب" class="border rounded-xl p-2.5"><button type="button" onclick="RW_Finance._assignCommissionRep()" class="bg-slate-700 text-white rounded-xl px-4 py-2 font-bold">ربط المندوب</button><div id="comm-rep-status" class="text-sm text-gray-500 flex items-center">لم يتم الربط بعد</div></div></div>' +
+        '<div class="flex flex-wrap gap-2 mb-4"><button type="button" onclick="RW_Finance._saveCommissionPlan()" class="bg-blue-600 text-white px-5 py-2.5 rounded-xl font-bold">حفظ الخطة</button><button type="button" onclick="RW_Finance._approveCommissionPlan()" class="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold">اعتماد الخطة</button><button type="button" onclick="RW_Finance._previewCommission()" class="bg-amber-500 text-white px-5 py-2.5 rounded-xl font-bold">معاينة العمولة</button><button type="button" onclick="RW_Finance._postCommission()" class="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold">ترحيل العمولة</button></div>' +
+        '<div id="comm-preview" class="mb-4"></div>' +
+        '</div>' +
+        '<div class="bg-white rounded-2xl shadow-sm border p-5"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-black">دفاتر العمولة</h3></div><div id="comm-runs" class="overflow-x-auto"></div></div>' +
+        '</div>';
+    safeHTML(content, html);
+    _loadCommissionReps();
+    _loadCommissionRuns();
+    var companyId = _companyId();
+    _commissionRealtimeChannel = supabase.channel('rw-commission-' + companyId)
+      .on('postgres_changes',{event:'*',schema:'public',table:'commission_plans',filter:'company_id=eq.'+companyId},function(){_loadCommissionRuns();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'commission_assignments',filter:'company_id=eq.'+companyId},function(){_loadCommissionRuns();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'commission_runs',filter:'company_id=eq.'+companyId},function(){_loadCommissionRuns();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'commission_run_lines',filter:'company_id=eq.'+companyId},function(){_loadCommissionRuns();})
+      .subscribe();
+}
+async function _loadCommissionReps() {
+    try { var json=await _commissionFetch({operation:'LIST_REPS'}); var select=byId('comm-rep'); if(!select)return; var html='<option value="">اختر مندوبًا</option>'; (json.reps||[]).forEach(function(r){html+='<option value="'+_esc(r.id)+'">'+_esc(r.name||r.email)+' — '+_esc(r.role||'')+'</option>';}); safeHTML(select,html); } catch(e){ _showToast(e.message||'فشل تحميل المندوبين','error'); }
+}
+function _commissionRulesPayload(){
+    return [1,2,3].map(function(n){var min=Number(byId('comm-r'+n+'-min').value||0);var maxEl=byId('comm-r'+n+'-max');var max=maxEl && maxEl.value!==''?Number(maxEl.value):null;var rate=Number(byId('comm-r'+n+'-rate').value||0);var fixed=Number(byId('comm-r'+n+'-fixed').value||0);return {min_achievement_pct:min,max_achievement_pct:max,rate:rate,fixed_amount:fixed,priority:n};}).filter(function(x){return x.rate>0||x.fixed_amount>0||x.min_achievement_pct>0||x.max_achievement_pct!==null;});
+}
+async function _saveCommissionPlan(){
+    try { _showLoader('جاري حفظ خطة العمولة...'); var payload={plan_code:byId('comm-plan-code').value.trim(),name:byId('comm-plan-name').value.trim(),basis_type:byId('comm-basis-type').value,basis_metric:byId('comm-basis-metric').value,payout_method:byId('comm-payout-method').value,default_rate:Number(byId('comm-default-rate').value||0),target_amount:Number(byId('comm-target').value||0),effective_from:byId('comm-from').value,effective_to:byId('comm-to').value||null}; var json=await _commissionFetch({operation:'PLAN_SAVE',plan_id:byId('comm-plan-id').value||null,plan_payload:payload}); safeText(byId('comm-plan-id'),json.plan.id); byId('comm-plan-id').value=json.plan.id; _showToast('تم حفظ خطة العمولة','success'); } catch(e){_showToast(e.message||'فشل حفظ الخطة','error');} finally{_hideLoader();}
+}
+async function _approveCommissionPlan(){
+    try { var id=byId('comm-plan-id').value; if(!id) throw new Error('احفظ الخطة أولًا'); _showLoader('جاري اعتماد الخطة...'); await _commissionFetch({operation:'PLAN_APPROVE',plan_id:id,rule_payload:_commissionRulesPayload()}); _showToast('تم اعتماد الخطة','success'); } catch(e){_showToast(e.message||'فشل الاعتماد','error');} finally{_hideLoader();}
+}
+async function _assignCommissionRep(){
+    try { var id=byId('comm-plan-id').value, rep=byId('comm-rep').value; if(!id)throw new Error('احفظ الخطة أولًا'); if(!rep)throw new Error('اختر المندوب'); await _commissionFetch({operation:'PLAN_ASSIGN',plan_id:id,assignment_payload:[{sales_rep_id:rep,target_amount:Number(byId('comm-rep-target').value||0),active:true}]}); safeText(byId('comm-rep-status'),'تم ربط المندوب بالخطة'); _showToast('تم ربط المندوب','success'); } catch(e){_showToast(e.message||'فشل ربط المندوب','error');}
+}
+async function _previewCommission(){
+    try { var id=byId('comm-plan-id').value,rep=byId('comm-rep').value;if(!id||!rep)throw new Error('احفظ الخطة واربط مندوبًا أولًا'); _showLoader('جاري معاينة العمولة...'); var json=await _commissionFetch({operation:'PREVIEW',plan_id:id,period_start:byId('comm-from').value,period_end:byId('comm-to').value||new Date().toISOString().slice(0,10),sales_rep_id:rep}); var h='<div class="border rounded-xl p-4 bg-amber-50"><div class="grid grid-cols-1 md:grid-cols-4 gap-3"><div><div class="text-xs text-gray-500">الأساس</div><div class="text-xl font-black">'+_fmtNum(json.total_base)+'</div></div><div><div class="text-xs text-gray-500">التحقيق</div><div class="text-xl font-black">'+_fmtNum(json.total_commission)+'</div></div><div><div class="text-xs text-gray-500">عدد السطور</div><div class="text-xl font-black">'+_fmtNum(json.line_count)+'</div></div><div><div class="text-xs text-gray-500">الفترة</div><div class="font-bold">'+_esc(json.period_start)+' → '+_esc(json.period_end)+'</div></div></div></div>'; safeHTML(byId('comm-preview'),h); } catch(e){_showToast(e.message||'فشل المعاينة','error');} finally{_hideLoader();}
+}
+async function _postCommission(){
+    try { var id=byId('comm-plan-id').value,rep=byId('comm-rep').value;if(!id||!rep)throw new Error('احفظ الخطة واربط مندوبًا أولًا'); if(!_commissionLastPostOperationId)_commissionLastPostOperationId=_commissionOperationId(); _showLoader('جاري ترحيل العمولة...'); var json=await _commissionFetch({operation:'POST',plan_id:id,period_start:byId('comm-from').value,period_end:byId('comm-to').value||new Date().toISOString().slice(0,10),sales_rep_id:rep,operation_id:_commissionLastPostOperationId}); _showToast(json.duplicate?'هذه العملية مرحّلة بالفعل ولم تتكرر.':'تم ترحيل العمولة بنجاح','success'); _loadCommissionRuns(); } catch(e){_showToast(e.message||'فشل الترحيل','error');} finally{_hideLoader();}
+}
+async function _loadCommissionRuns(){
+    var out=byId('comm-runs');if(!out)return;try{var json=await _commissionFetch({operation:'LIST_RUNS'});var rows=json.runs||[];if(!rows.length){safeHTML(out,'<div class="text-center py-8 text-gray-500">لا توجد دفاتر عمولة.</div>');return;}var h='<table class="w-full text-sm border-collapse"><thead><tr class="bg-gray-50"><th class="p-2 border">الفترة</th><th class="p-2 border">الأساس</th><th class="p-2 border">العمولة</th><th class="p-2 border">السطور</th><th class="p-2 border">الحالة</th><th class="p-2 border">Operation</th></tr></thead><tbody>';rows.forEach(function(r){h+='<tr class="border-t"><td class="p-2 border">'+_esc(r.period_start)+' → '+_esc(r.period_end)+'</td><td class="p-2 border text-left">'+_fmtNum(r.total_base)+'</td><td class="p-2 border text-left font-black text-indigo-700">'+_fmtNum(r.total_commission)+'</td><td class="p-2 border text-center">'+_fmtNum(r.line_count)+'</td><td class="p-2 border font-bold">'+_esc(r.status)+'</td><td class="p-2 border text-xs">'+_esc(r.operation_id)+'</td></tr>';});h+='</tbody></table>';safeHTML(out,h);}catch(e){safeHTML(out,'<div class="text-center py-8 text-red-600">'+_esc(e.message||'فشل تحميل دفاتر العمولة')+'</div>');}
+}
+	function _renderBudgets() {
         var content = byId('finance-content'); if (!content) return;
         var today = new Date();
         var currentYear = today.getFullYear();
@@ -12881,7 +12975,15 @@ _reconciliationSummary: _reconciliationSummary,
 _exceptionCenter: _exceptionCenter,
 _customerAging: _customerAging,
 _supplierAging: _supplierAging,
-_costCenterProfitLoss: _costCenterProfitLoss
+_costCenterProfitLoss: _costCenterProfitLoss,
+_renderCommission: _renderCommission,
+_loadCommissionReps: _loadCommissionReps,
+_saveCommissionPlan: _saveCommissionPlan,
+_approveCommissionPlan: _approveCommissionPlan,
+_assignCommissionRep: _assignCommissionRep,
+_previewCommission: _previewCommission,
+_postCommission: _postCommission,
+_loadCommissionRuns: _loadCommissionRuns
     };
 })();
 window.RW_Finance = RW_Finance;
