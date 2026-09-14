@@ -95,124 +95,301 @@ renderTargets: function(){
     var s=this;
     var endpoint=RW_SUPABASE_URL + '/functions/v1/sales-target-dashboard';
     var engine=RW_SUPABASE_URL + '/functions/v1/sales-target-engine';
+    var selectedPlanId=s.targetSelectedPlanId||null;
+    var plansById={};
+    var postOperationIds=s.targetPostOperationIds||{};
+    var reverseOperationIds=s.targetReverseOperationIds||{};
+    s.targetPostOperationIds=postOperationIds;
+    s.targetReverseOperationIds=reverseOperationIds;
+
     var call=function(url,payload){
         return supabase.auth.getSession().then(function(sr){
             var token=sr && sr.data && sr.data.session ? sr.data.session.access_token : null;
             if(!token) throw new Error('انتهت الجلسة');
             return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(payload||{})});
-        }).then(function(r){return r.json().catch(function(){return {};}).then(function(j){if(!r.ok||!j||j.success===false)throw new Error(j&&j.msg||'فشل تنفيذ العملية');return j;});});
+        }).then(function(r){
+            return r.json().catch(function(){return {};}).then(function(j){
+                if(!r.ok||!j||j.success===false) throw new Error(j&&j.msg||'فشل تنفيذ العملية');
+                return j;
+            });
+        });
     };
-    var op=function(operation,plan_id,payload,operation_id){return call(engine,{operation:operation,plan_id:plan_id||null,payload:payload||{},operation_id:operation_id||null});};
-    var uid=function(){return window.crypto&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random();};
 
-    window.RW_SalesTargets={
-        load:function(){s.renderTargets();},
-        savePlan:function(){
-            var p={plan_code:(RW_UI.byId('st-plan-code').value||'').trim(),name:(RW_UI.byId('st-plan-name').value||'').trim(),period_start:RW_UI.byId('st-plan-start').value,period_end:RW_UI.byId('st-plan-end').value,metric:RW_UI.byId('st-plan-metric').value,notes:(RW_UI.byId('st-plan-notes').value||'').trim()};
-            if(!p.plan_code||!p.period_start||!p.period_end) return RW_UI.showError('أكمل بيانات الخطة');
-            RW_UI.showLoader('جاري حفظ الخطة...');
-            op('SAVE_PLAN',null,p).then(function(){RW_UI.hideLoader();s.renderTargets();}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
-        },
-        saveAssignment:function(){
-            var planId=RW_UI.byId('st-plan-select').value,rep=RW_UI.byId('st-rep-select').value,branch=RW_UI.byId('st-branch-select').value;
-            var p={sales_rep_id:rep||null,branch_id:branch||null,target_amount:Number(RW_UI.byId('st-target-amount').value||0),target_qty:Number(RW_UI.byId('st-target-qty').value||0),target_gross_profit:Number(RW_UI.byId('st-target-gp').value||0),weight:Number(RW_UI.byId('st-weight').value||100),active:true,notes:(RW_UI.byId('st-assignment-notes').value||'').trim()};
-            if(!planId) return RW_UI.showError('اختر الخطة');
-            RW_UI.showLoader('جاري حفظ التخصيص...');
-            op('SAVE_ASSIGNMENT',planId,p).then(function(){RW_UI.hideLoader();s.renderTargets();}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
-        },
-        planAction:function(action){
-            var id=RW_UI.byId('st-plan-select').value;
-            if(!id) return RW_UI.showError('اختر الخطة');
-            RW_UI.showLoader('جاري التنفيذ...');
-            op(action,id,{}).then(function(){RW_UI.hideLoader();s.renderTargets();}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
-        },
-        runAction:function(action){
-            var id=RW_UI.byId('st-plan-select').value;
-            if(!id) return RW_UI.showError('اختر الخطة');
-            if(action==='POST'){
-                var operationId=uid();
-                RW_UI.showLoader('جاري ترحيل نتائج الهدف...');
-                op('POST',id,{},operationId).then(function(r){RW_UI.hideLoader();RW_UI.showSuccess(r.duplicate?'تم منع التكرار وإعادة نفس النتيجة':'تم الترحيل بنجاح');s.renderTargets();}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
-            }else{
-                var runId=id;
-                RW_UI.showLoader('جاري التنفيذ...');
-                op(action,runId,{},action==='REVERSE_RUN'?uid():null).then(function(){RW_UI.hideLoader();s.renderTargets();}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
-            }
+    var op=function(operation,plan_id,payload,operation_id){
+        return call(engine,{operation:operation,plan_id:plan_id||null,payload:payload||{},operation_id:operation_id||null});
+    };
+
+    var uid=function(){
+        return window.crypto&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+'-'+Math.random();
+    };
+
+    var esc=function(v){
+        return String(v==null?'':v).replace(/[&<>\"']/g,function(c){
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c];
+        });
+    };
+
+    var fmtPct=function(v){
+        var n=Number(v)||0;
+        return (Math.round(n*100)/100).toLocaleString('ar-EG')+'%';
+    };
+
+    var kpi=function(label,value,suffix){
+        return '<div class="stat-card text-center"><div class="text-xs text-gray-400">'+esc(label)+'</div><div class="text-lg font-black">'+fmtNum(Number(value)||0)+' '+esc(suffix||'')+'</div></div>';
+    };
+
+    var stopLive=function(){
+        if(s.targetChannel&&supabase.removeChannel){
+            supabase.removeChannel(s.targetChannel);
+            s.targetChannel=null;
         }
     };
 
+    var subscribeLive=function(planId){
+        stopLive();
+        if(!supabase.channel||!planId) return;
+        var channel=supabase.channel('rw-sales-target-live-'+String(planId)+'-'+Date.now());
+        ['sales_target_plans','sales_target_assignments','sales_target_runs','sales_target_run_lines'].forEach(function(table){
+            channel=channel.on('postgres_changes',{event:'*',schema:'public',table:table},function(){
+                if(selectedPlanId===planId) loadDashboard(planId,false);
+            });
+        });
+        s.targetChannel=channel;
+        channel.subscribe();
+    };
+
+    var renderPlanOptions=function(plans){
+        var el=RW_UI.byId('st-plan-select');
+        if(!el) return;
+        var h='<option value="">اختر الخطة</option>';
+        for(var i=0;i<plans.length;i++){
+            h+='<option value="'+plans[i].id+'"'+(plans[i].id===selectedPlanId?' selected':'')+'>'+esc(plans[i].plan_code+' — '+plans[i].name+' ['+plans[i].status+']')+'</option>';
+        }
+        RW_UI.safeHTML(el,h);
+    };
+
+    var renderRunOptions=function(runs){
+        var el=RW_UI.byId('st-run-select');
+        if(!el) return;
+        var h='<option value="">اختر عملية ترحيل</option>';
+        for(var i=0;i<runs.length;i++){
+            h+='<option value="'+runs[i].id+'">'+esc((runs[i].evaluated_at||runs[i].created_at||'')+' — '+runs[i].status+' — '+fmtNum(runs[i].total_actual_amount||0)+' ج.م')+'</option>';
+        }
+        RW_UI.safeHTML(el,h);
+    };
+
+    var loadDashboard=function(planId,rerenderShell){
+        selectedPlanId=planId||selectedPlanId||null;
+        s.targetSelectedPlanId=selectedPlanId;
+        if(!selectedPlanId) return;
+        if(rerenderShell!==false){
+            var box=RW_UI.byId('st-dashboard');
+            if(box) RW_UI.safeHTML(box,'<div class="text-center py-6 text-gray-400"><i class="fa-solid fa-spinner fa-spin"></i> جاري تحميل النتائج...</div>');
+        }
+        Promise.all([op('LIST_RUNS'),call(endpoint,{plan_id:selectedPlanId})]).then(function(r){
+            var runList=r[0].runs||[];
+            var d=r[1]||{};
+            var t=d.totals||{};
+            var a=d.assignments||[];
+            var rk=d.ranking||[];
+            var tr=d.trend||[];
+            var runs=[];
+            for(var i=0;i<runList.length;i++){
+                if(runList[i].plan_id===selectedPlanId) runs.push(runList[i]);
+            }
+            renderRunOptions(runs);
+            var p=plansById[selectedPlanId]||d.plan||{};
+            var h='<div class="flex flex-wrap justify-between gap-2 items-center mb-4"><div><h3 class="font-black text-lg">'+esc(p.name||'الخطة')+'</h3><p class="text-xs text-gray-500">'+esc(p.period_start||'')+' → '+esc(p.period_end||'')+' | '+esc(p.status||'')+'</p></div><div class="text-xs text-gray-500">آخر تحديث: '+new Date().toLocaleTimeString('ar-EG')+'</div></div>';
+            h+='<div class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">'+kpi('الهدف',t.target_amount,'ج.م')+kpi('المحقق',t.actual_amount,'ج.م')+kpi('الإنجاز',t.amount_pct,'%')+kpi('هدف الكمية',t.target_qty,'')+kpi('المحقق كمية',t.actual_qty,'')+kpi('الإنجاز كمية',t.qty_pct,'%')+'</div>';
+            h+='<div class="card border mb-3"><div class="flex justify-between items-center mb-2"><h4 class="font-black">التخصيصات</h4><span class="text-xs text-gray-400">'+a.length+' تخصيص</span></div><div class="overflow-auto"><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2 text-right">المندوب</th><th class="p-2">الفرع</th><th class="p-2">الهدف</th><th class="p-2">المحقق</th><th class="p-2">الإنجاز</th><th class="p-2">الحالة</th><th class="p-2">إجراء</th></tr></thead><tbody>';
+            for(var j=0;j<a.length;j++){
+                var z=a[j];
+                var pct=Number(z.target_amount)>0?(Number(z.actual_amount||0)/Number(z.target_amount)*100):0;
+                h+='<tr class="border-t"><td class="p-2 font-bold">'+esc(z.sales_rep_name||'عام')+'</td><td class="p-2">'+esc(z.branch_name||'كل الفروع')+'</td><td class="p-2">'+fmtNum(z.target_amount||0)+'</td><td class="p-2">'+fmtNum(z.actual_amount||0)+'</td><td class="p-2 font-black">'+fmtPct(pct)+'</td><td class="p-2">'+(z.active?'<span class="text-emerald-600 font-bold">نشط</span>':'<span class="text-gray-400 font-bold">غير نشط</span>')+'</td><td class="p-2"><button class="text-xs px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold mr-1" onclick="RW_SalesTargets.editAssignment(\''+z.id+'\')">تعديل</button><button class="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-700 font-bold" onclick="RW_SalesTargets.toggleAssignment(\''+z.id+'\','+(z.active?'false':'true')+')">'+(z.active?'تعطيل':'تفعيل')+'</button></td></tr>';
+            }
+            if(!a.length) h+='<tr><td colspan="7" class="p-4 text-center text-gray-400">لا توجد تخصيصات</td></tr>';
+            h+='</tbody></table></div></div>';
+            h+='<div class="grid grid-cols-1 lg:grid-cols-2 gap-3"><div class="card border"><h4 class="font-black mb-2">ترتيب المندوبين</h4><div class="space-y-2">';
+            for(var r=0;r<rk.length;r++){
+                var q=rk[r];
+                h+='<div class="flex justify-between items-center border-b pb-2"><span class="font-bold">'+esc(q.rep_name||'غير محدد')+'</span><span class="font-black">'+fmtNum(q.actual_amount||0)+' ج.م</span></div>';
+            }
+            if(!rk.length) h+='<div class="text-center text-gray-400 py-4">لا توجد نتائج</div>';
+            h+='</div></div><div class="card border"><h4 class="font-black mb-2">الاتجاه الزمني</h4><div class="space-y-2 max-h-56 overflow-auto">';
+            for(var tt=0;tt<tr.length;tt++){
+                h+='<div class="flex justify-between border-b pb-2"><span>'+esc(tr[tt].metric_day||'')+'</span><span class="font-bold">'+fmtNum(tr[tt].actual_amount||0)+' ج.م / '+fmtNum(tr[tt].actual_qty||0)+'</span></div>';
+            }
+            if(!tr.length) h+='<div class="text-center text-gray-400 py-4">لا توجد حركة داخل الفترة</div>';
+            h+='</div></div></div>';
+            h+='<div class="card border mt-3"><h4 class="font-black mb-2">سجل عمليات الترحيل</h4><div class="overflow-auto"><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التاريخ</th><th class="p-2">الحالة</th><th class="p-2">القيمة</th><th class="p-2">الكمية</th></tr></thead><tbody>';
+            for(var rr=0;rr<runs.length;rr++){
+                h+='<tr class="border-t"><td class="p-2">'+esc(runs[rr].evaluated_at||runs[rr].created_at||'')+'</td><td class="p-2 font-bold">'+esc(runs[rr].status||'')+'</td><td class="p-2">'+fmtNum(runs[rr].total_actual_amount||0)+'</td><td class="p-2">'+fmtNum(runs[rr].total_actual_qty||0)+'</td></tr>';
+            }
+            if(!runs.length) h+='<tr><td colspan="4" class="p-4 text-center text-gray-400">لا توجد عمليات ترحيل</td></tr>';
+            h+='</tbody></table></div></div>';
+            var dash=RW_UI.byId('st-dashboard');
+            if(dash) RW_UI.safeHTML(dash,h);
+            subscribeLive(selectedPlanId);
+        }).catch(function(e){
+            var box=RW_UI.byId('st-dashboard');
+            if(box) RW_UI.safeHTML(box,'<div class="text-center py-6 text-red-500">فشل تحميل لوحة الأهداف: '+esc(e.message)+'</div>');
+        });
+    };
+
+    window.RW_SalesTargets={
+        load:function(){s.renderTargets();},
+        selectPlan:function(id){
+            selectedPlanId=id||null;
+            s.targetSelectedPlanId=selectedPlanId;
+            if(selectedPlanId){
+                this.clearAssignmentForm();
+                loadDashboard(selectedPlanId);
+            }
+        },
+        clearPlanForm:function(){
+            ['st-plan-edit-id','st-plan-code','st-plan-name','st-plan-start','st-plan-end','st-plan-notes'].forEach(function(id){var e=RW_UI.byId(id);if(e)e.value='';});
+            var m=RW_UI.byId('st-plan-metric');if(m)m.value='amount';
+        },
+        editPlan:function(){
+            var p=plansById[selectedPlanId];
+            if(!p) return RW_UI.showError('اختر الخطة');
+            RW_UI.byId('st-plan-edit-id').value=p.id;
+            RW_UI.byId('st-plan-code').value=p.plan_code||'';
+            RW_UI.byId('st-plan-name').value=p.name||'';
+            RW_UI.byId('st-plan-start').value=p.period_start||'';
+            RW_UI.byId('st-plan-end').value=p.period_end||'';
+            RW_UI.byId('st-plan-metric').value=p.metric||'amount';
+            RW_UI.byId('st-plan-notes').value=p.notes||'';
+        },
+        savePlan:function(){
+            var p={plan_code:(RW_UI.byId('st-plan-code').value||'').trim(),name:(RW_UI.byId('st-plan-name').value||'').trim(),period_start:RW_UI.byId('st-plan-start').value,period_end:RW_UI.byId('st-plan-end').value,metric:RW_UI.byId('st-plan-metric').value,notes:(RW_UI.byId('st-plan-notes').value||'').trim()};
+            var id=(RW_UI.byId('st-plan-edit-id').value||'').trim();
+            if(!p.plan_code||!p.period_start||!p.period_end) return RW_UI.showError('أكمل بيانات الخطة');
+            RW_UI.showLoader(id?'جاري تحديث الخطة...':'جاري إنشاء الخطة...');
+            op('SAVE_PLAN',id||null,p).then(function(r){
+                RW_UI.hideLoader();
+                selectedPlanId=(r.plan&&r.plan.id)||selectedPlanId;
+                s.targetSelectedPlanId=selectedPlanId;
+                plansById[selectedPlanId]=r.plan;
+                RW_UI.byId('st-plan-edit-id').value=selectedPlanId;
+                return op('LIST_PLANS');
+            }).then(function(l){
+                for(var i=0;i<(l.plans||[]).length;i++) plansById[l.plans[i].id]=l.plans[i];
+                renderPlanOptions(l.plans||[]);
+                loadDashboard(selectedPlanId);
+            }).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
+        },
+        planAction:function(action){
+            if(!selectedPlanId) return RW_UI.showError('اختر الخطة');
+            RW_UI.showLoader('جاري التنفيذ...');
+            op(action,selectedPlanId,{}).then(function(){RW_UI.hideLoader();s.renderTargets();}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
+        },
+        saveAssignment:function(){
+            if(!selectedPlanId) return RW_UI.showError('اختر الخطة');
+            var p={id:(RW_UI.byId('st-assignment-id').value||'').trim()||null,sales_rep_id:RW_UI.byId('st-rep-select').value||null,branch_id:RW_UI.byId('st-branch-select').value||null,target_amount:Number(RW_UI.byId('st-target-amount').value||0),target_qty:Number(RW_UI.byId('st-target-qty').value||0),target_gross_profit:Number(RW_UI.byId('st-target-gp').value||0),weight:Number(RW_UI.byId('st-weight').value||100),active:RW_UI.byId('st-assignment-active').checked,notes:(RW_UI.byId('st-assignment-notes').value||'').trim()};
+            RW_UI.showLoader(p.id?'جاري تحديث التخصيص...':'جاري حفظ التخصيص...');
+            op('SAVE_ASSIGNMENT',selectedPlanId,p).then(function(){RW_UI.hideLoader();this.clearAssignmentForm();loadDashboard(selectedPlanId);}.bind(this)).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
+        },
+        editAssignment:function(id){
+            if(!selectedPlanId) return;
+            op('LIST_ASSIGNMENTS',selectedPlanId,{}).then(function(r){
+                var a=r.assignments||[],x=null;
+                for(var i=0;i<a.length;i++){if(a[i].id===id){x=a[i];break;}}
+                if(!x) return RW_UI.showError('التخصيص غير موجود');
+                RW_UI.byId('st-assignment-id').value=x.id;
+                RW_UI.byId('st-rep-select').value=x.sales_rep_id||'';
+                RW_UI.byId('st-branch-select').value=x.branch_id||'';
+                RW_UI.byId('st-target-amount').value=x.target_amount||0;
+                RW_UI.byId('st-target-qty').value=x.target_qty||0;
+                RW_UI.byId('st-target-gp').value=x.target_gross_profit||0;
+                RW_UI.byId('st-weight').value=x.weight||100;
+                RW_UI.byId('st-assignment-active').checked=x.active!==false;
+                RW_UI.byId('st-assignment-notes').value=x.notes||'';
+                RW_UI.byId('st-assignment-save-label').innerText='تحديث التخصيص';
+            });
+        },
+        toggleAssignment:function(id,active){
+            if(!selectedPlanId) return;
+            op('LIST_ASSIGNMENTS',selectedPlanId,{}).then(function(r){
+                var a=r.assignments||[],x=null;
+                for(var i=0;i<a.length;i++){if(a[i].id===id){x=a[i];break;}}
+                if(!x) return RW_UI.showError('التخصيص غير موجود');
+                var p={id:x.id,sales_rep_id:x.sales_rep_id||null,branch_id:x.branch_id||null,target_amount:x.target_amount,target_qty:x.target_qty,target_gross_profit:x.target_gross_profit,weight:x.weight,active:active==='true'||active===true,notes:x.notes||''};
+                return op('SAVE_ASSIGNMENT',selectedPlanId,p);
+            }).then(function(){loadDashboard(selectedPlanId);}).catch(function(e){RW_UI.showError(e.message);});
+        },
+        clearAssignmentForm:function(){
+            ['st-assignment-id','st-target-amount','st-target-qty','st-target-gp','st-assignment-notes'].forEach(function(id){var e=RW_UI.byId(id);if(e)e.value='';});
+            var a=RW_UI.byId('st-assignment-active');if(a)a.checked=true;
+            var w=RW_UI.byId('st-weight');if(w)w.value='100';
+            var l=RW_UI.byId('st-assignment-save-label');if(l)l.innerText='حفظ التخصيص';
+        },
+        runAction:function(action){
+            if(!selectedPlanId) return RW_UI.showError('اختر الخطة');
+            var runId=RW_UI.byId('st-run-select').value||'';
+            if(action==='PREVIEW'){
+                RW_UI.showLoader('جاري إعداد المعاينة...');
+                op('PREVIEW',selectedPlanId,{}).then(function(){RW_UI.hideLoader();RW_UI.showSuccess('تم إعداد المعاينة');loadDashboard(selectedPlanId);}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
+                return;
+            }
+            if(action==='POST'){
+                var oid=postOperationIds[selectedPlanId]||(postOperationIds[selectedPlanId]=uid());
+                RW_UI.showLoader('جاري ترحيل نتائج الهدف...');
+                op('POST',selectedPlanId,{},oid).then(function(r){
+                    delete postOperationIds[selectedPlanId];
+                    RW_UI.hideLoader();
+                    RW_UI.showSuccess(r.duplicate?'تم منع التكرار وإعادة نفس النتيجة':'تم الترحيل بنجاح');
+                    loadDashboard(selectedPlanId);
+                }).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
+                return;
+            }
+            if(!runId) return RW_UI.showError('اختر عملية الترحيل');
+            var oid2=action==='REVERSE_RUN'?(reverseOperationIds[runId]||(reverseOperationIds[runId]=uid())):null;
+            RW_UI.showLoader('جاري التنفيذ...');
+            op(action,runId,{},oid2).then(function(r){
+                if(action==='REVERSE_RUN') delete reverseOperationIds[runId];
+                RW_UI.hideLoader();
+                RW_UI.showSuccess(r.duplicate?'تم منع التكرار':'تم التنفيذ بنجاح');
+                loadDashboard(selectedPlanId);
+            }).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message);});
+        }
+    };
+
+    stopLive();
     RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i><div class="mt-2">جاري تحميل محرك أهداف المبيعات...</div></div>');
+
     Promise.all([
         op('LIST_PLANS'),
         supabase.from('users').select('id,name,email,role').in('role',['مندوب مبيعات','مندوب بيع مباشر','تلي سيلز','كاشير']).order('name'),
         supabase.from('branches').select('id,name,branch_code').eq('is_active',true).order('name')
     ]).then(function(r){
-        var plans=(r[0].plans||[]),users=r[1].data||[],branches=r[2].data||[];
-        var selected=plans.length?plans[0].id:'';
-        var now=new Date(),y=now.getFullYear(),m=String(now.getMonth()+1).padStart(2,'0');
-        var first=y+'-'+m+'-01',last=new Date(y,now.getMonth()+1,0).toISOString().slice(0,10);
-        var ph='<option value="">اختر الخطة</option>';
-        for(var i=0;i<plans.length;i++) ph+='<option value="'+plans[i].id+'"'+(plans[i].id===selected?' selected':'')+'>'+escapeHtml(plans[i].plan_code+' — '+plans[i].name+' ['+plans[i].status+']')+'</option>';
+        var plans=r[0].plans||[];
+        var users=r[1].data||[];
+        var branches=r[2].data||[];
+        for(var i=0;i<plans.length;i++) plansById[plans[i].id]=plans[i];
+        selectedPlanId=s.targetSelectedPlanId&&plansById[s.targetSelectedPlanId]?s.targetSelectedPlanId:(plans.length?plans[0].id:'');
+        s.targetSelectedPlanId=selectedPlanId;
+        var now=new Date();
+        var y=now.getFullYear();
+        var m=String(now.getMonth()+1).padStart(2,'0');
+        var first=y+'-'+m+'-01';
+        var last=new Date(y,now.getMonth()+1,0).toISOString().slice(0,10);
         var rh='<option value="">بدون مندوب (عام)</option>';
-        for(var j=0;j<users.length;j++) rh+='<option value="'+users[j].id+'">'+escapeHtml(users[j].name||users[j].email)+' — '+escapeHtml(users[j].role||'')+'</option>';
+        for(var j=0;j<users.length;j++) rh+='<option value="'+users[j].id+'">'+esc(users[j].name||users[j].email)+' — '+esc(users[j].role||'')+'</option>';
         var bh='<option value="">كل الفروع</option>';
-        for(var k=0;k<branches.length;k++) bh+='<option value="'+branches[k].id+'">'+escapeHtml(branches[k].name||branches[k].branch_code)+'</option>';
-        var html='';
-        html+='<div class="space-y-4">';
-        html+='<div class="card"><div class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h2 class="text-xl font-black">🎯 محرك أهداف المبيعات</h2><p class="text-xs text-gray-500 mt-1">الخطة والتخصيص والاعتماد والترحيل والمتابعة اللحظية من نفس المحرك المركزي.</p></div><button onclick="RW_SalesTargets.load()" class="px-4 py-2 rounded-xl bg-gray-100 font-bold">تحديث</button></div>';
-        html+='<div class="grid grid-cols-1 md:grid-cols-5 gap-2">';
-        html+='<input id="st-plan-code" class="border rounded-xl p-2.5" placeholder="كود الخطة">';
-        html+='<input id="st-plan-name" class="border rounded-xl p-2.5" placeholder="اسم الخطة">';
-        html+='<input id="st-plan-start" type="date" value="'+first+'" class="border rounded-xl p-2.5">';
-        html+='<input id="st-plan-end" type="date" value="'+last+'" class="border rounded-xl p-2.5">';
-        html+='<select id="st-plan-metric" class="border rounded-xl p-2.5"><option value="amount">قيمة</option><option value="qty">كمية</option><option value="gross_profit">مجمل الربح</option><option value="mixed">مختلط</option></select>';
-        html+='</div><input id="st-plan-notes" class="border rounded-xl p-2.5 w-full mt-2" placeholder="ملاحظات الخطة">';
-        html+='<div class="flex flex-wrap gap-2 mt-3"><button onclick="RW_SalesTargets.savePlan()" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold">إنشاء خطة</button></div></div>';
-        html+='<div class="card"><div class="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">';
-        html+='<select id="st-plan-select" class="border rounded-xl p-2.5 md:col-span-2" onchange="RW_SalesTargets.load()">'+ph+'</select>';
-        html+='<button onclick="RW_SalesTargets.planAction(\'APPROVE_PLAN\')" class="px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold">اعتماد</button>';
-        html+='<button onclick="RW_SalesTargets.planAction(\'CANCEL_PLAN\')" class="px-3 py-2 rounded-xl bg-red-50 text-red-700 font-bold">إلغاء Draft</button>';
-        html+='<button onclick="RW_SalesTargets.planAction(\'CLOSE_PLAN\')" class="px-3 py-2 rounded-xl bg-slate-800 text-white font-bold">إغلاق</button>';
-        html+='<button onclick="RW_SalesTargets.runAction(\'POST\')" class="px-3 py-2 rounded-xl bg-emerald-600 text-white font-bold">ترحيل النتائج</button>';
-        html+='</div></div>';
-        html+='<div class="card"><h3 class="font-black mb-3">إضافة تخصيص لمندوب / فرع</h3><div class="grid grid-cols-1 md:grid-cols-6 gap-2">';
-        html+='<select id="st-rep-select" class="border rounded-xl p-2.5">'+rh+'</select>';
-        html+='<select id="st-branch-select" class="border rounded-xl p-2.5">'+bh+'</select>';
-        html+='<input id="st-target-amount" type="number" min="0" step="0.01" class="border rounded-xl p-2.5" placeholder="هدف القيمة">';
-        html+='<input id="st-target-qty" type="number" min="0" step="0.01" class="border rounded-xl p-2.5" placeholder="هدف الكمية">';
-        html+='<input id="st-target-gp" type="number" min="0" step="0.01" class="border rounded-xl p-2.5" placeholder="هدف الربح">';
-        html+='<input id="st-weight" type="number" min="0.01" step="0.01" value="100" class="border rounded-xl p-2.5" placeholder="الوزن">';
-        html+='</div><input id="st-assignment-notes" class="border rounded-xl p-2.5 w-full mt-2" placeholder="ملاحظات التخصيص">';
-        html+='<div class="mt-3"><button onclick="RW_SalesTargets.saveAssignment()" class="px-4 py-2 rounded-xl bg-slate-700 text-white font-bold">حفظ التخصيص</button></div></div>';
-        html+='<div id="st-dashboard" class="card"><div class="text-center text-gray-400 py-6">اختر خطة لعرض النتائج الحية.</div></div>';
-        html+='</div>';
+        for(var k=0;k<branches.length;k++) bh+='<option value="'+branches[k].id+'">'+esc(branches[k].name||branches[k].branch_code)+'</option>';
+        var html='<div class="space-y-4">';
+        html+='<div class="card"><div class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h2 class="text-xl font-black">🎯 محرك أهداف المبيعات</h2><p class="text-xs text-gray-500 mt-1">إدارة دورة الهدف كاملة: إنشاء، تعديل، تخصيص، اعتماد، معاينة، ترحيل، اعتماد النتائج، عكسها ومتابعتها لحظيًا.</p></div><button onclick="RW_SalesTargets.load()" class="px-4 py-2 rounded-xl bg-gray-100 font-bold">تحديث</button></div>';
+        html+='<input id="st-plan-edit-id" type="hidden"><div class="grid grid-cols-1 md:grid-cols-5 gap-2"><input id="st-plan-code" class="border rounded-xl p-2.5" placeholder="كود الخطة"><input id="st-plan-name" class="border rounded-xl p-2.5" placeholder="اسم الخطة"><input id="st-plan-start" type="date" value="'+first+'" class="border rounded-xl p-2.5"><input id="st-plan-end" type="date" value="'+last+'" class="border rounded-xl p-2.5"><select id="st-plan-metric" class="border rounded-xl p-2.5"><option value="amount">قيمة</option><option value="qty">كمية</option><option value="gross_profit">مجمل الربح</option><option value="mixed">مختلط</option></select></div><input id="st-plan-notes" class="border rounded-xl p-2.5 w-full mt-2" placeholder="ملاحظات الخطة"><div class="flex flex-wrap gap-2 mt-3"><button onclick="RW_SalesTargets.savePlan()" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold">حفظ الخطة</button><button onclick="RW_SalesTargets.editPlan()" class="px-4 py-2 rounded-xl bg-indigo-50 text-indigo-700 font-bold">تعديل المختارة</button><button onclick="RW_SalesTargets.clearPlanForm()" class="px-4 py-2 rounded-xl bg-gray-100 font-bold">تفريغ</button></div></div>';
+        html+='<div class="card"><div class="grid grid-cols-1 md:grid-cols-7 gap-2 items-end"><select id="st-plan-select" class="border rounded-xl p-2.5 md:col-span-2" onchange="RW_SalesTargets.selectPlan(this.value)"></select><button onclick="RW_SalesTargets.planAction(\'APPROVE_PLAN\')" class="px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold">اعتماد</button><button onclick="RW_SalesTargets.planAction(\'CANCEL_PLAN\')" class="px-3 py-2 rounded-xl bg-red-50 text-red-700 font-bold">إلغاء Draft</button><button onclick="RW_SalesTargets.planAction(\'CLOSE_PLAN\')" class="px-3 py-2 rounded-xl bg-slate-800 text-white font-bold">إغلاق</button><button onclick="RW_SalesTargets.runAction(\'PREVIEW\')" class="px-3 py-2 rounded-xl bg-amber-50 text-amber-700 font-bold">معاينة</button><button onclick="RW_SalesTargets.runAction(\'POST\')" class="px-3 py-2 rounded-xl bg-emerald-600 text-white font-bold">ترحيل</button></div><div class="grid grid-cols-1 md:grid-cols-4 gap-2 mt-3"><select id="st-run-select" class="border rounded-xl p-2.5 md:col-span-2"></select><button onclick="RW_SalesTargets.runAction(\'APPROVE_RUN\')" class="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 font-bold">اعتماد النتيجة</button><button onclick="RW_SalesTargets.runAction(\'REVERSE_RUN\')" class="px-3 py-2 rounded-xl bg-red-50 text-red-700 font-bold">عكس الترحيل</button></div></div>';
+        html+='<div class="card"><h3 class="font-black mb-3">تخصيص الهدف لمندوب / فرع</h3><input id="st-assignment-id" type="hidden"><div class="grid grid-cols-1 md:grid-cols-6 gap-2"><select id="st-rep-select" class="border rounded-xl p-2.5">'+rh+'</select><select id="st-branch-select" class="border rounded-xl p-2.5">'+bh+'</select><input id="st-target-amount" type="number" min="0" step="0.01" class="border rounded-xl p-2.5" placeholder="هدف القيمة"><input id="st-target-qty" type="number" min="0" step="0.01" class="border rounded-xl p-2.5" placeholder="هدف الكمية"><input id="st-target-gp" type="number" min="0" step="0.01" class="border rounded-xl p-2.5" placeholder="هدف الربح"><input id="st-weight" type="number" min="0.01" step="0.01" value="100" class="border rounded-xl p-2.5" placeholder="الوزن"></div><div class="flex items-center gap-2 mt-2"><label class="flex items-center gap-2 text-sm font-bold"><input id="st-assignment-active" type="checkbox" checked> نشط</label><input id="st-assignment-notes" class="border rounded-xl p-2.5 flex-1" placeholder="ملاحظات التخصيص"></div><div class="flex gap-2 mt-3"><button onclick="RW_SalesTargets.saveAssignment()" class="px-4 py-2 rounded-xl bg-slate-700 text-white font-bold"><span id="st-assignment-save-label">حفظ التخصيص</span></button><button onclick="RW_SalesTargets.clearAssignmentForm()" class="px-4 py-2 rounded-xl bg-gray-100 font-bold">تفريغ</button></div></div>';
+        html+='<div id="st-dashboard" class="card"><div class="text-center text-gray-400 py-6">اختر خطة لعرض النتائج الحية.</div></div></div>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
-        if(selected) loadSelected(selected); else return;
-        function loadSelected(planId){
-            op('LIST_RUNS').then(function(runR){
-                return call(endpoint,{plan_id:planId}).then(function(d){
-                    var t=d.totals||{},a=d.assignments||[],rk=d.ranking||[],tr=d.trend||[],runs=(runR.runs||[]).filter(function(x){return x.plan_id===planId;});
-                    var h='<div class="flex flex-wrap justify-between gap-2 items-center mb-4"><div><h3 class="font-black text-lg">'+escapeHtml((d.plan&&d.plan.name)||'الخطة')+'</h3><p class="text-xs text-gray-500">'+escapeHtml((d.plan&&d.plan.period_start)||'')+' → '+escapeHtml((d.plan&&d.plan.period_end)||'')+' | '+escapeHtml((d.plan&&d.plan.status)||'')+'</p></div><div class="text-xs text-gray-500">آخر تحديث: '+new Date().toLocaleTimeString('ar-EG')+'</div></div>';
-                    h+='<div class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-4">'+kpi('الهدف',t.target_amount,'ج.م')+kpi('المحقق',t.actual_amount,'ج.م')+kpi('الإنجاز',t.amount_pct,'%')+kpi('هدف الكمية',t.target_qty,'')+kpi('المحقق كمية',t.actual_qty,'')+kpi('الإنجاز كمية',t.qty_pct,'%')+'</div>';
-                    h+='<div class="grid grid-cols-1 lg:grid-cols-2 gap-3"><div class="card border"><h4 class="font-black mb-2">أداء التخصيصات</h4><div class="overflow-auto"><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2 text-right">المندوب</th><th class="p-2">الفرع</th><th class="p-2">الهدف</th><th class="p-2">المحقق</th><th class="p-2">%</th></tr></thead><tbody>';
-                    for(var i=0;i<a.length;i++){var z=a[i],pct=z.target_amount>0?(Number(z.actual_amount)/Number(z.target_amount)*100):0;h+='<tr class="border-t"><td class="p-2 font-bold">'+escapeHtml(z.sales_rep_name||'عام')+'</td><td class="p-2">'+escapeHtml(z.branch_name||'كل الفروع')+'</td><td class="p-2">'+fmtNum(z.target_amount)+'</td><td class="p-2">'+fmtNum(z.actual_amount)+'</td><td class="p-2 font-black">'+fmtNum(pct)+'%</td></tr>';}
-                    if(!a.length)h+='<tr><td colspan="5" class="p-4 text-center text-gray-400">لا توجد تخصيصات</td></tr>';
-                    h+='</tbody></table></div></div><div class="card border"><h4 class="font-black mb-2">ترتيب المندوبين</h4><div class="space-y-2">';
-                    for(var r=0;r<rk.length;r++){var q=rk[r];h+='<div class="flex justify-between items-center border-b pb-2"><span class="font-bold">'+escapeHtml(q.rep_name||'غير محدد')+'</span><span class="font-black">'+fmtNum(q.actual_amount)+' ج.م</span></div>';}
-                    if(!rk.length)h+='<div class="text-center text-gray-400 py-4">لا توجد نتائج</div>';
-                    h+='</div></div></div>';
-                    h+='<div class="card border mt-3"><h4 class="font-black mb-2">عمليات الترحيل</h4><div class="overflow-auto"><table class="w-full text-sm"><thead><tr class="bg-gray-50"><th class="p-2">التاريخ</th><th class="p-2">الحالة</th><th class="p-2">القيمة</th><th class="p-2">الكميات</th></tr></thead><tbody>';
-                    for(var rr=0;rr<runs.length;rr++){h+='<tr class="border-t"><td class="p-2">'+escapeHtml(runs[rr].evaluated_at||runs[rr].created_at||'')+'</td><td class="p-2 font-bold">'+escapeHtml(runs[rr].status||'')+'</td><td class="p-2">'+fmtNum(runs[rr].total_actual_amount)+'</td><td class="p-2">'+fmtNum(runs[rr].total_actual_qty)+'</td></tr>';}
-                    if(!runs.length)h+='<tr><td colspan="4" class="p-4 text-center text-gray-400">لا توجد عمليات ترحيل</td></tr>';
-                    h+='</tbody></table></div></div>';
-                    var box=RW_UI.byId('st-dashboard');if(box)RW_UI.safeHTML(box,h);
-                    setTimeout(function(){if(tr.length){var cv=document.createElement('div');cv.className='mt-3 text-xs text-gray-500';cv.innerHTML='الاتجاه اليومي: '+tr.length+' يومًا مسجلًا';var b=RW_UI.byId('st-dashboard');if(b)b.appendChild(cv);}},50);
-                });
-            }).catch(function(e){var box=RW_UI.byId('st-dashboard');if(box)RW_UI.safeHTML(box,'<div class="text-center py-6 text-red-500">فشل تحميل لوحة الأهداف: '+escapeHtml(e.message)+'</div>');});
-        }
-        function kpi(label,value,suffix){return '<div class="stat-card text-center"><div class="text-xs text-gray-400">'+label+'</div><div class="text-lg font-black">'+fmtNum(Number(value)||0)+' '+suffix+'</div></div>';}
-        function escapeHtml(v){return String(v==null?'':v).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c];});}
-    }).catch(function(e){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-red-500">فشل تحميل محرك الأهداف: '+String(e.message||e)+'</div>');});
+        renderPlanOptions(plans);
+        if(selectedPlanId) loadDashboard(selectedPlanId);
+    }).catch(function(e){
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-red-500">فشل تحميل محرك الأهداف: '+esc(e.message||e)+'</div>');
+    });
 },
     renderReports: function(){
         var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>');
