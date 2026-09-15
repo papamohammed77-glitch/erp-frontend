@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-15 11:00 UTC -->
+<!-- 2026-09-15 15:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -1140,7 +1140,7 @@ var RW_Data = {
 const RW_Navigation = {
     menuTree: [
     { view: 'dashboard', icon: 'fa-chart-pie', label: 'لوحة التحكم' },
-    { icon: 'fa-chart-line', label: 'إدارة المبيعات', submenu: [{ view: 'telesales', label: 'التلي سيلز' }, { view: 'customers', label: 'العملاء' }, { view: 'online-store', label: 'المتجر الإلكتروني' }, { view: 'pos', label: 'نقطة البيع' }, { view: 'orders', label: 'أوردرات المبيعات' }, { view: 'quotes', label: 'عروض الأسعار' },{ view: 'price-lists', label: 'قوائم الأسعار' },{ view: 'promotions', label: 'العروض والخصومات' }, { view: 'sales-targets', label: 'أهداف المبيعات', perm: ['sales_manager','sales_supervisor','general_manager','reports'] }, { view: 'loyalty', label: 'الولاء والمكافآت', perm: ['sales_manager','sales_supervisor','general_manager','reports','customers','pos','telesales','orders','van-sales'] }, { view: 'runsheets', label: 'الرانشيتات' }, { view: 'sales-returns', label: 'إدارة مرتجعات المبيعات' }] },
+    { icon: 'fa-chart-line', label: 'إدارة المبيعات', submenu: [{ view: 'telesales', label: 'التلي سيلز' }, { view: 'customers', label: 'العملاء' }, { view: 'online-store', label: 'المتجر الإلكتروني' }, { view: 'pos', label: 'نقطة البيع' }, { view: 'orders', label: 'أوردرات المبيعات' }, { view: 'quotes', label: 'عروض الأسعار' },{ view: 'price-lists', label: 'قوائم الأسعار' },{ view: 'promotions', label: 'العروض والخصومات' }, { view: 'sales-decision-center', label: 'مركز قرار المبيعات', perm: ['sales_manager','sales_supervisor','general_manager','reports'] }, { view: 'sales-targets', label: 'أهداف المبيعات', perm: ['sales_manager','sales_supervisor','general_manager','reports'] }, { view: 'loyalty', label: 'الولاء والمكافآت', perm: ['sales_manager','sales_supervisor','general_manager','reports','customers','pos','telesales','orders','van-sales'] }, { view: 'runsheets', label: 'الرانشيتات' }, { view: 'sales-returns', label: 'إدارة مرتجعات المبيعات' }] },
     { icon: 'fa-truck', label: 'إدارة المشتريات', submenu: [{ view: 'suppliers', label: 'الموردين' }, { view: 'purchase-pos', label: 'نقطة شراء' }, { view: 'purchases', label: 'أوردرات الشراء' }] },
     { icon: 'fa-warehouse', label: 'إدارة المخازن والمخزون', submenu: [{ view: 'items', label: 'الأصناف' }, { view: 'branches', label: 'المخازن والفروع' }, { label: 'العمليات المخزنية', icon: 'fa-timeline', submenu: [{ view: 'receiving', label: 'الاستلام' }, { view: 'picking', label: 'التحضير' }, { view: 'loading', label: 'التحميل' }, { view: 'delivery', label: 'التوصيل' }, { view: 'return', label: 'المرتجعات' }, { view: 'unloading', label: 'التفريغ' }] }, { label: 'الأذونات المخزنية', icon: 'fa-file-signature', submenu: [{ view: 'transfer', label: 'تحويل مخزني' }, { view: 'direct-sale', label: 'صرف سيارة بيع مباشر' }, { view: 'direct-return', label: 'استلام مرتجع سيارة' }, { view: 'supplier-return', label: 'مرتجع لمورد' }, { view: 'vouchers', label: 'عرض الأذونات' }] }, { label: 'الجرد', icon: 'fa-clipboard-check', submenu: [{ view: 'vehicle-count', label: 'جرد سيارة' }, { view: 'branch-count', label: 'جرد فرع' }, { view: 'general-count', label: 'جرد عام' }] }] },
     { icon: 'fa-coins', label: 'إدارة الحسابات والمالية', submenu: [{ action: 'showFinanceTab', arg: 'treasury', label: 'الخزائن والبنوك', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'accounts', label: 'دليل الحسابات', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'journal', label: 'قيود يومية', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'receipts', label: 'سندات القبض', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'payments', label: 'سندات الصرف', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'transfers', label: 'التحويلات', perm: ['finance', 'finance_manager'] }, { action: 'showFinanceTab', arg: 'reports', label: 'التقارير المالية', perm: ['finance', 'finance_manager'] },
@@ -1307,6 +1307,233 @@ toggleSidebar() { const sidebar = byId('rw-sidebar'), main = byId('rw-main-conte
     });
 })();
 window.RW_Navigation = RW_Navigation;
+	var RW_SalesDecisionCenter = (function(){
+    'use strict';
+
+    var realtimeChannel = null;
+    var state = { policy:null, pending:[], loading:false };
+
+    function endpoint(){ return RW_SUPABASE_URL + '/functions/v1/sales-decision-center'; }
+
+    function esc(v){
+        return String(v==null?'':v)
+            .replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;')
+            .replace(/\"/g,'&quot;')
+            .replace(/'/g,'&#39;');
+    }
+
+    function money(v){
+        return Number(v||0).toLocaleString('ar-EG',{maximumFractionDigits:2});
+    }
+
+    function hasPerm(name){
+        var p=(RW_STATE && Array.isArray(RW_STATE.permissions)) ? RW_STATE.permissions : [];
+        return p.indexOf('*')>=0 || p.indexOf(name)>=0;
+    }
+
+    function canRead(){
+        return hasPerm('sales_manager') || hasPerm('sales_supervisor') || hasPerm('general_manager') || hasPerm('reports');
+    }
+
+    function canManage(){
+        return hasPerm('sales_manager') || hasPerm('general_manager');
+    }
+
+    function canApprove(){
+        return canManage();
+    }
+
+    async function call(operation,payload,operationId,policyId){
+        var session=await supabase.auth.getSession();
+        var token=session && session.data && session.data.session ? session.data.session.access_token : null;
+        if(!token) throw new Error('انتهت الجلسة');
+        var res=await fetch(endpoint(),{
+            method:'POST',
+            headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+            body:JSON.stringify({operation:operation,payload:payload||{},operation_id:operationId||null,policy_id:policyId||null})
+        });
+        var j=await res.json().catch(function(){return {};});
+        if(!res.ok || (j && j.success===false && operation!=='VALIDATE_ORDER')) throw new Error((j&&j.msg)||'فشل تنفيذ مركز قرار المبيعات');
+        return j;
+    }
+
+    function control(id,label,value,type,disabled){
+        var d=disabled?' disabled':'';
+        if(type==='checkbox'){
+            return '<label class="flex items-center gap-3 p-4 border rounded-2xl bg-slate-50 font-black"><input id="'+id+'" type="checkbox" '+(value?'checked':'')+d+' class="w-5 h-5">'+esc(label)+'</label>';
+        }
+        return '<label class="block"><span class="block text-sm font-black text-slate-700 mb-2">'+esc(label)+'</span><input id="'+id+'" '+(type==='number'?'type="number" step="0.01"':'')+' value="'+esc(value==null?'':value)+'"'+d+' class="w-full p-3 border rounded-xl"></label>';
+    }
+
+    function selectControl(id,label,value,options,disabled){
+        var d=disabled?' disabled':'';
+        var h='<label class="block"><span class="block text-sm font-black text-slate-700 mb-2">'+esc(label)+'</span><select id="'+id+'"'+d+' class="w-full p-3 border rounded-xl">';
+        for(var i=0;i<options.length;i++) h+='<option value="'+esc(options[i][0])+'"'+(String(value)===String(options[i][0])?' selected':'')+'>'+esc(options[i][1])+'</option>';
+        return h+'</select></label>';
+    }
+
+    function policyFromForm(){
+        return {
+            policy_schema_version:1,
+            pricing_source:byId('sdc-pricing-source').value,
+            allow_manual_price:byId('sdc-manual-price').checked,
+            max_discount_percent:Number(byId('sdc-max-discount').value||0),
+            discount_approval_threshold_percent:Number(byId('sdc-discount-approval').value||0),
+            min_margin_percent:Number(byId('sdc-min-margin').value||0),
+            order_approval_threshold_amount:Number(byId('sdc-order-threshold').value||0),
+            credit_mode:byId('sdc-credit-mode').value,
+            credit_buffer_amount:Number(byId('sdc-credit-buffer').value||0),
+            customer_required_for_credit:byId('sdc-credit-customer-required').checked,
+            stock_mode:byId('sdc-stock-mode').value,
+            allow_out_of_stock_sale:byId('sdc-out-of-stock').checked,
+            notes:byId('sdc-notes').value.trim()
+        };
+    }
+
+    async function loadPolicy(){ state.policy=await call('GET_POLICY'); return state.policy; }
+
+    async function loadPending(){
+        if(!canApprove()) { state.pending=[]; return state.pending; }
+        var r=await call('GET_PENDING_APPROVALS'); state.pending=r.items||[]; return state.pending;
+    }
+
+    function renderPending(){
+        var host=byId('sdc-pending'); if(!host) return;
+        if(!state.pending.length){ RW_UI.safeHTML(host,'<div class="p-6 text-center text-slate-400">لا توجد طلبات تنتظر الاعتماد حاليًا.</div>'); return; }
+        var h='<div class="overflow-auto"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3">العملية</th><th class="p-3">القرار</th><th class="p-3">التقييم</th><th class="p-3">التاريخ</th><th class="p-3">الأسباب</th><th class="p-3">الإجراء</th></tr></thead><tbody>';
+        for(var i=0;i<state.pending.length;i++){
+            var x=state.pending[i];
+            var reasons=(x.reasons||[]).map(function(r){return esc(r.message||r.code||'');}).join(' | ');
+            h+='<tr class="border-t"><td class="p-3 font-black">'+esc(x.operation_id)+'</td><td class="p-3"><span class="px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-black">يتطلب اعتمادًا</span></td><td class="p-3">'+money(x.score)+'</td><td class="p-3">'+esc(x.created_at||'')+'</td><td class="p-3 text-xs">'+(reasons||'—')+'</td><td class="p-3"><button class="px-3 py-2 rounded-xl bg-emerald-600 text-white font-black" onclick="RW_SalesDecisionCenter.approve('+JSON.stringify(x.operation_id)+')">اعتماد</button></td></tr>';
+        }
+        RW_UI.safeHTML(host,h+'</tbody></table></div>');
+    }
+
+    function renderPolicy(){
+        var p=(state.policy&&state.policy.policy)||{};
+        var disabled=!canManage();
+        var host=byId('sdc-policy'); if(!host) return;
+        var h='<div class="grid grid-cols-1 xl:grid-cols-4 gap-4">';
+        h+=selectControl('sdc-pricing-source','مصدر التسعير',p.pricing_source||'item_default',[['item_default','السعر الأساسي للصنف'],['price_list','قائمة الأسعار'],['hybrid','هجين']],disabled);
+        h+=control('sdc-max-discount','الحد الأقصى للخصم %',p.max_discount_percent, 'number',disabled);
+        h+=control('sdc-discount-approval','نسبة الخصم التي تتطلب اعتمادًا %',p.discount_approval_threshold_percent,'number',disabled);
+        h+=control('sdc-min-margin','أقل هامش ربح %',p.min_margin_percent,'number',disabled);
+        h+=control('sdc-order-threshold','قيمة الطلب التي تتطلب اعتمادًا',p.order_approval_threshold_amount,'number',disabled);
+        h+=selectControl('sdc-credit-mode','سياسة الائتمان',p.credit_mode||'ignore',[['ignore','لا تمنع / رقابة فقط'],['warn','تحذير'],['block','منع']],disabled);
+        h+=control('sdc-credit-buffer','هامش تجاوز حد الائتمان',p.credit_buffer_amount,'number',disabled);
+        h+=control('sdc-notes','ملاحظات السياسة',p.notes||'','text',disabled);
+        h+=selectControl('sdc-stock-mode','سياسة الرصيد',p.stock_mode||'engine',[['engine','محرك المخزون الحالي'],['warn','تحذير'],['block','منع'],['backorder','يتطلب معالجة Backorder']],disabled);
+        h+=control('sdc-credit-customer-required','العميل إلزامي للبيع الآجل',!!p.customer_required_for_credit,'checkbox',disabled);
+        h+=control('sdc-manual-price','السعر اليدوي مسموح',!!p.allow_manual_price,'checkbox',disabled);
+        h+=control('sdc-out-of-stock','السماح ببيع بدون رصيد',!!p.allow_out_of_stock_sale,'checkbox',disabled);
+        h+='</div>';
+        h+='<div class="flex flex-wrap gap-2 mt-5">';
+        h+='<button id="sdc-save" class="px-5 py-3 rounded-2xl bg-blue-600 text-white font-black" '+(disabled?'disabled':'')+'>حفظ مسودة</button>';
+        h+='<button id="sdc-publish" class="px-5 py-3 rounded-2xl bg-emerald-600 text-white font-black" '+(disabled?'disabled':'')+'>نشر واعتماد السياسة</button>';
+        h+='</div>';
+        RW_UI.safeHTML(host,h);
+        var save=byId('sdc-save'); if(save) save.addEventListener('click',async function(){try{showLoader('جاري حفظ سياسة القرار...');await call('SAVE_POLICY',policyFromForm(),null,state.policy.policy_id);hideLoader();showToast('تم حفظ مسودة سياسة Sales Decision','success');await refresh();}catch(e){hideLoader();showToast(e.message,'error');}});
+        var pub=byId('sdc-publish'); if(pub) pub.addEventListener('click',async function(){try{showLoader('جاري نشر سياسة القرار...');await call('PUBLISH_POLICY',{},null,state.policy.policy_id);hideLoader();showToast('تم نشر سياسة Sales Decision','success');await refresh();}catch(e){hideLoader();showToast(e.message,'error');}});
+    }
+
+    function renderSimulator(){
+        var host=byId('sdc-simulator'); if(!host) return;
+        var branches=(RW_STATE.data&&RW_STATE.data.branches)||[];
+        var items=(RW_STATE.data&&RW_STATE.data.items)||[];
+        var bh='<option value="">اختر الفرع</option>';
+        for(var i=0;i<branches.length;i++) bh+='<option value="'+esc(branches[i].id)+'">'+esc((branches[i].branch_code||'')+' — '+(branches[i].name||''))+'</option>';
+        var ih='<option value="">اختر الصنف</option>';
+        for(var j=0;j<items.length;j++) ih+='<option value="'+esc(items[j].item_code)+'">'+esc((items[j].item_code||'')+' — '+(items[j].name||''))+'</option>';
+        RW_UI.safeHTML(host,
+          '<div class="grid grid-cols-1 xl:grid-cols-5 gap-3">'+
+          '<select id="sdc-sim-branch" class="p-3 border rounded-xl">'+bh+'</select>'+ 
+          '<select id="sdc-sim-payment" class="p-3 border rounded-xl"><option value="نقدي">نقدي</option><option value="أجل">أجل</option></select>'+ 
+          '<input id="sdc-sim-total" type="number" step="0.01" value="10" class="p-3 border rounded-xl" placeholder="إجمالي الطلب">'+
+          '<input id="sdc-sim-gross" type="number" step="0.01" value="10" class="p-3 border rounded-xl" placeholder="الإجمالي قبل الخصم">'+
+          '<input id="sdc-sim-discount" type="number" step="0.01" value="0" class="p-3 border rounded-xl" placeholder="خصم الطلب">'+
+          '<select id="sdc-sim-item" class="p-3 border rounded-xl">'+ih+'</select>'+ 
+          '<input id="sdc-sim-qty" type="number" step="0.01" value="1" class="p-3 border rounded-xl" placeholder="الكمية">'+
+          '<input id="sdc-sim-price" type="number" step="0.01" value="10" class="p-3 border rounded-xl" placeholder="السعر">'+
+          '<button id="sdc-run" class="px-5 py-3 rounded-xl bg-slate-900 text-white font-black">اختبار القرار</button>'+ 
+          '</div><div id="sdc-sim-result" class="mt-4"></div>'
+        );
+        var run=byId('sdc-run');
+        if(run) run.addEventListener('click',async function(){
+            try{
+                var operationId=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'SIM-'+Date.now()+'-'+Math.random();
+                var itemCode=byId('sdc-sim-item').value;
+                if(!itemCode) throw new Error('اختر الصنف');
+                var itemsList=(RW_STATE.data&&RW_STATE.data.items)||[];
+                var chosen=itemsList.find(function(x){return String(x.item_code)===String(itemCode);})||{};
+                var payload={entity_type:'ORDER',branch_id:byId('sdc-sim-branch').value||null,payment_type:byId('sdc-sim-payment').value,total_amount:Number(byId('sdc-sim-total').value||0),gross_amount:Number(byId('sdc-sim-gross').value||0),order_discount_amount:Number(byId('sdc-sim-discount').value||0),items:[{item_id:chosen.id||null,item_code:itemCode,qty:Number(byId('sdc-sim-qty').value||0),unit_price:Number(byId('sdc-sim-price').value||0),discount_percent:0}]};
+                var r=await call('VALIDATE_ORDER',payload,operationId,null);
+                var cls=r.decision==='ALLOW'?'bg-emerald-50 text-emerald-700':(r.decision==='REQUIRE_APPROVAL'?'bg-amber-50 text-amber-700':'bg-rose-50 text-rose-700');
+                var reasons=(r.reasons||[]).map(function(x){return '<li>'+esc(x.message||x.code||'')+'</li>';}).join('');
+                RW_UI.safeHTML(byId('sdc-sim-result'),'<div class="p-4 rounded-2xl '+cls+'"><div class="text-lg font-black">'+esc(r.decision||'—')+'</div><div class="text-sm mt-1">Score: '+money(r.score)+'</div><div class="text-xs mt-2">Operation: '+esc(operationId)+'</div>'+(reasons?'<ul class="list-disc pr-5 mt-3">'+reasons+'</ul>':'')+'</div>');
+                await loadPending(); renderPending();
+            }catch(e){RW_UI.safeHTML(byId('sdc-sim-result'),'<div class="p-4 rounded-2xl bg-rose-50 text-rose-700 font-black">'+esc(e.message)+'</div>');}
+        });
+    }
+
+    async function approve(operationId){
+        if(!canApprove()) return showToast('لا توجد صلاحية اعتماد Sales Decision','error');
+        var note=await Swal.fire({title:'اعتماد العملية',input:'text',inputPlaceholder:'ملاحظة اعتماد اختيارية',showCancelButton:true,confirmButtonText:'اعتماد',cancelButtonText:'إلغاء'});
+        if(!note.isConfirmed) return;
+        try{showLoader('جاري اعتماد العملية...');await call('APPROVE_EVALUATION',{note:note.value||null},operationId,null);hideLoader();showToast('تم اعتماد العملية','success');await loadPending();renderPending();}catch(e){hideLoader();showToast(e.message,'error');}
+    }
+
+    function subscribe(){
+        var c=_rwCompanyId(); if(!c) return;
+        if(realtimeChannel){try{supabase.removeChannel(realtimeChannel);}catch(e){} realtimeChannel=null;}
+        realtimeChannel=supabase.channel('rw-sales-decision-'+c)
+          .on('postgres_changes',{event:'*',schema:'public',table:'sales_decision_policies',filter:'company_id=eq.'+c},function(){refresh().catch(function(e){console.error(e);});})
+          .on('postgres_changes',{event:'*',schema:'public',table:'sales_decision_evaluations',filter:'company_id=eq.'+c},function(){loadPending().then(renderPending).catch(function(e){console.error(e);});})
+          .on('postgres_changes',{event:'*',schema:'public',table:'sales_decision_approvals',filter:'company_id=eq.'+c},function(){loadPending().then(renderPending).catch(function(e){console.error(e);});})
+          .subscribe();
+    }
+
+    async function refresh(){
+        state.policy=await loadPolicy();
+        renderMeta();
+        renderPolicy();
+        await loadPending();
+        renderPending();
+    }
+
+    function renderMeta(){
+        var host=byId('sdc-meta'); if(!host) return;
+        var p=state.policy||{};
+        RW_UI.safeHTML(host,
+          '<div class="grid grid-cols-1 md:grid-cols-4 gap-3">'+
+          '<div class="rw-kpi-card"><div class="text-xs text-slate-500">الحالة</div><div class="text-2xl font-black mt-2">'+esc(p.status||'—')+'</div></div>'+ 
+          '<div class="rw-kpi-card"><div class="text-xs text-slate-500">الإصدار</div><div class="text-2xl font-black mt-2">'+esc(p.version_no||'—')+'</div></div>'+ 
+          '<div class="rw-kpi-card"><div class="text-xs text-slate-500">بداية النفاذ</div><div class="text-2xl font-black mt-2">'+esc(p.effective_from||'—')+'</div></div>'+ 
+          '<div class="rw-kpi-card"><div class="text-xs text-slate-500">Policy ID</div><div class="text-xs font-black mt-2 break-all">'+esc(p.policy_id||'—')+'</div></div>'+ 
+          '</div>'
+        );
+    }
+
+    async function render(){
+        var c=byId('rw-page-container'); if(!c) return;
+        if(!canRead()){RW_UI.safeHTML(c,'<div class="rw-card"><div class="rw-error">ليس لديك صلاحية قراءة مركز قرار المبيعات.</div></div>');return;}
+        safeText(byId('rw-header-title'),'مركز قرار المبيعات');
+        safeText(byId('rw-header-subtitle'),'تحكم مركزي في سياسة التسعير والخصومات والهامش والائتمان والرصيد والاعتمادات قبل التنفيذ.');
+        RW_UI.safeHTML(c,'<div class="space-y-6">'+
+          '<div class="rw-page-header"><div><h1>🧠 مركز قرار المبيعات</h1><p>Control Plane مركزي يقرر قبل إنشاء الطلب أو حركة المخزون أو الترحيل المالي.</p></div><button id="sdc-refresh" class="px-5 py-3 rounded-2xl bg-slate-900 text-white font-black">تحديث</button></div>'+
+          '<div id="sdc-meta"></div>'+
+          '<div class="rw-card"><div class="flex justify-between gap-3 items-center flex-wrap"><div><h3>سياسة القرار الحالية</h3><p class="text-sm text-slate-500 mt-1">التعديلات تُحفظ كنسخة Draft ثم تُنشر صراحة.</p></div></div><div id="sdc-policy" class="mt-5"></div></div>'+
+          '<div class="rw-card"><div><h3>طلبات الاعتماد</h3><p class="text-sm text-slate-500 mt-1">كل طلب يحتاج اعتمادًا يظهر هنا حتى يوافق عليه مدير مخول.</p></div><div id="sdc-pending" class="mt-4"></div></div>'+
+          '<div class="rw-card"><div><h3>محاكي القرار</h3><p class="text-sm text-slate-500 mt-1">اختبار آمن يكتب Evaluation فقط ويمكن تنظيفه بعد الاختبار.</p></div><div id="sdc-simulator" class="mt-4"></div></div>'+
+          '</div>');
+        var refreshBtn=byId('sdc-refresh'); if(refreshBtn) refreshBtn.addEventListener('click',function(){refresh().catch(function(e){showToast(e.message,'error');});});
+        try{await Promise.all([refresh(),renderSimulator()]);subscribe();}catch(e){RW_UI.safeHTML(c,'<div class="rw-card"><div class="rw-error">'+esc(e.message)+'</div></div>');}
+    }
+
+    return {render:render,refresh:refresh,approve:approve};
+})();
+window.RW_SalesDecisionCenter = RW_SalesDecisionCenter;
 var RW_SalesTargetsMain = (function(){
     var realtimeChannel = null;
     var postOperationIds = {};
@@ -18836,6 +19063,7 @@ var RW_Views = {
         if (view === 'return') { RW_Warehouse.loadReturn(); return; }
 		if (view === 'sales-returns') { RW_SalesReturnsManagement.render(); return; }
 		if (view === 'loyalty') { RW_LoyaltyMain.render(); return; }
+		if (view === 'sales-decision-center') { RW_SalesDecisionCenter.render(); return; }
 		if (view === 'sales-targets') { RW_SalesTargetsMain.render(); return; }
         if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
         if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
