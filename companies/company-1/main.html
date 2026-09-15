@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-14 00:40 UTC -->
+<!-- 2026-09-15 07:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -1309,7 +1309,7 @@ toggleSidebar() { const sidebar = byId('rw-sidebar'), main = byId('rw-main-conte
 window.RW_Navigation = RW_Navigation;
 var RW_SalesTargetsMain = (function(){
     var realtimeChannel = null;
-    var postOperationId = null;
+    var postOperationIds = {};
     var reverseOperationIds = {};
     var selectedPlanId = null;
     var metaCache = null;
@@ -1578,7 +1578,7 @@ var RW_SalesTargetsMain = (function(){
             h+='<div class="rw-actions">';
             if(!currentPlan || currentPlan.status==='Draft') h+='<button class="rw-btn rw-btn-success" onclick="RW_SalesTargetsMain.savePlan()">حفظ الخطة</button>';
             if(currentPlan && (currentPlan.status==='Approved'||currentPlan.status==='Closed')) h+='<button class="rw-btn" onclick="RW_SalesTargetsMain.previewPlan()">معاينة جديدة</button>';
-            if(!currentPlan) h+='<button class="rw-btn" onclick="RW_SalesTargetsMain.newPlan()">تفريغ</button>';
+            if(canManage()) h+='<button class="rw-btn" onclick="RW_SalesTargetsMain.newPlan()">خطة جديدة / تفريغ النموذج</button>';
             h+='</div></div>';
 
             h+='<div class="rw-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h3>الخطط</h3><p style="margin:4px 0;color:#6b7280">اختر الخطة لإدارة تفاصيلها وتخصيصاتها.</p></div>';
@@ -1586,7 +1586,7 @@ var RW_SalesTargetsMain = (function(){
             h+='</div><select id="st-main-plan-select" onchange="RW_SalesTargetsMain.selectPlan(this.value)"><option value="">اختر الخطة</option>';
             for(var i=0;i<plans.length;i++) h+='<option value="'+esc(plans[i].id)+'">'+esc(plans[i].plan_code+' — '+plans[i].name+' ['+statusLabel(plans[i].status)+']')+'</option>';
             h+='</select><div class="rw-actions">';
-            if(currentPlan && canManage() && currentPlan.status==='Draft') h+='<button class="rw-btn" onclick="RW_SalesTargetsMain.approvePlan()">اعتماد</button><button class="rw-btn rw-btn-danger" onclick="RW_SalesTargetsMain.cancelPlan()">إلغاء Draft</button>';
+            if(currentPlan && canApprove() && currentPlan.status==='Draft') h+='<button class="rw-btn" onclick="RW_SalesTargetsMain.approvePlan()">اعتماد</button><button class="rw-btn rw-btn-danger" onclick="RW_SalesTargetsMain.cancelPlan()">إلغاء Draft</button>';
             if(currentPlan && canApprove() && currentPlan.status==='Approved') h+='<button class="rw-btn" onclick="RW_SalesTargetsMain.closePlan()">إغلاق الخطة</button>';
             if(currentPlan && canApprove() && (currentPlan.status==='Approved'||currentPlan.status==='Closed')) h+='<button class="rw-btn rw-btn-success" onclick="RW_SalesTargetsMain.postRun()">ترحيل النتائج</button>';
             h+='</div></div>';
@@ -1670,7 +1670,7 @@ var RW_SalesTargetsMain = (function(){
 
         async approvePlan(){
             try{
-                if(!canManage()) throw new Error('ليس لديك صلاحية اعتماد الخطة');
+                if(!canApprove()) throw new Error('ليس لديك صلاحية اعتماد الخطة');
                 var id=selectedPlanId||byId('st-main-plan-select').value;
                 if(!id) throw new Error('اختر خطة');
                 showLoader('جاري اعتماد الخطة...');
@@ -1682,7 +1682,7 @@ var RW_SalesTargetsMain = (function(){
 
         async cancelPlan(){
             try{
-                if(!canManage()) throw new Error('ليس لديك صلاحية إلغاء الخطة');
+                if(!canApprove()) throw new Error('ليس لديك صلاحية إلغاء الخطة');
                 var id=selectedPlanId||byId('st-main-plan-select').value;
                 if(!id) throw new Error('اختر خطة');
                 showLoader('جاري إلغاء الخطة...');
@@ -1791,8 +1791,30 @@ var RW_SalesTargetsMain = (function(){
 					    '<label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input id="st-as-active" type="checkbox" '+((!existing||existing.active)?'checked':'')+'> التخصيص نشط</label>'+ 
 					    '</div>',
                     showCancelButton:true,
-                    confirmButtonText:'حفظ التخصيص',
-                    cancelButtonText:'إلغاء',
+					showDenyButton:true,
+					confirmButtonText:'حفظ التخصيص',
+					cancelButtonText:'إلغاء',
+					denyButtonText:'إعادة ضبط',
+					preDeny:function(){
+					    var a=existing||{};
+					    var rep=document.getElementById('st-as-rep');
+					    var branch=document.getElementById('st-as-branch');
+					    var amount=document.getElementById('st-as-amount');
+					    var qty=document.getElementById('st-as-qty');
+					    var gp=document.getElementById('st-as-gp');
+					    var weight=document.getElementById('st-as-weight');
+					    var notes=document.getElementById('st-as-notes');
+					    var active=document.getElementById('st-as-active');
+					    if(rep) rep.value=a.sales_rep_id||'';
+					    if(branch) branch.value=a.branch_id||'';
+					    if(amount) amount.value=existing?Number(a.target_amount||0):0;
+					    if(qty) qty.value=existing?Number(a.target_qty||0):0;
+					    if(gp) gp.value=existing?Number(a.target_gross_profit||0):0;
+					    if(weight) weight.value=existing?Number(a.weight||100):100;
+					    if(notes) notes.value=a.notes||'';
+					    if(active) active.checked=!existing||a.active!==false;
+					    return false;
+					},
                     preConfirm:function(){
                         var rep=document.getElementById('st-as-rep').value||'';
                         var branch=document.getElementById('st-as-branch').value||'';
@@ -1835,20 +1857,23 @@ var RW_SalesTargetsMain = (function(){
             }catch(e){showToast(e.message,'error');}finally{hideLoader();}
         },
 
-        async postRun(){
-            try{
-                if(!canApprove()) throw new Error('ليس لديك صلاحية ترحيل النتائج');
-                var id=selectedPlanId||byId('st-main-plan-select').value;
-                if(!id) throw new Error('اختر خطة');
-                if(!postOperationId) postOperationId=uid();
-                showLoader('جاري ترحيل النتائج...');
-                var j=await op('POST',id,{},postOperationId);
-                postOperationId=null;
-                await renderDashboard(id);
-                showToast(j.duplicate?'تم منع التكرار وإعادة نفس النتيجة':'تم الترحيل بنجاح','success');
-            }catch(e){showToast(e.message,'error');}finally{hideLoader();}
-        },
-
+		async postRun(){
+		    try{
+		        if(!canApprove()) throw new Error('ليس لديك صلاحية ترحيل النتائج');
+		        var id=selectedPlanId||byId('st-main-plan-select').value;
+		        if(!id) throw new Error('اختر خطة');
+		        if(!postOperationIds[id]) postOperationIds[id]=uid();
+		        showLoader('جاري ترحيل النتائج...');
+		        var j=await op('POST',id,{},postOperationIds[id]);
+		        if(j && !j.duplicate) delete postOperationIds[id];
+		        if(selectedPlanId) await renderDashboard(selectedPlanId);
+		        showToast(j.duplicate?'تم منع التكرار وإعادة نفس النتيجة':'تم الترحيل بنجاح','success');
+		    }catch(e){
+		        showToast(e.message,'error');
+		    }finally{
+		        hideLoader();
+		    }
+		},
         async approveRun(runId){
             try{
                 if(!canApprove()) throw new Error('ليس لديك صلاحية اعتماد العملية');
