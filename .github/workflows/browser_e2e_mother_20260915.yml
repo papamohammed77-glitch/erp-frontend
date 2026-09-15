@@ -1,0 +1,112 @@
+name: RAWAEA — Mother System Browser E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      published_url:
+        description: 'Optional deployed URL of companies/company-1/main.html; leave blank to test exact current Git source locally'
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - 'companies/company-1/main.html'
+      - '.github/workflows/browser_e2e_mother_20260915.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current Source of Truth
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium
+
+      - name: Start local source server when no published URL is supplied
+        if: ${{ inputs.published_url == '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rawaea-http.log 2>&1 &
+          echo $! >/tmp/rawaea-http.pid
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/companies/company-1/main.html >/dev/null && exit 0; sleep 1; done
+          cat /tmp/rawaea-http.log
+          exit 1
+
+      - name: Execute browser E2E against the selected URL
+        env:
+          PUBLISHED_URL: ${{ inputs.published_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${PUBLISHED_URL:-}" ]; then
+            export TEST_URL="$PUBLISHED_URL"
+            echo "TARGET_MODE=published"
+          else
+            export TEST_URL='http://127.0.0.1:4173/companies/company-1/main.html'
+            echo "TARGET_MODE=current_git_source"
+          fi
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          const target = process.env.TEST_URL;
+          (async()=>{
+            const browser = await chromium.launch({headless:true});
+            const page = await browser.newPage();
+            const consoleErrors=[];
+            const pageErrors=[];
+            page.on('console', m => { if (m.type()==='error') consoleErrors.push(m.text()); });
+            page.on('pageerror', e => pageErrors.push(String(e.message||e)));
+            const response = await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000});
+            await page.waitForLoadState('networkidle',{timeout:30000}).catch(()=>{});
+            const title = await page.title();
+            const html = await page.locator('html').innerText().catch(()=> '');
+            const source = await page.content();
+            const formCount = await page.locator('form').count();
+            const passwordInputs = await page.locator('input[type="password"]').count();
+            const buttons = await page.locator('button:visible').count();
+            console.log('TARGET_URL='+target);
+            console.log('HTTP_STATUS='+(response ? response.status() : 'NO_RESPONSE'));
+            console.log('TITLE='+title);
+            console.log('FORMS='+formCount);
+            console.log('PASSWORD_INPUTS='+passwordInputs);
+            console.log('VISIBLE_BUTTONS='+buttons);
+            console.log('PLACEHOLDER_MARKERS='+JSON.stringify(['قيد التطوير','جاري التطوير','TODO','FIXME'].filter(x=>source.includes(x))));
+            console.log('CONSOLE_ERRORS='+JSON.stringify(consoleErrors));
+            console.log('PAGE_ERRORS='+JSON.stringify(pageErrors));
+            if (!response || !response.ok()) throw new Error('MAIN_HTML_HTTP_LOAD_FAILED');
+            if (!source.includes('</html>')) throw new Error('MAIN_HTML_DOM_END_MISSING');
+            if (['قيد التطوير','جاري التطوير','TODO','FIXME'].some(x=>source.includes(x))) throw new Error('INCOMPLETE_MARKER_FOUND');
+            if (consoleErrors.length) throw new Error('BROWSER_CONSOLE_ERRORS_PRESENT');
+            if (pageErrors.length) throw new Error('BROWSER_PAGEERROR_PRESENT');
+            if (passwordInputs < 1) throw new Error('LOGIN_PASSWORD_INPUT_MISSING');
+            if (buttons < 1) throw new Error('VISIBLE_BUTTON_MISSING');
+            console.log('BROWSER_E2E_ANONYMOUS_SMOKE=PASS');
+            await browser.close();
+          })().catch(async e=>{ console.error('BROWSER_E2E_FAILURE='+e.message); process.exit(1); });
+          NODE
+
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rawaea-browser-e2e-diagnostics
+          path: |
+            /tmp/rawaea-http.log
+          if-no-files-found: ignore
