@@ -2103,13 +2103,29 @@ var RW_LoyaltyMain = (function(){
         safeHTML(out,html);
     }
 
-    function renderConfig(){
-        var out=byId('rw-loyalty-config-panel'); if(!out) return;
-        if(!canConfig()){ safeHTML(out,''); return; }
-        safeHTML(out,'<div class="flex items-center justify-between mb-4"><h3 class="font-black text-lg">إعدادات المكافآت</h3><button class="text-indigo-600 font-bold" onclick="RW_LoyaltyMain.newReward()">إضافة مكافأة</button></div><div id="rw-loyalty-rewards-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"><div class="text-gray-400">جاري التحميل...</div></div>');
-        var active=currentPrograms.find(function(x){return x.status==='Active';});
-        if(active) loadRewards(active.id).then(renderRewards).catch(function(e){showToast(e.message,'error');});
+function renderConfig(){
+    var out=byId('rw-loyalty-config-panel'); if(!out) return;
+    if(!canConfig()){ safeHTML(out,''); return; }
+
+    safeHTML(out,'<div class="flex items-center justify-between mb-4"><h3 class="font-black text-lg">إعدادات المكافآت</h3><button class="text-indigo-600 font-bold" onclick="RW_LoyaltyMain.newReward()">إضافة مكافأة</button></div><div id="rw-loyalty-rewards-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"><div class="text-gray-400">جاري التحقق من برنامج الولاء...</div></div>');
+
+    var active=currentPrograms.find(function(x){return x.status==='Active';});
+    var grid=byId('rw-loyalty-rewards-grid');
+
+    if(!active){
+        if(grid){
+            safeHTML(grid,'<div class="col-span-full p-5 bg-slate-50 rounded-xl border border-slate-200"><div class="font-black text-slate-700 mb-1">لا يوجد برنامج ولاء نشط حاليًا</div><div class="text-sm text-slate-500">أنشئ أو فعّل برنامج ولاء أولًا، ثم ستظهر المكافآت المرتبطة به هنا.</div></div>');
+        }
+        return;
     }
+
+    loadRewards(active.id).then(renderRewards).catch(function(e){
+        if(grid){
+            safeHTML(grid,'<div class="col-span-full p-5 bg-red-50 rounded-xl border border-red-200 text-red-700"><div class="font-black mb-1">تعذر تحميل المكافآت</div><div class="text-sm">'+esc(e.message||'خطأ غير معروف')+'</div></div>');
+        }
+        showToast(e.message,'error');
+    });
+}
     function renderRewards(){
         var out=byId('rw-loyalty-rewards-grid'); if(!out) return;
         if(!currentRewards.length){safeHTML(out,'<div class="col-span-full text-gray-400 p-4 bg-slate-50 rounded-xl">لا توجد مكافآت في البرنامج النشط.</div>');return;}
