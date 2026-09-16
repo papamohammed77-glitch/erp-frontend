@@ -2956,82 +2956,7 @@ function _jsAttr(s) {
             item._branches = branchIds;
         }
     }
-  var purchaseRealtimeChannel = null;
 
-  function purchaseToday() {
-    return new Date().toISOString().slice(0, 10);
-  }
-
-  async function purchaseItemLookup(code) {
-    code = String(code || '').trim();
-    if (!code) throw new Error('كود الصنف مطلوب');
-    var r = await supabase
-      .from('items')
-      .select('id,item_code,name,unit')
-      .eq('item_code', code)
-      .maybeSingle();
-
-    if (r.error) throw r.error;
-    if (!r.data) throw new Error('الصنف غير موجود: ' + code);
-    return r.data;
-  }
-
-  function ensurePurchaseRealtime() {
-    var c = companyId();
-    if (!c || purchaseRealtimeChannel || !supabase || typeof supabase.channel !== 'function') return;
-
-    purchaseRealtimeChannel = supabase
-      .channel('purchase-gold-live-' + c)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'purchase_requests',
-        filter: 'company_id=eq.' + c
-      }, function () {
-        if (!Swal.isVisible()) refresh();
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'purchase_rfqs',
-        filter: 'company_id=eq.' + c
-      }, function () {
-        if (!Swal.isVisible()) refresh();
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'purchase_quotations',
-        filter: 'company_id=eq.' + c
-      }, function () {
-        if (!Swal.isVisible()) refresh();
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'purchase_invoices',
-        filter: 'company_id=eq.' + c
-      }, function () {
-        if (!Swal.isVisible()) refresh();
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'purchase_returns',
-        filter: 'company_id=eq.' + c
-      }, function () {
-        if (!Swal.isVisible()) refresh();
-      })
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'purchase_payments',
-        filter: 'company_id=eq.' + c
-      }, function () {
-        if (!Swal.isVisible()) refresh();
-      })
-      .subscribe();
-  }
     async function render() {
         var container = byId('rw-page-container');
         if (!container) return;
@@ -9126,6 +9051,7 @@ var RW_Purchases = (function() {
   return { renderOrders: renderOrders, renderPOS: renderPOS, _filterOrders: filterOrders, _openPO: openPO, _openReceive: openReceive, _searchItem: searchItem, _addToCart: addToCart, _updateQty: updateQty, _updatePrice: updatePrice, _removeItem: removeItem, _clearCart: clearCart, _savePO: savePO };
 })();
 window.RW_Purchases = RW_Purchases;
+	
 var RW_PurchaseGold = (function () {
   'use strict';
 
@@ -9225,6 +9151,99 @@ var RW_PurchaseGold = (function () {
 	}
 
     return h + '</div>';
+  }
+  var purchaseRealtimeChannel = null;
+
+  function purchaseToday() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  async function purchaseItemLookup(code) {
+    code = String(code || '').trim();
+    if (!code) throw new Error('كود الصنف مطلوب');
+
+    var r = await supabase
+      .from('items')
+      .select('id,item_code,name,unit')
+      .eq('item_code', code)
+      .maybeSingle();
+
+    if (r.error) throw r.error;
+    if (!r.data) throw new Error('الصنف غير موجود: ' + code);
+
+    return r.data;
+  }
+
+  function ensurePurchaseRealtime() {
+    var c = companyId();
+
+    if (
+      !c ||
+      purchaseRealtimeChannel ||
+      !supabase ||
+      typeof supabase.channel !== 'function'
+    ) {
+      return;
+    }
+
+    purchaseRealtimeChannel = supabase
+      .channel('purchase-gold-live-' + c)
+
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'purchase_requests',
+        filter: 'company_id=eq.' + c
+      }, function () {
+        if (!Swal.isVisible()) refresh();
+      })
+
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'purchase_rfqs',
+        filter: 'company_id=eq.' + c
+      }, function () {
+        if (!Swal.isVisible()) refresh();
+      })
+
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'purchase_quotations',
+        filter: 'company_id=eq.' + c
+      }, function () {
+        if (!Swal.isVisible()) refresh();
+      })
+
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'purchase_invoices',
+        filter: 'company_id=eq.' + c
+      }, function () {
+        if (!Swal.isVisible()) refresh();
+      })
+
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'purchase_returns',
+        filter: 'company_id=eq.' + c
+      }, function () {
+        if (!Swal.isVisible()) refresh();
+      })
+
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'purchase_payments',
+        filter: 'company_id=eq.' + c
+      }, function () {
+        if (!Swal.isVisible()) refresh();
+      })
+
+      .subscribe();
   }
 
   async function render() {
