@@ -4,9 +4,12 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  issues:
+    types: [opened]
 
 jobs:
   extract:
+    if: github.event_name != 'issues' || contains(github.event.issue.title, '[FORENSIC]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,51 +22,34 @@ jobs:
           print('FILE_LINES=', len(lines))
           print('FILE_BYTES=', p.stat().st_size)
           patterns = [
-              'إدارة المخازن والمخزون',
-              'var RW_Warehouse',
-              '/functions/v1/receive-purchase',
-              'receive-purchase',
-              "if (view === 'picking')",
-              "if (view === 'receiving')",
-              'inventory_stock_requests',
-              'inventory_stock_request_details',
-              'طلب مخزني',
-              'طلبات المخزون'
+              'إدارة المخازن والمخزون','var RW_Warehouse','/functions/v1/receive-purchase','receive-purchase',
+              "if (view === 'picking')","if (view === 'receiving')","inventory_stock_requests","inventory_stock_request_details",'طلب مخزني','طلبات المخزون'
           ]
           for pat in patterns:
               hits=[i for i,l in enumerate(lines,1) if pat in l]
               print(f'PATTERN {pat} => {hits[:100]}')
-
-          def print_window(label, center, before=25, after=60):
+          def print_window(label, center, before=25, after=80):
               s=max(1, center-before); e=min(len(lines), center+after)
               print(f'--- {label} {s}-{e} ---')
               for i in range(s,e+1): print(f'{i}: {lines[i-1]}')
-
           inv=[i for i,l in enumerate(lines,1) if 'إدارة المخازن والمخزون' in l]
-          if inv: print_window('INVENTORY MENU', inv[0], 5, 10)
-
+          if inv: print_window('INVENTORY MENU', inv[0], 5, 20)
           rec=[i for i,l in enumerate(lines,1) if '/functions/v1/receive-purchase' in l]
-          for a in rec[:5]: print_window('RECEIVE PURCHASE CALL', a, 45, 45)
-
+          for a in rec[:5]: print_window('RECEIVE PURCHASE CALL', a, 60, 60)
           disp=[i for i,l in enumerate(lines,1) if "if (view === 'picking')" in l]
-          if disp: print_window('DISPATCH BLOCK', disp[0], 5, 55)
-
-          # Print enclosing function for each receive-purchase call.
+          if disp: print_window('DISPATCH BLOCK', disp[0], 5, 65)
           for a in rec[:3]:
               start=a
-              for i in range(a, max(0,a-120), -1):
-                  if 'async function ' in lines[i-1] or lines[i-1].lstrip().startswith('function '):
-                      start=i; break
-              depth=0; seen=False; end=min(len(lines), a+600)
-              for i in range(start, min(len(lines), a+800)+1):
+              for i in range(a,max(0,a-250),-1):
+                  if 'async function ' in lines[i-1] or lines[i-1].lstrip().startswith('function '): start=i; break
+              depth=0; seen=False; end=min(len(lines),a+1000)
+              for i in range(start,min(len(lines),a+1200)+1):
                   line=lines[i-1]
                   depth += line.count('{')-line.count('}')
                   if i>=a: seen=True
-                  if seen and i>start and depth<=0:
-                      end=i; break
+                  if seen and i>start and depth<=0: end=i; break
               print(f'--- RECEIVE ENCLOSING FUNCTION {start}-{end} ---')
               for i in range(start,end+1): print(f'{i}: {lines[i-1]}')
-
       - name: Syntax check
         shell: bash
         run: |
