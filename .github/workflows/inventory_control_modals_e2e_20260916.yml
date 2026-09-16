@@ -1,0 +1,164 @@
+name: RAWAEA — Inventory Control Modal E2E Guard
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  modal-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current Source of Truth
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium
+
+      - name: Start local current Mother source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rawaea-http.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:4173/companies/company-1/main.html >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/rawaea-http.log
+          exit 1
+
+      - name: Execute target modal contract against current Mother
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({headless:true});
+            const page = await browser.newPage({viewport:{width:1440,height:900}});
+            const consoleErrors=[];
+            const pageErrors=[];
+            page.on('console', m => { if (m.type()==='error') consoleErrors.push(m.text()); });
+            page.on('pageerror', e => pageErrors.push(String(e.message || e)));
+
+            await page.goto('http://127.0.0.1:4173/companies/company-1/main.html',{waitUntil:'domcontentloaded',timeout:60000});
+            await page.waitForTimeout(1500);
+
+            const result = await page.evaluate(async () => {
+              if (!window.RW_Warehouse || typeof window.RW_Warehouse.loadInventoryControl !== 'function') {
+                throw new Error('LOAD_INVENTORY_CONTROL_MISSING');
+              }
+              window.RW_STATE = window.RW_STATE || {};
+              window.RW_STATE.app = window.RW_STATE.app || {};
+              window.RW_STATE.app.companyId = '00000000-0000-0000-0000-000000000001';
+
+              const calls=[];
+              const branches=[
+                {id:'a38332b6-6cea-480a-ada1-6eb6ab0590db',branch_code:'BR-01',name:'الفرع الرئيسي'},
+                {id:'f1bb941a-5a83-46fb-8ba3-4f0aa0c1edd2',branch_code:'BR-2',name:'فرع إسكندرية'}
+              ];
+              const snapshot=[
+                {branch_code:'BR-01',branch_name:'الفرع الرئيسي',item_id:'7cf845d8-34b9-47d1-9b7f-d9f1f597dbf8',item_code:'1001',item_name:'جو كيك 5ج',physical_qty:10,allocated_qty:2,available_qty:8,reorder_point:5,suggested_replenishment_qty:0,stock_value_at_cost:100,low_stock:false},
+                {branch_code:'BR-01',branch_name:'الفرع الرئيسي',item_id:'45b2431f-6f19-4f64-81e2-9cac53ed1e1c',item_code:'1003',item_name:'شيبس تايجر',physical_qty:4,allocated_qty:1,available_qty:3,reorder_point:5,suggested_replenishment_qty:2,stock_value_at_cost:40,low_stock:true}
+              ];
+              const rpc = async (name,args) => {
+                calls.push({name,args});
+                if(name==='inventory_control' && args.p_operation==='SNAPSHOT') return {data:{success:true,rows:snapshot,count:snapshot.length},error:null};
+                if(name==='inventory_control' && args.p_operation==='REPLENISHMENT') return {data:{success:true,rows:snapshot.filter(x=>x.low_stock).map(x=>({branch_name:x.branch_name,item_code:x.item_code,item_name:x.item_name,available_qty:x.available_qty,reorder_point:x.reorder_point,recommended_order_qty:x.suggested_replenishment_qty,cost_price:10,recommended_order_value:20}))},error:null};
+                if(name==='inventory_control' && args.p_operation==='COUNT') {
+                  const op=args.p_payload.operation;
+                  if(op==='CREATE') return {data:{success:true,duplicate:false,count_id:'count-e2e',status:'InProgress',operation_id:args.p_payload.operation_id},error:null};
+                  if(op==='POPULATE') return {data:{success:true,count_id:'count-e2e',added_lines:2},error:null};
+                  if(op==='GET') return {data:{success:true,count:{id:'count-e2e',status:'InProgress',type:'branch'},details:[
+                    {id:'d1',branch_id:branches[0].id,item_id:snapshot[0].item_id,item_code:'1001',item_name:'جو كيك 5ج',unit:'حبة',system_qty:10,counted_qty:null,variance_qty:0,adjusted:false},
+                    {id:'d2',branch_id:branches[0].id,item_id:snapshot[1].item_id,item_code:'1003',item_name:'شيبس تايجر',unit:'كرتونه',system_qty:4,counted_qty:null,variance_qty:0,adjusted:false}
+                  ]},error:null};
+                  if(op==='UPSERT_LINE') return {data:{success:true},error:null};
+                  if(op==='REFRESH') return {data:{success:true,refreshed_lines:2},error:null};
+                  if(op==='FINALIZE') return {data:{success:true,status:'Adjusted'},error:null};
+                  if(op==='CANCEL') return {data:{success:true,status:'Cancelled'},error:null};
+                }
+                if(name==='inventory_control' && args.p_operation==='REQUEST') return {data:{success:true,duplicate:false,request_id:'req-e2e',request_code:'SR-E2E',status:'Pending'},error:null};
+                return {data:{success:true},error:null};
+              };
+              const fakeFrom = (table) => {
+                const chain={
+                  select(){return chain;},
+                  eq(){return chain;},
+                  order(){
+                    if(table==='branches') return Promise.resolve({data:branches,error:null});
+                    if(table==='inventory_counts') return Promise.resolve({data:[],error:null});
+                    if(table==='inventory_stock_requests') return Promise.resolve({data:[],error:null});
+                    return Promise.resolve({data:[],error:null});
+                  }
+                };
+                return chain;
+              };
+              window.supabase={
+                rpc,
+                from:fakeFrom,
+                channel(){return {on(){return this;},subscribe(){return {unsubscribe(){}};}}},
+                removeChannel:async()=>{}
+              };
+              window._rwInventoryControlChannel=null;
+              window.showLoader=()=>{};
+              window.hideLoader=()=>{};
+              window.showToast=()=>{};
+              const originalSwal=window.Swal;
+              window.Swal={
+                fire: async (opts) => {
+                  if(opts.title==='جلسة جرد جديدة') return {isConfirmed:true,value:{branch:branches[0].id,ref:'E2E-COUNT',notes:'E2E'}};
+                  if(opts.title==='طلب نقل مخزني جديد') return {isConfirmed:true,value:{source:branches[0].id,target:branches[1].id,items:[{item_code:'1001',qty:2}],notes:'E2E'}};
+                  return {isConfirmed:true,value:{}};
+                }
+              };
+
+              await window.RW_Warehouse.loadInventoryControl();
+              const countButton=document.getElementById('ic-new-count');
+              if(!countButton) throw new Error('COUNT_MODAL_BUTTON_MISSING');
+              await countButton.click();
+              if(!calls.some(x=>x.name==='inventory_control'&&x.args.p_operation==='COUNT'&&x.args.p_payload.operation==='CREATE')) throw new Error('COUNT_CREATE_RPC_NOT_CALLED');
+              if(!calls.some(x=>x.name==='inventory_control'&&x.args.p_operation==='COUNT'&&x.args.p_payload.operation==='POPULATE')) throw new Error('COUNT_POPULATE_RPC_NOT_CALLED');
+
+              const requestTab=document.querySelector('[data-ic-tab="requests"]');
+              if(!requestTab) throw new Error('REQUEST_TAB_MISSING');
+              await requestTab.click();
+              const requestButton=document.getElementById('ic-request-new');
+              if(!requestButton) throw new Error('REQUEST_MODAL_BUTTON_MISSING');
+              await requestButton.click();
+              if(!calls.some(x=>x.name==='inventory_control'&&x.args.p_operation==='REQUEST'&&x.args.p_payload.operation==='CREATE')) throw new Error('REQUEST_CREATE_RPC_NOT_CALLED');
+
+              return {calls};
+            });
+
+            console.log('MODAL_CONTRACT_RESULT='+JSON.stringify(result));
+            console.log('CONSOLE_ERRORS='+JSON.stringify(consoleErrors));
+            console.log('PAGE_ERRORS='+JSON.stringify(pageErrors));
+            if(consoleErrors.length) throw new Error('BROWSER_CONSOLE_ERRORS_PRESENT');
+            if(pageErrors.length) throw new Error('BROWSER_PAGEERROR_PRESENT');
+            console.log('INVENTORY_CONTROL_MODAL_E2E_CONTRACT=PASS');
+            await browser.close();
+          })().catch(e=>{ console.error('INVENTORY_CONTROL_MODAL_E2E_FAILURE='+e.message); process.exit(1); });
+          NODE
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rawaea-inventory-control-modal-e2e
+          path: /tmp/rawaea-http.log
+          if-no-files-found: ignore
