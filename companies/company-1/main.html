@@ -17327,19 +17327,42 @@ var RW_Finance_GoldExtension = (function () {
 }
     async function runRecurring(){ await rpc('finance_run_recurring',{p_company_id:companyId(),p_run_until:today(),p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'}); await renderRecurring(); }
 
-    async function newCheque(){
+async function newCheque(){
     if(typeof Swal==='undefined') return;
     var cid=companyId();
     var res=await Promise.all([
-        supabase.from('treasury').select('id,name,current_balance').eq('company_id',cid).eq('is_active',true).order('name'),
+        supabase.from('treasury').select('id,account_name,current_balance').eq('company_id',cid).eq('is_active',true).order('account_name'),
         supabase.from('chart_of_accounts').select('id,account_code,account_name').eq('company_id',cid).eq('is_active',true).order('account_code')
     ]);
     if(res[0].error) throw res[0].error;
     if(res[1].error) throw res[1].error;
-    var treasuries=res[0].data||[],accounts=res[1].data||[];
-    function e(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-    var th='<option value="">بدون خزينة</option>';treasuries.forEach(function(t){th+='<option value="'+e(t.id)+'">'+e((t.name||'خزينة')+' — الرصيد '+Number(t.current_balance||0).toLocaleString())+'</option>';});
-    var ah='<option value="">اختر الحساب</option>';accounts.forEach(function(a){ah+='<option value="'+e(a.id)+'">'+e((a.account_code||'')+' — '+(a.account_name||''))+'</option>';});
+
+    var treasuries=res[0].data||[];
+    var accounts=res[1].data||[];
+
+    function e(v){
+        return String(v==null?'':v)
+            .replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;')
+            .replace(/'/g,'&#39;');
+    }
+
+    var th='<option value="">بدون خزينة</option>';
+    treasuries.forEach(function(t){
+        th+='<option value="'+e(t.id)+'">'+
+            e((t.account_name||'خزينة')+' — الرصيد '+Number(t.current_balance||0).toLocaleString())+
+            '</option>';
+    });
+
+    var ah='<option value="">اختر الحساب</option>';
+    accounts.forEach(function(a){
+        ah+='<option value="'+e(a.id)+'">'+
+            e((a.account_code||'')+' — '+(a.account_name||''))+
+            '</option>';
+    });
+
     var html='<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-right">'+
         '<input id="gcno" class="border rounded-xl p-3" placeholder="رقم الشيك">'+
         '<select id="gct" class="border rounded-xl p-3"><option value="PAYABLE">شيك صادر / التزام دفع</option><option value="RECEIVABLE">شيك وارد / حق قبض</option></select>'+
@@ -17351,28 +17374,120 @@ var RW_Finance_GoldExtension = (function () {
         '<select id="gctry" class="border rounded-xl p-3">'+th+'</select>'+
         '<select id="gfrom" class="border rounded-xl p-3">'+ah+'</select>'+
         '<select id="gto" class="border rounded-xl p-3">'+ah+'</select>'+
-        '<textarea id="gcn" class="border rounded-xl p-3 md:col-span-2" placeholder="ملاحظات"></textarea></div>';
-    var r=await Swal.fire({title:'شيك جديد',html:html,width:950,showCancelButton:true,confirmButtonText:'حفظ',cancelButtonText:'إلغاء',preConfirm:function(){
-        var no=(byId('gcno').value||'').trim(),bank=(byId('gcb').value||'').trim(),amount=Number(byId('gca').value)||0,cd=byId('gcd').value,du=byId('gdu').value;
-        if(!no||!bank||amount<=0||!cd||!du){Swal.showValidationMessage('رقم الشيك والبنك والمبلغ والتواريخ مطلوبة');return false;}
-        if(du<cd){Swal.showValidationMessage('تاريخ الاستحقاق لا يجوز أن يسبق تاريخ الشيك');return false;}
-        return {no:no,type:byId('gct').value,bank:bank,amount:amount,cd:cd,du:du,party:(byId('gcp').value||'').trim(),treasury:byId('gctry').value||null,from:byId('gfrom').value||null,to:byId('gto').value||null,notes:byId('gcn').value||''};
-    }});
+        '<textarea id="gcn" class="border rounded-xl p-3 md:col-span-2" placeholder="ملاحظات"></textarea>'+
+        '</div>';
+
+    var r=await Swal.fire({
+        title:'شيك جديد',
+        html:html,
+        width:950,
+        showCancelButton:true,
+        confirmButtonText:'حفظ',
+        cancelButtonText:'إلغاء',
+        preConfirm:function(){
+            var no=(byId('gcno').value||'').trim();
+            var bank=(byId('gcb').value||'').trim();
+            var amount=Number(byId('gca').value)||0;
+            var cd=byId('gcd').value;
+            var du=byId('gdu').value;
+
+            if(!no||!bank||amount<=0||!cd||!du){
+                Swal.showValidationMessage('رقم الشيك والبنك والمبلغ والتواريخ مطلوبة');
+                return false;
+            }
+
+            if(du<cd){
+                Swal.showValidationMessage('تاريخ الاستحقاق لا يجوز أن يسبق تاريخ الشيك');
+                return false;
+            }
+
+            return {
+                no:no,
+                type:byId('gct').value,
+                bank:bank,
+                amount:amount,
+                cd:cd,
+                du:du,
+                party:(byId('gcp').value||'').trim(),
+                treasury:byId('gctry').value||null,
+                from:byId('gfrom').value||null,
+                to:byId('gto').value||null,
+                notes:byId('gcn').value||''
+            };
+        }
+    });
+
     if(!r.isConfirmed)return;
-    await rpc('finance_save_cheque',{p_company_id:cid,p_id:null,p_cheque_number:r.value.no,p_cheque_type:r.value.type,p_bank_name:r.value.bank,p_amount:r.value.amount,p_cheque_date:r.value.cd,p_due_date:r.value.du,p_party_name:r.value.party,p_from_account_id:r.value.from,p_to_account_id:r.value.to,p_treasury_id:r.value.treasury,p_notes:r.value.notes,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'});
+
+    await rpc('finance_save_cheque',{
+        p_company_id:cid,
+        p_id:null,
+        p_cheque_number:r.value.no,
+        p_cheque_type:r.value.type,
+        p_bank_name:r.value.bank,
+        p_amount:r.value.amount,
+        p_cheque_date:r.value.cd,
+        p_due_date:r.value.du,
+        p_party_name:r.value.party,
+        p_from_account_id:r.value.from,
+        p_to_account_id:r.value.to,
+        p_treasury_id:r.value.treasury,
+        p_notes:r.value.notes,
+        p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'
+    });
+
     await renderCheques();
 }
 
-    async function newBank(){
+async function newBank(){
     if(typeof Swal==='undefined') return;
+
     var cid=companyId();
-    var ts=await supabase.from('treasury').select('id,name,current_balance').eq('company_id',cid).eq('is_active',true).order('name');
+
+    var ts=await supabase
+        .from('treasury')
+        .select('id,account_name,current_balance')
+        .eq('company_id',cid)
+        .eq('is_active',true)
+        .order('account_name');
+
     if(ts.error) throw ts.error;
+
     var treasuries=ts.data||[];
-    if(!treasuries.length) throw new Error('لا توجد خزائن فعالة للشركة الحالية');
-    function e(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-    var th='<option value="">اختر الخزينة</option>';treasuries.forEach(function(t){th+='<option value="'+e(t.id)+'">'+e(t.name||'خزينة')+'</option>';});
-    function line(){return '<div class="gb-line grid grid-cols-1 md:grid-cols-4 gap-2 border rounded-xl p-2 bg-slate-50"><input class="gb-date border rounded-lg p-2" type="date" value="'+today()+'"><input class="gb-desc border rounded-lg p-2" placeholder="الوصف"><input class="gb-ref border rounded-lg p-2" placeholder="المرجع"><div class="flex gap-2"><input class="gb-amt flex-1 border rounded-lg p-2" type="number" step="0.01" placeholder="المبلغ"><button type="button" class="gb-remove px-3 rounded-lg bg-red-100 text-red-700 font-bold">حذف</button></div></div>';}
+
+    if(!treasuries.length){
+        throw new Error('لا توجد خزائن فعالة للشركة الحالية');
+    }
+
+    function e(v){
+        return String(v==null?'':v)
+            .replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;')
+            .replace(/'/g,'&#39;');
+    }
+
+    var th='<option value="">اختر الخزينة</option>';
+
+    treasuries.forEach(function(t){
+        th+='<option value="'+e(t.id)+'">'+
+            e(t.account_name||'خزينة')+
+            '</option>';
+    });
+
+    function line(){
+        return '<div class="gb-line grid grid-cols-1 md:grid-cols-4 gap-2 border rounded-xl p-2 bg-slate-50">'+
+            '<input class="gb-date border rounded-lg p-2" type="date" value="'+today()+'">'+
+            '<input class="gb-desc border rounded-lg p-2" placeholder="الوصف">'+
+            '<input class="gb-ref border rounded-lg p-2" placeholder="المرجع">'+
+            '<div class="flex gap-2">'+
+                '<input class="gb-amt flex-1 border rounded-lg p-2" type="number" step="0.01" placeholder="المبلغ">'+
+                '<button type="button" class="gb-remove px-3 rounded-lg bg-red-100 text-red-700 font-bold">حذف</button>'+
+            '</div>'+
+        '</div>';
+    }
+
     var html='<div class="space-y-3 text-right">'+
         '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
         '<input id="gbr" class="border rounded-xl p-3" placeholder="مرجع كشف البنك">'+
@@ -17380,20 +17495,102 @@ var RW_Finance_GoldExtension = (function () {
         '<input id="gbd" type="date" value="'+today()+'" class="border rounded-xl p-3" placeholder="تاريخ الكشف">'+
         '<input id="gbo" type="number" step="0.01" class="border rounded-xl p-3" placeholder="الرصيد الافتتاحي">'+
         '<input id="gbc" type="number" step="0.01" class="border rounded-xl p-3" placeholder="الرصيد الختامي">'+
-        '</div><div class="flex items-center justify-between"><div class="font-black">حركات الكشف</div><button id="gb_add" type="button" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold">إضافة حركة</button></div><div id="gb_lines">'+line()+'</div></div>';
-    var r=await Swal.fire({title:'كشف بنكي جديد',html:html,width:1100,showCancelButton:true,confirmButtonText:'حفظ الكشف',cancelButtonText:'إلغاء',didOpen:function(){
-        var root=byId('gb_lines');
-        byId('gb_add').addEventListener('click',function(){root.insertAdjacentHTML('beforeend',line());wire();});
-        function wire(){root.querySelectorAll('.gb-remove').forEach(function(b){if(b.dataset.wired)return;b.dataset.wired='1';b.addEventListener('click',function(){if(root.querySelectorAll('.gb-line').length<=1){Swal.showValidationMessage('يجب إبقاء حركة واحدة على الأقل أو حذفها قبل الحفظ');return;}b.closest('.gb-line').remove();});});}
-        wire();
-    },preConfirm:function(){
-        var ref=(byId('gbr').value||'').trim(),tid=byId('gbt').value||'',date=byId('gbd').value,opening=Number(byId('gbo').value)||0,closing=Number(byId('gbc').value)||0,lines=[];
-        document.querySelectorAll('#gb_lines .gb-line').forEach(function(row){var d=row.querySelector('.gb-date').value,a=Number(row.querySelector('.gb-amt').value)||0;if(d&&a!==0)lines.push({txn_date:d,description:(row.querySelector('.gb-desc').value||'').trim(),amount:a,reference:(row.querySelector('.gb-ref').value||'').trim()});});
-        if(!ref||!tid||!date){Swal.showValidationMessage('مرجع الكشف والخزينة والتاريخ مطلوبة');return false;}
-        return {ref:ref,treasury:tid,date:date,opening:opening,closing:closing,lines:lines};
-    }});
+        '</div>'+
+        '<div class="flex items-center justify-between">'+
+            '<div class="font-black">حركات الكشف</div>'+
+            '<button id="gb_add" type="button" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold">إضافة حركة</button>'+
+        '</div>'+
+        '<div id="gb_lines">'+line()+'</div>'+
+        '</div>';
+
+    var r=await Swal.fire({
+        title:'كشف بنكي جديد',
+        html:html,
+        width:1100,
+        showCancelButton:true,
+        confirmButtonText:'حفظ الكشف',
+        cancelButtonText:'إلغاء',
+
+        didOpen:function(){
+            var root=byId('gb_lines');
+
+            byId('gb_add').addEventListener('click',function(){
+                root.insertAdjacentHTML('beforeend',line());
+                wire();
+            });
+
+            function wire(){
+                root.querySelectorAll('.gb-remove').forEach(function(b){
+                    if(b.dataset.wired)return;
+
+                    b.dataset.wired='1';
+
+                    b.addEventListener('click',function(){
+                        if(root.querySelectorAll('.gb-line').length<=1){
+                            Swal.showValidationMessage('يجب إبقاء حركة واحدة على الأقل أو حذفها قبل الحفظ');
+                            return;
+                        }
+
+                        b.closest('.gb-line').remove();
+                    });
+                });
+            }
+
+            wire();
+        },
+
+        preConfirm:function(){
+            var ref=(byId('gbr').value||'').trim();
+            var tid=byId('gbt').value||'';
+            var date=byId('gbd').value;
+            var opening=Number(byId('gbo').value)||0;
+            var closing=Number(byId('gbc').value)||0;
+            var lines=[];
+
+            document.querySelectorAll('#gb_lines .gb-line').forEach(function(row){
+                var d=row.querySelector('.gb-date').value;
+                var a=Number(row.querySelector('.gb-amt').value)||0;
+
+                if(d&&a!==0){
+                    lines.push({
+                        txn_date:d,
+                        description:(row.querySelector('.gb-desc').value||'').trim(),
+                        amount:a,
+                        reference:(row.querySelector('.gb-ref').value||'').trim()
+                    });
+                }
+            });
+
+            if(!ref||!tid||!date){
+                Swal.showValidationMessage('مرجع الكشف والخزينة والتاريخ مطلوبة');
+                return false;
+            }
+
+            return {
+                ref:ref,
+                treasury:tid,
+                date:date,
+                opening:opening,
+                closing:closing,
+                lines:lines
+            };
+        }
+    });
+
     if(!r.isConfirmed)return;
-    await rpc('finance_save_bank_statement',{p_company_id:cid,p_treasury_id:r.value.treasury,p_statement_ref:r.value.ref,p_statement_date:r.value.date,p_opening:r.value.opening,p_closing:r.value.closing,p_lines:r.value.lines,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',p_statement_id:null});
+
+    await rpc('finance_save_bank_statement',{
+        p_company_id:cid,
+        p_treasury_id:r.value.treasury,
+        p_statement_ref:r.value.ref,
+        p_statement_date:r.value.date,
+        p_opening:r.value.opening,
+        p_closing:r.value.closing,
+        p_lines:r.value.lines,
+        p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',
+        p_statement_id:null
+    });
+
     await renderBankReconcile();
 }
 
