@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-16 16:30 UTC -->
+<!-- 2026-09-16 19:40 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -17266,8 +17266,70 @@ var RW_Finance_GoldExtension = (function () {
 
     await renderExpenses();
 }
-	async function renderExpenses(){ var from=prompt('من تاريخ YYYY-MM-DD',today().slice(0,8)+'01')||today().slice(0,8)+'01'; var to=prompt('إلى تاريخ YYYY-MM-DD',today())||today(); var rows=await rpc('finance_list_expenses',{p_company_id:companyId(),p_from:from,p_to:to})||[]; var h='<div class="mb-4"><button onclick="RW_Finance._goldNewExpense()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">مصروف جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الكود</th><th class="p-2 border">التاريخ</th><th class="p-2 border">المستفيد</th><th class="p-2 border">التصنيف</th><th class="p-2 border">الإجمالي</th><th class="p-2 border">الضريبة</th><th class="p-2 border">القيد</th></tr></thead><tbody>'; rows.forEach(function(x){h+='<tr><td class="p-2 border">'+esc(x.expense_code)+'</td><td class="p-2 border">'+esc(x.expense_date)+'</td><td class="p-2 border">'+esc(x.beneficiary_name)+'</td><td class="p-2 border">'+esc(x.category_name)+'</td><td class="p-2 border text-left">'+money(x.total_amount+x.tax_amount)+'</td><td class="p-2 border text-left">'+money(x.tax_amount)+'</td><td class="p-2 border">'+esc(x.journal_entry_id)+'</td></tr>';}); h+='</tbody></table></div>'; card('المصروفات','fa-money-bill-wave',h); }
+	async function renderExpenses(){
+    var cid=companyId();
+    var defaultFrom=today().slice(0,8)+'01';
+    var defaultTo=today();
 
+    function load(from,to){
+        return rpc('finance_list_expenses',{
+            p_company_id:cid,
+            p_from:from,
+            p_to:to
+        })||[];
+    }
+
+    async function paint(from,to){
+        var rows=await load(from,to);
+        var h='<div class="space-y-4">'+
+            '<div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">'+
+                '<div><label class="block text-sm font-bold mb-1">من تاريخ</label><input id="fin_exp_from" type="date" value="'+esc(from)+'" class="w-full border rounded-xl p-3"></div>'+\
+                '<div><label class="block text-sm font-bold mb-1">إلى تاريخ</label><input id="fin_exp_to" type="date" value="'+esc(to)+'" class="w-full border rounded-xl p-3"></div>'+\
+                '<button id="fin_exp_apply" class="bg-slate-800 text-white px-4 py-3 rounded-xl font-bold">تحديث النتائج</button>'+\
+                '<button id="fin_exp_new" class="bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold">مصروف جديد</button>'+\
+            '</div>'+
+            '<div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50">'+\
+                '<th class="p-2 border">الكود</th><th class="p-2 border">التاريخ</th><th class="p-2 border">المستفيد</th><th class="p-2 border">التصنيف</th><th class="p-2 border">الإجمالي</th><th class="p-2 border">الضريبة</th><th class="p-2 border">الحالة</th><th class="p-2 border">القيد</th>'+\
+            '</tr></thead><tbody>';
+
+        if(!rows.length){
+            h+='<tr><td colspan="8" class="p-8 text-center text-slate-500">لا توجد مصروفات ضمن الفترة المحددة.</td></tr>';
+        }else{
+            rows.forEach(function(x){
+                var total=Number(x.total_amount||0);
+                var tax=Number(x.tax_amount||0);
+                h+='<tr>'+\
+                    '<td class="p-2 border">'+esc(x.expense_code)+'</td>'+\
+                    '<td class="p-2 border">'+esc(x.expense_date)+'</td>'+\
+                    '<td class="p-2 border">'+esc(x.beneficiary_name)+'</td>'+\
+                    '<td class="p-2 border">'+esc(x.category_name)+'</td>'+\
+                    '<td class="p-2 border text-left font-black">'+money(total+tax)+'</td>'+\
+                    '<td class="p-2 border text-left">'+money(tax)+'</td>'+\
+                    '<td class="p-2 border">'+esc(x.status||'')+'</td>'+\
+                    '<td class="p-2 border">'+esc(x.journal_entry_id||'')+'</td>'+\
+                '</tr>';
+            });
+        }
+
+        h+='</tbody></table></div></div>';
+        card('المصروفات','fa-money-bill-wave',h);
+
+        var apply=byId('fin_exp_apply');
+        var add=byId('fin_exp_new');
+        if(apply){
+            apply.onclick=async function(){
+                var f=byId('fin_exp_from').value;
+                var t=byId('fin_exp_to').value;
+                if(!f||!t){await Swal.fire({icon:'warning',title:'الفترة غير مكتملة',text:'حدد تاريخ البداية والنهاية.'});return;}
+                if(f>t){await Swal.fire({icon:'warning',title:'الفترة غير صحيحة',text:'تاريخ البداية لا يجوز أن يتجاوز تاريخ النهاية.'});return;}
+                await paint(f,t);
+            };
+        }
+        if(add) add.onclick=function(){RW_Finance._goldNewExpense();};
+    }
+
+    await paint(defaultFrom,defaultTo);
+}
     async function renderCheques(){ var rows=await rpc('finance_list_cheques',{p_company_id:companyId(),p_status:null})||[]; var h='<div class="mb-4"><button onclick="RW_Finance._goldNewCheque()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">شيك جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الرقم</th><th class="p-2 border">النوع</th><th class="p-2 border">البنك</th><th class="p-2 border">المبلغ</th><th class="p-2 border">الاستحقاق</th><th class="p-2 border">الطرف</th><th class="p-2 border">الحالة</th><th class="p-2 border">إجراء</th></tr></thead><tbody>'; rows.forEach(function(x){h+='<tr><td class="p-2 border">'+esc(x.cheque_number)+'</td><td class="p-2 border">'+esc(x.cheque_type)+'</td><td class="p-2 border">'+esc(x.bank_name)+'</td><td class="p-2 border text-left">'+money(x.amount)+'</td><td class="p-2 border">'+esc(x.due_date)+'</td><td class="p-2 border">'+esc(x.party_name)+'</td><td class="p-2 border">'+esc(x.status)+'</td><td class="p-2 border"><button onclick="RW_Finance._goldChequeTransition(\''+esc(x.id)+'\',\''+esc(x.status)+'\')" class="text-indigo-600 font-bold">تغيير الحالة</button></td></tr>';}); h+='</tbody></table></div>'; card('الشيكات','fa-money-check-dollar',h); }
 
     async function renderAssets(){ var rows=await rpc('finance_list_assets',{p_company_id:companyId()})||[]; var h='<div class="mb-4"><button onclick="RW_Finance._goldAddAsset()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">أصل جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الكود</th><th class="p-2 border">الأصل</th><th class="p-2 border">التكلفة</th><th class="p-2 border">مجمع الإهلاك</th><th class="p-2 border">صافي القيمة</th><th class="p-2 border">الحالة</th><th class="p-2 border">إجراء</th></tr></thead><tbody>'; rows.forEach(function(a){h+='<tr><td class="p-2 border">'+esc(a.asset_code)+'</td><td class="p-2 border">'+esc(a.name)+'</td><td class="p-2 border text-left">'+money(a.cost)+'</td><td class="p-2 border text-left">'+money(a.accumulated_depreciation)+'</td><td class="p-2 border text-left font-black">'+money(a.net_book_value)+'</td><td class="p-2 border">'+esc(a.status)+'</td><td class="p-2 border"><button onclick="RW_Finance._goldDepreciate(\''+esc(a.id)+'\')" class="text-amber-700 font-bold">إهلاك</button> <button onclick="RW_Finance._goldDispose(\''+esc(a.id)+'\')" class="text-red-600 font-bold">استبعاد</button></td></tr>';}); h+='</tbody></table></div>'; card('الأصول والإهلاك','fa-building',h); }
@@ -17276,8 +17338,204 @@ var RW_Finance_GoldExtension = (function () {
 
     async function renderPeriods(){ var r=await supabase.from('finance_periods').select('*').eq('company_id',companyId()).order('start_date',{ascending:false}); if(r.error)throw r.error; var h='<div class="flex gap-2 mb-4"><button onclick="RW_Finance._goldOpenPeriod()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">فتح فترة</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الفترة</th><th class="p-2 border">من</th><th class="p-2 border">إلى</th><th class="p-2 border">الحالة</th><th class="p-2 border">إجراء</th></tr></thead><tbody>'; (r.data||[]).forEach(function(p){h+='<tr><td class="p-2 border">'+esc(p.period_code)+'</td><td class="p-2 border">'+esc(p.start_date)+'</td><td class="p-2 border">'+esc(p.end_date)+'</td><td class="p-2 border">'+esc(p.status)+'</td><td class="p-2 border">'+(p.status==='OPEN'?'<button onclick="RW_Finance._goldClosePeriod(\''+esc(p.id)+'\')" class="text-red-600 font-bold">إغلاق</button>':'<button onclick="RW_Finance._goldReopenPeriod(\''+esc(p.id)+'\')" class="text-emerald-600 font-bold">إعادة فتح</button>')+'</td></tr>';}); h+='</tbody></table></div>'; card('الفترات المحاسبية','fa-calendar-check',h); }
 
-    async function renderBankReconcile(){ var r=await supabase.from('finance_bank_statements').select('*').eq('company_id',companyId()).order('statement_date',{ascending:false}); if(r.error)throw r.error; var h='<div class="mb-4"><button onclick="RW_Finance._goldNewBankStatement()" class="bg-sky-700 text-white px-4 py-2 rounded-xl font-bold">كشف بنكي جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الكشف</th><th class="p-2 border">التاريخ</th><th class="p-2 border">الخزينة</th><th class="p-2 border">افتتاحي</th><th class="p-2 border">ختامي</th><th class="p-2 border">الحالة</th><th class="p-2 border">إجراء</th></tr></thead><tbody>'; (r.data||[]).forEach(function(s){h+='<tr><td class="p-2 border">'+esc(s.statement_ref)+'</td><td class="p-2 border">'+esc(s.statement_date)+'</td><td class="p-2 border">'+esc(s.treasury_id)+'</td><td class="p-2 border text-left">'+money(s.opening_balance)+'</td><td class="p-2 border text-left">'+money(s.closing_balance)+'</td><td class="p-2 border">'+esc(s.status)+'</td><td class="p-2 border"><button onclick="RW_Finance._goldCloseBank(\''+esc(s.id)+'\')" class="text-indigo-600 font-bold">إغلاق</button></td></tr>';}); h+='</tbody></table></div>'; card('مطابقة البنك','fa-building-columns',h); }
+    async function renderBankReconcile(){
+    var cid=companyId();
 
+    var results=await Promise.all([
+        supabase.from('finance_bank_statements')
+            .select('id,statement_ref,statement_date,treasury_id,opening_balance,closing_balance,status,currency_code,created_by')
+            .eq('company_id',cid)
+            .order('statement_date',{ascending:false}),
+        supabase.from('treasury')
+            .select('id,account_name,current_balance')
+            .eq('company_id',cid)
+            .eq('is_active',true)
+            .order('account_name')
+    ]);
+
+    if(results[0].error) throw results[0].error;
+    if(results[1].error) throw results[1].error;
+
+    var statements=results[0].data||[];
+    var treasuries=results[1].data||[];
+    var ids=statements.map(function(s){return s.id;});
+
+    var lineRows=[];
+    if(ids.length){
+        var lr=await supabase
+            .from('finance_bank_statement_lines')
+            .select('id,statement_id,txn_date,description,amount,reference,matched,excluded,excluded_reason,matched_cash_box_id,matched_journal_entry_id,matched_at,matched_by,matched_notes')
+            .eq('company_id',cid)
+            .in('statement_id',ids)
+            .order('txn_date',{ascending:true});
+        if(lr.error) throw lr.error;
+        lineRows=lr.data||[];
+    }
+
+    var summaryRows=[];
+    if(statements.length){
+        summaryRows=await Promise.all(statements.map(async function(s){
+            var treasuryId=s.treasury_id;
+            try{
+                var x=await rpc('finance_bank_reconciliation_summary',{
+                    p_company_id:cid,
+                    p_treasury_id:treasuryId,
+                    p_statement_id:s.id
+                });
+                return Array.isArray(x)?(x[0]||null):x||null;
+            }catch(err){
+                return null;
+            }
+        }));
+    }
+
+    var treasuryMap={};
+    treasuries.forEach(function(t){treasuryMap[t.id]=t;});
+
+    function userEmail(){return (RW_STATE.user&&RW_STATE.user.email)||'mother';}
+    function statementLines(statementId){return lineRows.filter(function(l){return l.statement_id===statementId;});}
+    function lineState(l){
+        if(l.excluded) return '<span class="px-2 py-1 rounded-lg bg-amber-100 text-amber-800 font-bold">مستبعد</span>';
+        if(l.matched) return '<span class="px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-bold">مطابق</span>';
+        return '<span class="px-2 py-1 rounded-lg bg-red-100 text-red-800 font-bold">غير مطابق</span>';
+    }
+
+    window.RW_FINANCE_BANK={
+        match:async function(lineId){
+            var candidates=await rpc('finance_bank_match_candidates',{p_company_id:cid,p_line_id:lineId})||[];
+            if(!Array.isArray(candidates)) candidates=[candidates];
+            if(!candidates.length){
+                await Swal.fire({icon:'info',title:'لا توجد مطابقات مرشحة',text:'لم يجد النظام حركة نقدية أو قيدًا مناسبًا لهذه الحركة.'});
+                return;
+            }
+
+            var html='<div class="space-y-2 text-right">';
+            candidates.forEach(function(c,i){
+                html+='<label class="flex items-start gap-3 border rounded-xl p-3 cursor-pointer bg-slate-50 hover:bg-white">'+
+                    '<input type="radio" name="rw_bank_candidate" value="'+i+'" class="mt-1">'+
+                    '<span class="flex-1"><b>'+esc(c.candidate_type==='CASH_BOX'?'حركة خزينة':'قيد محاسبي')+'</b>'+\
+                    '<span class="block text-sm text-slate-600">'+esc(c.reference||'')+'</span>'+\
+                    '<span class="block text-sm">'+esc(c.description||'')+' — '+money(c.amount||0)+'</span>'+\
+                    '<span class="block text-xs text-slate-500">'+esc(c.txn_date||'')+'</span></span></label>';
+            });
+            html+='</div>';
+
+            var r=await Swal.fire({
+                title:'اختيار المطابقة',
+                html:html,
+                width:800,
+                showCancelButton:true,
+                confirmButtonText:'تأكيد المطابقة',
+                cancelButtonText:'إلغاء',
+                preConfirm:function(){
+                    var picked=document.querySelector('input[name="rw_bank_candidate"]:checked');
+                    if(!picked){Swal.showValidationMessage('اختر حركة أو قيدًا أولًا');return false;}
+                    return candidates[Number(picked.value)];
+                }
+            });
+            if(!r.isConfirmed)return;
+
+            var c=r.value;
+            await rpc('finance_match_bank_line',{
+                p_company_id:cid,
+                p_line_id:lineId,
+                p_cash_box_id:c.candidate_type==='CASH_BOX'?c.candidate_id:null,
+                p_journal_entry_id:c.candidate_type==='JOURNAL'?c.candidate_id:null
+            });
+            await renderBankReconcile();
+        },
+
+        unmatch:async function(lineId){
+            var r=await Swal.fire({title:'إلغاء المطابقة؟',text:'سيعود السطر إلى حالة غير مطابق.',icon:'warning',showCancelButton:true,confirmButtonText:'إلغاء المطابقة',cancelButtonText:'إلغاء'});
+            if(!r.isConfirmed)return;
+            await rpc('finance_bank_unmatch_line',{p_company_id:cid,p_line_id:lineId,p_created_by:userEmail()});
+            await renderBankReconcile();
+        },
+
+        exclude:async function(lineId){
+            var r=await Swal.fire({
+                title:'استبعاد حركة بنكية',
+                input:'textarea',
+                inputPlaceholder:'سبب الاستبعاد إلزامي',
+                showCancelButton:true,
+                confirmButtonText:'استبعاد',
+                cancelButtonText:'إلغاء',
+                inputValidator:function(v){return (v||'').trim()?'': 'سبب الاستبعاد مطلوب';}
+            });
+            if(!r.isConfirmed)return;
+            await rpc('finance_exclude_bank_line',{p_company_id:cid,p_line_id:lineId,p_reason:r.value,p_created_by:userEmail()});
+            await renderBankReconcile();
+        },
+
+        include:async function(lineId){
+            await rpc('finance_include_bank_line',{p_company_id:cid,p_line_id:lineId,p_created_by:userEmail()});
+            await renderBankReconcile();
+        }
+    };
+
+    var h='<div class="space-y-5">'+
+        '<div class="flex flex-wrap items-center justify-between gap-3">'+
+            '<div><div class="text-lg font-black">مطابقة البنك</div><div class="text-sm text-slate-500">مراجعة الكشف، مطابقة الحركات، الاستبعاد، والإغلاق من نفس الشاشة.</div></div>'+
+            '<button onclick="RW_Finance._goldNewBankStatement()" class="bg-sky-700 text-white px-4 py-2 rounded-xl font-bold">كشف بنكي جديد</button>'+
+        '</div>';
+
+    if(!statements.length){
+        h+='<div class="rounded-2xl border border-dashed p-10 text-center text-slate-500">لا توجد كشوف بنكية حتى الآن.</div>';
+    }
+
+    statements.forEach(function(s,idx){
+        var t=treasuryMap[s.treasury_id];
+        var sum=summaryRows[idx]||{};
+        var lines=statementLines(s.id);
+        var unmatched=Number(sum.unmatched_count??lines.filter(function(l){return !l.matched&&!l.excluded;}).length)||0;
+        var matched=Number(sum.matched_count??lines.filter(function(l){return l.matched;}).length)||0;
+        var excluded=lines.filter(function(l){return l.excluded;}).length;
+
+        h+='<div class="rounded-2xl border bg-white shadow-sm overflow-hidden">'+
+            '<div class="p-4 border-b bg-slate-50 flex flex-wrap items-center justify-between gap-3">'+
+                '<div><div class="font-black">'+esc(s.statement_ref)+'</div><div class="text-sm text-slate-500">'+esc(s.statement_date)+' — '+esc(t?t.account_name:'خزينة غير معروفة')+'</div></div>'+\
+                '<div class="flex flex-wrap gap-2 text-xs">'+\
+                    '<span class="px-3 py-2 rounded-xl bg-emerald-100 text-emerald-800 font-bold">مطابق: '+matched+'</span>'+\
+                    '<span class="px-3 py-2 rounded-xl bg-red-100 text-red-800 font-bold">غير مطابق: '+unmatched+'</span>'+\
+                    '<span class="px-3 py-2 rounded-xl bg-amber-100 text-amber-800 font-bold">مستبعد: '+excluded+'</span>'+\
+                    '<span class="px-3 py-2 rounded-xl bg-slate-200 text-slate-800 font-bold">الحالة: '+esc(s.status)+'</span>'+\
+                '</div>'+\
+            '</div>'+\
+            '<div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">'+\
+                '<div class="rounded-xl bg-blue-50 p-3"><span class="block text-slate-500">افتتاحي</span><b>'+money(s.opening_balance)+'</b></div>'+\
+                '<div class="rounded-xl bg-indigo-50 p-3"><span class="block text-slate-500">ختامي كشف البنك</span><b>'+money(s.closing_balance)+'</b></div>'+\
+                '<div class="rounded-xl bg-slate-100 p-3"><span class="block text-slate-500">الرصيد الحالي للخزينة</span><b>'+money(t?t.current_balance:0)+'</b></div>'+\
+            '</div>';
+
+        if(lines.length){
+            h+='<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-slate-100"><th class="p-2 text-right">التاريخ</th><th class="p-2 text-right">الوصف</th><th class="p-2 text-right">المرجع</th><th class="p-2 text-right">المبلغ</th><th class="p-2 text-right">الحالة</th><th class="p-2 text-right">إجراء</th></tr></thead><tbody>';
+            lines.forEach(function(l){
+                var actions='';
+                if(l.excluded){
+                    if(s.status!=='RECONCILED') actions+='<button onclick="RW_FINANCE_BANK.include(\''+esc(l.id)+'\')" class="text-emerald-700 font-bold ml-3">إعادة إدراج</button>';
+                }else if(l.matched){
+                    if(s.status!=='RECONCILED') actions+='<button onclick="RW_FINANCE_BANK.unmatch(\''+esc(l.id)+'\')" class="text-amber-700 font-bold ml-3">إلغاء المطابقة</button>';
+                }else{
+                    if(s.status!=='RECONCILED'){
+                        actions+='<button onclick="RW_FINANCE_BANK.match(\''+esc(l.id)+'\')" class="text-indigo-700 font-bold ml-3">مطابقة</button>';
+                        actions+='<button onclick="RW_FINANCE_BANK.exclude(\''+esc(l.id)+'\')" class="text-amber-700 font-bold">استبعاد</button>';
+                    }
+                }
+                h+='<tr class="border-t"><td class="p-2">'+esc(l.txn_date)+'</td><td class="p-2">'+esc(l.description||'')+'</td><td class="p-2">'+esc(l.reference||'')+'</td><td class="p-2 font-black">'+money(l.amount)+'</td><td class="p-2">'+lineState(l)+'</td><td class="p-2">'+actions+'</td></tr>';
+            });
+            h+='</tbody></table></div>';
+        }else{
+            h+='<div class="px-4 pb-4 text-sm text-slate-500">لا توجد حركات في هذا الكشف.</div>';
+        }
+
+        h+='<div class="p-4 border-t flex flex-wrap justify-end gap-2">'+
+            (s.status!=='RECONCILED'?'<button onclick="RW_Finance._goldCloseBank(\''+esc(s.id)+'\')" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">إغلاق وتسوية الكشف</button>':'<span class="px-4 py-2 rounded-xl bg-emerald-100 text-emerald-800 font-bold">تمت التسوية</span>')+
+            '</div></div>';
+    });
+
+    h+='</div>';
+    card('مطابقة البنك','fa-building-columns',h);
+}
     async function newRecurring(){
     if(typeof Swal==='undefined') return;
     var cid=companyId();
@@ -17639,9 +17897,91 @@ async function goldDepreciate(id){
 }
 
 async function goldDispose(id){
-    var h='<input id="fd_date" type="date" value="'+today()+'" class="swal2-input"><input id="fd_proc" type="number" class="swal2-input" placeholder="متحصلات البيع"><input id="fd_acc" class="swal2-input" placeholder="UUID حساب المتحصلات"><input id="fd_ref" class="swal2-input" placeholder="المرجع">';
-    var r=await Swal.fire({title:'استبعاد/بيع أصل',html:h,showCancelButton:true,confirmButtonText:'تنفيذ'});if(!r.isConfirmed)return;
-    await rpc('finance_dispose_asset',{p_company_id:companyId(),p_asset_id:id,p_disposal_date:byId('fd_date').value,p_proceeds:Number(byId('fd_proc').value||0),p_proceeds_account_id:byId('fd_acc').value.trim(),p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',p_operation_id:crypto.randomUUID(),p_reference:byId('fd_ref').value.trim()}); await renderAssets();
+    if(typeof Swal==='undefined') return;
+
+    var cid=companyId();
+    var ares=await supabase
+        .from('chart_of_accounts')
+        .select('id,account_code,account_name,account_type')
+        .eq('company_id',cid)
+        .eq('is_active',true)
+        .order('account_code');
+
+    if(ares.error) throw ares.error;
+
+    var accounts=ares.data||[];
+
+    function e(v){
+        return String(v==null?'':v)
+            .replace(/&/g,'&amp;')
+            .replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;')
+            .replace(/'/g,'&#39;');
+    }
+
+    var opts='<option value="">بدون متحصلات / استبعاد بدون بيع</option>';
+    accounts.forEach(function(a){
+        opts+='<option value="'+e(a.id)+'">'+e((a.account_code||'')+' — '+(a.account_name||''))+'</option>';
+    });
+
+    var html='<div class="space-y-3 text-right">'+
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
+            '<div><label class="block text-sm font-bold mb-1">تاريخ الاستبعاد</label><input id="fd_date" type="date" value="'+today()+'" class="w-full border rounded-xl p-3"></div>'+\
+            '<div><label class="block text-sm font-bold mb-1">المتحصلات</label><input id="fd_proc" type="number" min="0" step="0.01" value="0" class="w-full border rounded-xl p-3" placeholder="0 عند عدم وجود بيع"></div>'+\
+            '<div class="md:col-span-2"><label class="block text-sm font-bold mb-1">حساب المتحصلات</label><select id="fd_acc" class="w-full border rounded-xl p-3">'+opts+'</select><div class="text-xs text-slate-500 mt-1">يُطلب فقط عند وجود متحصلات فعلية.</div></div>'+\
+            '<div class="md:col-span-2"><label class="block text-sm font-bold mb-1">المرجع</label><input id="fd_ref" class="w-full border rounded-xl p-3" placeholder="المرجع"></div>'+\
+        '</div></div>';
+
+    var r=await Swal.fire({
+        title:'استبعاد / بيع أصل',
+        html:html,
+        width:800,
+        showCancelButton:true,
+        confirmButtonText:'تنفيذ الاستبعاد',
+        cancelButtonText:'إلغاء',
+        preConfirm:function(){
+            var date=byId('fd_date').value;
+            var proceeds=Number(byId('fd_proc').value)||0;
+            var accountId=byId('fd_acc').value||null;
+            var reference=(byId('fd_ref').value||'').trim();
+
+            if(!date){
+                Swal.showValidationMessage('تاريخ الاستبعاد مطلوب');
+                return false;
+            }
+            if(proceeds<0){
+                Swal.showValidationMessage('المتحصلات لا يمكن أن تكون سالبة');
+                return false;
+            }
+            if(proceeds>0&&!accountId){
+                Swal.showValidationMessage('اختر حساب المتحصلات عند وجود قيمة بيع');
+                return false;
+            }
+
+            return {
+                date:date,
+                proceeds:proceeds,
+                accountId:accountId,
+                reference:reference
+            };
+        }
+    });
+
+    if(!r.isConfirmed)return;
+
+    await rpc('finance_dispose_asset',{
+        p_company_id:cid,
+        p_asset_id:id,
+        p_disposal_date:r.value.date,
+        p_proceeds:r.value.proceeds,
+        p_proceeds_account_id:r.value.accountId,
+        p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',
+        p_operation_id:crypto.randomUUID(),
+        p_reference:r.value.reference
+    });
+
+    await renderAssets();
 }
 
 async function goldTaxCode(){
