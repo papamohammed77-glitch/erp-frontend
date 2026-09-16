@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-16 14:30 UTC -->
+<!-- 2026-09-16 16:30 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -17278,22 +17278,161 @@ var RW_Finance_GoldExtension = (function () {
 
     async function renderBankReconcile(){ var r=await supabase.from('finance_bank_statements').select('*').eq('company_id',companyId()).order('statement_date',{ascending:false}); if(r.error)throw r.error; var h='<div class="mb-4"><button onclick="RW_Finance._goldNewBankStatement()" class="bg-sky-700 text-white px-4 py-2 rounded-xl font-bold">كشف بنكي جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الكشف</th><th class="p-2 border">التاريخ</th><th class="p-2 border">الخزينة</th><th class="p-2 border">افتتاحي</th><th class="p-2 border">ختامي</th><th class="p-2 border">الحالة</th><th class="p-2 border">إجراء</th></tr></thead><tbody>'; (r.data||[]).forEach(function(s){h+='<tr><td class="p-2 border">'+esc(s.statement_ref)+'</td><td class="p-2 border">'+esc(s.statement_date)+'</td><td class="p-2 border">'+esc(s.treasury_id)+'</td><td class="p-2 border text-left">'+money(s.opening_balance)+'</td><td class="p-2 border text-left">'+money(s.closing_balance)+'</td><td class="p-2 border">'+esc(s.status)+'</td><td class="p-2 border"><button onclick="RW_Finance._goldCloseBank(\''+esc(s.id)+'\')" class="text-indigo-600 font-bold">إغلاق</button></td></tr>';}); h+='</tbody></table></div>'; card('مطابقة البنك','fa-building-columns',h); }
 
-    async function newRecurring(){ var f='<div class="grid grid-cols-2 gap-2 text-right"><input id="grc" class="border p-2 rounded" placeholder="كود القالب"><input id="grn" class="border p-2 rounded" placeholder="اسم القالب"><select id="grf" class="border p-2 rounded"><option value="MONTHLY">شهري</option><option value="DAILY">يومي</option><option value="WEEKLY">أسبوعي</option><option value="QUARTERLY">ربع سنوي</option><option value="YEARLY">سنوي</option></select><input id="grd" type="date" value="'+today()+'" class="border p-2 rounded"><textarea id="grl" class="border p-2 rounded col-span-2" rows="6" placeholder="JSON lines: [{\"account_id\":\"UUID\",\"debit\":100,\"credit\":0},{...}]"></textarea></div>'; if(typeof Swal==='undefined')return; var r=await Swal.fire({title:'قيد متكرر جديد',html:f,showCancelButton:true,confirmButtonText:'حفظ',preConfirm:function(){try{return JSON.parse(byId('grl').value)}catch(e){Swal.showValidationMessage('JSON غير صحيح')}}}); if(!r.isConfirmed)return; await rpc('finance_save_recurring',{p_company_id:companyId(),p_template_id:null,p_template_code:byId('grc').value.trim(),p_name:byId('grn').value.trim(),p_frequency:byId('grf').value,p_next_run_date:byId('grd').value,p_end_date:null,p_description:'',p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',p_lines:r.value}); await renderRecurring(); }
-
+    async function newRecurring(){
+    if(typeof Swal==='undefined') return;
+    var cid=companyId();
+    var res=await Promise.all([
+        supabase.from('chart_of_accounts').select('id,account_code,account_name').eq('company_id',cid).eq('is_active',true).order('account_code'),
+        supabase.from('cost_centers').select('id,code,name').eq('is_active',true).order('code')
+    ]);
+    if(res[0].error) throw res[0].error;
+    if(res[1].error) throw res[1].error;
+    var accounts=res[0].data||[];
+    var centers=res[1].data||[];
+    if(accounts.length<2) throw new Error('لا يوجد عدد كافٍ من الحسابات النشطة لإنشاء قيد متكرر');
+    function ae(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+    function accountOptions(){var h='<option value="">اختر الحساب</option>';accounts.forEach(function(a){h+='<option value="'+ae(a.id)+'">'+ae((a.account_code||'')+' — '+(a.account_name||''))+'</option>';});return h;}
+    function centerOptions(){var h='<option value="">بدون مركز تكلفة</option>';centers.forEach(function(c){h+='<option value="'+ae(c.id)+'">'+ae((c.code||'')+' — '+(c.name||''))+'</option>';});return h;}
+    function rowHtml(){return '<div class="gr-row border rounded-xl p-3 mb-2 bg-slate-50"><div class="grid grid-cols-1 md:grid-cols-5 gap-2"><select class="gr-account border rounded-lg p-2 bg-white">'+accountOptions()+'</select><input class="gr-debit border rounded-lg p-2" type="number" min="0" step="0.01" placeholder="مدين"><input class="gr-credit border rounded-lg p-2" type="number" min="0" step="0.01" placeholder="دائن"><select class="gr-center border rounded-lg p-2 bg-white">'+centerOptions()+'</select><div class="flex gap-2"><input class="gr-note flex-1 border rounded-lg p-2" placeholder="ملاحظة"><button type="button" class="gr-remove px-3 rounded-lg bg-red-100 text-red-700 font-bold">حذف</button></div></div></div>';}
+    var html='<div class="space-y-3 text-right">'+
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
+        '<input id="grc" class="border rounded-xl p-3" placeholder="كود القالب">'+
+        '<input id="grn" class="border rounded-xl p-3" placeholder="اسم القالب">'+
+        '<select id="grf" class="border rounded-xl p-3"><option value="MONTHLY">شهري</option><option value="DAILY">يومي</option><option value="WEEKLY">أسبوعي</option><option value="QUARTERLY">ربع سنوي</option><option value="YEARLY">سنوي</option></select>'+
+        '<input id="grd" type="date" value="'+today()+'" class="border rounded-xl p-3">'+
+        '<input id="gre" type="date" class="border rounded-xl p-3" placeholder="تاريخ النهاية الاختياري">'+
+        '<input id="grdesc" class="border rounded-xl p-3" placeholder="وصف القيد">'+
+        '</div>'+
+        '<div class="flex items-center justify-between gap-2"><div class="font-black">بنود القيد</div><button type="button" id="gr_add" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold">إضافة سطر</button></div>'+
+        '<div id="gr_lines">'+rowHtml()+rowHtml()+'</div>'+
+        '<div class="grid grid-cols-3 gap-3 mt-3"><div class="rounded-xl bg-blue-50 p-3"><span class="text-xs">إجمالي المدين</span><b id="gr_td" class="block text-lg">0</b></div><div class="rounded-xl bg-emerald-50 p-3"><span class="text-xs">إجمالي الدائن</span><b id="gr_tc" class="block text-lg">0</b></div><div class="rounded-xl bg-slate-100 p-3"><span class="text-xs">الفارق</span><b id="gr_diff" class="block text-lg">0</b></div></div></div>';
+    var r=await Swal.fire({title:'قيد متكرر جديد',html:html,width:1100,showCancelButton:true,confirmButtonText:'حفظ القالب',cancelButtonText:'إلغاء',didOpen:function(){
+        var root=document.getElementById('gr_lines');
+        function calc(){var td=0,tc=0;root.querySelectorAll('.gr-row').forEach(function(row){td+=Number(row.querySelector('.gr-debit').value)||0;tc+=Number(row.querySelector('.gr-credit').value)||0;});document.getElementById('gr_td').textContent=td.toFixed(2);document.getElementById('gr_tc').textContent=tc.toFixed(2);document.getElementById('gr_diff').textContent=(td-tc).toFixed(2);}
+        document.getElementById('gr_add').addEventListener('click',function(){root.insertAdjacentHTML('beforeend',rowHtml());wire();calc();});
+        function wire(){root.querySelectorAll('.gr-remove').forEach(function(b){if(b.dataset.wired)return;b.dataset.wired='1';b.addEventListener('click',function(){if(root.querySelectorAll('.gr-row').length<=2){Swal.showValidationMessage('القيد يحتاج سطرين على الأقل');return;}b.closest('.gr-row').remove();calc();});});root.querySelectorAll('.gr-debit,.gr-credit').forEach(function(i){if(i.dataset.wired)return;i.dataset.wired='1';i.addEventListener('input',calc);});}
+        wire();calc();
+    },preConfirm:function(){
+        var code=(document.getElementById('grc').value||'').trim(),name=(document.getElementById('grn').value||'').trim(),date=document.getElementById('grd').value,end=document.getElementById('gre').value||null,rows=[];
+        document.querySelectorAll('#gr_lines .gr-row').forEach(function(row){var aid=row.querySelector('.gr-account').value,debit=Number(row.querySelector('.gr-debit').value)||0,credit=Number(row.querySelector('.gr-credit').value)||0;if(aid||debit||credit)rows.push({account_id:aid,debit:debit,credit:credit,cost_center_id:row.querySelector('.gr-center').value||null,notes:(row.querySelector('.gr-note').value||'').trim()});});
+        var td=rows.reduce(function(a,x){return a+x.debit},0),tc=rows.reduce(function(a,x){return a+x.credit},0);
+        if(!code||!name||!date){Swal.showValidationMessage('الكود والاسم وتاريخ البداية مطلوبة');return false;}
+        if(!rows.length||rows.length<2){Swal.showValidationMessage('أضف بندين على الأقل');return false;}
+        if(Math.abs(td-tc)>0.004||td<=0){Swal.showValidationMessage('القيد غير متوازن');return false;}
+        return {code:code,name:name,frequency:document.getElementById('grf').value,next:date,end:end,description:(document.getElementById('grdesc').value||'').trim(),lines:rows};
+    }});
+    if(!r.isConfirmed)return;
+    await rpc('finance_save_recurring',{p_company_id:cid,p_template_id:null,p_template_code:r.value.code,p_name:r.value.name,p_frequency:r.value.frequency,p_next_run_date:r.value.next,p_end_date:r.value.end,p_description:r.value.description,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',p_lines:r.value.lines});
+    await renderRecurring();
+}
     async function runRecurring(){ await rpc('finance_run_recurring',{p_company_id:companyId(),p_run_until:today(),p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'}); await renderRecurring(); }
 
-    async function newCheque(){ if(typeof Swal==='undefined')return; var h='<div class="grid grid-cols-2 gap-2"><input id="gcno" class="border p-2 rounded" placeholder="رقم الشيك"><select id="gct" class="border p-2 rounded"><option value="PAYABLE">دائن</option><option value="RECEIVABLE">مدين</option></select><input id="gcb" class="border p-2 rounded" placeholder="البنك"><input id="gca" type="number" class="border p-2 rounded" placeholder="المبلغ"><input id="gcd" type="date" value="'+today()+'" class="border p-2 rounded"><input id="gdu" type="date" value="'+today()+'" class="border p-2 rounded"><input id="gcp" class="border p-2 rounded col-span-2" placeholder="الطرف"><textarea id="gcn" class="border p-2 rounded col-span-2" placeholder="ملاحظات"></textarea></div>'; var r=await Swal.fire({title:'شيك جديد',html:h,showCancelButton:true,confirmButtonText:'حفظ'}); if(!r.isConfirmed)return; await rpc('finance_save_cheque',{p_company_id:companyId(),p_id:null,p_cheque_number:byId('gcno').value.trim(),p_cheque_type:byId('gct').value,p_bank_name:byId('gcb').value.trim(),p_amount:Number(byId('gca').value),p_cheque_date:byId('gcd').value,p_due_date:byId('gdu').value,p_party_name:byId('gcp').value.trim(),p_from_account_id:null,p_to_account_id:null,p_treasury_id:null,p_notes:byId('gcn').value,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'}); await renderCheques(); }
+    async function newCheque(){
+    if(typeof Swal==='undefined') return;
+    var cid=companyId();
+    var res=await Promise.all([
+        supabase.from('treasury').select('id,name,current_balance').eq('company_id',cid).eq('is_active',true).order('name'),
+        supabase.from('chart_of_accounts').select('id,account_code,account_name').eq('company_id',cid).eq('is_active',true).order('account_code')
+    ]);
+    if(res[0].error) throw res[0].error;
+    if(res[1].error) throw res[1].error;
+    var treasuries=res[0].data||[],accounts=res[1].data||[];
+    function e(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+    var th='<option value="">بدون خزينة</option>';treasuries.forEach(function(t){th+='<option value="'+e(t.id)+'">'+e((t.name||'خزينة')+' — الرصيد '+Number(t.current_balance||0).toLocaleString())+'</option>';});
+    var ah='<option value="">اختر الحساب</option>';accounts.forEach(function(a){ah+='<option value="'+e(a.id)+'">'+e((a.account_code||'')+' — '+(a.account_name||''))+'</option>';});
+    var html='<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-right">'+
+        '<input id="gcno" class="border rounded-xl p-3" placeholder="رقم الشيك">'+
+        '<select id="gct" class="border rounded-xl p-3"><option value="PAYABLE">شيك صادر / التزام دفع</option><option value="RECEIVABLE">شيك وارد / حق قبض</option></select>'+
+        '<input id="gcb" class="border rounded-xl p-3" placeholder="البنك">'+
+        '<input id="gca" type="number" min="0.01" step="0.01" class="border rounded-xl p-3" placeholder="المبلغ">'+
+        '<input id="gcd" type="date" value="'+today()+'" class="border rounded-xl p-3" placeholder="تاريخ الشيك">'+
+        '<input id="gdu" type="date" value="'+today()+'" class="border rounded-xl p-3" placeholder="تاريخ الاستحقاق">'+
+        '<input id="gcp" class="border rounded-xl p-3" placeholder="الطرف">'+
+        '<select id="gctry" class="border rounded-xl p-3">'+th+'</select>'+
+        '<select id="gfrom" class="border rounded-xl p-3">'+ah+'</select>'+
+        '<select id="gto" class="border rounded-xl p-3">'+ah+'</select>'+\
+        '<textarea id="gcn" class="border rounded-xl p-3 md:col-span-2" placeholder="ملاحظات"></textarea></div>';
+    var r=await Swal.fire({title:'شيك جديد',html:html,width:950,showCancelButton:true,confirmButtonText:'حفظ',cancelButtonText:'إلغاء',preConfirm:function(){
+        var no=(byId('gcno').value||'').trim(),bank=(byId('gcb').value||'').trim(),amount=Number(byId('gca').value)||0,cd=byId('gcd').value,du=byId('gdu').value;
+        if(!no||!bank||amount<=0||!cd||!du){Swal.showValidationMessage('رقم الشيك والبنك والمبلغ والتواريخ مطلوبة');return false;}
+        if(du<cd){Swal.showValidationMessage('تاريخ الاستحقاق لا يجوز أن يسبق تاريخ الشيك');return false;}
+        return {no:no,type:byId('gct').value,bank:bank,amount:amount,cd:cd,du:du,party:(byId('gcp').value||'').trim(),treasury:byId('gctry').value||null,from:byId('gfrom').value||null,to:byId('gto').value||null,notes:byId('gcn').value||''};
+    }});
+    if(!r.isConfirmed)return;
+    await rpc('finance_save_cheque',{p_company_id:cid,p_id:null,p_cheque_number:r.value.no,p_cheque_type:r.value.type,p_bank_name:r.value.bank,p_amount:r.value.amount,p_cheque_date:r.value.cd,p_due_date:r.value.du,p_party_name:r.value.party,p_from_account_id:r.value.from,p_to_account_id:r.value.to,p_treasury_id:r.value.treasury,p_notes:r.value.notes,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'});
+    await renderCheques();
+}
 
-    async function newBank(){ if(typeof Swal==='undefined')return; var r=await Swal.fire({title:'كشف بنكي جديد',html:'<input id="gbr" class="swal2-input" placeholder="Statement Ref"><input id="gbo" type="number" class="swal2-input" placeholder="Opening"><input id="gbc" type="number" class="swal2-input" placeholder="Closing">',showCancelButton:true,confirmButtonText:'حفظ',preConfirm:function(){return {ref:byId('gbr').value,opening:Number(byId('gbo').value),closing:Number(byId('gbc').value)}}}); if(!r.isConfirmed)return; var ts=await supabase.from('treasury').select('id').eq('company_id',companyId()).eq('is_active',true).limit(1).maybeSingle(); if(ts.error||!ts.data)throw new Error('لا توجد خزينة فعالة'); await rpc('finance_open_bank_statement',{p_company_id:companyId(),p_treasury_id:ts.data.id,p_statement_ref:r.value.ref,p_statement_date:today(),p_opening:r.value.opening,p_closing:r.value.closing,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',p_lines:[]}); await renderBankReconcile(); }
+    async function newBank(){
+    if(typeof Swal==='undefined') return;
+    var cid=companyId();
+    var ts=await supabase.from('treasury').select('id,name,current_balance').eq('company_id',cid).eq('is_active',true).order('name');
+    if(ts.error) throw ts.error;
+    var treasuries=ts.data||[];
+    if(!treasuries.length) throw new Error('لا توجد خزائن فعالة للشركة الحالية');
+    function e(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+    var th='<option value="">اختر الخزينة</option>';treasuries.forEach(function(t){th+='<option value="'+e(t.id)+'">'+e(t.name||'خزينة')+'</option>';});
+    function line(){return '<div class="gb-line grid grid-cols-1 md:grid-cols-4 gap-2 border rounded-xl p-2 bg-slate-50"><input class="gb-date border rounded-lg p-2" type="date" value="'+today()+'"><input class="gb-desc border rounded-lg p-2" placeholder="الوصف"><input class="gb-ref border rounded-lg p-2" placeholder="المرجع"><div class="flex gap-2"><input class="gb-amt flex-1 border rounded-lg p-2" type="number" step="0.01" placeholder="المبلغ"><button type="button" class="gb-remove px-3 rounded-lg bg-red-100 text-red-700 font-bold">حذف</button></div></div>';}
+    var html='<div class="space-y-3 text-right">'+
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
+        '<input id="gbr" class="border rounded-xl p-3" placeholder="مرجع كشف البنك">'+
+        '<select id="gbt" class="border rounded-xl p-3">'+th+'</select>'+
+        '<input id="gbd" type="date" value="'+today()+'" class="border rounded-xl p-3" placeholder="تاريخ الكشف">'+
+        '<input id="gbo" type="number" step="0.01" class="border rounded-xl p-3" placeholder="الرصيد الافتتاحي">'+
+        '<input id="gbc" type="number" step="0.01" class="border rounded-xl p-3" placeholder="الرصيد الختامي">'+
+        '</div><div class="flex items-center justify-between"><div class="font-black">حركات الكشف</div><button id="gb_add" type="button" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold">إضافة حركة</button></div><div id="gb_lines">'+line()+'</div></div>';
+    var r=await Swal.fire({title:'كشف بنكي جديد',html:html,width:1100,showCancelButton:true,confirmButtonText:'حفظ الكشف',cancelButtonText:'إلغاء',didOpen:function(){
+        var root=byId('gb_lines');
+        byId('gb_add').addEventListener('click',function(){root.insertAdjacentHTML('beforeend',line());wire();});
+        function wire(){root.querySelectorAll('.gb-remove').forEach(function(b){if(b.dataset.wired)return;b.dataset.wired='1';b.addEventListener('click',function(){if(root.querySelectorAll('.gb-line').length<=1){Swal.showValidationMessage('يجب إبقاء حركة واحدة على الأقل أو حذفها قبل الحفظ');return;}b.closest('.gb-line').remove();});});}
+        wire();
+    },preConfirm:function(){
+        var ref=(byId('gbr').value||'').trim(),tid=byId('gbt').value||'',date=byId('gbd').value,opening=Number(byId('gbo').value)||0,closing=Number(byId('gbc').value)||0,lines=[];
+        document.querySelectorAll('#gb_lines .gb-line').forEach(function(row){var d=row.querySelector('.gb-date').value,a=Number(row.querySelector('.gb-amt').value)||0;if(d&&a!==0)lines.push({txn_date:d,description:(row.querySelector('.gb-desc').value||'').trim(),amount:a,reference:(row.querySelector('.gb-ref').value||'').trim()});});
+        if(!ref||!tid||!date){Swal.showValidationMessage('مرجع الكشف والخزينة والتاريخ مطلوبة');return false;}
+        return {ref:ref,treasury:tid,date:date,opening:opening,closing:closing,lines:lines};
+    }});
+    if(!r.isConfirmed)return;
+    await rpc('finance_save_bank_statement',{p_company_id:cid,p_treasury_id:r.value.treasury,p_statement_ref:r.value.ref,p_statement_date:r.value.date,p_opening:r.value.opening,p_closing:r.value.closing,p_lines:r.value.lines,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',p_statement_id:null});
+    await renderBankReconcile();
+}
 
     async function closeBank(id){ await rpc('finance_close_bank_statement',{p_company_id:companyId(),p_statement_id:id,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'}); await renderBankReconcile(); }
     async function closePeriod(id){ await rpc('finance_close_period',{p_company_id:companyId(),p_period_id:id,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'}); await renderPeriods(); }
     async function reopenPeriod(id){ await rpc('finance_reopen_period',{p_company_id:companyId(),p_period_id:id,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'}); await renderPeriods(); }
 
    async function goldAddAsset(){
-    var h='<div class="grid grid-cols-2 gap-2"><input id="fa_code" class="swal2-input" placeholder="كود الأصل"><input id="fa_name" class="swal2-input" placeholder="اسم الأصل"><input id="fa_cost" type="number" class="swal2-input" placeholder="التكلفة"><input id="fa_salvage" type="number" class="swal2-input" placeholder="قيمة الخردة"><input id="fa_life" type="number" class="swal2-input" placeholder="العمر بالشهور"><input id="fa_date" type="date" value="'+today()+'" class="swal2-input"><input id="fa_service" type="date" value="'+today()+'" class="swal2-input"><select id="fa_method" class="swal2-select"><option value="STRAIGHT_LINE">خط مستقيم</option><option value="DECLINING_BALANCE">رصيد متناقص</option><option value="NONE">بدون إهلاك</option></select><input id="fa_asset_acc" class="swal2-input" placeholder="UUID حساب الأصل"><input id="fa_acc_dep" class="swal2-input" placeholder="UUID مجمع الإهلاك"><input id="fa_dep_exp" class="swal2-input" placeholder="UUID مصروف الإهلاك"><input id="fa_gl" class="swal2-input" placeholder="UUID ربح/خسارة الاستبعاد"><textarea id="fa_notes" class="swal2-textarea" placeholder="ملاحظات"></textarea></div>';
-    var r=await Swal.fire({title:'أصل ثابت جديد',html:h,width:800,showCancelButton:true,confirmButtonText:'حفظ'}); if(!r.isConfirmed)return;
-    await rpc('save_fixed_asset',{p_company_id:companyId(),p_operation_id:crypto.randomUUID(),p_asset:{asset_code:byId('fa_code').value.trim(),name:byId('fa_name').value.trim(),category:'General',acquisition_date:byId('fa_date').value,in_service_date:byId('fa_service').value,cost:Number(byId('fa_cost').value),salvage_value:Number(byId('fa_salvage').value||0),useful_life_months:Number(byId('fa_life').value),depreciation_method:byId('fa_method').value,asset_account_id:byId('fa_asset_acc').value.trim(),accumulated_depreciation_account_id:byId('fa_acc_dep').value.trim(),depreciation_expense_account_id:byId('fa_dep_exp').value.trim(),disposal_gain_loss_account_id:byId('fa_gl').value.trim(),created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',notes:byId('fa_notes').value}});
+    if(typeof Swal==='undefined') return;
+    var cid=companyId();
+    var ar=await supabase.from('chart_of_accounts').select('id,account_code,account_name').eq('company_id',cid).eq('is_active',true).order('account_code');
+    if(ar.error) throw ar.error;
+    var accounts=ar.data||[];
+    function e(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+    var opt='<option value="">اختر الحساب</option>';accounts.forEach(function(a){opt+='<option value="'+e(a.id)+'">'+e((a.account_code||'')+' — '+(a.account_name||''))+'</option>';});
+    var h='<div class="space-y-3 text-right">'+
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
+        '<input id="fa_code" class="border rounded-xl p-3" placeholder="كود الأصل">'+
+        '<input id="fa_name" class="border rounded-xl p-3" placeholder="اسم الأصل">'+
+        '<input id="fa_category" class="border rounded-xl p-3" placeholder="التصنيف">'+
+        '<input id="fa_cost" type="number" min="0.01" step="0.01" class="border rounded-xl p-3" placeholder="التكلفة">'+
+        '<input id="fa_salvage" type="number" min="0" step="0.01" class="border rounded-xl p-3" placeholder="قيمة الخردة">'+
+        '<input id="fa_life" type="number" min="1" step="1" class="border rounded-xl p-3" placeholder="العمر بالشهور">'+
+        '<input id="fa_date" type="date" value="'+today()+'" class="border rounded-xl p-3">'+
+        '<input id="fa_service" type="date" value="'+today()+'" class="border rounded-xl p-3">'+
+        '<select id="fa_method" class="border rounded-xl p-3"><option value="STRAIGHT_LINE">خط مستقيم</option><option value="DECLINING_BALANCE">رصيد متناقص</option><option value="NONE">بدون إهلاك</option></select>'+
+        '<select id="fa_asset_acc" class="border rounded-xl p-3">'+opt+'</select>'+\
+        '<select id="fa_acc_dep" class="border rounded-xl p-3">'+opt+'</select>'+\
+        '<select id="fa_dep_exp" class="border rounded-xl p-3">'+opt+'</select>'+\
+        '<select id="fa_gl" class="border rounded-xl p-3">'+opt+'</select>'+\
+        '</div>'+\
+        '<label class="flex items-center gap-2 p-3 rounded-xl bg-amber-50 border"><input id="fa_acquire_now" type="checkbox"> ترحيل اقتناء الأصل الآن إلى الحسابات</label>'+\
+        '<select id="fa_funding" class="border rounded-xl p-3">'+opt+'</select>'+\
+        '<textarea id="fa_notes" class="border rounded-xl p-3" placeholder="ملاحظات"></textarea></div>';
+    var r=await Swal.fire({title:'أصل ثابت جديد',html:h,width:1050,showCancelButton:true,confirmButtonText:'حفظ الأصل',cancelButtonText:'إلغاء',didOpen:function(){byId('fa_funding').disabled=true;byId('fa_acquire_now').addEventListener('change',function(){byId('fa_funding').disabled=!this.checked;});},preConfirm:function(){var code=(byId('fa_code').value||'').trim(),name=(byId('fa_name').value||'').trim(),cost=Number(byId('fa_cost').value)||0,salvage=Number(byId('fa_salvage').value||0),life=Number(byId('fa_life').value)||0,acq=byId('fa_date').value,service=byId('fa_service').value;if(!code||!name||cost<=0||!acq||!service||!byId('fa_asset_acc').value){Swal.showValidationMessage('كود الأصل والاسم والتكلفة والتواريخ وحساب الأصل مطلوبة');return false;}if(service<acq){Swal.showValidationMessage('تاريخ التشغيل لا يسبق تاريخ الاقتناء');return false;}if(salvage<0||salvage>cost){Swal.showValidationMessage('قيمة الخردة غير صالحة');return false;}if(byId('fa_method').value!=='NONE'&&life<=0){Swal.showValidationMessage('العمر بالشهور مطلوب إذا كان الإهلاك فعالًا');return false;}if(byId('fa_acquire_now').checked&&!byId('fa_funding').value){Swal.showValidationMessage('اختر حساب تمويل الاقتناء');return false;}return {asset:{asset_code:code,name:name,category:(byId('fa_category').value||'').trim()||null,acquisition_date:acq,in_service_date:service,cost:cost,salvage_value:salvage,useful_life_months:life,depreciation_method:byId('fa_method').value,asset_account_id:byId('fa_asset_acc').value,accumulated_depreciation_account_id:byId('fa_acc_dep').value||null,depreciation_expense_account_id:byId('fa_dep_exp').value||null,disposal_gain_loss_account_id:byId('fa_gl').value||null,created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',notes:byId('fa_notes').value||''},acquire:byId('fa_acquire_now').checked,funding:byId('fa_funding').value||null};}});
+    if(!r.isConfirmed)return;
+    var op=crypto.randomUUID();
+    var saved=await rpc('save_fixed_asset',{p_company_id:cid,p_operation_id:op,p_asset:r.value.asset});
+    if(r.value.acquire){await rpc('finance_asset_acquire',{p_company_id:cid,p_asset_id:saved.asset.id,p_acquisition_date:r.value.asset.acquisition_date,p_funding_account_id:r.value.funding,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',p_operation_id:crypto.randomUUID()});}
     await renderAssets();
 }
 
@@ -17309,9 +17448,24 @@ async function goldDispose(id){
 }
 
 async function goldTaxCode(){
-    var h='<input id="tc_code" class="swal2-input" placeholder="الكود"><input id="tc_name" class="swal2-input" placeholder="الاسم"><input id="tc_rate" type="number" class="swal2-input" placeholder="النسبة"><input id="tc_sales" class="swal2-input" placeholder="UUID حساب ضريبة المخرجات"><input id="tc_purchase" class="swal2-input" placeholder="UUID حساب ضريبة المدخلات"><input id="tc_settle" class="swal2-input" placeholder="UUID حساب التسوية">';
-    var r=await Swal.fire({title:'نوع ضريبة جديد',html:h,showCancelButton:true,confirmButtonText:'حفظ'});if(!r.isConfirmed)return;
-    await rpc('finance_save_tax_code',{p_company_id:companyId(),p_id:null,p_code:byId('tc_code').value.trim(),p_name:byId('tc_name').value.trim(),p_rate:Number(byId('tc_rate').value),p_sales_account_id:byId('tc_sales').value.trim(),p_purchase_account_id:byId('tc_purchase').value.trim(),p_settlement_account_id:byId('tc_settle').value.trim(),p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'}); await renderTax();
+    if(typeof Swal==='undefined') return;
+    var cid=companyId();
+    var ar=await supabase.from('chart_of_accounts').select('id,account_code,account_name').eq('company_id',cid).eq('is_active',true).order('account_code');
+    if(ar.error) throw ar.error;
+    var accounts=ar.data||[];
+    function e(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+    var opt='<option value="">اختر الحساب</option>';accounts.forEach(function(a){opt+='<option value="'+e(a.id)+'">'+e((a.account_code||'')+' — '+(a.account_name||''))+'</option>';});
+    var h='<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-right">'+
+        '<input id="tc_code" class="border rounded-xl p-3" placeholder="كود الضريبة">'+
+        '<input id="tc_name" class="border rounded-xl p-3" placeholder="اسم الضريبة">'+
+        '<input id="tc_rate" type="number" min="0" step="0.01" class="border rounded-xl p-3" placeholder="النسبة %">'+
+        '<select id="tc_sales" class="border rounded-xl p-3">'+opt+'</select>'+
+        '<select id="tc_purchase" class="border rounded-xl p-3">'+opt+'</select>'+
+        '<select id="tc_settle" class="border rounded-xl p-3">'+opt+'</select></div>';
+    var r=await Swal.fire({title:'نوع ضريبة جديد',html:h,width:800,showCancelButton:true,confirmButtonText:'حفظ',cancelButtonText:'إلغاء',preConfirm:function(){var code=(byId('tc_code').value||'').trim(),name=(byId('tc_name').value||'').trim(),rate=Number(byId('tc_rate').value);if(!code||!name||!Number.isFinite(rate)||rate<0||!byId('tc_sales').value||!byId('tc_purchase').value||!byId('tc_settle').value){Swal.showValidationMessage('كل بيانات الضريبة والحسابات الثلاثة مطلوبة');return false;}return {code:code,name:name,rate:rate,sales:byId('tc_sales').value,purchase:byId('tc_purchase').value,settle:byId('tc_settle').value};}});
+    if(!r.isConfirmed)return;
+    await rpc('finance_save_tax_code',{p_company_id:cid,p_id:null,p_code:r.value.code,p_name:r.value.name,p_rate:r.value.rate,p_sales_account_id:r.value.sales,p_purchase_account_id:r.value.purchase,p_settlement_account_id:r.value.settle,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'});
+    await renderTax();
 }
 
 async function goldTaxSettle(){
@@ -17321,9 +17475,22 @@ async function goldTaxSettle(){
 }
 
 async function goldOpenPeriod(){
-    var h='<input id="po_code" class="swal2-input" placeholder="كود الفترة"><input id="po_year" type="number" value="'+new Date().getFullYear()+'" class="swal2-input"><input id="po_from" type="date" value="'+today().slice(0,4)+'-01-01" class="swal2-input"><input id="po_to" type="date" value="'+today().slice(0,4)+'-12-31" class="swal2-input">';
-    var r=await Swal.fire({title:'فتح فترة محاسبية',html:h,showCancelButton:true,confirmButtonText:'حفظ'});if(!r.isConfirmed)return;
-    await rpc('finance_open_period',{p_company_id:companyId(),p_period_code:byId('po_code').value.trim(),p_fiscal_year:Number(byId('po_year').value),p_start_date:byId('po_from').value,p_end_date:byId('po_to').value,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'}); await renderPeriods();
+    if(typeof Swal==='undefined') return;
+    var cid=companyId();
+    var pr=await supabase.from('finance_periods').select('id,period_code,start_date,end_date,status').eq('company_id',cid).order('start_date',{ascending:false});
+    if(pr.error) throw pr.error;
+    var periods=pr.data||[];
+    var y=new Date().getFullYear();
+    var h='<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-right">'+
+        '<input id="po_code" class="border rounded-xl p-3" placeholder="كود الفترة">'+
+        '<input id="po_year" type="number" value="'+y+'" class="border rounded-xl p-3" placeholder="السنة المالية">'+
+        '<input id="po_from" type="date" value="'+y+'-01-01" class="border rounded-xl p-3">'+
+        '<input id="po_to" type="date" value="'+y+'-12-31" class="border rounded-xl p-3"></div><div id="po_warning" class="mt-3 text-sm"></div>';
+    function overlap(a,b,c,d){return a<=d&&c<=b;}
+    var r=await Swal.fire({title:'فتح فترة محاسبية',html:h,width:800,showCancelButton:true,confirmButtonText:'فتح الفترة',cancelButtonText:'إلغاء',didOpen:function(){function check(){var a=byId('po_from').value,b=byId('po_to').value,w=byId('po_warning');if(!a||!b||a>b){w.className='mt-3 text-sm text-red-700 font-bold';w.textContent='نطاق التاريخ غير صالح';return;}var hit=periods.find(function(p){return overlap(a,b,p.start_date,p.end_date);});if(hit){w.className='mt-3 text-sm text-red-700 font-bold';w.textContent='تداخل مع الفترة '+hit.period_code+' ('+hit.start_date+' → '+hit.end_date+')';}else{w.className='mt-3 text-sm text-emerald-700 font-bold';w.textContent='لا يوجد تداخل مع الفترات الحالية';}}['po_from','po_to'].forEach(function(id){byId(id).addEventListener('change',check);});check();},preConfirm:function(){var code=(byId('po_code').value||'').trim(),year=Number(byId('po_year').value),from=byId('po_from').value,to=byId('po_to').value;if(!code||!Number.isInteger(year)||year<2000||year>2200||!from||!to||from>to){Swal.showValidationMessage('بيانات الفترة غير صالحة');return false;}var hit=periods.find(function(p){return overlap(from,to,p.start_date,p.end_date);});if(hit){Swal.showValidationMessage('لا يمكن فتح فترة متداخلة مع '+hit.period_code);return false;}return {code:code,year:year,from:from,to:to};}});
+    if(!r.isConfirmed)return;
+    await rpc('finance_open_period',{p_company_id:cid,p_period_code:r.value.code,p_fiscal_year:r.value.year,p_start_date:r.value.from,p_end_date:r.value.to,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother'});
+    await renderPeriods();
 }
 
 async function goldChequeTransition(id,status){
