@@ -1,21 +1,21 @@
 # FORENSIC CURRENT MOTHER EXTRACT
 
-FILE_LINES=22739
-FILE_BYTES=1254184
-SHA256=e90cdd62cabc803fb3ef7dbc1d2538a28e8ef885e8b631052e00355cea9ac9c0
+FILE_LINES=23315
+FILE_BYTES=1288078
+SHA256=f4edabc52fae619af33bc32a5b6c3915526341880cb609416f684c63e78a655f
 PATTERN var RW_Warehouse: [10950]
-PATTERN loadInventoryControl: [20937]
-PATTERN loadReceiving: [10954, 13237, 20963]
-PATTERN loadVouchers: [11123, 11444, 11452, 11574, 11639, 13240, 20964]
-PATTERN loadVoucherForm: [11104, 11679, 13246, 20965, 20966, 20967, 20968]
-PATTERN loadPicking: [11683, 13255, 20954]
-PATTERN loadLoading: [11735, 13258, 20955]
-PATTERN loadDelivery: [11824, 13261, 20956]
-PATTERN loadReturn: [11873, 13264, 20957]
-PATTERN loadUnloading: [11922, 13267, 20962]
-PATTERN loadVehicleCount: [12084, 13270, 20969]
-PATTERN loadBranchCount: [12468, 13271, 20970]
-PATTERN loadGeneralCount: [12499, 13272, 20971]
+PATTERN loadInventoryControl: [13235, 13812, 21513]
+PATTERN loadReceiving: [10954, 13813, 21539]
+PATTERN loadVouchers: [11123, 11444, 11452, 11574, 11639, 13816, 21540]
+PATTERN loadVoucherForm: [11104, 11679, 13822, 21541, 21542, 21543, 21544]
+PATTERN loadPicking: [11683, 13831, 21530]
+PATTERN loadLoading: [11735, 13834, 21531]
+PATTERN loadDelivery: [11824, 13837, 21532]
+PATTERN loadReturn: [11873, 13840, 21533]
+PATTERN loadUnloading: [11922, 13843, 21538]
+PATTERN loadVehicleCount: [12084, 13846, 21545]
+PATTERN loadBranchCount: [12468, 13847, 21546]
+PATTERN loadGeneralCount: [12499, 13848, 21547]
 PATTERN inventory-stock-snapshot: []
 PATTERN inventory_stock_snapshot: []
 PATTERN inventory_movement_report: []
@@ -29,138 +29,402 @@ PATTERN قيد التطوير: []
 PATTERN جاري التطوير: []
 PATTERN TODO: []
 PATTERN FIXME: []
---- WINDOW 20907-21037 around 20937 ---
-20907:             'receiving':'الاستلام',
-20908:             'picking':'التحضير',
-20909:             'loading':'التحميل',
-20910:             'delivery':'التوصيل',
-20911:             'return':'المرتجعات',
-20912: 			'sales-returns':'إدارة مرتجعات المبيعات',
-20913:             'unloading':'التفريغ',
-20914:             'vouchers':'الأذونات المخزنية',
-20915:             'transfer':'تحويل مخزني',
-20916:             'direct-sale':'صرف سيارة بيع مباشر',
-20917:             'direct-return':'استلام مرتجع سيارة',
-20918:             'supplier-return':'مرتجع لمورد',
-20919:             'vehicle-count':'جرد سيارة',
-20920:             'branch-count':'جرد فرع',
-20921:             'general-count':'جرد عام',
-20922:             'finance':'الإدارة المالية',
-20923:             'reports-dashboard':'لوحة القيادة',
-20924:             'reports-detailed':'التقارير التفصيلية',
-20925:             'reports-comprehensive':'التقارير الشاملة',
-20926:             'audit-log':'سجل التدقيق',
-20927:             'hr':'الموارد البشرية',
-20928:             'crm':'إدارة علاقات العملاء'
-20929:         };
-20930:         safeText(byId('rw-header-title'), titles[view] || view);
-20931: 
-20932:         if (view === 'dashboard') { RW_Dashboard.render(); return; }
-20933:         if (view === 'items') { RW_Items.render(); return; }
-20934:         if (view === 'customers') { RW_Customers.render(); return; }
-20935:         if (view === 'suppliers') { RW_Suppliers.render(); return; }
-20936:         if (view === 'branches') { RW_Branches.render(); return; }
-20937: 		if (view === 'inventory-control') { RW_Warehouse.loadInventoryControl(); return; }
-20938:         if (view === 'settings') { RW_Settings.render(); return; }
-20939:         if (view === 'hr') { RW_HR.render(); return; }
-20940:         if (view === 'crm') { RW_CRM.render(); return; }
-20941:         if (view === 'users') { RW_Users.render(); return; }
-20942:         if (view === 'roles') { RW_Roles.render(); return; }
-20943:         if (view === 'license') { RW_OwnerLicense.render(); return; }
-20944:         if (view === 'telesales') { RW_TeleSales.render(); return; }
-20945:         if (view === 'pos') { RW_POS.render(); return; }
-20946:         if (view === 'orders') { RW_Orders.render(); return; }
-20947: 		if (view === 'quotes') { RW_SalesQuotes.render(); return; }
-20948: 		if (view === 'price-lists') { RW_PriceLists.render(); return; }
-20949: 		if (view === 'promotions') { RW_Promotions.render(); return; }
-20950:         if (view === 'runsheets') { RW_Runsheets.render(); return; }
-20951:         if (view === 'online-store') { RW_OnlineStore.render(); return; }
-20952:         if (view === 'purchases') { RW_Purchases.renderOrders(); return; }
-20953:         if (view === 'purchase-pos') { RW_Purchases.renderPOS(); return; }
-20954:         if (view === 'picking') { RW_Warehouse.loadPicking(); return; }
-20955:         if (view === 'loading') { RW_Warehouse.loadLoading(); return; }
-20956:         if (view === 'delivery') { RW_Warehouse.loadDelivery(); return; }
-20957:         if (view === 'return') { RW_Warehouse.loadReturn(); return; }
-20958: 		if (view === 'sales-returns') { RW_SalesReturnsManagement.render(); return; }
-20959: 		if (view === 'loyalty') { RW_LoyaltyMain.render(); return; }
-20960: 		if (view === 'sales-decision-center') { RW_SalesDecisionCenter.render(); return; }
-20961: 		if (view === 'sales-targets') { RW_SalesTargetsMain.render(); return; }
-20962:         if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
-20963:         if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
-20964:         if (view === 'vouchers') { RW_Warehouse.loadVouchers(); return; }
-20965:         if (view === 'transfer') { RW_Warehouse.loadVoucherForm('Transfer'); return; }
-20966:         if (view === 'direct-sale') { RW_Warehouse.loadVoucherForm('DirectSale'); return; }
-20967:         if (view === 'direct-return') { RW_Warehouse.loadVoucherForm('DirectReturn'); return; }
-20968:         if (view === 'supplier-return') { RW_Warehouse.loadVoucherForm('SupplierReturn'); return; }
-20969:         if (view === 'vehicle-count') { RW_Warehouse.loadVehicleCount(); return; }
-20970:         if (view === 'branch-count') { RW_Warehouse.loadBranchCount(); return; }
-20971:         if (view === 'general-count') { RW_Warehouse.loadGeneralCount(); return; }
-20972:         if (view === 'settlement') { RW_Warehouse.loadSettlement(); return; }
-20973:         if (view === 'finance') { RW_Finance.render(); return; }
-20974:         if (view === 'reports-dashboard') { RW_Reports.renderDashboard(); return; }
-20975:         if (view === 'reports-detailed') { RW_Reports.renderDetailedReports(); return; }
-20976:         if (view === 'reports-comprehensive') { RW_Reports_Comprehensive.render(); return; }
-20977:         if (view === 'audit-log') { RW_Audit_renderTab(); return; }
-20978: 
-20979:         safeHTML(c, '<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">⚠️</div><h2>' + (titles[view] || view) + '</h2><p style="color:#6b7280">التبويب غير معروف</p></div>');
-20980:     }
-20981: };
-20982: window.RW_Views = RW_Views;
-20983: // ============================================================
-20984: // RW_HR – الموارد البشرية (HR) - الوحدة المتقدمة
-20985: // ============================================================
-20986: var RW_HR = (function() {
-20987:     'use strict';
-20988: 
-20989:     var hrData = [];
-20990: 
-20991:     function _esc(s) {
-20992:         return String(s == null ? '' : s)
-20993:             .replace(/&/g, '&amp;')
-20994:             .replace(/</g, '&lt;')
-20995:             .replace(/>/g, '&gt;');
-20996:     }
-20997: 
-20998:     function _escAttr(s) {
-20999:         return _esc(s)
-21000:             .replace(/\"/g, '&quot;')
-21001:             .replace(/'/g, '&#39;');
-21002:     }
-21003: 
-21004:     function _fmtNum(n) {
-21005:         return Number(n || 0).toLocaleString('ar-EG');
-21006:     }
-21007: 
-21008:     function _companyId() {
-21009:         if (typeof _rwCompanyId === 'function') return _rwCompanyId();
-21010:         if (typeof RW_STATE !== 'undefined' && RW_STATE) {
-21011:             if (RW_STATE.app && RW_STATE.app.companyId) return RW_STATE.app.companyId;
-21012:             if (RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id) return RW_STATE.app.company.id;
-21013:             if (RW_STATE.user && RW_STATE.user.companyId) return RW_STATE.user.companyId;
-21014:         }
-21015:         return null;
-21016:     }
-21017: 
-21018:     async function _loadEmployees() {
-21019:         var res = await supabase.rpc('hr_list_employees');
-21020:         if (res.error) throw res.error;
-21021:         hrData = res.data || [];
-21022:         return hrData;
-21023:     }
-21024: 
-21025:     function _employeeCard(emp) {
-21026:         var profileSalary = Number(emp.basic_salary || 0) +
-21027:             Number(emp.housing_allowance || 0) +
-21028:             Number(emp.transport_allowance || 0) +
-21029:             Number(emp.other_allowance || 0) -
-21030:             Number(emp.default_deduction || 0);
-21031:         return '<div class="bg-white rounded-2xl shadow-sm border p-5 hover:shadow-md transition cursor-pointer" data-hr-employee-id="' + _escAttr(emp.id) + '">' +
-21032:             '<div class="flex items-center gap-4 mb-4">' +
-21033:                 '<div class="w-14 h-14 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-xl font-black">' + _esc((emp.name || '?').charAt(0)) + '</div>' +
-21034:                 '<div class="min-w-0"><h3 class="font-black text-base text-gray-800 truncate">' + _esc(emp.name) + '</h3><p class="text-xs text-gray-500 truncate">' + _esc(emp.job_title || emp.role || 'موظف') + '</p></div>' +
-21035:             '</div>' +
-21036:             '<div class="space-y-2 text-sm">' +
-21037:                 '<div class="flex justify-between"><span class="text-gray-500">البريد</span><span class="font-bold text-gray-700">' + _esc(emp.email) + '</span></div>' +
+--- WINDOW 13205-13335 around 13235 ---
+13205:             if (json.success) {
+13206:                 showToast('تم التفريغ بنجاح', 'success');
+13207:                 if (typeof RW_Runsheets !== 'undefined' && RW_Runsheets._apply) RW_Runsheets._apply();
+13208:             } else {
+13209:                 showToast(json.msg || 'فشل التفريغ', 'error');
+13210:             }
+13211:         }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+13212:     });
+13213: }
+13214: function _changeStatus(code, funcName) {
+13215:     showLoader('جاري تحديث الحالة...');
+13216:     supabase.auth.getSession().then(function(ses) {
+13217:         var t = ses.data.session ? ses.data.session.access_token : null;
+13218:         return fetch(SUPABASE_URL + '/functions/v1/' + funcName, {
+13219:             method: 'POST',
+13220:             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
+13221:             body: JSON.stringify({ runsheet_code: code })
+13222:         });
+13223:     }).then(function(res) { return res.json(); }).then(function(json) {
+13224:         hideLoader();
+13225:         if (json.success) {
+13226:             showToast('تم بنجاح', 'success');
+13227:         } else {
+13228:             showToast(json.msg || 'فشل', 'error');
+13229:         }
+13230:     }).catch(function(e) {
+13231:         hideLoader();
+13232:         showToast('فشل الاتصال', 'error');
+13233:     });
+13234: }
+13235:     async function loadInventoryControl() {
+13236:         var c = byId('rw-page-container');
+13237:         if (!c) return;
+13238: 
+13239:         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) ||
+13240:             (typeof _rwCompanyId === 'function' ? _rwCompanyId() : null);
+13241:         if (!companyId) {
+13242:             showToast('سياق الشركة غير محدد', 'error');
+13243:             return;
+13244:         }
+13245: 
+13246:         var state = {
+13247:             tab: 'snapshot',
+13248:             branchId: '',
+13249:             query: '',
+13250:             lowOnly: false,
+13251:             movementType: '',
+13252:             fromDate: '',
+13253:             toDate: '',
+13254:             snapshot: [],
+13255:             movements: [],
+13256:             replenishment: [],
+13257:             counts: [],
+13258:             requests: [],
+13259:             branches: [],
+13260:             busy: false
+13261:         };
+13262: 
+13263:         function escIC(v) {
+13264:             return String(v == null ? '' : v)
+13265:                 .replace(/&/g, '&amp;')
+13266:                 .replace(/</g, '&lt;')
+13267:                 .replace(/>/g, '&gt;')
+13268:                 .replace(/"/g, '&quot;')
+13269:                 .replace(/'/g, '&#39;');
+13270:         }
+13271: 
+13272:         function fmtIC(v) {
+13273:             return Number(v || 0).toLocaleString('ar-EG');
+13274:         }
+13275: 
+13276:         async function callIC(operation, payload) {
+13277:             var res = await supabase.rpc('inventory_control', {
+13278:                 p_operation: operation,
+13279:                 p_payload: payload || {}
+13280:             });
+13281:             if (res.error) throw res.error;
+13282:             var data = res.data;
+13283:             if (data && data.success === false) {
+13284:                 throw new Error(data.msg || 'فشل تنفيذ العملية');
+13285:             }
+13286:             return data || { success: true };
+13287:         }
+13288: 
+13289:         function branchOptions(selected) {
+13290:             var h = '<option value="">كل المخازن والفروع</option>';
+13291:             for (var i = 0; i < state.branches.length; i++) {
+13292:                 var b = state.branches[i];
+13293:                 h += '<option value="' + escIC(b.id) + '"' +
+13294:                     (String(selected || '') === String(b.id) ? ' selected' : '') + '>' +
+13295:                     escIC(b.name || b.branch_code) + '</option>';
+13296:             }
+13297:             return h;
+13298:         }
+13299: 
+13300:         function renderShell() {
+13301:             safeText(byId('rw-header-title'), 'مركز التحكم في المخزون');
+13302:             safeHTML(c,
+13303:                 '<div class="p-4 space-y-4">' +
+13304:                 '<div class="bg-white rounded-2xl shadow-sm border p-4">' +
+13305:                     '<div class="flex flex-wrap items-center justify-between gap-3 mb-4">' +
+13306:                         '<div>' +
+13307:                             '<div class="text-xl font-black text-slate-800">مركز التحكم في المخزون</div>' +
+13308:                             '<div class="text-sm text-slate-500 mt-1">لوحة رقابة مركزية فوق رصيد المخزون والحركة والاحتياجات والجرد وطلبات المخزون</div>' +
+13309:                         '</div>' +
+13310:                         '<div class="flex gap-2">' +
+13311:                             '<button id="ic-refresh" class="px-4 py-2 rounded-xl bg-slate-800 text-white font-bold">تحديث البيانات</button>' +
+13312:                             '<button id="ic-new-count" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold">جلسة جرد جديدة</button>' +
+13313:                         '</div>' +
+13314:                     '</div>' +
+13315:                     '<div class="grid grid-cols-1 md:grid-cols-4 gap-3">' +
+13316:                         '<div class="rounded-2xl bg-blue-50 border border-blue-100 p-4"><div class="text-xs text-blue-700 font-bold">بنود المخزون المعروضة</div><div id="ic-kpi-lines" class="text-2xl font-black text-blue-900 mt-1">0</div></div>' +
+13317:                         '<div class="rounded-2xl bg-amber-50 border border-amber-100 p-4"><div class="text-xs text-amber-700 font-bold">بنود منخفضة</div><div id="ic-kpi-low" class="text-2xl font-black text-amber-900 mt-1">0</div></div>' +
+13318:                         '<div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-4"><div class="text-xs text-emerald-700 font-bold">بنود تحتاج إعادة طلب</div><div id="ic-kpi-repl" class="text-2xl font-black text-emerald-900 mt-1">0</div></div>' +
+13319:                         '<div class="rounded-2xl bg-purple-50 border border-purple-100 p-4"><div class="text-xs text-purple-700 font-bold">جلسات الجرد النشطة</div><div id="ic-kpi-counts" class="text-2xl font-black text-purple-900 mt-1">0</div></div>' +
+13320:                     '</div>' +
+13321:                 '</div>' +
+13322:                 '<div class="bg-white rounded-2xl shadow-sm border p-3">' +
+13323:                     '<div class="flex flex-wrap gap-2">' +
+13324:                         '<button data-ic-tab="snapshot" class="ic-tab px-4 py-2 rounded-xl font-bold bg-blue-600 text-white">الرصيد</button>' +
+13325:                         '<button data-ic-tab="movements" class="ic-tab px-4 py-2 rounded-xl font-bold bg-slate-100 text-slate-700">الحركات</button>' +
+13326:                         '<button data-ic-tab="replenishment" class="ic-tab px-4 py-2 rounded-xl font-bold bg-slate-100 text-slate-700">إعادة الطلب</button>' +
+13327:                         '<button data-ic-tab="counts" class="ic-tab px-4 py-2 rounded-xl font-bold bg-slate-100 text-slate-700">الجرد</button>' +
+13328:                         '<button data-ic-tab="requests" class="ic-tab px-4 py-2 rounded-xl font-bold bg-slate-100 text-slate-700">طلبات المخزون</button>' +
+13329:                     '</div>' +
+13330:                 '</div>' +
+13331:                 '<div id="ic-filters" class="bg-white rounded-2xl shadow-sm border p-4"></div>' +
+13332:                 '<div id="ic-content" class="bg-white rounded-2xl shadow-sm border overflow-auto"></div>' +
+13333:                 '</div>'
+13334:             );
+13335: 
+--- WINDOW 13782-13912 around 13812 ---
+13782: 
+13783:         var branchRes = await supabase.from('branches')
+13784:             .select('id,branch_code,name')
+13785:             .eq('company_id', companyId)
+13786:             .eq('is_active', true)
+13787:             .order('name');
+13788:         if (branchRes.error) {
+13789:             showToast(branchRes.error.message, 'error');
+13790:             return;
+13791:         }
+13792:         state.branches = branchRes.data || [];
+13793: 
+13794:         renderShell();
+13795:         renderTabButtons();
+13796:         renderFilters();
+13797:         await refreshAll();
+13798: 
+13799:         try {
+13800:             if (window._rwInventoryControlChannel) {
+13801:                 await supabase.removeChannel(window._rwInventoryControlChannel);
+13802:             }
+13803:             var channel = supabase.channel('rw-inventory-control-' + companyId);
+13804:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'stock_branches' }, function() { refreshCurrentTab(); });
+13805:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_log' }, function() { if (state.tab === 'movements') refreshCurrentTab(); else refreshSnapshot(); });
+13806:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_counts' }, function() { if (state.tab === 'counts') refreshCounts(); });
+13807:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_stock_requests' }, function() { if (state.tab === 'requests') refreshRequests(); });
+13808:             window._rwInventoryControlChannel = channel.subscribe();
+13809:         } catch (e) {}
+13810:     }
+13811:     return {
+13812: 			loadInventoryControl: loadInventoryControl,
+13813:             loadReceiving: loadReceiving,
+13814:     _applyReceiving: _applyReceiving,
+13815:     _showReceivingDetails: _showReceivingDetails,
+13816:     loadVouchers: loadVouchers,
+13817:     _applyVouchers: _applyVouchers,
+13818:     _viewVoucherDetails: _viewVoucherDetails,
+13819:     _sendVoucher: _sendVoucher,
+13820:     _receiveVoucher: _receiveVoucher,
+13821:     _openNewVoucherModal: _openNewVoucherModal,
+13822:     loadVoucherForm: loadVoucherForm,
+13823:     _searchVoucherItem: _searchVoucherItem,
+13824:     _addVoucherItem: _addVoucherItem,
+13825:     _renderVoucherCart: _renderVoucherCart,
+13826:     _updateVoucherQty: _updateVoucherQty,
+13827:     _updateVoucherPrice: _updateVoucherPrice,
+13828:     _removeVoucherItem: _removeVoucherItem,
+13829:     _clearVoucherCart: _clearVoucherCart,
+13830:     _saveAndSendVoucher: _saveAndSendVoucher,
+13831:     loadPicking: loadPicking,
+13832:     _applyPicking: _applyPicking,
+13833:     _showPickingDetails: _showPickingDetails,
+13834:     loadLoading: loadLoading,
+13835:     _applyLoading: _applyLoading,
+13836:     _showLoadingDetails: _showLoadingDetails,
+13837:     loadDelivery: loadDelivery,
+13838:     _applyDelivery: _applyDelivery,
+13839:     _showDeliveryDetails: _showDeliveryDetails,
+13840:     loadReturn: loadReturn,
+13841:     _applyReturn: _applyReturn,
+13842:     _showReturnDetails: _showReturnDetails,
+13843:     loadUnloading: loadUnloading,
+13844:     _applyUnloading: _applyUnloading,
+13845:     _showUnloadingDetails: _showUnloadingDetails,
+13846:     loadVehicleCount: loadVehicleCount,
+13847:     loadBranchCount: loadBranchCount,
+13848:     loadGeneralCount: loadGeneralCount,
+13849:     loadSettlement: loadSettlement,
+13850:     _searchDriver: _searchDriver,
+13851:     _selectDriver: _selectDriver,
+13852:     _startBarcodeScanner: _startBarcodeScanner,
+13853:     _searchInvItem: _searchInvItem,
+13854:     _addToInvCart: _addToInvCart,
+13855:     _renderInvCart: _renderInvCart,
+13856:     _updateInvCartQty: _updateInvCartQty,
+13857:     _removeInvCartItem: _removeInvCartItem,
+13858:     _saveVehicleCount: _saveVehicleCount,
+13859:     _saveBranchCount: _saveBranchCount,
+13860:     _saveGeneralCount: _saveGeneralCount,
+13861:     _saveInvCount: _saveInvCount,
+13862:     _onSettlementRsChange: _onSettlementRsChange,
+13863:     _saveSettlement: _saveSettlement,
+13864:     _openPickingModal: _openPickingModal,
+13865:     _openLoadingModal: _openLoadingModal,
+13866:     _openDeliveryModal: _openDeliveryModal,
+13867:     _openReturnModal: _openReturnModal,
+13868:     _startPicking: _changeStatus,
+13869:     _startLoading: _changeStatus,
+13870:     _startDelivery: _changeStatus,
+13871:     _startReturn: _changeStatus,
+13872:     _confirmUnload: _confirmUnload,
+13873:     _changeStatus: _changeStatus
+13874:     };
+13875: })();
+13876: window.RW_Warehouse = RW_Warehouse;
+13877: // ============================================================
+13878: // RW_Finance – الحسابات والمالية (وحدة كاملة - Supabase مباشر)
+13879: // ============================================================
+13880: var RW_Finance = (function() {
+13881:     function _showLoader(m) { try { if (typeof showLoader === 'function') showLoader(m || 'جاري التحميل...'); } catch(e) { console.error(e); } }
+13882:     function _hideLoader() { try { if (typeof hideLoader === 'function') hideLoader(); } catch(e) { console.error(e); } }
+13883:     function _showToast(m, t) { try { if (typeof showToast === 'function') showToast(m, t || 'success'); } catch(e) { alert(m); } }
+13884:     function _fmtNum(n) { return parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+13885:     function _esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+13886: 
+13887:     function _companyId() {
+13888:         var id = null;
+13889:         if (typeof RW_STATE !== 'undefined' && RW_STATE && RW_STATE.app) {
+13890:             id = RW_STATE.app.companyId || null;
+13891:         }
+13892:         if (!id && typeof RW_STATE !== 'undefined' && RW_STATE && RW_STATE.user) {
+13893:             id = RW_STATE.user.companyId || null;
+13894:         }
+13895:         if (!id) throw new Error('سياق الشركة غير محدد');
+13896:         return id;
+13897:     }
+13898:     var _cache = { loaded: false, accountsTree: [], accountsFlat: [], treasury: [] };
+13899: 
+13900:     function _loadAllData(callback) {
+13901:         if (_cache.loaded) { if (callback) callback(); return; }
+13902:         var companyId;
+13903:         try {
+13904:             companyId = _companyId();
+13905:         } catch (e) {
+13906:             _showToast(e.message || 'سياق الشركة غير محدد', 'error');
+13907:             if (callback) callback();
+13908:             return;
+13909:         }
+13910: 
+13911:         _showLoader('جاري تحميل البيانات المالية...');
+13912:         Promise.all([
+--- WINDOW 21483-21613 around 21513 ---
+21483:             'receiving':'الاستلام',
+21484:             'picking':'التحضير',
+21485:             'loading':'التحميل',
+21486:             'delivery':'التوصيل',
+21487:             'return':'المرتجعات',
+21488: 			'sales-returns':'إدارة مرتجعات المبيعات',
+21489:             'unloading':'التفريغ',
+21490:             'vouchers':'الأذونات المخزنية',
+21491:             'transfer':'تحويل مخزني',
+21492:             'direct-sale':'صرف سيارة بيع مباشر',
+21493:             'direct-return':'استلام مرتجع سيارة',
+21494:             'supplier-return':'مرتجع لمورد',
+21495:             'vehicle-count':'جرد سيارة',
+21496:             'branch-count':'جرد فرع',
+21497:             'general-count':'جرد عام',
+21498:             'finance':'الإدارة المالية',
+21499:             'reports-dashboard':'لوحة القيادة',
+21500:             'reports-detailed':'التقارير التفصيلية',
+21501:             'reports-comprehensive':'التقارير الشاملة',
+21502:             'audit-log':'سجل التدقيق',
+21503:             'hr':'الموارد البشرية',
+21504:             'crm':'إدارة علاقات العملاء'
+21505:         };
+21506:         safeText(byId('rw-header-title'), titles[view] || view);
+21507: 
+21508:         if (view === 'dashboard') { RW_Dashboard.render(); return; }
+21509:         if (view === 'items') { RW_Items.render(); return; }
+21510:         if (view === 'customers') { RW_Customers.render(); return; }
+21511:         if (view === 'suppliers') { RW_Suppliers.render(); return; }
+21512:         if (view === 'branches') { RW_Branches.render(); return; }
+21513: 		if (view === 'inventory-control') { RW_Warehouse.loadInventoryControl(); return; }
+21514:         if (view === 'settings') { RW_Settings.render(); return; }
+21515:         if (view === 'hr') { RW_HR.render(); return; }
+21516:         if (view === 'crm') { RW_CRM.render(); return; }
+21517:         if (view === 'users') { RW_Users.render(); return; }
+21518:         if (view === 'roles') { RW_Roles.render(); return; }
+21519:         if (view === 'license') { RW_OwnerLicense.render(); return; }
+21520:         if (view === 'telesales') { RW_TeleSales.render(); return; }
+21521:         if (view === 'pos') { RW_POS.render(); return; }
+21522:         if (view === 'orders') { RW_Orders.render(); return; }
+21523: 		if (view === 'quotes') { RW_SalesQuotes.render(); return; }
+21524: 		if (view === 'price-lists') { RW_PriceLists.render(); return; }
+21525: 		if (view === 'promotions') { RW_Promotions.render(); return; }
+21526:         if (view === 'runsheets') { RW_Runsheets.render(); return; }
+21527:         if (view === 'online-store') { RW_OnlineStore.render(); return; }
+21528:         if (view === 'purchases') { RW_Purchases.renderOrders(); return; }
+21529:         if (view === 'purchase-pos') { RW_Purchases.renderPOS(); return; }
+21530:         if (view === 'picking') { RW_Warehouse.loadPicking(); return; }
+21531:         if (view === 'loading') { RW_Warehouse.loadLoading(); return; }
+21532:         if (view === 'delivery') { RW_Warehouse.loadDelivery(); return; }
+21533:         if (view === 'return') { RW_Warehouse.loadReturn(); return; }
+21534: 		if (view === 'sales-returns') { RW_SalesReturnsManagement.render(); return; }
+21535: 		if (view === 'loyalty') { RW_LoyaltyMain.render(); return; }
+21536: 		if (view === 'sales-decision-center') { RW_SalesDecisionCenter.render(); return; }
+21537: 		if (view === 'sales-targets') { RW_SalesTargetsMain.render(); return; }
+21538:         if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
+21539:         if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
+21540:         if (view === 'vouchers') { RW_Warehouse.loadVouchers(); return; }
+21541:         if (view === 'transfer') { RW_Warehouse.loadVoucherForm('Transfer'); return; }
+21542:         if (view === 'direct-sale') { RW_Warehouse.loadVoucherForm('DirectSale'); return; }
+21543:         if (view === 'direct-return') { RW_Warehouse.loadVoucherForm('DirectReturn'); return; }
+21544:         if (view === 'supplier-return') { RW_Warehouse.loadVoucherForm('SupplierReturn'); return; }
+21545:         if (view === 'vehicle-count') { RW_Warehouse.loadVehicleCount(); return; }
+21546:         if (view === 'branch-count') { RW_Warehouse.loadBranchCount(); return; }
+21547:         if (view === 'general-count') { RW_Warehouse.loadGeneralCount(); return; }
+21548:         if (view === 'settlement') { RW_Warehouse.loadSettlement(); return; }
+21549:         if (view === 'finance') { RW_Finance.render(); return; }
+21550:         if (view === 'reports-dashboard') { RW_Reports.renderDashboard(); return; }
+21551:         if (view === 'reports-detailed') { RW_Reports.renderDetailedReports(); return; }
+21552:         if (view === 'reports-comprehensive') { RW_Reports_Comprehensive.render(); return; }
+21553:         if (view === 'audit-log') { RW_Audit_renderTab(); return; }
+21554: 
+21555:         safeHTML(c, '<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">⚠️</div><h2>' + (titles[view] || view) + '</h2><p style="color:#6b7280">التبويب غير معروف</p></div>');
+21556:     }
+21557: };
+21558: window.RW_Views = RW_Views;
+21559: // ============================================================
+21560: // RW_HR – الموارد البشرية (HR) - الوحدة المتقدمة
+21561: // ============================================================
+21562: var RW_HR = (function() {
+21563:     'use strict';
+21564: 
+21565:     var hrData = [];
+21566: 
+21567:     function _esc(s) {
+21568:         return String(s == null ? '' : s)
+21569:             .replace(/&/g, '&amp;')
+21570:             .replace(/</g, '&lt;')
+21571:             .replace(/>/g, '&gt;');
+21572:     }
+21573: 
+21574:     function _escAttr(s) {
+21575:         return _esc(s)
+21576:             .replace(/\"/g, '&quot;')
+21577:             .replace(/'/g, '&#39;');
+21578:     }
+21579: 
+21580:     function _fmtNum(n) {
+21581:         return Number(n || 0).toLocaleString('ar-EG');
+21582:     }
+21583: 
+21584:     function _companyId() {
+21585:         if (typeof _rwCompanyId === 'function') return _rwCompanyId();
+21586:         if (typeof RW_STATE !== 'undefined' && RW_STATE) {
+21587:             if (RW_STATE.app && RW_STATE.app.companyId) return RW_STATE.app.companyId;
+21588:             if (RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id) return RW_STATE.app.company.id;
+21589:             if (RW_STATE.user && RW_STATE.user.companyId) return RW_STATE.user.companyId;
+21590:         }
+21591:         return null;
+21592:     }
+21593: 
+21594:     async function _loadEmployees() {
+21595:         var res = await supabase.rpc('hr_list_employees');
+21596:         if (res.error) throw res.error;
+21597:         hrData = res.data || [];
+21598:         return hrData;
+21599:     }
+21600: 
+21601:     function _employeeCard(emp) {
+21602:         var profileSalary = Number(emp.basic_salary || 0) +
+21603:             Number(emp.housing_allowance || 0) +
+21604:             Number(emp.transport_allowance || 0) +
+21605:             Number(emp.other_allowance || 0) -
+21606:             Number(emp.default_deduction || 0);
+21607:         return '<div class="bg-white rounded-2xl shadow-sm border p-5 hover:shadow-md transition cursor-pointer" data-hr-employee-id="' + _escAttr(emp.id) + '">' +
+21608:             '<div class="flex items-center gap-4 mb-4">' +
+21609:                 '<div class="w-14 h-14 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-xl font-black">' + _esc((emp.name || '?').charAt(0)) + '</div>' +
+21610:                 '<div class="min-w-0"><h3 class="font-black text-base text-gray-800 truncate">' + _esc(emp.name) + '</h3><p class="text-xs text-gray-500 truncate">' + _esc(emp.job_title || emp.role || 'موظف') + '</p></div>' +
+21611:             '</div>' +
+21612:             '<div class="space-y-2 text-sm">' +
+21613:                 '<div class="flex justify-between"><span class="text-gray-500">البريد</span><span class="font-bold text-gray-700">' + _esc(emp.email) + '</span></div>' +
 --- WINDOW 8942-9072 around 8972 ---
 8942:       var poRes = await supabase.from('purchase_orders').select('*').eq('company_id', companyId).eq('po_code', poCode).maybeSingle();
 8943:       if (poRes.error || !poRes.data) throw new Error('أمر الشراء غير موجود');
@@ -293,7 +557,7 @@ PATTERN FIXME: []
 9070:     var id = _rwCompanyId();
 9071:     if (!id) throw new Error('سياق الشركة غير محدد');
 9072:     return id;
---- RW_Warehouse_FULL 10950-13299 ---
+--- RW_Warehouse_FULL 10950-13875 ---
 10950: var RW_Warehouse = (function() {
 10951:     function esc(s) { return String(s||'').replace(/[&<>]/g, function(m) { return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'; }); }
 10952: 
@@ -2579,68 +2843,644 @@ PATTERN FIXME: []
 13232:         showToast('فشل الاتصال', 'error');
 13233:     });
 13234: }
-13235: 
-13236:     return {
-13237:             loadReceiving: loadReceiving,
-13238:     _applyReceiving: _applyReceiving,
-13239:     _showReceivingDetails: _showReceivingDetails,
-13240:     loadVouchers: loadVouchers,
-13241:     _applyVouchers: _applyVouchers,
-13242:     _viewVoucherDetails: _viewVoucherDetails,
-13243:     _sendVoucher: _sendVoucher,
-13244:     _receiveVoucher: _receiveVoucher,
-13245:     _openNewVoucherModal: _openNewVoucherModal,
-13246:     loadVoucherForm: loadVoucherForm,
-13247:     _searchVoucherItem: _searchVoucherItem,
-13248:     _addVoucherItem: _addVoucherItem,
-13249:     _renderVoucherCart: _renderVoucherCart,
-13250:     _updateVoucherQty: _updateVoucherQty,
-13251:     _updateVoucherPrice: _updateVoucherPrice,
-13252:     _removeVoucherItem: _removeVoucherItem,
-13253:     _clearVoucherCart: _clearVoucherCart,
-13254:     _saveAndSendVoucher: _saveAndSendVoucher,
-13255:     loadPicking: loadPicking,
-13256:     _applyPicking: _applyPicking,
-13257:     _showPickingDetails: _showPickingDetails,
-13258:     loadLoading: loadLoading,
-13259:     _applyLoading: _applyLoading,
-13260:     _showLoadingDetails: _showLoadingDetails,
-13261:     loadDelivery: loadDelivery,
-13262:     _applyDelivery: _applyDelivery,
-13263:     _showDeliveryDetails: _showDeliveryDetails,
-13264:     loadReturn: loadReturn,
-13265:     _applyReturn: _applyReturn,
-13266:     _showReturnDetails: _showReturnDetails,
-13267:     loadUnloading: loadUnloading,
-13268:     _applyUnloading: _applyUnloading,
-13269:     _showUnloadingDetails: _showUnloadingDetails,
-13270:     loadVehicleCount: loadVehicleCount,
-13271:     loadBranchCount: loadBranchCount,
-13272:     loadGeneralCount: loadGeneralCount,
-13273:     loadSettlement: loadSettlement,
-13274:     _searchDriver: _searchDriver,
-13275:     _selectDriver: _selectDriver,
-13276:     _startBarcodeScanner: _startBarcodeScanner,
-13277:     _searchInvItem: _searchInvItem,
-13278:     _addToInvCart: _addToInvCart,
-13279:     _renderInvCart: _renderInvCart,
-13280:     _updateInvCartQty: _updateInvCartQty,
-13281:     _removeInvCartItem: _removeInvCartItem,
-13282:     _saveVehicleCount: _saveVehicleCount,
-13283:     _saveBranchCount: _saveBranchCount,
-13284:     _saveGeneralCount: _saveGeneralCount,
-13285:     _saveInvCount: _saveInvCount,
-13286:     _onSettlementRsChange: _onSettlementRsChange,
-13287:     _saveSettlement: _saveSettlement,
-13288:     _openPickingModal: _openPickingModal,
-13289:     _openLoadingModal: _openLoadingModal,
-13290:     _openDeliveryModal: _openDeliveryModal,
-13291:     _openReturnModal: _openReturnModal,
-13292:     _startPicking: _changeStatus,
-13293:     _startLoading: _changeStatus,
-13294:     _startDelivery: _changeStatus,
-13295:     _startReturn: _changeStatus,
-13296:     _confirmUnload: _confirmUnload,
-13297:     _changeStatus: _changeStatus
-13298:     };
-13299: })();
+13235:     async function loadInventoryControl() {
+13236:         var c = byId('rw-page-container');
+13237:         if (!c) return;
+13238: 
+13239:         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) ||
+13240:             (typeof _rwCompanyId === 'function' ? _rwCompanyId() : null);
+13241:         if (!companyId) {
+13242:             showToast('سياق الشركة غير محدد', 'error');
+13243:             return;
+13244:         }
+13245: 
+13246:         var state = {
+13247:             tab: 'snapshot',
+13248:             branchId: '',
+13249:             query: '',
+13250:             lowOnly: false,
+13251:             movementType: '',
+13252:             fromDate: '',
+13253:             toDate: '',
+13254:             snapshot: [],
+13255:             movements: [],
+13256:             replenishment: [],
+13257:             counts: [],
+13258:             requests: [],
+13259:             branches: [],
+13260:             busy: false
+13261:         };
+13262: 
+13263:         function escIC(v) {
+13264:             return String(v == null ? '' : v)
+13265:                 .replace(/&/g, '&amp;')
+13266:                 .replace(/</g, '&lt;')
+13267:                 .replace(/>/g, '&gt;')
+13268:                 .replace(/"/g, '&quot;')
+13269:                 .replace(/'/g, '&#39;');
+13270:         }
+13271: 
+13272:         function fmtIC(v) {
+13273:             return Number(v || 0).toLocaleString('ar-EG');
+13274:         }
+13275: 
+13276:         async function callIC(operation, payload) {
+13277:             var res = await supabase.rpc('inventory_control', {
+13278:                 p_operation: operation,
+13279:                 p_payload: payload || {}
+13280:             });
+13281:             if (res.error) throw res.error;
+13282:             var data = res.data;
+13283:             if (data && data.success === false) {
+13284:                 throw new Error(data.msg || 'فشل تنفيذ العملية');
+13285:             }
+13286:             return data || { success: true };
+13287:         }
+13288: 
+13289:         function branchOptions(selected) {
+13290:             var h = '<option value="">كل المخازن والفروع</option>';
+13291:             for (var i = 0; i < state.branches.length; i++) {
+13292:                 var b = state.branches[i];
+13293:                 h += '<option value="' + escIC(b.id) + '"' +
+13294:                     (String(selected || '') === String(b.id) ? ' selected' : '') + '>' +
+13295:                     escIC(b.name || b.branch_code) + '</option>';
+13296:             }
+13297:             return h;
+13298:         }
+13299: 
+13300:         function renderShell() {
+13301:             safeText(byId('rw-header-title'), 'مركز التحكم في المخزون');
+13302:             safeHTML(c,
+13303:                 '<div class="p-4 space-y-4">' +
+13304:                 '<div class="bg-white rounded-2xl shadow-sm border p-4">' +
+13305:                     '<div class="flex flex-wrap items-center justify-between gap-3 mb-4">' +
+13306:                         '<div>' +
+13307:                             '<div class="text-xl font-black text-slate-800">مركز التحكم في المخزون</div>' +
+13308:                             '<div class="text-sm text-slate-500 mt-1">لوحة رقابة مركزية فوق رصيد المخزون والحركة والاحتياجات والجرد وطلبات المخزون</div>' +
+13309:                         '</div>' +
+13310:                         '<div class="flex gap-2">' +
+13311:                             '<button id="ic-refresh" class="px-4 py-2 rounded-xl bg-slate-800 text-white font-bold">تحديث البيانات</button>' +
+13312:                             '<button id="ic-new-count" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold">جلسة جرد جديدة</button>' +
+13313:                         '</div>' +
+13314:                     '</div>' +
+13315:                     '<div class="grid grid-cols-1 md:grid-cols-4 gap-3">' +
+13316:                         '<div class="rounded-2xl bg-blue-50 border border-blue-100 p-4"><div class="text-xs text-blue-700 font-bold">بنود المخزون المعروضة</div><div id="ic-kpi-lines" class="text-2xl font-black text-blue-900 mt-1">0</div></div>' +
+13317:                         '<div class="rounded-2xl bg-amber-50 border border-amber-100 p-4"><div class="text-xs text-amber-700 font-bold">بنود منخفضة</div><div id="ic-kpi-low" class="text-2xl font-black text-amber-900 mt-1">0</div></div>' +
+13318:                         '<div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-4"><div class="text-xs text-emerald-700 font-bold">بنود تحتاج إعادة طلب</div><div id="ic-kpi-repl" class="text-2xl font-black text-emerald-900 mt-1">0</div></div>' +
+13319:                         '<div class="rounded-2xl bg-purple-50 border border-purple-100 p-4"><div class="text-xs text-purple-700 font-bold">جلسات الجرد النشطة</div><div id="ic-kpi-counts" class="text-2xl font-black text-purple-900 mt-1">0</div></div>' +
+13320:                     '</div>' +
+13321:                 '</div>' +
+13322:                 '<div class="bg-white rounded-2xl shadow-sm border p-3">' +
+13323:                     '<div class="flex flex-wrap gap-2">' +
+13324:                         '<button data-ic-tab="snapshot" class="ic-tab px-4 py-2 rounded-xl font-bold bg-blue-600 text-white">الرصيد</button>' +
+13325:                         '<button data-ic-tab="movements" class="ic-tab px-4 py-2 rounded-xl font-bold bg-slate-100 text-slate-700">الحركات</button>' +
+13326:                         '<button data-ic-tab="replenishment" class="ic-tab px-4 py-2 rounded-xl font-bold bg-slate-100 text-slate-700">إعادة الطلب</button>' +
+13327:                         '<button data-ic-tab="counts" class="ic-tab px-4 py-2 rounded-xl font-bold bg-slate-100 text-slate-700">الجرد</button>' +
+13328:                         '<button data-ic-tab="requests" class="ic-tab px-4 py-2 rounded-xl font-bold bg-slate-100 text-slate-700">طلبات المخزون</button>' +
+13329:                     '</div>' +
+13330:                 '</div>' +
+13331:                 '<div id="ic-filters" class="bg-white rounded-2xl shadow-sm border p-4"></div>' +
+13332:                 '<div id="ic-content" class="bg-white rounded-2xl shadow-sm border overflow-auto"></div>' +
+13333:                 '</div>'
+13334:             );
+13335: 
+13336:             byId('ic-refresh').onclick = refreshAll;
+13337:             byId('ic-new-count').onclick = createCountSession;
+13338: 
+13339:             var tabs = c.querySelectorAll('.ic-tab');
+13340:             for (var i = 0; i < tabs.length; i++) {
+13341:                 tabs[i].onclick = function() {
+13342:                     state.tab = this.getAttribute('data-ic-tab');
+13343:                     renderTabButtons();
+13344:                     renderFilters();
+13345:                     refreshCurrentTab();
+13346:                 };
+13347:             }
+13348:         }
+13349: 
+13350:         function renderTabButtons() {
+13351:             var tabs = c.querySelectorAll('.ic-tab');
+13352:             for (var i = 0; i < tabs.length; i++) {
+13353:                 var active = tabs[i].getAttribute('data-ic-tab') === state.tab;
+13354:                 tabs[i].className = 'ic-tab px-4 py-2 rounded-xl font-bold ' +
+13355:                     (active ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700');
+13356:             }
+13357:         }
+13358: 
+13359:         function renderFilters() {
+13360:             var f = byId('ic-filters');
+13361:             if (!f) return;
+13362:             if (state.tab === 'snapshot') {
+13363:                 safeHTML(f,
+13364:                     '<div class="grid grid-cols-1 md:grid-cols-4 gap-3">' +
+13365:                         '<select id="ic-branch" class="p-2.5 border rounded-xl bg-slate-50">' + branchOptions(state.branchId) + '</select>' +
+13366:                         '<input id="ic-query" class="p-2.5 border rounded-xl bg-slate-50" placeholder="بحث بالصنف أو الكود أو الفرع" value="' + escIC(state.query) + '">' +
+13367:                         '<label class="flex items-center gap-2 p-2.5 border rounded-xl bg-slate-50"><input id="ic-low" type="checkbox" ' + (state.lowOnly ? 'checked' : '') + '> منخفض فقط</label>' +
+13368:                         '<button id="ic-apply" class="p-2.5 rounded-xl bg-slate-700 text-white font-bold">تطبيق</button>' +
+13369:                     '</div>'
+13370:                 );
+13371:                 byId('ic-apply').onclick = function() {
+13372:                     state.branchId = byId('ic-branch').value || '';
+13373:                     state.query = byId('ic-query').value || '';
+13374:                     state.lowOnly = !!byId('ic-low').checked;
+13375:                     refreshCurrentTab();
+13376:                 };
+13377:             } else if (state.tab === 'movements') {
+13378:                 safeHTML(f,
+13379:                     '<div class="grid grid-cols-1 md:grid-cols-5 gap-3">' +
+13380:                         '<input id="ic-from" type="date" class="p-2.5 border rounded-xl bg-slate-50" value="' + escIC(state.fromDate) + '">' +
+13381:                         '<input id="ic-to" type="date" class="p-2.5 border rounded-xl bg-slate-50" value="' + escIC(state.toDate) + '">' +
+13382:                         '<select id="ic-mov-branch" class="p-2.5 border rounded-xl bg-slate-50">' + branchOptions(state.branchId) + '</select>' +
+13383:                         '<input id="ic-mov-query" class="p-2.5 border rounded-xl bg-slate-50" placeholder="صنف/مرجع" value="' + escIC(state.query) + '">' +
+13384:                         '<button id="ic-mov-apply" class="p-2.5 rounded-xl bg-slate-700 text-white font-bold">تطبيق</button>' +
+13385:                     '</div>'
+13386:                 );
+13387:                 byId('ic-mov-apply').onclick = function() {
+13388:                     state.fromDate = byId('ic-from').value || '';
+13389:                     state.toDate = byId('ic-to').value || '';
+13390:                     state.branchId = byId('ic-mov-branch').value || '';
+13391:                     state.query = byId('ic-mov-query').value || '';
+13392:                     refreshCurrentTab();
+13393:                 };
+13394:             } else if (state.tab === 'replenishment') {
+13395:                 safeHTML(f,
+13396:                     '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">' +
+13397:                         '<select id="ic-repl-branch" class="p-2.5 border rounded-xl bg-slate-50">' + branchOptions(state.branchId) + '</select>' +
+13398:                         '<div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 font-bold text-emerald-800">التوصية مبنية على الرصيد المتاح ونقطة إعادة الطلب والحد الأقصى</div>' +
+13399:                         '<button id="ic-repl-apply" class="p-2.5 rounded-xl bg-slate-700 text-white font-bold">تحديث التوصيات</button>' +
+13400:                     '</div>'
+13401:                 );
+13402:                 byId('ic-repl-apply').onclick = function() {
+13403:                     state.branchId = byId('ic-repl-branch').value || '';
+13404:                     refreshCurrentTab();
+13405:                 };
+13406:             } else if (state.tab === 'counts') {
+13407:                 safeHTML(f,
+13408:                     '<div class="flex flex-wrap items-center justify-between gap-2">' +
+13409:                         '<div class="text-sm text-slate-600">الجرد يبدأ من جلسة، ثم Populate/Count/Refresh/Finalize عبر محرك الجرد الحالي.</div>' +
+13410:                         '<button id="ic-count-refresh" class="px-4 py-2 rounded-xl bg-slate-700 text-white font-bold">تحديث الجلسات</button>' +
+13411:                     '</div>'
+13412:                 );
+13413:                 byId('ic-count-refresh').onclick = refreshCounts;
+13414:             } else {
+13415:                 safeHTML(f,
+13416:                     '<div class="flex flex-wrap items-center justify-between gap-2">' +
+13417:                         '<div class="text-sm text-slate-600">طلبات المخزون تستخدم دورة Pending → Approved → Converted/Rejected/Cancelled.</div>' +
+13418:                         '<button id="ic-request-new" class="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold">طلب نقل مخزني جديد</button>' +
+13419:                     '</div>'
+13420:                 );
+13421:                 byId('ic-request-new').onclick = createStockRequest;
+13422:             }
+13423:         }
+13424: 
+13425:         function setBusy(on, text) {
+13426:             state.busy = on;
+13427:             if (on) showLoader(text || 'جاري تحميل مركز التحكم...');
+13428:             else hideLoader();
+13429:         }
+13430: 
+13431:         async function refreshSnapshot() {
+13432:             var d = await callIC('SNAPSHOT', {
+13433:                 branch_id: state.branchId || null,
+13434:                 query: state.query || null,
+13435:                 low_only: state.lowOnly,
+13436:                 limit: 200,
+13437:                 offset: 0
+13438:             });
+13439:             state.snapshot = d.rows || [];
+13440:             safeText(byId('ic-kpi-lines'), fmtIC(d.count || state.snapshot.length));
+13441:             var low = state.snapshot.filter(function(x) { return x.low_stock; }).length;
+13442:             safeText(byId('ic-kpi-low'), fmtIC(low));
+13443:             renderSnapshot();
+13444:         }
+13445: 
+13446:         async function refreshMovements() {
+13447:             var d = await callIC('MOVEMENTS', {
+13448:                 from_date: state.fromDate || null,
+13449:                 to_date: state.toDate || null,
+13450:                 branch_id: state.branchId || null,
+13451:                 item_id: null,
+13452:                 movement_type: state.movementType || null,
+13453:                 query: state.query || null,
+13454:                 limit: 200,
+13455:                 offset: 0
+13456:             });
+13457:             state.movements = d.rows || [];
+13458:             renderMovements();
+13459:         }
+13460: 
+13461:         async function refreshReplenishment() {
+13462:             var d = await callIC('REPLENISHMENT', {
+13463:                 branch_id: state.branchId || null,
+13464:                 limit: 200,
+13465:                 offset: 0
+13466:             });
+13467:             state.replenishment = d.rows || [];
+13468:             safeText(byId('ic-kpi-repl'), fmtIC(state.replenishment.length));
+13469:             renderReplenishment();
+13470:         }
+13471: 
+13472:         async function refreshCounts() {
+13473:             var res = await supabase.from('inventory_counts')
+13474:                 .select('*')
+13475:                 .eq('company_id', companyId)
+13476:                 .order('created_at', { ascending: false });
+13477:             if (res.error) throw res.error;
+13478:             state.counts = res.data || [];
+13479:             safeText(byId('ic-kpi-counts'), fmtIC(state.counts.filter(function(x) { return ['InProgress','Draft'].indexOf(x.status) !== -1; }).length));
+13480:             renderCounts();
+13481:         }
+13482: 
+13483:         async function refreshRequests() {
+13484:             var res = await supabase.from('inventory_stock_requests')
+13485:                 .select('*')
+13486:                 .eq('company_id', companyId)
+13487:                 .order('created_at', { ascending: false });
+13488:             if (res.error) throw res.error;
+13489:             state.requests = res.data || [];
+13490:             renderRequests();
+13491:         }
+13492: 
+13493:         function renderSnapshot() {
+13494:             var tb = byId('ic-content');
+13495:             var h = '<table class="w-full text-sm"><thead class="bg-slate-800 text-white sticky top-0"><tr>' +
+13496:                 '<th class="p-3">الفرع</th><th class="p-3">الكود</th><th class="p-3">الصنف</th><th class="p-3">فعلي</th><th class="p-3">محجوز</th><th class="p-3">متاح</th><th class="p-3">ROP</th><th class="p-3">إعادة الطلب</th><th class="p-3">القيمة</th></tr></thead><tbody>';
+13497:             if (!state.snapshot.length) h += '<tr><td colspan="9" class="p-8 text-center text-slate-500">لا توجد بيانات</td></tr>';
+13498:             for (var i = 0; i < state.snapshot.length; i++) {
+13499:                 var x = state.snapshot[i];
+13500:                 h += '<tr class="border-b hover:bg-slate-50">' +
+13501:                     '<td class="p-3">' + escIC(x.branch_name || x.branch_code) + '</td>' +
+13502:                     '<td class="p-3 font-bold">' + escIC(x.item_code) + '</td>' +
+13503:                     '<td class="p-3 font-semibold">' + escIC(x.item_name) + '</td>' +
+13504:                     '<td class="p-3 text-center">' + fmtIC(x.physical_qty) + '</td>' +
+13505:                     '<td class="p-3 text-center text-orange-700">' + fmtIC(x.allocated_qty) + '</td>' +
+13506:                     '<td class="p-3 text-center font-black">' + fmtIC(x.available_qty) + '</td>' +
+13507:                     '<td class="p-3 text-center">' + fmtIC(x.reorder_point) + '</td>' +
+13508:                     '<td class="p-3 text-center font-bold ' + (x.low_stock ? 'text-red-600' : 'text-emerald-600') + '">' + fmtIC(x.suggested_replenishment_qty) + '</td>' +
+13509:                     '<td class="p-3 text-center">' + fmtIC(x.stock_value_at_cost) + '</td>' +
+13510:                 '</tr>';
+13511:             }
+13512:             h += '</tbody></table>';
+13513:             safeHTML(tb, h);
+13514:         }
+13515: 
+13516:         function renderMovements() {
+13517:             var h = '<table class="w-full text-sm"><thead class="bg-slate-800 text-white sticky top-0"><tr>' +
+13518:                 '<th class="p-3">التاريخ</th><th class="p-3">الحركة</th><th class="p-3">الكود</th><th class="p-3">الصنف</th><th class="p-3">الفرع</th><th class="p-3">الأثر</th><th class="p-3">المرجع</th><th class="p-3">المستخدم</th></tr></thead><tbody>';
+13519:             if (!state.movements.length) h += '<tr><td colspan="8" class="p-8 text-center text-slate-500">لا توجد حركات</td></tr>';
+13520:             for (var i = 0; i < state.movements.length; i++) {
+13521:                 var x = state.movements[i];
+13522:                 h += '<tr class="border-b hover:bg-slate-50">' +
+13523:                     '<td class="p-3">' + escIC(x.movement_date || x.created_at) + '</td>' +
+13524:                     '<td class="p-3 font-bold">' + escIC(x.movement_type) + '</td>' +
+13525:                     '<td class="p-3">' + escIC(x.item_code) + '</td>' +
+13526:                     '<td class="p-3">' + escIC(x.item_name) + '</td>' +
+13527:                     '<td class="p-3">' + escIC(x.branch_name || x.branch_code || '') + '</td>' +
+13528:                     '<td class="p-3 text-center font-black">' + fmtIC(x.effect_qty == null ? x.qty : x.effect_qty) + '</td>' +
+13529:                     '<td class="p-3">' + escIC(x.reference || x.voucher_id || '') + '</td>' +
+13530:                     '<td class="p-3">' + escIC(x.user_email || '') + '</td>' +
+13531:                 '</tr>';
+13532:             }
+13533:             h += '</tbody></table>';
+13534:             safeHTML(byId('ic-content'), h);
+13535:         }
+13536: 
+13537:         function renderReplenishment() {
+13538:             var h = '<table class="w-full text-sm"><thead class="bg-slate-800 text-white sticky top-0"><tr>' +
+13539:                 '<th class="p-3">الفرع</th><th class="p-3">الكود</th><th class="p-3">الصنف</th><th class="p-3">المتاح</th><th class="p-3">ROP</th><th class="p-3">الموصى به</th><th class="p-3">التكلفة</th><th class="p-3">القيمة</th></tr></thead><tbody>';
+13540:             if (!state.replenishment.length) h += '<tr><td colspan="8" class="p-8 text-center text-slate-500">لا توجد توصيات حاليًا</td></tr>';
+13541:             for (var i = 0; i < state.replenishment.length; i++) {
+13542:                 var x = state.replenishment[i];
+13543:                 h += '<tr class="border-b hover:bg-slate-50">' +
+13544:                     '<td class="p-3">' + escIC(x.branch_name || x.branch_code) + '</td>' +
+13545:                     '<td class="p-3 font-bold">' + escIC(x.item_code) + '</td>' +
+13546:                     '<td class="p-3 font-semibold">' + escIC(x.item_name) + '</td>' +
+13547:                     '<td class="p-3 text-center">' + fmtIC(x.available_qty) + '</td>' +
+13548:                     '<td class="p-3 text-center">' + fmtIC(x.reorder_point) + '</td>' +
+13549:                     '<td class="p-3 text-center font-black text-emerald-700">' + fmtIC(x.recommended_order_qty) + '</td>' +
+13550:                     '<td class="p-3 text-center">' + fmtIC(x.cost_price) + '</td>' +
+13551:                     '<td class="p-3 text-center font-bold">' + fmtIC(x.recommended_order_value) + '</td>' +
+13552:                 '</tr>';
+13553:             }
+13554:             h += '</tbody></table>';
+13555:             safeHTML(byId('ic-content'), h);
+13556:         }
+13557: 
+13558:         function renderCounts() {
+13559:             var h = '<table class="w-full text-sm"><thead class="bg-slate-800 text-white"><tr><th class="p-3">التاريخ</th><th class="p-3">النوع</th><th class="p-3">الحالة</th><th class="p-3">المرجع</th><th class="p-3">عملية</th><th class="p-3">إجراء</th></tr></thead><tbody>';
+13560:             if (!state.counts.length) h += '<tr><td colspan="6" class="p-8 text-center text-slate-500">لا توجد جلسات جرد</td></tr>';
+13561:             for (var i = 0; i < state.counts.length; i++) {
+13562:                 var x = state.counts[i];
+13563:                 var actionable = ['InProgress','Draft'].indexOf(x.status) !== -1;
+13564:                 h += '<tr class="border-b hover:bg-slate-50">' +
+13565:                     '<td class="p-3">' + escIC(x.count_date || x.created_at) + '</td>' +
+13566:                     '<td class="p-3">' + escIC(x.type) + '</td>' +
+13567:                     '<td class="p-3 font-bold">' + escIC(x.status) + '</td>' +
+13568:                     '<td class="p-3">' + escIC(x.reference || '') + '</td>' +
+13569:                     '<td class="p-3 font-mono text-xs">' + escIC(x.operation_id || '') + '</td>' +
+13570:                     '<td class="p-3">' +
+13571:                         (actionable ? '<button data-count-id="' + escIC(x.id) + '" data-count-action="cancel" class="ic-count-cancel px-3 py-1 rounded-lg bg-red-50 text-red-700 font-bold">إلغاء</button>' : '-') +
+13572:                     '</td>' +
+13573:                 '</tr>';
+13574:             }
+13575:             h += '</tbody></table>';
+13576:             safeHTML(byId('ic-content'), h);
+13577:             var btns = c.querySelectorAll('.ic-count-cancel');
+13578:             for (var j = 0; j < btns.length; j++) btns[j].onclick = cancelCount;
+13579:         }
+13580: 
+13581:         function renderRequests() {
+13582:             var h = '<table class="w-full text-sm"><thead class="bg-slate-800 text-white"><tr><th class="p-3">الطلب</th><th class="p-3">التاريخ</th><th class="p-3">المصدر</th><th class="p-3">الوجهة</th><th class="p-3">الحالة</th><th class="p-3">إجراء</th></tr></thead><tbody>';
+13583:             if (!state.requests.length) h += '<tr><td colspan="6" class="p-8 text-center text-slate-500">لا توجد طلبات مخزون</td></tr>';
+13584:             for (var i = 0; i < state.requests.length; i++) {
+13585:                 var x = state.requests[i];
+13586:                 var actions = '';
+13587:                 if (x.status === 'Pending') {
+13588:                     actions += '<button data-req-id="' + escIC(x.id) + '" data-req-action="approve" class="ic-req-btn px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold ml-1">اعتماد</button>';
+13589:                     actions += '<button data-req-id="' + escIC(x.id) + '" data-req-action="reject" class="ic-req-btn px-2 py-1 rounded-lg bg-red-50 text-red-700 font-bold">رفض</button>';
+13590:                 } else if (x.status === 'Approved') {
+13591:                     actions += '<button data-req-id="' + escIC(x.id) + '" data-req-action="convert" class="ic-req-btn px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold">تحويل لإذن</button>';
+13592:                 }
+13593:                 h += '<tr class="border-b hover:bg-slate-50">' +
+13594:                     '<td class="p-3 font-black text-indigo-700">' + escIC(x.request_code) + '</td>' +
+13595:                     '<td class="p-3">' + escIC(x.request_date) + '</td>' +
+13596:                     '<td class="p-3 font-mono text-xs">' + escIC(x.source_branch_id || '') + '</td>' +
+13597:                     '<td class="p-3 font-mono text-xs">' + escIC(x.target_branch_id || '') + '</td>' +
+13598:                     '<td class="p-3 font-bold">' + escIC(x.status) + '</td>' +
+13599:                     '<td class="p-3">' + actions + '</td>' +
+13600:                 '</tr>';
+13601:             }
+13602:             h += '</tbody></table>';
+13603:             safeHTML(byId('ic-content'), h);
+13604:             var btns = c.querySelectorAll('.ic-req-btn');
+13605:             for (var j = 0; j < btns.length; j++) btns[j].onclick = handleRequestAction;
+13606:         }
+13607: 
+13608:         async function refreshCurrentTab() {
+13609:             try {
+13610:                 setBusy(true, 'جاري مزامنة مركز التحكم مع Production...');
+13611:                 if (state.tab === 'snapshot') await refreshSnapshot();
+13612:                 else if (state.tab === 'movements') await refreshMovements();
+13613:                 else if (state.tab === 'replenishment') await refreshReplenishment();
+13614:                 else if (state.tab === 'counts') await refreshCounts();
+13615:                 else await refreshRequests();
+13616:             } catch (e) {
+13617:                 showToast(e.message || 'فشل تحديث مركز التحكم', 'error');
+13618:             } finally {
+13619:                 setBusy(false);
+13620:             }
+13621:         }
+13622: 
+13623:         async function refreshAll() {
+13624:             await refreshCurrentTab();
+13625:             if (state.tab !== 'replenishment') {
+13626:                 try {
+13627:                     var d = await callIC('REPLENISHMENT', { branch_id: state.branchId || null, limit: 200, offset: 0 });
+13628:                     state.replenishment = d.rows || [];
+13629:                     safeText(byId('ic-kpi-repl'), fmtIC(state.replenishment.length));
+13630:                 } catch (e) {}
+13631:             }
+13632:             try { await refreshCounts(); } catch (e2) {}
+13633:         }
+13634: 
+13635:         async function createCountSession() {
+13636:             var options = '';
+13637:             for (var i = 0; i < state.branches.length; i++) options += '<option value="' + escIC(state.branches[i].id) + '">' + escIC(state.branches[i].name || state.branches[i].branch_code) + '</option>';
+13638:             var r = await Swal.fire({
+13639:                 title: 'جلسة جرد جديدة',
+13640:                 html: '<select id="ic-count-branch" class="swal2-input">' + options + '</select><input id="ic-count-ref" class="swal2-input" placeholder="مرجع الجرد"><textarea id="ic-count-notes" class="swal2-textarea" placeholder="ملاحظات"></textarea>',
+13641:                 showCancelButton: true,
+13642:                 confirmButtonText: 'إنشاء',
+13643:                 cancelButtonText: 'إلغاء',
+13644:                 preConfirm: function() {
+13645:                     return {
+13646:                         branch: byId('ic-count-branch').value,
+13647:                         ref: byId('ic-count-ref').value || '',
+13648:                         notes: byId('ic-count-notes').value || ''
+13649:                     };
+13650:                 }
+13651:             });
+13652:             if (!r.isConfirmed) return;
+13653:             try {
+13654:                 setBusy(true, 'جاري إنشاء جلسة الجرد...');
+13655:                 var operationId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ('IC-' + Date.now());
+13656:                 var d = await callIC('COUNT', {
+13657:                     operation: 'CREATE',
+13658:                     operation_id: operationId,
+13659:                     payload: { type: 'branch', entity_id: r.value.branch, reference: r.value.ref, notes: r.value.notes }
+13660:                 });
+13661:                 showToast(d.duplicate ? 'تم استرجاع جلسة الجرد السابقة' : 'تم إنشاء جلسة الجرد', 'success');
+13662:                 state.tab = 'counts';
+13663:                 renderTabButtons();
+13664:                 renderFilters();
+13665:                 await refreshCounts();
+13666:             } catch (e) {
+13667:                 showToast(e.message || 'فشل إنشاء جلسة الجرد', 'error');
+13668:             } finally {
+13669:                 setBusy(false);
+13670:             }
+13671:         }
+13672: 
+13673:         async function cancelCount() {
+13674:             var id = this.getAttribute('data-count-id');
+13675:             if (!id) return;
+13676:             try {
+13677:                 setBusy(true, 'جاري إلغاء جلسة الجرد...');
+13678:                 await callIC('COUNT', { operation: 'CANCEL', payload: { request_id: id, count_id: id } });
+13679:                 showToast('تم إلغاء جلسة الجرد', 'success');
+13680:                 await refreshCounts();
+13681:             } catch (e) {
+13682:                 showToast(e.message || 'فشل إلغاء الجرد', 'error');
+13683:             } finally {
+13684:                 setBusy(false);
+13685:             }
+13686:         }
+13687: 
+13688:         async function handleRequestAction() {
+13689:             var id = this.getAttribute('data-req-id');
+13690:             var action = this.getAttribute('data-req-action');
+13691:             if (!id || !action) return;
+13692:             var op = action.toUpperCase();
+13693:             var payload = { request_id: id };
+13694:             if (action === 'reject') {
+13695:                 var r = await Swal.fire({ title: 'رفض الطلب', input: 'textarea', inputLabel: 'سبب الرفض', showCancelButton: true, confirmButtonText: 'رفض', cancelButtonText: 'إلغاء' });
+13696:                 if (!r.isConfirmed) return;
+13697:                 payload.reason = r.value || '';
+13698:             }
+13699:             try {
+13700:                 setBusy(true, 'جاري تحديث طلب المخزون...');
+13701:                 var d = await callIC('REQUEST', { operation: op, operation_id: null, payload: payload });
+13702:                 showToast(d.duplicate ? 'تم استرجاع العملية السابقة' : 'تم تنفيذ العملية', 'success');
+13703:                 await refreshRequests();
+13704:             } catch (e) {
+13705:                 showToast(e.message || 'فشل تحديث طلب المخزون', 'error');
+13706:             } finally {
+13707:                 setBusy(false);
+13708:             }
+13709:         }
+13710: 
+13711:         async function createStockRequest() {
+13712:             if (state.branches.length < 2) {
+13713:                 showToast('يلزم وجود فرعي مصدر ووجهة مختلفين', 'warning');
+13714:                 return;
+13715:             }
+13716:             var sourceOptions = '', targetOptions = '';
+13717:             for (var i = 0; i < state.branches.length; i++) {
+13718:                 var b = state.branches[i];
+13719:                 sourceOptions += '<option value="' + escIC(b.id) + '">' + escIC(b.name || b.branch_code) + '</option>';
+13720:                 targetOptions += '<option value="' + escIC(b.id) + '">' + escIC(b.name || b.branch_code) + '</option>';
+13721:             }
+13722:             var r = await Swal.fire({
+13723:                 title: 'طلب نقل مخزني جديد',
+13724:                 html: '<select id="ic-r-source" class="swal2-input">' + sourceOptions + '</select><select id="ic-r-target" class="swal2-input">' + targetOptions + '</select><textarea id="ic-r-items" class="swal2-textarea" placeholder="صنف في كل سطر: 1001|5"></textarea><textarea id="ic-r-notes" class="swal2-textarea" placeholder="ملاحظات"></textarea>',
+13725:                 showCancelButton: true,
+13726:                 confirmButtonText: 'إنشاء',
+13727:                 cancelButtonText: 'إلغاء',
+13728:                 preConfirm: function() {
+13729:                     var lines = (byId('ic-r-items').value || '').split('\n');
+13730:                     var items = [];
+13731:                     for (var k = 0; k < lines.length; k++) {
+13732:                         var line = lines[k].trim();
+13733:                         if (!line) continue;
+13734:                         var parts = line.split('|');
+13735:                         if (!parts[0] || Number(parts[1]) <= 0) {
+13736:                             Swal.showValidationMessage('صيغة الأصناف: 1001|5');
+13737:                             return false;
+13738:                         }
+13739:                         items.push({ item_code: parts[0].trim(), qty: Number(parts[1]) });
+13740:                     }
+13741:                     if (!items.length) {
+13742:                         Swal.showValidationMessage('أضف صنفًا واحدًا على الأقل');
+13743:                         return false;
+13744:                     }
+13745:                     if (byId('ic-r-source').value === byId('ic-r-target').value) {
+13746:                         Swal.showValidationMessage('المصدر والوجهة يجب أن يكونا مختلفين');
+13747:                         return false;
+13748:                     }
+13749:                     return {
+13750:                         source: byId('ic-r-source').value,
+13751:                         target: byId('ic-r-target').value,
+13752:                         items: items,
+13753:                         notes: byId('ic-r-notes').value || ''
+13754:                     };
+13755:                 }
+13756:             });
+13757:             if (!r.isConfirmed) return;
+13758:             try {
+13759:                 setBusy(true, 'جاري إنشاء طلب المخزون...');
+13760:                 var operationId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ('SR-' + Date.now());
+13761:                 var d = await callIC('REQUEST', {
+13762:                     operation: 'CREATE',
+13763:                     operation_id: operationId,
+13764:                     payload: {
+13765:                         source_branch_id: r.value.source,
+13766:                         target_branch_id: r.value.target,
+13767:                         items: r.value.items,
+13768:                         notes: r.value.notes
+13769:                     }
+13770:                 });
+13771:                 showToast(d.duplicate ? 'تم استرجاع الطلب السابق' : 'تم إنشاء طلب المخزون', 'success');
+13772:                 state.tab = 'requests';
+13773:                 renderTabButtons();
+13774:                 renderFilters();
+13775:                 await refreshRequests();
+13776:             } catch (e) {
+13777:                 showToast(e.message || 'فشل إنشاء طلب المخزون', 'error');
+13778:             } finally {
+13779:                 setBusy(false);
+13780:             }
+13781:         }
+13782: 
+13783:         var branchRes = await supabase.from('branches')
+13784:             .select('id,branch_code,name')
+13785:             .eq('company_id', companyId)
+13786:             .eq('is_active', true)
+13787:             .order('name');
+13788:         if (branchRes.error) {
+13789:             showToast(branchRes.error.message, 'error');
+13790:             return;
+13791:         }
+13792:         state.branches = branchRes.data || [];
+13793: 
+13794:         renderShell();
+13795:         renderTabButtons();
+13796:         renderFilters();
+13797:         await refreshAll();
+13798: 
+13799:         try {
+13800:             if (window._rwInventoryControlChannel) {
+13801:                 await supabase.removeChannel(window._rwInventoryControlChannel);
+13802:             }
+13803:             var channel = supabase.channel('rw-inventory-control-' + companyId);
+13804:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'stock_branches' }, function() { refreshCurrentTab(); });
+13805:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_log' }, function() { if (state.tab === 'movements') refreshCurrentTab(); else refreshSnapshot(); });
+13806:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_counts' }, function() { if (state.tab === 'counts') refreshCounts(); });
+13807:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_stock_requests' }, function() { if (state.tab === 'requests') refreshRequests(); });
+13808:             window._rwInventoryControlChannel = channel.subscribe();
+13809:         } catch (e) {}
+13810:     }
+13811:     return {
+13812: 			loadInventoryControl: loadInventoryControl,
+13813:             loadReceiving: loadReceiving,
+13814:     _applyReceiving: _applyReceiving,
+13815:     _showReceivingDetails: _showReceivingDetails,
+13816:     loadVouchers: loadVouchers,
+13817:     _applyVouchers: _applyVouchers,
+13818:     _viewVoucherDetails: _viewVoucherDetails,
+13819:     _sendVoucher: _sendVoucher,
+13820:     _receiveVoucher: _receiveVoucher,
+13821:     _openNewVoucherModal: _openNewVoucherModal,
+13822:     loadVoucherForm: loadVoucherForm,
+13823:     _searchVoucherItem: _searchVoucherItem,
+13824:     _addVoucherItem: _addVoucherItem,
+13825:     _renderVoucherCart: _renderVoucherCart,
+13826:     _updateVoucherQty: _updateVoucherQty,
+13827:     _updateVoucherPrice: _updateVoucherPrice,
+13828:     _removeVoucherItem: _removeVoucherItem,
+13829:     _clearVoucherCart: _clearVoucherCart,
+13830:     _saveAndSendVoucher: _saveAndSendVoucher,
+13831:     loadPicking: loadPicking,
+13832:     _applyPicking: _applyPicking,
+13833:     _showPickingDetails: _showPickingDetails,
+13834:     loadLoading: loadLoading,
+13835:     _applyLoading: _applyLoading,
+13836:     _showLoadingDetails: _showLoadingDetails,
+13837:     loadDelivery: loadDelivery,
+13838:     _applyDelivery: _applyDelivery,
+13839:     _showDeliveryDetails: _showDeliveryDetails,
+13840:     loadReturn: loadReturn,
+13841:     _applyReturn: _applyReturn,
+13842:     _showReturnDetails: _showReturnDetails,
+13843:     loadUnloading: loadUnloading,
+13844:     _applyUnloading: _applyUnloading,
+13845:     _showUnloadingDetails: _showUnloadingDetails,
+13846:     loadVehicleCount: loadVehicleCount,
+13847:     loadBranchCount: loadBranchCount,
+13848:     loadGeneralCount: loadGeneralCount,
+13849:     loadSettlement: loadSettlement,
+13850:     _searchDriver: _searchDriver,
+13851:     _selectDriver: _selectDriver,
+13852:     _startBarcodeScanner: _startBarcodeScanner,
+13853:     _searchInvItem: _searchInvItem,
+13854:     _addToInvCart: _addToInvCart,
+13855:     _renderInvCart: _renderInvCart,
+13856:     _updateInvCartQty: _updateInvCartQty,
+13857:     _removeInvCartItem: _removeInvCartItem,
+13858:     _saveVehicleCount: _saveVehicleCount,
+13859:     _saveBranchCount: _saveBranchCount,
+13860:     _saveGeneralCount: _saveGeneralCount,
+13861:     _saveInvCount: _saveInvCount,
+13862:     _onSettlementRsChange: _onSettlementRsChange,
+13863:     _saveSettlement: _saveSettlement,
+13864:     _openPickingModal: _openPickingModal,
+13865:     _openLoadingModal: _openLoadingModal,
+13866:     _openDeliveryModal: _openDeliveryModal,
+13867:     _openReturnModal: _openReturnModal,
+13868:     _startPicking: _changeStatus,
+13869:     _startLoading: _changeStatus,
+13870:     _startDelivery: _changeStatus,
+13871:     _startReturn: _changeStatus,
+13872:     _confirmUnload: _confirmUnload,
+13873:     _changeStatus: _changeStatus
+13874:     };
+13875: })();
