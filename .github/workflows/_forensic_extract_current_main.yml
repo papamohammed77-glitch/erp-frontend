@@ -1,0 +1,88 @@
+name: RAWAEA forensic current Mother extract
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract exact current Mother anchors
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, re
+          src = Path('companies/company-1/main.html')
+          text = src.read_text(encoding='utf-8')
+          lines = text.splitlines()
+          out = []
+          out.append('# FORENSIC CURRENT MOTHER EXTRACT')
+          out.append('')
+          out.append(f'FILE_LINES={len(lines)}')
+          out.append(f'FILE_BYTES={src.stat().st_size}')
+          out.append(f'SHA256={hashlib.sha256(text.encode("utf-8")).hexdigest()}')
+          pats = [
+            'var RW_Warehouse',
+            'loadInventoryControl',
+            'loadReceiving',
+            'loadVouchers',
+            'loadVoucherForm',
+            'loadPicking',
+            'loadLoading',
+            'loadDelivery',
+            'loadReturn',
+            'loadUnloading',
+            'loadVehicleCount',
+            'loadBranchCount',
+            'loadGeneralCount',
+            'inventory-stock-snapshot',
+            'inventory_stock_snapshot',
+            'inventory_movement_report',
+            'inventory_replenishment_report',
+            'inventory_count_engine',
+            'receive-purchase',
+            'complete-return',
+            'complete-order-delivery',
+            'Idempotency-Key',
+            'قيد التطوير',
+            'جاري التطوير',
+            'TODO',
+            'FIXME',
+          ]
+          for pat in pats:
+            hits=[i for i,l in enumerate(lines,1) if pat in l]
+            out.append(f'PATTERN {pat}: {hits[:200]}')
+          def window(center, before=20, after=120):
+            s=max(1,center-before); e=min(len(lines),center+after)
+            out.append(f'--- WINDOW {s}-{e} around {center} ---')
+            for i in range(s,e+1): out.append(f'{i}: {lines[i-1]}')
+          for pat in ['loadInventoryControl','receive-purchase','inventory_stock_snapshot','inventory_count_engine']:
+            hits=[i for i,l in enumerate(lines,1) if pat in l]
+            if hits:
+              for h in hits[:4]: window(h,30,100)
+          # Locate RW_Warehouse declaration and extract balanced outer object/IIFE.
+          starts=[i for i,l in enumerate(lines,1) if 'var RW_Warehouse' in l]
+          if starts:
+            st=starts[0]
+            depth=0; started=False; end=None
+            for i in range(st,len(lines)+1):
+              line=lines[i-1]
+              depth += line.count('{')-line.count('}')
+              if '{' in line: started=True
+              if started and i>st and depth<=0:
+                end=i; break
+            if end:
+              out.append(f'--- RW_Warehouse_FULL {st}-{end} ---')
+              for i in range(st,end+1): out.append(f'{i}: {lines[i-1]}')
+          Path('_forensic_current_main_extract.md').write_text('\n'.join(out)+'\n',encoding='utf-8')
+      - name: Persist extract
+        shell: bash
+        run: |
+          git config user.name 'rawaea-forensic-bot'
+          git config user.email 'actions@github.com'
+          git add _forensic_current_main_extract.md
+          git commit -m 'forensic: persist current Mother inventory extract' || exit 0
+          git push
