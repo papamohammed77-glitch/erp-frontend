@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-16 10:30 UTC -->
+<!-- 2026-09-16 11:30 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -13633,38 +13633,299 @@ function _changeStatus(code, funcName) {
         }
 
         async function createCountSession() {
-            var options = '';
-            for (var i = 0; i < state.branches.length; i++) options += '<option value="' + escIC(state.branches[i].id) + '">' + escIC(state.branches[i].name || state.branches[i].branch_code) + '</option>';
+            var branchOptionsHtml = '';
+            for (var i = 0; i < state.branches.length; i++) {
+                branchOptionsHtml += '<option value="' + escIC(state.branches[i].id) + '">' +
+                    escIC(state.branches[i].name || state.branches[i].branch_code) + '</option>';
+            }
+
             var r = await Swal.fire({
                 title: 'جلسة جرد جديدة',
-                html: '<select id="ic-count-branch" class="swal2-input">' + options + '</select><input id="ic-count-ref" class="swal2-input" placeholder="مرجع الجرد"><textarea id="ic-count-notes" class="swal2-textarea" placeholder="ملاحظات"></textarea>',
+                width: 760,
+                html:
+                    '<div class="text-right space-y-4">' +
+                        '<div class="rounded-2xl bg-indigo-50 border border-indigo-100 p-4">' +
+                            '<div class="font-black text-indigo-900">ابدأ جردًا فعليًا للفرع</div>' +
+                            '<div class="text-sm text-indigo-700 mt-1">سيتم إنشاء الجلسة ثم تحميل أصناف الفرع تلقائيًا وفتح شاشة العد والمراجعة.</div>' +
+                        '</div>' +
+                        '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+                            '<div>' +
+                                '<label class="block text-sm font-black text-slate-700 mb-2">الفرع</label>' +
+                                '<select id="ic-count-branch" class="swal2-input !w-full !m-0">' + branchOptionsHtml + '</select>' +
+                            '</div>' +
+                            '<div>' +
+                                '<label class="block text-sm font-black text-slate-700 mb-2">تاريخ الجرد</label>' +
+                                '<input id="ic-count-date" type="date" class="swal2-input !w-full !m-0" value="' + new Date().toISOString().slice(0, 10) + '">' +
+                            '</div>' +
+                        '</div>' +
+                        '<div>' +
+                            '<label class="block text-sm font-black text-slate-700 mb-2">مرجع الجرد</label>' +
+                            '<input id="ic-count-ref" class="swal2-input !w-full !m-0" placeholder="مثال: جرد نهاية اليوم / جرد دوري / جرد مفاجئ">' +
+                        '</div>' +
+                        '<div>' +
+                            '<label class="block text-sm font-black text-slate-700 mb-2">ملاحظات</label>' +
+                            '<textarea id="ic-count-notes" class="swal2-textarea !w-full !m-0" placeholder="ملاحظات الجرد أو تعليمات فريق العد"></textarea>' +
+                        '</div>' +
+                    '</div>',
                 showCancelButton: true,
-                confirmButtonText: 'إنشاء',
+                confirmButtonText: 'بدء الجرد',
                 cancelButtonText: 'إلغاء',
+                focusConfirm: false,
                 preConfirm: function() {
+                    var branch = byId('ic-count-branch').value || '';
+                    var countDate = byId('ic-count-date').value || '';
+                    if (!branch) {
+                        Swal.showValidationMessage('اختر الفرع أولًا');
+                        return false;
+                    }
+                    if (!countDate) {
+                        Swal.showValidationMessage('حدد تاريخ الجرد');
+                        return false;
+                    }
                     return {
-                        branch: byId('ic-count-branch').value,
+                        branch: branch,
+                        countDate: countDate,
                         ref: byId('ic-count-ref').value || '',
                         notes: byId('ic-count-notes').value || ''
                     };
                 }
             });
+
             if (!r.isConfirmed) return;
+
             try {
-                setBusy(true, 'جاري إنشاء جلسة الجرد...');
-                var operationId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ('IC-' + Date.now());
-                var d = await callIC('COUNT', {
+                setBusy(true, 'جاري إنشاء جلسة الجرد وتجهيز أصناف الفرع...');
+
+                var operationId = (window.crypto && window.crypto.randomUUID) ?
+                    window.crypto.randomUUID() : ('IC-' + Date.now() + '-' + Math.floor(Math.random() * 100000));
+
+                var created = await callIC('COUNT', {
                     operation: 'CREATE',
                     operation_id: operationId,
-                    payload: { type: 'branch', entity_id: r.value.branch, reference: r.value.ref, notes: r.value.notes }
+                    payload: {
+                        type: 'branch',
+                        entity_id: r.value.branch,
+                        count_date: r.value.countDate,
+                        reference: r.value.ref,
+                        notes: r.value.notes
+                    }
                 });
-                showToast(d.duplicate ? 'تم استرجاع جلسة الجرد السابقة' : 'تم إنشاء جلسة الجرد', 'success');
+
+                var countId = created.count_id;
+                if (!countId) throw new Error('لم يتم إرجاع رقم جلسة الجرد');
+
+                await callIC('COUNT', {
+                    operation: 'POPULATE',
+                    payload: { count_id: countId }
+                });
+
                 state.tab = 'counts';
                 renderTabButtons();
                 renderFilters();
                 await refreshCounts();
+
+                async function openCountEditor() {
+                    var loaded = await callIC('COUNT', {
+                        operation: 'GET',
+                        payload: { count_id: countId }
+                    });
+
+                    var count = loaded.count || {};
+                    var details = loaded.details || [];
+                    var catalog = (RW_STATE && RW_STATE.data && Array.isArray(RW_STATE.data.items)) ? RW_STATE.data.items : [];
+
+                    function barcodeOf(code) {
+                        for (var bi = 0; bi < catalog.length; bi++) {
+                            if (String(catalog[bi].item_code || '') === String(code || '')) {
+                                return catalog[bi].barcode || '';
+                            }
+                        }
+                        return '';
+                    }
+
+                    function renderCountTable(filter) {
+                        filter = String(filter || '').trim().toLowerCase();
+                        var rows = '';
+                        for (var di = 0; di < details.length; di++) {
+                            var d = details[di];
+                            var barcode = barcodeOf(d.item_code);
+                            var hay = [d.item_code, d.item_name, barcode].join(' ').toLowerCase();
+                            if (filter && hay.indexOf(filter) === -1) continue;
+                            rows +=
+                                '<tr class="border-b hover:bg-slate-50" data-count-row="' + escIC(d.id) + '">' +
+                                    '<td class="p-2 font-black text-indigo-700">' + escIC(d.item_code) + '</td>' +
+                                    '<td class="p-2 font-semibold">' + escIC(d.item_name) + '</td>' +
+                                    '<td class="p-2 text-center">' + escIC(d.unit || '') + '</td>' +
+                                    '<td class="p-2 text-center font-bold text-slate-700">' + fmtIC(d.system_qty) + '</td>' +
+                                    '<td class="p-2 text-center"><input data-count-input="' + escIC(d.id) + '" type="number" min="0" step="0.001" value="' + (d.counted_qty == null ? '' : escIC(d.counted_qty)) + '" class="w-28 px-2 py-2 border rounded-lg text-center font-black"></td>' +
+                                    '<td class="p-2 text-center font-black" data-count-variance="' + escIC(d.id) + '">' + fmtIC(d.variance_qty) + '</td>' +
+                                    '<td class="p-2"><input data-count-note="' + escIC(d.id) + '" value="' + escIC(d.notes || '') + '" class="w-40 px-2 py-2 border rounded-lg text-sm" placeholder="ملاحظة"></td>' +
+                                '</tr>';
+                        }
+                        if (!rows) rows = '<tr><td colspan="7" class="p-10 text-center text-slate-500">لا توجد أصناف مطابقة للبحث</td></tr>';
+                        return rows;
+                    }
+
+                    var editor = await Swal.fire({
+                        title: 'جلسة الجرد — ' + escIC(count.reference || count.count_date || ''),
+                        width: 1220,
+                        showConfirmButton: false,
+                        showCancelButton: false,
+                        html:
+                            '<div id="ic-count-editor" class="text-right">' +
+                                '<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">' +
+                                    '<div class="rounded-xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">الفرع</div><div class="font-black">' + escIC(count.branch_id || '') + '</div></div>' +
+                                    '<div class="rounded-xl bg-blue-50 border border-blue-100 p-3"><div class="text-xs text-blue-700">إجمالي البنود</div><div id="ic-ce-total" class="font-black text-blue-900">' + fmtIC(details.length) + '</div></div>' +
+                                    '<div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><div class="text-xs text-emerald-700">تم العد</div><div id="ic-ce-counted" class="font-black text-emerald-900">0</div></div>' +
+                                    '<div class="rounded-xl bg-amber-50 border border-amber-100 p-3"><div class="text-xs text-amber-700">عجز/زيادة</div><div id="ic-ce-variance" class="font-black text-amber-900">0</div></div>' +
+                                    '<div class="rounded-xl bg-purple-50 border border-purple-100 p-3"><div class="text-xs text-purple-700">الحالة</div><div id="ic-ce-status" class="font-black text-purple-900">' + escIC(count.status || '') + '</div></div>' +
+                                '</div>' +
+                                '<div class="flex flex-wrap gap-2 mb-3">' +
+                                    '<input id="ic-ce-search" class="flex-1 min-w-[240px] px-3 py-2 border rounded-xl" placeholder="ابحث بالكود أو اسم الصنف أو الباركود">' +
+                                    '<button id="ic-ce-refresh" class="px-4 py-2 rounded-xl bg-slate-800 text-white font-bold">تحديث أرصدة النظام</button>' +
+                                    '<button id="ic-ce-save" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold">حفظ العد</button>' +
+                                    '<button id="ic-ce-finalize" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold">إتمام وتسوية الجرد</button>' +
+                                    '<button id="ic-ce-cancel" class="px-4 py-2 rounded-xl bg-red-50 text-red-700 font-bold">إلغاء الجلسة</button>' +
+                                '</div>' +
+                                '<div class="overflow-auto border rounded-2xl max-h-[58vh]">' +
+                                    '<table class="w-full text-sm">' +
+                                        '<thead class="bg-slate-800 text-white sticky top-0"><tr>' +
+                                            '<th class="p-2">الكود</th><th class="p-2">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">رصيد النظام</th><th class="p-2">العد الفعلي</th><th class="p-2">الفرق</th><th class="p-2">ملاحظة</th>' +
+                                        '</tr></thead>' +
+                                        '<tbody id="ic-ce-body">' + renderCountTable('') + '</tbody>' +
+                                    '</table>' +
+                                '</div>' +
+                            '</div>',
+                        didOpen: function() {
+                            function updateSummary() {
+                                var counted = 0;
+                                var variance = 0;
+                                var inputs = document.querySelectorAll('[data-count-input]');
+                                for (var si = 0; si < inputs.length; si++) {
+                                    if (inputs[si].value !== '') counted++;
+                                }
+                                for (var sj = 0; sj < details.length; sj++) {
+                                    variance += Number(details[sj].variance_qty || 0);
+                                }
+                                safeText(byId('ic-ce-counted'), fmtIC(counted));
+                                safeText(byId('ic-ce-variance'), fmtIC(variance));
+                            }
+
+                            byId('ic-ce-search').oninput = function() {
+                                safeHTML(byId('ic-ce-body'), renderCountTable(this.value));
+                            };
+
+                            byId('ic-ce-refresh').onclick = async function() {
+                                try {
+                                    showLoader('جاري تحديث أرصدة النظام قبل استكمال الجرد...');
+                                    await callIC('COUNT', { operation: 'REFRESH', payload: { count_id: countId, mode: 'ALL' } });
+                                    var refreshed = await callIC('COUNT', { operation: 'GET', payload: { count_id: countId } });
+                                    count = refreshed.count || count;
+                                    details = refreshed.details || [];
+                                    safeHTML(byId('ic-ce-body'), renderCountTable(byId('ic-ce-search').value));
+                                    updateSummary();
+                                    hideLoader();
+                                    showToast('تم تحديث أرصدة النظام للجلسة', 'success');
+                                } catch (e) {
+                                    hideLoader();
+                                    showToast(e.message || 'فشل تحديث أرصدة النظام', 'error');
+                                }
+                            };
+
+                            byId('ic-ce-save').onclick = async function() {
+                                try {
+                                    showLoader('جاري حفظ كميات الجرد...');
+                                    var inputs = document.querySelectorAll('[data-count-input]');
+                                    for (var si = 0; si < inputs.length; si++) {
+                                        var dId = inputs[si].getAttribute('data-count-input');
+                                        var value = inputs[si].value;
+                                        if (value === '') continue;
+                                        var noteEl = document.querySelector('[data-count-note="' + dId + '"]');
+                                        var detail = null;
+                                        for (var di2 = 0; di2 < details.length; di2++) {
+                                            if (String(details[di2].id) === String(dId)) { detail = details[di2]; break; }
+                                        }
+                                        if (!detail) continue;
+                                        var countedQty = Number(value);
+                                        if (!Number.isFinite(countedQty) || countedQty < 0) throw new Error('كمية جرد غير صالحة للصنف ' + detail.item_code);
+                                        await callIC('COUNT', {
+                                            operation: 'UPSERT_LINE',
+                                            payload: {
+                                                count_id: countId,
+                                                branch_id: detail.branch_id,
+                                                item_code: detail.item_code,
+                                                counted_qty: countedQty,
+                                                notes: noteEl ? (noteEl.value || '') : (detail.notes || '')
+                                            }
+                                        });
+                                    }
+                                    var reloaded = await callIC('COUNT', { operation: 'GET', payload: { count_id: countId } });
+                                    count = reloaded.count || count;
+                                    details = reloaded.details || [];
+                                    safeHTML(byId('ic-ce-body'), renderCountTable(byId('ic-ce-search').value));
+                                    updateSummary();
+                                    safeText(byId('ic-ce-status'), count.status || 'InProgress');
+                                    hideLoader();
+                                    showToast('تم حفظ كميات الجرد', 'success');
+                                } catch (e) {
+                                    hideLoader();
+                                    showToast(e.message || 'فشل حفظ الجرد', 'error');
+                                }
+                            };
+
+                            byId('ic-ce-finalize').onclick = async function() {
+                                var confirm = await Swal.fire({
+                                    title: 'إتمام وتسوية الجرد؟',
+                                    text: 'سيتم اعتماد الفروق وتنفيذ حركات التسوية الرسمية عبر محرك المخزون المركزي.',
+                                    icon: 'warning',
+                                    showCancelButton: true,
+                                    confirmButtonText: 'إتمام الجرد',
+                                    cancelButtonText: 'إلغاء'
+                                });
+                                if (!confirm.isConfirmed) return;
+                                try {
+                                    showLoader('جاري إتمام الجرد وتنفيذ التسويات...');
+                                    await callIC('COUNT', { operation: 'FINALIZE', payload: { count_id: countId } });
+                                    hideLoader();
+                                    showToast('تم إتمام الجرد وتسوية الفروق بنجاح', 'success');
+                                    Swal.close();
+                                    await refreshCounts();
+                                    await refreshCurrentTab();
+                                } catch (e) {
+                                    hideLoader();
+                                    showToast(e.message || 'فشل إتمام الجرد', 'error');
+                                }
+                            };
+
+                            byId('ic-ce-cancel').onclick = async function() {
+                                var confirm = await Swal.fire({
+                                    title: 'إلغاء جلسة الجرد؟',
+                                    text: 'لن يتم تنفيذ أي تسوية مخزنية.',
+                                    showCancelButton: true,
+                                    confirmButtonText: 'إلغاء الجلسة',
+                                    cancelButtonText: 'متابعة'
+                                });
+                                if (!confirm.isConfirmed) return;
+                                try {
+                                    await callIC('COUNT', { operation: 'CANCEL', payload: { count_id: countId } });
+                                    showToast('تم إلغاء جلسة الجرد', 'success');
+                                    Swal.close();
+                                    await refreshCounts();
+                                } catch (e) {
+                                    showToast(e.message || 'فشل إلغاء الجلسة', 'error');
+                                }
+                            };
+
+                            updateSummary();
+                        }
+                    });
+
+                    return editor;
+                }
+
+                await openCountEditor();
             } catch (e) {
-                showToast(e.message || 'فشل إنشاء جلسة الجرد', 'error');
+                showToast(e.message || 'فشل بدء جلسة الجرد', 'error');
             } finally {
                 setBusy(false);
             }
@@ -13710,74 +13971,317 @@ function _changeStatus(code, funcName) {
 
         async function createStockRequest() {
             if (state.branches.length < 2) {
-                showToast('يلزم وجود فرعي مصدر ووجهة مختلفين', 'warning');
+                showToast('يلزم وجود فرعي مصدر ووجهة مختلفين لإنشاء طلب نقل', 'warning');
                 return;
             }
-            var sourceOptions = '', targetOptions = '';
+
+            var sourceOptions = '';
+            var targetOptions = '';
             for (var i = 0; i < state.branches.length; i++) {
-                var b = state.branches[i];
-                sourceOptions += '<option value="' + escIC(b.id) + '">' + escIC(b.name || b.branch_code) + '</option>';
-                targetOptions += '<option value="' + escIC(b.id) + '">' + escIC(b.name || b.branch_code) + '</option>';
+                var branch = state.branches[i];
+                sourceOptions += '<option value="' + escIC(branch.id) + '">' + escIC(branch.name || branch.branch_code) + '</option>';
+                targetOptions += '<option value="' + escIC(branch.id) + '">' + escIC(branch.name || branch.branch_code) + '</option>';
             }
-            var r = await Swal.fire({
+
+            var sourceRows = [];
+            var cart = [];
+
+            function findSourceRow(code) {
+                for (var ri = 0; ri < sourceRows.length; ri++) {
+                    if (String(sourceRows[ri].item_code || '') === String(code || '')) return sourceRows[ri];
+                }
+                return null;
+            }
+
+            function cartIndex(code) {
+                for (var ci = 0; ci < cart.length; ci++) {
+                    if (String(cart[ci].item_code || '') === String(code || '')) return ci;
+                }
+                return -1;
+            }
+
+            function renderSearchResults(query) {
+                query = String(query || '').trim().toLowerCase();
+                var html = '';
+                var shown = 0;
+                for (var i2 = 0; i2 < sourceRows.length; i2++) {
+                    var x = sourceRows[i2];
+                    var hay = [x.item_code, x.item_name, x.barcode || ''].join(' ').toLowerCase();
+                    if (query && hay.indexOf(query) === -1) continue;
+                    if (cartIndex(x.item_code) !== -1) continue;
+                    html +=
+                        '<button type="button" data-ic-add-item="' + escIC(x.item_code) + '" class="w-full text-right p-3 rounded-xl border hover:bg-indigo-50 hover:border-indigo-200 mb-2 bg-white">' +
+                            '<div class="flex items-center justify-between gap-3">' +
+                                '<div>' +
+                                    '<div class="font-black text-slate-800">' + escIC(x.item_name || x.item_code) + '</div>' +
+                                    '<div class="text-xs text-slate-500 mt-1">' + escIC(x.item_code) + (x.barcode ? ' • ' + escIC(x.barcode) : '') + '</div>' +
+                                '</div>' +
+                                '<div class="text-left">' +
+                                    '<div class="text-xs text-slate-500">المتاح</div>' +
+                                    '<div class="font-black ' + (Number(x.available_qty || 0) > 0 ? 'text-emerald-700' : 'text-red-600') + '">' + fmtIC(x.available_qty) + '</div>' +
+                                '</div>' +
+                            '</div>' +
+                        '</button>';
+                    shown++;
+                    if (shown >= 25) break;
+                }
+                if (!html) html = '<div class="p-6 text-center text-slate-500">لا توجد أصناف مطابقة أو تم إضافتها بالفعل</div>';
+                return html;
+            }
+
+            function renderCart() {
+                var html = '';
+                var totalQty = 0;
+                var totalValue = 0;
+                for (var ci = 0; ci < cart.length; ci++) {
+                    var x = cart[ci];
+                    var before = Number(x.available_qty || 0);
+                    var after = before - Number(x.qty || 0);
+                    var qty = Number(x.qty || 0);
+                    totalQty += qty;
+                    totalValue += qty * Number(x.cost_price || 0);
+                    html +=
+                        '<tr class="border-b">' +
+                            '<td class="p-2 font-black text-indigo-700">' + escIC(x.item_code) + '</td>' +
+                            '<td class="p-2 font-semibold">' + escIC(x.item_name) + '</td>' +
+                            '<td class="p-2 text-center">' + escIC(x.unit || '') + '</td>' +
+                            '<td class="p-2 text-center font-bold text-slate-700">' + fmtIC(before) + '</td>' +
+                            '<td class="p-2 text-center"><input data-ic-req-qty="' + escIC(x.item_code) + '" type="number" min="0.001" step="0.001" value="' + escIC(qty) + '" class="w-24 px-2 py-2 border rounded-lg text-center font-black"></td>' +
+                            '<td class="p-2 text-center font-black ' + (after < 0 ? 'text-red-600' : 'text-emerald-700') + '">' + fmtIC(after) + '</td>' +
+                            '<td class="p-2 text-center">' + fmtIC(Number(x.cost_price || 0)) + '</td>' +
+                            '<td class="p-2 text-center font-black">' + fmtIC(qty * Number(x.cost_price || 0)) + '</td>' +
+                            '<td class="p-2"><button type="button" data-ic-remove-item="' + escIC(x.item_code) + '" class="px-3 py-1 rounded-lg bg-red-50 text-red-700 font-bold">حذف</button></td>' +
+                        '</tr>';
+                }
+                if (!html) html = '<tr><td colspan="10" class="p-10 text-center text-slate-500">لم تتم إضافة أصناف بعد</td></tr>';
+                return { html: html, totalQty: totalQty, totalValue: totalValue };
+            }
+
+            async function loadSourceSnapshot(branchId) {
+                var d = await callIC('SNAPSHOT', {
+                    branch_id: branchId,
+                    query: null,
+                    low_only: false,
+                    limit: 500,
+                    offset: 0
+                });
+                sourceRows = d.rows || [];
+            }
+
+            var modal = await Swal.fire({
                 title: 'طلب نقل مخزني جديد',
-                html: '<select id="ic-r-source" class="swal2-input">' + sourceOptions + '</select><select id="ic-r-target" class="swal2-input">' + targetOptions + '</select><textarea id="ic-r-items" class="swal2-textarea" placeholder="صنف في كل سطر: 1001|5"></textarea><textarea id="ic-r-notes" class="swal2-textarea" placeholder="ملاحظات"></textarea>',
-                showCancelButton: true,
-                confirmButtonText: 'إنشاء',
-                cancelButtonText: 'إلغاء',
-                preConfirm: function() {
-                    var lines = (byId('ic-r-items').value || '').split('\n');
-                    var items = [];
-                    for (var k = 0; k < lines.length; k++) {
-                        var line = lines[k].trim();
-                        if (!line) continue;
-                        var parts = line.split('|');
-                        if (!parts[0] || Number(parts[1]) <= 0) {
-                            Swal.showValidationMessage('صيغة الأصناف: 1001|5');
-                            return false;
+                width: 1280,
+                showConfirmButton: false,
+                showCancelButton: false,
+                html:
+                    '<div id="ic-request-editor" class="text-right">' +
+                        '<div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">' +
+                            '<div>' +
+                                '<label class="block text-sm font-black text-slate-700 mb-2">من المخزن</label>' +
+                                '<select id="ic-r-source" class="!w-full !m-0 swal2-input">' + sourceOptions + '</select>' +
+                            '</div>' +
+                            '<div>' +
+                                '<label class="block text-sm font-black text-slate-700 mb-2">إلى المخزن</label>' +
+                                '<select id="ic-r-target" class="!w-full !m-0 swal2-input">' + targetOptions + '</select>' +
+                            '</div>' +
+                            '<div class="rounded-xl bg-blue-50 border border-blue-100 p-3"><div class="text-xs text-blue-700">عدد البنود</div><div id="ic-r-total-lines" class="text-xl font-black text-blue-900">0</div></div>' +
+                            '<div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><div class="text-xs text-emerald-700">إجمالي الكمية</div><div id="ic-r-total-qty" class="text-xl font-black text-emerald-900">0</div></div>' +
+                        '</div>' +
+                        '<div class="grid grid-cols-1 lg:grid-cols-5 gap-4">' +
+                            '<div class="lg:col-span-2 rounded-2xl bg-slate-50 border p-3">' +
+                                '<div class="font-black text-slate-800 mb-2">إضافة صنف</div>' +
+                                '<input id="ic-r-search" class="w-full px-3 py-2 border rounded-xl bg-white" placeholder="ابحث بالكود أو الاسم أو الباركود">' +
+                                '<div id="ic-r-results" class="mt-3 max-h-[48vh] overflow-auto"></div>' +
+                            '</div>' +
+                            '<div class="lg:col-span-3 rounded-2xl bg-white border">' +
+                                '<div class="flex items-center justify-between p-3 border-b">' +
+                                    '<div class="font-black text-slate-800">بنود الطلب</div>' +
+                                    '<div class="text-xs text-slate-500">Available After = Available Before − Requested Qty</div>' +
+                                '</div>' +
+                                '<div class="overflow-auto max-h-[48vh]">' +
+                                    '<table class="w-full text-sm">' +
+                                        '<thead class="bg-slate-800 text-white sticky top-0"><tr>' +
+                                            '<th class="p-2">الكود</th><th class="p-2">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">المتاح قبل</th><th class="p-2">الطلب</th><th class="p-2">المتاح بعد</th><th class="p-2">التكلفة</th><th class="p-2">الإجمالي</th><th class="p-2">إجراء</th>' +
+                                        '</tr></thead>' +
+                                        '<tbody id="ic-r-cart"></tbody>' +
+                                    '</table>' +
+                                '</div>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="mt-4">' +
+                            '<textarea id="ic-r-notes" class="w-full px-3 py-2 border rounded-xl" rows="3" placeholder="ملاحظات الطلب / سبب النقل"></textarea>' +
+                        '</div>' +
+                        '<div class="flex flex-wrap justify-end gap-2 mt-4">' +
+                            '<button id="ic-r-close" type="button" class="px-5 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold">إغلاق</button>' +
+                            '<button id="ic-r-submit" type="button" class="px-5 py-2 rounded-xl bg-indigo-600 text-white font-black">إنشاء طلب النقل</button>' +
+                        '</div>' +
+                    '</div>',
+                didOpen: async function() {
+                    function repaintCart() {
+                        var p = renderCart();
+                        safeHTML(byId('ic-r-cart'), p.html);
+                        safeText(byId('ic-r-total-lines'), fmtIC(cart.length));
+                        safeText(byId('ic-r-total-qty'), fmtIC(p.totalQty));
+
+                        var qtyInputs = document.querySelectorAll('[data-ic-req-qty]');
+                        for (var qi = 0; qi < qtyInputs.length; qi++) {
+                            qtyInputs[qi].oninput = function() {
+                                var code = this.getAttribute('data-ic-req-qty');
+                                var idx = cartIndex(code);
+                                if (idx === -1) return;
+                                var value = Number(this.value);
+                                cart[idx].qty = Number.isFinite(value) && value > 0 ? value : 0.001;
+                                repaintCart();
+                            };
                         }
-                        items.push({ item_code: parts[0].trim(), qty: Number(parts[1]) });
+
+                        var removeButtons = document.querySelectorAll('[data-ic-remove-item]');
+                        for (var rb = 0; rb < removeButtons.length; rb++) {
+                            removeButtons[rb].onclick = function() {
+                                var code = this.getAttribute('data-ic-remove-item');
+                                var idx = cartIndex(code);
+                                if (idx !== -1) cart.splice(idx, 1);
+                                repaintCart();
+                                safeHTML(byId('ic-r-results'), renderSearchResults(byId('ic-r-search').value));
+                                bindSearchButtons();
+                            };
+                        }
                     }
-                    if (!items.length) {
-                        Swal.showValidationMessage('أضف صنفًا واحدًا على الأقل');
-                        return false;
+
+                    function bindSearchButtons() {
+                        var addButtons = document.querySelectorAll('[data-ic-add-item]');
+                        for (var ab = 0; ab < addButtons.length; ab++) {
+                            addButtons[ab].onclick = function() {
+                                var code = this.getAttribute('data-ic-add-item');
+                                var row = findSourceRow(code);
+                                if (!row) return;
+                                if (cartIndex(code) !== -1) return;
+                                cart.push({
+                                    item_code: row.item_code,
+                                    item_name: row.item_name,
+                                    unit: row.unit,
+                                    available_qty: Number(row.available_qty || 0),
+                                    qty: 1,
+                                    cost_price: Number(row.cost_price || row.avg_cost || 0)
+                                });
+                                repaintCart();
+                                safeHTML(byId('ic-r-results'), renderSearchResults(byId('ic-r-search').value));
+                                bindSearchButtons();
+                            };
+                        }
                     }
-                    if (byId('ic-r-source').value === byId('ic-r-target').value) {
-                        Swal.showValidationMessage('المصدر والوجهة يجب أن يكونا مختلفين');
-                        return false;
-                    }
-                    return {
-                        source: byId('ic-r-source').value,
-                        target: byId('ic-r-target').value,
-                        items: items,
-                        notes: byId('ic-r-notes').value || ''
+
+                    byId('ic-r-source').onchange = async function() {
+                        var target = byId('ic-r-target').value || '';
+                        if (target === this.value) {
+                            for (var ti = 0; ti < state.branches.length; ti++) {
+                                if (String(state.branches[ti].id) !== String(this.value)) {
+                                    target = state.branches[ti].id;
+                                    break;
+                                }
+                            }
+                            byId('ic-r-target').value = target;
+                        }
+                        cart = [];
+                        try {
+                            showLoader('جاري تحميل رصيد الفرع المصدر...');
+                            await loadSourceSnapshot(this.value);
+                            safeHTML(byId('ic-r-results'), renderSearchResults(byId('ic-r-search').value));
+                            bindSearchButtons();
+                            repaintCart();
+                            hideLoader();
+                        } catch (e) {
+                            hideLoader();
+                            showToast(e.message || 'فشل تحميل رصيد الفرع', 'error');
+                        }
                     };
+
+                    byId('ic-r-target').onchange = function() {
+                        if (this.value === byId('ic-r-source').value) {
+                            showToast('المصدر والوجهة يجب أن يكونا مختلفين', 'warning');
+                            for (var ti2 = 0; ti2 < state.branches.length; ti2++) {
+                                if (String(state.branches[ti2].id) !== String(byId('ic-r-source').value)) {
+                                    this.value = state.branches[ti2].id;
+                                    break;
+                                }
+                            }
+                        }
+                    };
+
+                    byId('ic-r-search').oninput = function() {
+                        safeHTML(byId('ic-r-results'), renderSearchResults(this.value));
+                        bindSearchButtons();
+                    };
+
+                    byId('ic-r-close').onclick = function() { Swal.close(); };
+
+                    byId('ic-r-submit').onclick = async function() {
+                        var source = byId('ic-r-source').value || '';
+                        var target = byId('ic-r-target').value || '';
+                        if (!source || !target || source === target) {
+                            showToast('اختر مصدرًا ووجهة مختلفين', 'warning');
+                            return;
+                        }
+                        if (!cart.length) {
+                            showToast('أضف صنفًا واحدًا على الأقل إلى الطلب', 'warning');
+                            return;
+                        }
+                        for (var vi = 0; vi < cart.length; vi++) {
+                            if (!Number.isFinite(Number(cart[vi].qty)) || Number(cart[vi].qty) <= 0) {
+                                showToast('كمية غير صالحة للصنف ' + cart[vi].item_code, 'error');
+                                return;
+                            }
+                        }
+
+                        try {
+                            setBusy(true, 'جاري إنشاء طلب النقل وربطه بدورة المخزون...');
+                            var operationId = (window.crypto && window.crypto.randomUUID) ?
+                                window.crypto.randomUUID() : ('SR-' + Date.now() + '-' + Math.floor(Math.random() * 100000));
+
+                            var items = [];
+                            for (var ii = 0; ii < cart.length; ii++) {
+                                items.push({
+                                    item_code: cart[ii].item_code,
+                                    qty: Number(cart[ii].qty)
+                                });
+                            }
+
+                            var d = await callIC('REQUEST', {
+                                operation: 'CREATE',
+                                operation_id: operationId,
+                                payload: {
+                                    source_branch_id: source,
+                                    target_branch_id: target,
+                                    items: items,
+                                    notes: byId('ic-r-notes').value || ''
+                                }
+                            });
+
+                            Swal.close();
+                            showToast(d.duplicate ? 'تم استرجاع طلب النقل السابق' : 'تم إنشاء طلب النقل بنجاح', 'success');
+                            state.tab = 'requests';
+                            renderTabButtons();
+                            renderFilters();
+                            await refreshRequests();
+                        } catch (e) {
+                            showToast(e.message || 'فشل إنشاء طلب النقل', 'error');
+                        } finally {
+                            setBusy(false);
+                        }
+                    };
+
+                    try {
+                        await loadSourceSnapshot(byId('ic-r-source').value);
+                        safeHTML(byId('ic-r-results'), renderSearchResults(''));
+                        bindSearchButtons();
+                        repaintCart();
+                    } catch (e2) {
+                        showToast(e2.message || 'فشل تحميل بيانات المخزون', 'error');
+                    }
                 }
             });
-            if (!r.isConfirmed) return;
-            try {
-                setBusy(true, 'جاري إنشاء طلب المخزون...');
-                var operationId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ('SR-' + Date.now());
-                var d = await callIC('REQUEST', {
-                    operation: 'CREATE',
-                    operation_id: operationId,
-                    payload: {
-                        source_branch_id: r.value.source,
-                        target_branch_id: r.value.target,
-                        items: r.value.items,
-                        notes: r.value.notes
-                    }
-                });
-                showToast(d.duplicate ? 'تم استرجاع الطلب السابق' : 'تم إنشاء طلب المخزون', 'success');
-                state.tab = 'requests';
-                renderTabButtons();
-                renderFilters();
-                await refreshRequests();
-            } catch (e) {
-                showToast(e.message || 'فشل إنشاء طلب المخزون', 'error');
-            } finally {
-                setBusy(false);
-            }
+
+            return modal;
         }
 
         var branchRes = await supabase.from('branches')
