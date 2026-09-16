@@ -1,21 +1,21 @@
 # FORENSIC CURRENT MOTHER EXTRACT
 
-FILE_LINES=23315
-FILE_BYTES=1288078
-SHA256=8358f2f1f267f91b27b0745a6a2f4530366dab712272f74d6cad64e8df8d02a1
+FILE_LINES=23819
+FILE_BYTES=1321015
+SHA256=0c787d98387cc9cd6eddeeeca9694d996bc471be90f93e36b6254b0591f6b3e2
 PATTERN var RW_Warehouse: [10950]
-PATTERN loadInventoryControl: [13235, 13812, 21513]
-PATTERN loadReceiving: [10954, 13813, 21539]
-PATTERN loadVouchers: [11123, 11444, 11452, 11574, 11639, 13816, 21540]
-PATTERN loadVoucherForm: [11104, 11679, 13822, 21541, 21542, 21543, 21544]
-PATTERN loadPicking: [11683, 13831, 21530]
-PATTERN loadLoading: [11735, 13834, 21531]
-PATTERN loadDelivery: [11824, 13837, 21532]
-PATTERN loadReturn: [11873, 13840, 21533]
-PATTERN loadUnloading: [11922, 13843, 21538]
-PATTERN loadVehicleCount: [12084, 13846, 21545]
-PATTERN loadBranchCount: [12468, 13847, 21546]
-PATTERN loadGeneralCount: [12499, 13848, 21547]
+PATTERN loadInventoryControl: [13235, 14316, 22017]
+PATTERN loadReceiving: [10954, 14317, 22043]
+PATTERN loadVouchers: [11123, 11444, 11452, 11574, 11639, 14320, 22044]
+PATTERN loadVoucherForm: [11104, 11679, 14326, 22045, 22046, 22047, 22048]
+PATTERN loadPicking: [11683, 14335, 22034]
+PATTERN loadLoading: [11735, 14338, 22035]
+PATTERN loadDelivery: [11824, 14341, 22036]
+PATTERN loadReturn: [11873, 14344, 22037]
+PATTERN loadUnloading: [11922, 14347, 22042]
+PATTERN loadVehicleCount: [12084, 14350, 22049]
+PATTERN loadBranchCount: [12468, 14351, 22050]
+PATTERN loadGeneralCount: [12499, 14352, 22051]
 PATTERN inventory-stock-snapshot: []
 PATTERN inventory_stock_snapshot: []
 PATTERN inventory_movement_report: []
@@ -161,270 +161,270 @@ PATTERN FIXME: []
 13333:                 '</div>'
 13334:             );
 13335: 
---- WINDOW 13782-13912 around 13812 ---
-13782: 
-13783:         var branchRes = await supabase.from('branches')
-13784:             .select('id,branch_code,name')
-13785:             .eq('company_id', companyId)
-13786:             .eq('is_active', true)
-13787:             .order('name');
-13788:         if (branchRes.error) {
-13789:             showToast(branchRes.error.message, 'error');
-13790:             return;
-13791:         }
-13792:         state.branches = branchRes.data || [];
-13793: 
-13794:         renderShell();
-13795:         renderTabButtons();
-13796:         renderFilters();
-13797:         await refreshAll();
-13798: 
-13799:         try {
-13800:             if (window._rwInventoryControlChannel) {
-13801:                 await supabase.removeChannel(window._rwInventoryControlChannel);
-13802:             }
-13803:             var channel = supabase.channel('rw-inventory-control-' + companyId);
-13804:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'stock_branches' }, function() { refreshCurrentTab(); });
-13805:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_log' }, function() { if (state.tab === 'movements') refreshCurrentTab(); else refreshSnapshot(); });
-13806:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_counts' }, function() { if (state.tab === 'counts') refreshCounts(); });
-13807:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_stock_requests' }, function() { if (state.tab === 'requests') refreshRequests(); });
-13808:             window._rwInventoryControlChannel = channel.subscribe();
-13809:         } catch (e) {}
-13810:     }
-13811:     return {
-13812: 			loadInventoryControl: loadInventoryControl,
-13813:             loadReceiving: loadReceiving,
-13814:     _applyReceiving: _applyReceiving,
-13815:     _showReceivingDetails: _showReceivingDetails,
-13816:     loadVouchers: loadVouchers,
-13817:     _applyVouchers: _applyVouchers,
-13818:     _viewVoucherDetails: _viewVoucherDetails,
-13819:     _sendVoucher: _sendVoucher,
-13820:     _receiveVoucher: _receiveVoucher,
-13821:     _openNewVoucherModal: _openNewVoucherModal,
-13822:     loadVoucherForm: loadVoucherForm,
-13823:     _searchVoucherItem: _searchVoucherItem,
-13824:     _addVoucherItem: _addVoucherItem,
-13825:     _renderVoucherCart: _renderVoucherCart,
-13826:     _updateVoucherQty: _updateVoucherQty,
-13827:     _updateVoucherPrice: _updateVoucherPrice,
-13828:     _removeVoucherItem: _removeVoucherItem,
-13829:     _clearVoucherCart: _clearVoucherCart,
-13830:     _saveAndSendVoucher: _saveAndSendVoucher,
-13831:     loadPicking: loadPicking,
-13832:     _applyPicking: _applyPicking,
-13833:     _showPickingDetails: _showPickingDetails,
-13834:     loadLoading: loadLoading,
-13835:     _applyLoading: _applyLoading,
-13836:     _showLoadingDetails: _showLoadingDetails,
-13837:     loadDelivery: loadDelivery,
-13838:     _applyDelivery: _applyDelivery,
-13839:     _showDeliveryDetails: _showDeliveryDetails,
-13840:     loadReturn: loadReturn,
-13841:     _applyReturn: _applyReturn,
-13842:     _showReturnDetails: _showReturnDetails,
-13843:     loadUnloading: loadUnloading,
-13844:     _applyUnloading: _applyUnloading,
-13845:     _showUnloadingDetails: _showUnloadingDetails,
-13846:     loadVehicleCount: loadVehicleCount,
-13847:     loadBranchCount: loadBranchCount,
-13848:     loadGeneralCount: loadGeneralCount,
-13849:     loadSettlement: loadSettlement,
-13850:     _searchDriver: _searchDriver,
-13851:     _selectDriver: _selectDriver,
-13852:     _startBarcodeScanner: _startBarcodeScanner,
-13853:     _searchInvItem: _searchInvItem,
-13854:     _addToInvCart: _addToInvCart,
-13855:     _renderInvCart: _renderInvCart,
-13856:     _updateInvCartQty: _updateInvCartQty,
-13857:     _removeInvCartItem: _removeInvCartItem,
-13858:     _saveVehicleCount: _saveVehicleCount,
-13859:     _saveBranchCount: _saveBranchCount,
-13860:     _saveGeneralCount: _saveGeneralCount,
-13861:     _saveInvCount: _saveInvCount,
-13862:     _onSettlementRsChange: _onSettlementRsChange,
-13863:     _saveSettlement: _saveSettlement,
-13864:     _openPickingModal: _openPickingModal,
-13865:     _openLoadingModal: _openLoadingModal,
-13866:     _openDeliveryModal: _openDeliveryModal,
-13867:     _openReturnModal: _openReturnModal,
-13868:     _startPicking: _changeStatus,
-13869:     _startLoading: _changeStatus,
-13870:     _startDelivery: _changeStatus,
-13871:     _startReturn: _changeStatus,
-13872:     _confirmUnload: _confirmUnload,
-13873:     _changeStatus: _changeStatus
-13874:     };
-13875: })();
-13876: window.RW_Warehouse = RW_Warehouse;
-13877: // ============================================================
-13878: // RW_Finance – الحسابات والمالية (وحدة كاملة - Supabase مباشر)
-13879: // ============================================================
-13880: var RW_Finance = (function() {
-13881:     function _showLoader(m) { try { if (typeof showLoader === 'function') showLoader(m || 'جاري التحميل...'); } catch(e) { console.error(e); } }
-13882:     function _hideLoader() { try { if (typeof hideLoader === 'function') hideLoader(); } catch(e) { console.error(e); } }
-13883:     function _showToast(m, t) { try { if (typeof showToast === 'function') showToast(m, t || 'success'); } catch(e) { alert(m); } }
-13884:     function _fmtNum(n) { return parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-13885:     function _esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-13886: 
-13887:     function _companyId() {
-13888:         var id = null;
-13889:         if (typeof RW_STATE !== 'undefined' && RW_STATE && RW_STATE.app) {
-13890:             id = RW_STATE.app.companyId || null;
-13891:         }
-13892:         if (!id && typeof RW_STATE !== 'undefined' && RW_STATE && RW_STATE.user) {
-13893:             id = RW_STATE.user.companyId || null;
-13894:         }
-13895:         if (!id) throw new Error('سياق الشركة غير محدد');
-13896:         return id;
-13897:     }
-13898:     var _cache = { loaded: false, accountsTree: [], accountsFlat: [], treasury: [] };
-13899: 
-13900:     function _loadAllData(callback) {
-13901:         if (_cache.loaded) { if (callback) callback(); return; }
-13902:         var companyId;
-13903:         try {
-13904:             companyId = _companyId();
-13905:         } catch (e) {
-13906:             _showToast(e.message || 'سياق الشركة غير محدد', 'error');
-13907:             if (callback) callback();
-13908:             return;
-13909:         }
-13910: 
-13911:         _showLoader('جاري تحميل البيانات المالية...');
-13912:         Promise.all([
---- WINDOW 21483-21613 around 21513 ---
-21483:             'receiving':'الاستلام',
-21484:             'picking':'التحضير',
-21485:             'loading':'التحميل',
-21486:             'delivery':'التوصيل',
-21487:             'return':'المرتجعات',
-21488: 			'sales-returns':'إدارة مرتجعات المبيعات',
-21489:             'unloading':'التفريغ',
-21490:             'vouchers':'الأذونات المخزنية',
-21491:             'transfer':'تحويل مخزني',
-21492:             'direct-sale':'صرف سيارة بيع مباشر',
-21493:             'direct-return':'استلام مرتجع سيارة',
-21494:             'supplier-return':'مرتجع لمورد',
-21495:             'vehicle-count':'جرد سيارة',
-21496:             'branch-count':'جرد فرع',
-21497:             'general-count':'جرد عام',
-21498:             'finance':'الإدارة المالية',
-21499:             'reports-dashboard':'لوحة القيادة',
-21500:             'reports-detailed':'التقارير التفصيلية',
-21501:             'reports-comprehensive':'التقارير الشاملة',
-21502:             'audit-log':'سجل التدقيق',
-21503:             'hr':'الموارد البشرية',
-21504:             'crm':'إدارة علاقات العملاء'
-21505:         };
-21506:         safeText(byId('rw-header-title'), titles[view] || view);
-21507: 
-21508:         if (view === 'dashboard') { RW_Dashboard.render(); return; }
-21509:         if (view === 'items') { RW_Items.render(); return; }
-21510:         if (view === 'customers') { RW_Customers.render(); return; }
-21511:         if (view === 'suppliers') { RW_Suppliers.render(); return; }
-21512:         if (view === 'branches') { RW_Branches.render(); return; }
-21513: 		if (view === 'inventory-control') { RW_Warehouse.loadInventoryControl(); return; }
-21514:         if (view === 'settings') { RW_Settings.render(); return; }
-21515:         if (view === 'hr') { RW_HR.render(); return; }
-21516:         if (view === 'crm') { RW_CRM.render(); return; }
-21517:         if (view === 'users') { RW_Users.render(); return; }
-21518:         if (view === 'roles') { RW_Roles.render(); return; }
-21519:         if (view === 'license') { RW_OwnerLicense.render(); return; }
-21520:         if (view === 'telesales') { RW_TeleSales.render(); return; }
-21521:         if (view === 'pos') { RW_POS.render(); return; }
-21522:         if (view === 'orders') { RW_Orders.render(); return; }
-21523: 		if (view === 'quotes') { RW_SalesQuotes.render(); return; }
-21524: 		if (view === 'price-lists') { RW_PriceLists.render(); return; }
-21525: 		if (view === 'promotions') { RW_Promotions.render(); return; }
-21526:         if (view === 'runsheets') { RW_Runsheets.render(); return; }
-21527:         if (view === 'online-store') { RW_OnlineStore.render(); return; }
-21528:         if (view === 'purchases') { RW_Purchases.renderOrders(); return; }
-21529:         if (view === 'purchase-pos') { RW_Purchases.renderPOS(); return; }
-21530:         if (view === 'picking') { RW_Warehouse.loadPicking(); return; }
-21531:         if (view === 'loading') { RW_Warehouse.loadLoading(); return; }
-21532:         if (view === 'delivery') { RW_Warehouse.loadDelivery(); return; }
-21533:         if (view === 'return') { RW_Warehouse.loadReturn(); return; }
-21534: 		if (view === 'sales-returns') { RW_SalesReturnsManagement.render(); return; }
-21535: 		if (view === 'loyalty') { RW_LoyaltyMain.render(); return; }
-21536: 		if (view === 'sales-decision-center') { RW_SalesDecisionCenter.render(); return; }
-21537: 		if (view === 'sales-targets') { RW_SalesTargetsMain.render(); return; }
-21538:         if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
-21539:         if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
-21540:         if (view === 'vouchers') { RW_Warehouse.loadVouchers(); return; }
-21541:         if (view === 'transfer') { RW_Warehouse.loadVoucherForm('Transfer'); return; }
-21542:         if (view === 'direct-sale') { RW_Warehouse.loadVoucherForm('DirectSale'); return; }
-21543:         if (view === 'direct-return') { RW_Warehouse.loadVoucherForm('DirectReturn'); return; }
-21544:         if (view === 'supplier-return') { RW_Warehouse.loadVoucherForm('SupplierReturn'); return; }
-21545:         if (view === 'vehicle-count') { RW_Warehouse.loadVehicleCount(); return; }
-21546:         if (view === 'branch-count') { RW_Warehouse.loadBranchCount(); return; }
-21547:         if (view === 'general-count') { RW_Warehouse.loadGeneralCount(); return; }
-21548:         if (view === 'settlement') { RW_Warehouse.loadSettlement(); return; }
-21549:         if (view === 'finance') { RW_Finance.render(); return; }
-21550:         if (view === 'reports-dashboard') { RW_Reports.renderDashboard(); return; }
-21551:         if (view === 'reports-detailed') { RW_Reports.renderDetailedReports(); return; }
-21552:         if (view === 'reports-comprehensive') { RW_Reports_Comprehensive.render(); return; }
-21553:         if (view === 'audit-log') { RW_Audit_renderTab(); return; }
-21554: 
-21555:         safeHTML(c, '<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">⚠️</div><h2>' + (titles[view] || view) + '</h2><p style="color:#6b7280">التبويب غير معروف</p></div>');
-21556:     }
-21557: };
-21558: window.RW_Views = RW_Views;
-21559: // ============================================================
-21560: // RW_HR – الموارد البشرية (HR) - الوحدة المتقدمة
-21561: // ============================================================
-21562: var RW_HR = (function() {
-21563:     'use strict';
-21564: 
-21565:     var hrData = [];
-21566: 
-21567:     function _esc(s) {
-21568:         return String(s == null ? '' : s)
-21569:             .replace(/&/g, '&amp;')
-21570:             .replace(/</g, '&lt;')
-21571:             .replace(/>/g, '&gt;');
-21572:     }
-21573: 
-21574:     function _escAttr(s) {
-21575:         return _esc(s)
-21576:             .replace(/\"/g, '&quot;')
-21577:             .replace(/'/g, '&#39;');
-21578:     }
-21579: 
-21580:     function _fmtNum(n) {
-21581:         return Number(n || 0).toLocaleString('ar-EG');
-21582:     }
-21583: 
-21584:     function _companyId() {
-21585:         if (typeof _rwCompanyId === 'function') return _rwCompanyId();
-21586:         if (typeof RW_STATE !== 'undefined' && RW_STATE) {
-21587:             if (RW_STATE.app && RW_STATE.app.companyId) return RW_STATE.app.companyId;
-21588:             if (RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id) return RW_STATE.app.company.id;
-21589:             if (RW_STATE.user && RW_STATE.user.companyId) return RW_STATE.user.companyId;
-21590:         }
-21591:         return null;
-21592:     }
-21593: 
-21594:     async function _loadEmployees() {
-21595:         var res = await supabase.rpc('hr_list_employees');
-21596:         if (res.error) throw res.error;
-21597:         hrData = res.data || [];
-21598:         return hrData;
-21599:     }
-21600: 
-21601:     function _employeeCard(emp) {
-21602:         var profileSalary = Number(emp.basic_salary || 0) +
-21603:             Number(emp.housing_allowance || 0) +
-21604:             Number(emp.transport_allowance || 0) +
-21605:             Number(emp.other_allowance || 0) -
-21606:             Number(emp.default_deduction || 0);
-21607:         return '<div class="bg-white rounded-2xl shadow-sm border p-5 hover:shadow-md transition cursor-pointer" data-hr-employee-id="' + _escAttr(emp.id) + '">' +
-21608:             '<div class="flex items-center gap-4 mb-4">' +
-21609:                 '<div class="w-14 h-14 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-xl font-black">' + _esc((emp.name || '?').charAt(0)) + '</div>' +
-21610:                 '<div class="min-w-0"><h3 class="font-black text-base text-gray-800 truncate">' + _esc(emp.name) + '</h3><p class="text-xs text-gray-500 truncate">' + _esc(emp.job_title || emp.role || 'موظف') + '</p></div>' +
-21611:             '</div>' +
-21612:             '<div class="space-y-2 text-sm">' +
-21613:                 '<div class="flex justify-between"><span class="text-gray-500">البريد</span><span class="font-bold text-gray-700">' + _esc(emp.email) + '</span></div>' +
+--- WINDOW 14286-14416 around 14316 ---
+14286: 
+14287:         var branchRes = await supabase.from('branches')
+14288:             .select('id,branch_code,name')
+14289:             .eq('company_id', companyId)
+14290:             .eq('is_active', true)
+14291:             .order('name');
+14292:         if (branchRes.error) {
+14293:             showToast(branchRes.error.message, 'error');
+14294:             return;
+14295:         }
+14296:         state.branches = branchRes.data || [];
+14297: 
+14298:         renderShell();
+14299:         renderTabButtons();
+14300:         renderFilters();
+14301:         await refreshAll();
+14302: 
+14303:         try {
+14304:             if (window._rwInventoryControlChannel) {
+14305:                 await supabase.removeChannel(window._rwInventoryControlChannel);
+14306:             }
+14307:             var channel = supabase.channel('rw-inventory-control-' + companyId);
+14308:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'stock_branches' }, function() { refreshCurrentTab(); });
+14309:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_log' }, function() { if (state.tab === 'movements') refreshCurrentTab(); else refreshSnapshot(); });
+14310:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_counts' }, function() { if (state.tab === 'counts') refreshCounts(); });
+14311:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_stock_requests' }, function() { if (state.tab === 'requests') refreshRequests(); });
+14312:             window._rwInventoryControlChannel = channel.subscribe();
+14313:         } catch (e) {}
+14314:     }
+14315:     return {
+14316: 			loadInventoryControl: loadInventoryControl,
+14317:             loadReceiving: loadReceiving,
+14318:     _applyReceiving: _applyReceiving,
+14319:     _showReceivingDetails: _showReceivingDetails,
+14320:     loadVouchers: loadVouchers,
+14321:     _applyVouchers: _applyVouchers,
+14322:     _viewVoucherDetails: _viewVoucherDetails,
+14323:     _sendVoucher: _sendVoucher,
+14324:     _receiveVoucher: _receiveVoucher,
+14325:     _openNewVoucherModal: _openNewVoucherModal,
+14326:     loadVoucherForm: loadVoucherForm,
+14327:     _searchVoucherItem: _searchVoucherItem,
+14328:     _addVoucherItem: _addVoucherItem,
+14329:     _renderVoucherCart: _renderVoucherCart,
+14330:     _updateVoucherQty: _updateVoucherQty,
+14331:     _updateVoucherPrice: _updateVoucherPrice,
+14332:     _removeVoucherItem: _removeVoucherItem,
+14333:     _clearVoucherCart: _clearVoucherCart,
+14334:     _saveAndSendVoucher: _saveAndSendVoucher,
+14335:     loadPicking: loadPicking,
+14336:     _applyPicking: _applyPicking,
+14337:     _showPickingDetails: _showPickingDetails,
+14338:     loadLoading: loadLoading,
+14339:     _applyLoading: _applyLoading,
+14340:     _showLoadingDetails: _showLoadingDetails,
+14341:     loadDelivery: loadDelivery,
+14342:     _applyDelivery: _applyDelivery,
+14343:     _showDeliveryDetails: _showDeliveryDetails,
+14344:     loadReturn: loadReturn,
+14345:     _applyReturn: _applyReturn,
+14346:     _showReturnDetails: _showReturnDetails,
+14347:     loadUnloading: loadUnloading,
+14348:     _applyUnloading: _applyUnloading,
+14349:     _showUnloadingDetails: _showUnloadingDetails,
+14350:     loadVehicleCount: loadVehicleCount,
+14351:     loadBranchCount: loadBranchCount,
+14352:     loadGeneralCount: loadGeneralCount,
+14353:     loadSettlement: loadSettlement,
+14354:     _searchDriver: _searchDriver,
+14355:     _selectDriver: _selectDriver,
+14356:     _startBarcodeScanner: _startBarcodeScanner,
+14357:     _searchInvItem: _searchInvItem,
+14358:     _addToInvCart: _addToInvCart,
+14359:     _renderInvCart: _renderInvCart,
+14360:     _updateInvCartQty: _updateInvCartQty,
+14361:     _removeInvCartItem: _removeInvCartItem,
+14362:     _saveVehicleCount: _saveVehicleCount,
+14363:     _saveBranchCount: _saveBranchCount,
+14364:     _saveGeneralCount: _saveGeneralCount,
+14365:     _saveInvCount: _saveInvCount,
+14366:     _onSettlementRsChange: _onSettlementRsChange,
+14367:     _saveSettlement: _saveSettlement,
+14368:     _openPickingModal: _openPickingModal,
+14369:     _openLoadingModal: _openLoadingModal,
+14370:     _openDeliveryModal: _openDeliveryModal,
+14371:     _openReturnModal: _openReturnModal,
+14372:     _startPicking: _changeStatus,
+14373:     _startLoading: _changeStatus,
+14374:     _startDelivery: _changeStatus,
+14375:     _startReturn: _changeStatus,
+14376:     _confirmUnload: _confirmUnload,
+14377:     _changeStatus: _changeStatus
+14378:     };
+14379: })();
+14380: window.RW_Warehouse = RW_Warehouse;
+14381: // ============================================================
+14382: // RW_Finance – الحسابات والمالية (وحدة كاملة - Supabase مباشر)
+14383: // ============================================================
+14384: var RW_Finance = (function() {
+14385:     function _showLoader(m) { try { if (typeof showLoader === 'function') showLoader(m || 'جاري التحميل...'); } catch(e) { console.error(e); } }
+14386:     function _hideLoader() { try { if (typeof hideLoader === 'function') hideLoader(); } catch(e) { console.error(e); } }
+14387:     function _showToast(m, t) { try { if (typeof showToast === 'function') showToast(m, t || 'success'); } catch(e) { alert(m); } }
+14388:     function _fmtNum(n) { return parseFloat(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+14389:     function _esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+14390: 
+14391:     function _companyId() {
+14392:         var id = null;
+14393:         if (typeof RW_STATE !== 'undefined' && RW_STATE && RW_STATE.app) {
+14394:             id = RW_STATE.app.companyId || null;
+14395:         }
+14396:         if (!id && typeof RW_STATE !== 'undefined' && RW_STATE && RW_STATE.user) {
+14397:             id = RW_STATE.user.companyId || null;
+14398:         }
+14399:         if (!id) throw new Error('سياق الشركة غير محدد');
+14400:         return id;
+14401:     }
+14402:     var _cache = { loaded: false, accountsTree: [], accountsFlat: [], treasury: [] };
+14403: 
+14404:     function _loadAllData(callback) {
+14405:         if (_cache.loaded) { if (callback) callback(); return; }
+14406:         var companyId;
+14407:         try {
+14408:             companyId = _companyId();
+14409:         } catch (e) {
+14410:             _showToast(e.message || 'سياق الشركة غير محدد', 'error');
+14411:             if (callback) callback();
+14412:             return;
+14413:         }
+14414: 
+14415:         _showLoader('جاري تحميل البيانات المالية...');
+14416:         Promise.all([
+--- WINDOW 21987-22117 around 22017 ---
+21987:             'receiving':'الاستلام',
+21988:             'picking':'التحضير',
+21989:             'loading':'التحميل',
+21990:             'delivery':'التوصيل',
+21991:             'return':'المرتجعات',
+21992: 			'sales-returns':'إدارة مرتجعات المبيعات',
+21993:             'unloading':'التفريغ',
+21994:             'vouchers':'الأذونات المخزنية',
+21995:             'transfer':'تحويل مخزني',
+21996:             'direct-sale':'صرف سيارة بيع مباشر',
+21997:             'direct-return':'استلام مرتجع سيارة',
+21998:             'supplier-return':'مرتجع لمورد',
+21999:             'vehicle-count':'جرد سيارة',
+22000:             'branch-count':'جرد فرع',
+22001:             'general-count':'جرد عام',
+22002:             'finance':'الإدارة المالية',
+22003:             'reports-dashboard':'لوحة القيادة',
+22004:             'reports-detailed':'التقارير التفصيلية',
+22005:             'reports-comprehensive':'التقارير الشاملة',
+22006:             'audit-log':'سجل التدقيق',
+22007:             'hr':'الموارد البشرية',
+22008:             'crm':'إدارة علاقات العملاء'
+22009:         };
+22010:         safeText(byId('rw-header-title'), titles[view] || view);
+22011: 
+22012:         if (view === 'dashboard') { RW_Dashboard.render(); return; }
+22013:         if (view === 'items') { RW_Items.render(); return; }
+22014:         if (view === 'customers') { RW_Customers.render(); return; }
+22015:         if (view === 'suppliers') { RW_Suppliers.render(); return; }
+22016:         if (view === 'branches') { RW_Branches.render(); return; }
+22017: 		if (view === 'inventory-control') { RW_Warehouse.loadInventoryControl(); return; }
+22018:         if (view === 'settings') { RW_Settings.render(); return; }
+22019:         if (view === 'hr') { RW_HR.render(); return; }
+22020:         if (view === 'crm') { RW_CRM.render(); return; }
+22021:         if (view === 'users') { RW_Users.render(); return; }
+22022:         if (view === 'roles') { RW_Roles.render(); return; }
+22023:         if (view === 'license') { RW_OwnerLicense.render(); return; }
+22024:         if (view === 'telesales') { RW_TeleSales.render(); return; }
+22025:         if (view === 'pos') { RW_POS.render(); return; }
+22026:         if (view === 'orders') { RW_Orders.render(); return; }
+22027: 		if (view === 'quotes') { RW_SalesQuotes.render(); return; }
+22028: 		if (view === 'price-lists') { RW_PriceLists.render(); return; }
+22029: 		if (view === 'promotions') { RW_Promotions.render(); return; }
+22030:         if (view === 'runsheets') { RW_Runsheets.render(); return; }
+22031:         if (view === 'online-store') { RW_OnlineStore.render(); return; }
+22032:         if (view === 'purchases') { RW_Purchases.renderOrders(); return; }
+22033:         if (view === 'purchase-pos') { RW_Purchases.renderPOS(); return; }
+22034:         if (view === 'picking') { RW_Warehouse.loadPicking(); return; }
+22035:         if (view === 'loading') { RW_Warehouse.loadLoading(); return; }
+22036:         if (view === 'delivery') { RW_Warehouse.loadDelivery(); return; }
+22037:         if (view === 'return') { RW_Warehouse.loadReturn(); return; }
+22038: 		if (view === 'sales-returns') { RW_SalesReturnsManagement.render(); return; }
+22039: 		if (view === 'loyalty') { RW_LoyaltyMain.render(); return; }
+22040: 		if (view === 'sales-decision-center') { RW_SalesDecisionCenter.render(); return; }
+22041: 		if (view === 'sales-targets') { RW_SalesTargetsMain.render(); return; }
+22042:         if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
+22043:         if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
+22044:         if (view === 'vouchers') { RW_Warehouse.loadVouchers(); return; }
+22045:         if (view === 'transfer') { RW_Warehouse.loadVoucherForm('Transfer'); return; }
+22046:         if (view === 'direct-sale') { RW_Warehouse.loadVoucherForm('DirectSale'); return; }
+22047:         if (view === 'direct-return') { RW_Warehouse.loadVoucherForm('DirectReturn'); return; }
+22048:         if (view === 'supplier-return') { RW_Warehouse.loadVoucherForm('SupplierReturn'); return; }
+22049:         if (view === 'vehicle-count') { RW_Warehouse.loadVehicleCount(); return; }
+22050:         if (view === 'branch-count') { RW_Warehouse.loadBranchCount(); return; }
+22051:         if (view === 'general-count') { RW_Warehouse.loadGeneralCount(); return; }
+22052:         if (view === 'settlement') { RW_Warehouse.loadSettlement(); return; }
+22053:         if (view === 'finance') { RW_Finance.render(); return; }
+22054:         if (view === 'reports-dashboard') { RW_Reports.renderDashboard(); return; }
+22055:         if (view === 'reports-detailed') { RW_Reports.renderDetailedReports(); return; }
+22056:         if (view === 'reports-comprehensive') { RW_Reports_Comprehensive.render(); return; }
+22057:         if (view === 'audit-log') { RW_Audit_renderTab(); return; }
+22058: 
+22059:         safeHTML(c, '<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">⚠️</div><h2>' + (titles[view] || view) + '</h2><p style="color:#6b7280">التبويب غير معروف</p></div>');
+22060:     }
+22061: };
+22062: window.RW_Views = RW_Views;
+22063: // ============================================================
+22064: // RW_HR – الموارد البشرية (HR) - الوحدة المتقدمة
+22065: // ============================================================
+22066: var RW_HR = (function() {
+22067:     'use strict';
+22068: 
+22069:     var hrData = [];
+22070: 
+22071:     function _esc(s) {
+22072:         return String(s == null ? '' : s)
+22073:             .replace(/&/g, '&amp;')
+22074:             .replace(/</g, '&lt;')
+22075:             .replace(/>/g, '&gt;');
+22076:     }
+22077: 
+22078:     function _escAttr(s) {
+22079:         return _esc(s)
+22080:             .replace(/\"/g, '&quot;')
+22081:             .replace(/'/g, '&#39;');
+22082:     }
+22083: 
+22084:     function _fmtNum(n) {
+22085:         return Number(n || 0).toLocaleString('ar-EG');
+22086:     }
+22087: 
+22088:     function _companyId() {
+22089:         if (typeof _rwCompanyId === 'function') return _rwCompanyId();
+22090:         if (typeof RW_STATE !== 'undefined' && RW_STATE) {
+22091:             if (RW_STATE.app && RW_STATE.app.companyId) return RW_STATE.app.companyId;
+22092:             if (RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id) return RW_STATE.app.company.id;
+22093:             if (RW_STATE.user && RW_STATE.user.companyId) return RW_STATE.user.companyId;
+22094:         }
+22095:         return null;
+22096:     }
+22097: 
+22098:     async function _loadEmployees() {
+22099:         var res = await supabase.rpc('hr_list_employees');
+22100:         if (res.error) throw res.error;
+22101:         hrData = res.data || [];
+22102:         return hrData;
+22103:     }
+22104: 
+22105:     function _employeeCard(emp) {
+22106:         var profileSalary = Number(emp.basic_salary || 0) +
+22107:             Number(emp.housing_allowance || 0) +
+22108:             Number(emp.transport_allowance || 0) +
+22109:             Number(emp.other_allowance || 0) -
+22110:             Number(emp.default_deduction || 0);
+22111:         return '<div class="bg-white rounded-2xl shadow-sm border p-5 hover:shadow-md transition cursor-pointer" data-hr-employee-id="' + _escAttr(emp.id) + '">' +
+22112:             '<div class="flex items-center gap-4 mb-4">' +
+22113:                 '<div class="w-14 h-14 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-xl font-black">' + _esc((emp.name || '?').charAt(0)) + '</div>' +
+22114:                 '<div class="min-w-0"><h3 class="font-black text-base text-gray-800 truncate">' + _esc(emp.name) + '</h3><p class="text-xs text-gray-500 truncate">' + _esc(emp.job_title || emp.role || 'موظف') + '</p></div>' +
+22115:             '</div>' +
+22116:             '<div class="space-y-2 text-sm">' +
+22117:                 '<div class="flex justify-between"><span class="text-gray-500">البريد</span><span class="font-bold text-gray-700">' + _esc(emp.email) + '</span></div>' +
 --- WINDOW 8942-9072 around 8972 ---
 8942:       var poRes = await supabase.from('purchase_orders').select('*').eq('company_id', companyId).eq('po_code', poCode).maybeSingle();
 8943:       if (poRes.error || !poRes.data) throw new Error('أمر الشراء غير موجود');
@@ -557,7 +557,7 @@ PATTERN FIXME: []
 9070:     var id = _rwCompanyId();
 9071:     if (!id) throw new Error('سياق الشركة غير محدد');
 9072:     return id;
---- RW_Warehouse_FULL 10950-13875 ---
+--- RW_Warehouse_FULL 10950-14379 ---
 10950: var RW_Warehouse = (function() {
 10951:     function esc(s) { return String(s||'').replace(/[&<>]/g, function(m) { return m==='&'?'&amp;':m==='<'?'&lt;':'&gt;'; }); }
 10952: 
@@ -3244,243 +3244,747 @@ PATTERN FIXME: []
 13633:         }
 13634: 
 13635:         async function createCountSession() {
-13636:             var options = '';
-13637:             for (var i = 0; i < state.branches.length; i++) options += '<option value="' + escIC(state.branches[i].id) + '">' + escIC(state.branches[i].name || state.branches[i].branch_code) + '</option>';
-13638:             var r = await Swal.fire({
-13639:                 title: 'جلسة جرد جديدة',
-13640:                 html: '<select id="ic-count-branch" class="swal2-input">' + options + '</select><input id="ic-count-ref" class="swal2-input" placeholder="مرجع الجرد"><textarea id="ic-count-notes" class="swal2-textarea" placeholder="ملاحظات"></textarea>',
-13641:                 showCancelButton: true,
-13642:                 confirmButtonText: 'إنشاء',
-13643:                 cancelButtonText: 'إلغاء',
-13644:                 preConfirm: function() {
-13645:                     return {
-13646:                         branch: byId('ic-count-branch').value,
-13647:                         ref: byId('ic-count-ref').value || '',
-13648:                         notes: byId('ic-count-notes').value || ''
-13649:                     };
-13650:                 }
-13651:             });
-13652:             if (!r.isConfirmed) return;
-13653:             try {
-13654:                 setBusy(true, 'جاري إنشاء جلسة الجرد...');
-13655:                 var operationId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ('IC-' + Date.now());
-13656:                 var d = await callIC('COUNT', {
-13657:                     operation: 'CREATE',
-13658:                     operation_id: operationId,
-13659:                     payload: { type: 'branch', entity_id: r.value.branch, reference: r.value.ref, notes: r.value.notes }
-13660:                 });
-13661:                 showToast(d.duplicate ? 'تم استرجاع جلسة الجرد السابقة' : 'تم إنشاء جلسة الجرد', 'success');
-13662:                 state.tab = 'counts';
-13663:                 renderTabButtons();
-13664:                 renderFilters();
-13665:                 await refreshCounts();
-13666:             } catch (e) {
-13667:                 showToast(e.message || 'فشل إنشاء جلسة الجرد', 'error');
-13668:             } finally {
-13669:                 setBusy(false);
-13670:             }
-13671:         }
-13672: 
-13673:         async function cancelCount() {
-13674:             var id = this.getAttribute('data-count-id');
-13675:             if (!id) return;
-13676:             try {
-13677:                 setBusy(true, 'جاري إلغاء جلسة الجرد...');
-13678:                 await callIC('COUNT', { operation: 'CANCEL', payload: { request_id: id, count_id: id } });
-13679:                 showToast('تم إلغاء جلسة الجرد', 'success');
-13680:                 await refreshCounts();
-13681:             } catch (e) {
-13682:                 showToast(e.message || 'فشل إلغاء الجرد', 'error');
-13683:             } finally {
-13684:                 setBusy(false);
-13685:             }
-13686:         }
-13687: 
-13688:         async function handleRequestAction() {
-13689:             var id = this.getAttribute('data-req-id');
-13690:             var action = this.getAttribute('data-req-action');
-13691:             if (!id || !action) return;
-13692:             var op = action.toUpperCase();
-13693:             var payload = { request_id: id };
-13694:             if (action === 'reject') {
-13695:                 var r = await Swal.fire({ title: 'رفض الطلب', input: 'textarea', inputLabel: 'سبب الرفض', showCancelButton: true, confirmButtonText: 'رفض', cancelButtonText: 'إلغاء' });
-13696:                 if (!r.isConfirmed) return;
-13697:                 payload.reason = r.value || '';
-13698:             }
-13699:             try {
-13700:                 setBusy(true, 'جاري تحديث طلب المخزون...');
-13701:                 var d = await callIC('REQUEST', { operation: op, operation_id: null, payload: payload });
-13702:                 showToast(d.duplicate ? 'تم استرجاع العملية السابقة' : 'تم تنفيذ العملية', 'success');
-13703:                 await refreshRequests();
-13704:             } catch (e) {
-13705:                 showToast(e.message || 'فشل تحديث طلب المخزون', 'error');
-13706:             } finally {
-13707:                 setBusy(false);
-13708:             }
-13709:         }
-13710: 
-13711:         async function createStockRequest() {
-13712:             if (state.branches.length < 2) {
-13713:                 showToast('يلزم وجود فرعي مصدر ووجهة مختلفين', 'warning');
-13714:                 return;
-13715:             }
-13716:             var sourceOptions = '', targetOptions = '';
-13717:             for (var i = 0; i < state.branches.length; i++) {
-13718:                 var b = state.branches[i];
-13719:                 sourceOptions += '<option value="' + escIC(b.id) + '">' + escIC(b.name || b.branch_code) + '</option>';
-13720:                 targetOptions += '<option value="' + escIC(b.id) + '">' + escIC(b.name || b.branch_code) + '</option>';
-13721:             }
-13722:             var r = await Swal.fire({
-13723:                 title: 'طلب نقل مخزني جديد',
-13724:                 html: '<select id="ic-r-source" class="swal2-input">' + sourceOptions + '</select><select id="ic-r-target" class="swal2-input">' + targetOptions + '</select><textarea id="ic-r-items" class="swal2-textarea" placeholder="صنف في كل سطر: 1001|5"></textarea><textarea id="ic-r-notes" class="swal2-textarea" placeholder="ملاحظات"></textarea>',
-13725:                 showCancelButton: true,
-13726:                 confirmButtonText: 'إنشاء',
-13727:                 cancelButtonText: 'إلغاء',
-13728:                 preConfirm: function() {
-13729:                     var lines = (byId('ic-r-items').value || '').split('\n');
-13730:                     var items = [];
-13731:                     for (var k = 0; k < lines.length; k++) {
-13732:                         var line = lines[k].trim();
-13733:                         if (!line) continue;
-13734:                         var parts = line.split('|');
-13735:                         if (!parts[0] || Number(parts[1]) <= 0) {
-13736:                             Swal.showValidationMessage('صيغة الأصناف: 1001|5');
-13737:                             return false;
-13738:                         }
-13739:                         items.push({ item_code: parts[0].trim(), qty: Number(parts[1]) });
-13740:                     }
-13741:                     if (!items.length) {
-13742:                         Swal.showValidationMessage('أضف صنفًا واحدًا على الأقل');
-13743:                         return false;
+13636:             var branchOptionsHtml = '';
+13637:             for (var i = 0; i < state.branches.length; i++) {
+13638:                 branchOptionsHtml += '<option value="' + escIC(state.branches[i].id) + '">' +
+13639:                     escIC(state.branches[i].name || state.branches[i].branch_code) + '</option>';
+13640:             }
+13641: 
+13642:             var r = await Swal.fire({
+13643:                 title: 'جلسة جرد جديدة',
+13644:                 width: 760,
+13645:                 html:
+13646:                     '<div class="text-right space-y-4">' +
+13647:                         '<div class="rounded-2xl bg-indigo-50 border border-indigo-100 p-4">' +
+13648:                             '<div class="font-black text-indigo-900">ابدأ جردًا فعليًا للفرع</div>' +
+13649:                             '<div class="text-sm text-indigo-700 mt-1">سيتم إنشاء الجلسة ثم تحميل أصناف الفرع تلقائيًا وفتح شاشة العد والمراجعة.</div>' +
+13650:                         '</div>' +
+13651:                         '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">' +
+13652:                             '<div>' +
+13653:                                 '<label class="block text-sm font-black text-slate-700 mb-2">الفرع</label>' +
+13654:                                 '<select id="ic-count-branch" class="swal2-input !w-full !m-0">' + branchOptionsHtml + '</select>' +
+13655:                             '</div>' +
+13656:                             '<div>' +
+13657:                                 '<label class="block text-sm font-black text-slate-700 mb-2">تاريخ الجرد</label>' +
+13658:                                 '<input id="ic-count-date" type="date" class="swal2-input !w-full !m-0" value="' + new Date().toISOString().slice(0, 10) + '">' +
+13659:                             '</div>' +
+13660:                         '</div>' +
+13661:                         '<div>' +
+13662:                             '<label class="block text-sm font-black text-slate-700 mb-2">مرجع الجرد</label>' +
+13663:                             '<input id="ic-count-ref" class="swal2-input !w-full !m-0" placeholder="مثال: جرد نهاية اليوم / جرد دوري / جرد مفاجئ">' +
+13664:                         '</div>' +
+13665:                         '<div>' +
+13666:                             '<label class="block text-sm font-black text-slate-700 mb-2">ملاحظات</label>' +
+13667:                             '<textarea id="ic-count-notes" class="swal2-textarea !w-full !m-0" placeholder="ملاحظات الجرد أو تعليمات فريق العد"></textarea>' +
+13668:                         '</div>' +
+13669:                     '</div>',
+13670:                 showCancelButton: true,
+13671:                 confirmButtonText: 'بدء الجرد',
+13672:                 cancelButtonText: 'إلغاء',
+13673:                 focusConfirm: false,
+13674:                 preConfirm: function() {
+13675:                     var branch = byId('ic-count-branch').value || '';
+13676:                     var countDate = byId('ic-count-date').value || '';
+13677:                     if (!branch) {
+13678:                         Swal.showValidationMessage('اختر الفرع أولًا');
+13679:                         return false;
+13680:                     }
+13681:                     if (!countDate) {
+13682:                         Swal.showValidationMessage('حدد تاريخ الجرد');
+13683:                         return false;
+13684:                     }
+13685:                     return {
+13686:                         branch: branch,
+13687:                         countDate: countDate,
+13688:                         ref: byId('ic-count-ref').value || '',
+13689:                         notes: byId('ic-count-notes').value || ''
+13690:                     };
+13691:                 }
+13692:             });
+13693: 
+13694:             if (!r.isConfirmed) return;
+13695: 
+13696:             try {
+13697:                 setBusy(true, 'جاري إنشاء جلسة الجرد وتجهيز أصناف الفرع...');
+13698: 
+13699:                 var operationId = (window.crypto && window.crypto.randomUUID) ?
+13700:                     window.crypto.randomUUID() : ('IC-' + Date.now() + '-' + Math.floor(Math.random() * 100000));
+13701: 
+13702:                 var created = await callIC('COUNT', {
+13703:                     operation: 'CREATE',
+13704:                     operation_id: operationId,
+13705:                     payload: {
+13706:                         type: 'branch',
+13707:                         entity_id: r.value.branch,
+13708:                         count_date: r.value.countDate,
+13709:                         reference: r.value.ref,
+13710:                         notes: r.value.notes
+13711:                     }
+13712:                 });
+13713: 
+13714:                 var countId = created.count_id;
+13715:                 if (!countId) throw new Error('لم يتم إرجاع رقم جلسة الجرد');
+13716: 
+13717:                 await callIC('COUNT', {
+13718:                     operation: 'POPULATE',
+13719:                     payload: { count_id: countId }
+13720:                 });
+13721: 
+13722:                 state.tab = 'counts';
+13723:                 renderTabButtons();
+13724:                 renderFilters();
+13725:                 await refreshCounts();
+13726: 
+13727:                 async function openCountEditor() {
+13728:                     var loaded = await callIC('COUNT', {
+13729:                         operation: 'GET',
+13730:                         payload: { count_id: countId }
+13731:                     });
+13732: 
+13733:                     var count = loaded.count || {};
+13734:                     var details = loaded.details || [];
+13735:                     var catalog = (RW_STATE && RW_STATE.data && Array.isArray(RW_STATE.data.items)) ? RW_STATE.data.items : [];
+13736: 
+13737:                     function barcodeOf(code) {
+13738:                         for (var bi = 0; bi < catalog.length; bi++) {
+13739:                             if (String(catalog[bi].item_code || '') === String(code || '')) {
+13740:                                 return catalog[bi].barcode || '';
+13741:                             }
+13742:                         }
+13743:                         return '';
 13744:                     }
-13745:                     if (byId('ic-r-source').value === byId('ic-r-target').value) {
-13746:                         Swal.showValidationMessage('المصدر والوجهة يجب أن يكونا مختلفين');
-13747:                         return false;
-13748:                     }
-13749:                     return {
-13750:                         source: byId('ic-r-source').value,
-13751:                         target: byId('ic-r-target').value,
-13752:                         items: items,
-13753:                         notes: byId('ic-r-notes').value || ''
-13754:                     };
-13755:                 }
-13756:             });
-13757:             if (!r.isConfirmed) return;
-13758:             try {
-13759:                 setBusy(true, 'جاري إنشاء طلب المخزون...');
-13760:                 var operationId = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ('SR-' + Date.now());
-13761:                 var d = await callIC('REQUEST', {
-13762:                     operation: 'CREATE',
-13763:                     operation_id: operationId,
-13764:                     payload: {
-13765:                         source_branch_id: r.value.source,
-13766:                         target_branch_id: r.value.target,
-13767:                         items: r.value.items,
-13768:                         notes: r.value.notes
-13769:                     }
-13770:                 });
-13771:                 showToast(d.duplicate ? 'تم استرجاع الطلب السابق' : 'تم إنشاء طلب المخزون', 'success');
-13772:                 state.tab = 'requests';
-13773:                 renderTabButtons();
-13774:                 renderFilters();
-13775:                 await refreshRequests();
-13776:             } catch (e) {
-13777:                 showToast(e.message || 'فشل إنشاء طلب المخزون', 'error');
-13778:             } finally {
-13779:                 setBusy(false);
-13780:             }
-13781:         }
-13782: 
-13783:         var branchRes = await supabase.from('branches')
-13784:             .select('id,branch_code,name')
-13785:             .eq('company_id', companyId)
-13786:             .eq('is_active', true)
-13787:             .order('name');
-13788:         if (branchRes.error) {
-13789:             showToast(branchRes.error.message, 'error');
-13790:             return;
-13791:         }
-13792:         state.branches = branchRes.data || [];
-13793: 
-13794:         renderShell();
-13795:         renderTabButtons();
-13796:         renderFilters();
-13797:         await refreshAll();
-13798: 
-13799:         try {
-13800:             if (window._rwInventoryControlChannel) {
-13801:                 await supabase.removeChannel(window._rwInventoryControlChannel);
-13802:             }
-13803:             var channel = supabase.channel('rw-inventory-control-' + companyId);
-13804:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'stock_branches' }, function() { refreshCurrentTab(); });
-13805:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_log' }, function() { if (state.tab === 'movements') refreshCurrentTab(); else refreshSnapshot(); });
-13806:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_counts' }, function() { if (state.tab === 'counts') refreshCounts(); });
-13807:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_stock_requests' }, function() { if (state.tab === 'requests') refreshRequests(); });
-13808:             window._rwInventoryControlChannel = channel.subscribe();
-13809:         } catch (e) {}
-13810:     }
-13811:     return {
-13812: 			loadInventoryControl: loadInventoryControl,
-13813:             loadReceiving: loadReceiving,
-13814:     _applyReceiving: _applyReceiving,
-13815:     _showReceivingDetails: _showReceivingDetails,
-13816:     loadVouchers: loadVouchers,
-13817:     _applyVouchers: _applyVouchers,
-13818:     _viewVoucherDetails: _viewVoucherDetails,
-13819:     _sendVoucher: _sendVoucher,
-13820:     _receiveVoucher: _receiveVoucher,
-13821:     _openNewVoucherModal: _openNewVoucherModal,
-13822:     loadVoucherForm: loadVoucherForm,
-13823:     _searchVoucherItem: _searchVoucherItem,
-13824:     _addVoucherItem: _addVoucherItem,
-13825:     _renderVoucherCart: _renderVoucherCart,
-13826:     _updateVoucherQty: _updateVoucherQty,
-13827:     _updateVoucherPrice: _updateVoucherPrice,
-13828:     _removeVoucherItem: _removeVoucherItem,
-13829:     _clearVoucherCart: _clearVoucherCart,
-13830:     _saveAndSendVoucher: _saveAndSendVoucher,
-13831:     loadPicking: loadPicking,
-13832:     _applyPicking: _applyPicking,
-13833:     _showPickingDetails: _showPickingDetails,
-13834:     loadLoading: loadLoading,
-13835:     _applyLoading: _applyLoading,
-13836:     _showLoadingDetails: _showLoadingDetails,
-13837:     loadDelivery: loadDelivery,
-13838:     _applyDelivery: _applyDelivery,
-13839:     _showDeliveryDetails: _showDeliveryDetails,
-13840:     loadReturn: loadReturn,
-13841:     _applyReturn: _applyReturn,
-13842:     _showReturnDetails: _showReturnDetails,
-13843:     loadUnloading: loadUnloading,
-13844:     _applyUnloading: _applyUnloading,
-13845:     _showUnloadingDetails: _showUnloadingDetails,
-13846:     loadVehicleCount: loadVehicleCount,
-13847:     loadBranchCount: loadBranchCount,
-13848:     loadGeneralCount: loadGeneralCount,
-13849:     loadSettlement: loadSettlement,
-13850:     _searchDriver: _searchDriver,
-13851:     _selectDriver: _selectDriver,
-13852:     _startBarcodeScanner: _startBarcodeScanner,
-13853:     _searchInvItem: _searchInvItem,
-13854:     _addToInvCart: _addToInvCart,
-13855:     _renderInvCart: _renderInvCart,
-13856:     _updateInvCartQty: _updateInvCartQty,
-13857:     _removeInvCartItem: _removeInvCartItem,
-13858:     _saveVehicleCount: _saveVehicleCount,
-13859:     _saveBranchCount: _saveBranchCount,
-13860:     _saveGeneralCount: _saveGeneralCount,
-13861:     _saveInvCount: _saveInvCount,
-13862:     _onSettlementRsChange: _onSettlementRsChange,
-13863:     _saveSettlement: _saveSettlement,
-13864:     _openPickingModal: _openPickingModal,
-13865:     _openLoadingModal: _openLoadingModal,
-13866:     _openDeliveryModal: _openDeliveryModal,
-13867:     _openReturnModal: _openReturnModal,
-13868:     _startPicking: _changeStatus,
-13869:     _startLoading: _changeStatus,
-13870:     _startDelivery: _changeStatus,
-13871:     _startReturn: _changeStatus,
-13872:     _confirmUnload: _confirmUnload,
-13873:     _changeStatus: _changeStatus
-13874:     };
-13875: })();
+13745: 
+13746:                     function renderCountTable(filter) {
+13747:                         filter = String(filter || '').trim().toLowerCase();
+13748:                         var rows = '';
+13749:                         for (var di = 0; di < details.length; di++) {
+13750:                             var d = details[di];
+13751:                             var barcode = barcodeOf(d.item_code);
+13752:                             var hay = [d.item_code, d.item_name, barcode].join(' ').toLowerCase();
+13753:                             if (filter && hay.indexOf(filter) === -1) continue;
+13754:                             rows +=
+13755:                                 '<tr class="border-b hover:bg-slate-50" data-count-row="' + escIC(d.id) + '">' +
+13756:                                     '<td class="p-2 font-black text-indigo-700">' + escIC(d.item_code) + '</td>' +
+13757:                                     '<td class="p-2 font-semibold">' + escIC(d.item_name) + '</td>' +
+13758:                                     '<td class="p-2 text-center">' + escIC(d.unit || '') + '</td>' +
+13759:                                     '<td class="p-2 text-center font-bold text-slate-700">' + fmtIC(d.system_qty) + '</td>' +
+13760:                                     '<td class="p-2 text-center"><input data-count-input="' + escIC(d.id) + '" type="number" min="0" step="0.001" value="' + (d.counted_qty == null ? '' : escIC(d.counted_qty)) + '" class="w-28 px-2 py-2 border rounded-lg text-center font-black"></td>' +
+13761:                                     '<td class="p-2 text-center font-black" data-count-variance="' + escIC(d.id) + '">' + fmtIC(d.variance_qty) + '</td>' +
+13762:                                     '<td class="p-2"><input data-count-note="' + escIC(d.id) + '" value="' + escIC(d.notes || '') + '" class="w-40 px-2 py-2 border rounded-lg text-sm" placeholder="ملاحظة"></td>' +
+13763:                                 '</tr>';
+13764:                         }
+13765:                         if (!rows) rows = '<tr><td colspan="7" class="p-10 text-center text-slate-500">لا توجد أصناف مطابقة للبحث</td></tr>';
+13766:                         return rows;
+13767:                     }
+13768: 
+13769:                     var editor = await Swal.fire({
+13770:                         title: 'جلسة الجرد — ' + escIC(count.reference || count.count_date || ''),
+13771:                         width: 1220,
+13772:                         showConfirmButton: false,
+13773:                         showCancelButton: false,
+13774:                         html:
+13775:                             '<div id="ic-count-editor" class="text-right">' +
+13776:                                 '<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">' +
+13777:                                     '<div class="rounded-xl bg-slate-50 border p-3"><div class="text-xs text-slate-500">الفرع</div><div class="font-black">' + escIC(count.branch_id || '') + '</div></div>' +
+13778:                                     '<div class="rounded-xl bg-blue-50 border border-blue-100 p-3"><div class="text-xs text-blue-700">إجمالي البنود</div><div id="ic-ce-total" class="font-black text-blue-900">' + fmtIC(details.length) + '</div></div>' +
+13779:                                     '<div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><div class="text-xs text-emerald-700">تم العد</div><div id="ic-ce-counted" class="font-black text-emerald-900">0</div></div>' +
+13780:                                     '<div class="rounded-xl bg-amber-50 border border-amber-100 p-3"><div class="text-xs text-amber-700">عجز/زيادة</div><div id="ic-ce-variance" class="font-black text-amber-900">0</div></div>' +
+13781:                                     '<div class="rounded-xl bg-purple-50 border border-purple-100 p-3"><div class="text-xs text-purple-700">الحالة</div><div id="ic-ce-status" class="font-black text-purple-900">' + escIC(count.status || '') + '</div></div>' +
+13782:                                 '</div>' +
+13783:                                 '<div class="flex flex-wrap gap-2 mb-3">' +
+13784:                                     '<input id="ic-ce-search" class="flex-1 min-w-[240px] px-3 py-2 border rounded-xl" placeholder="ابحث بالكود أو اسم الصنف أو الباركود">' +
+13785:                                     '<button id="ic-ce-refresh" class="px-4 py-2 rounded-xl bg-slate-800 text-white font-bold">تحديث أرصدة النظام</button>' +
+13786:                                     '<button id="ic-ce-save" class="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold">حفظ العد</button>' +
+13787:                                     '<button id="ic-ce-finalize" class="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold">إتمام وتسوية الجرد</button>' +
+13788:                                     '<button id="ic-ce-cancel" class="px-4 py-2 rounded-xl bg-red-50 text-red-700 font-bold">إلغاء الجلسة</button>' +
+13789:                                 '</div>' +
+13790:                                 '<div class="overflow-auto border rounded-2xl max-h-[58vh]">' +
+13791:                                     '<table class="w-full text-sm">' +
+13792:                                         '<thead class="bg-slate-800 text-white sticky top-0"><tr>' +
+13793:                                             '<th class="p-2">الكود</th><th class="p-2">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">رصيد النظام</th><th class="p-2">العد الفعلي</th><th class="p-2">الفرق</th><th class="p-2">ملاحظة</th>' +
+13794:                                         '</tr></thead>' +
+13795:                                         '<tbody id="ic-ce-body">' + renderCountTable('') + '</tbody>' +
+13796:                                     '</table>' +
+13797:                                 '</div>' +
+13798:                             '</div>',
+13799:                         didOpen: function() {
+13800:                             function updateSummary() {
+13801:                                 var counted = 0;
+13802:                                 var variance = 0;
+13803:                                 var inputs = document.querySelectorAll('[data-count-input]');
+13804:                                 for (var si = 0; si < inputs.length; si++) {
+13805:                                     if (inputs[si].value !== '') counted++;
+13806:                                 }
+13807:                                 for (var sj = 0; sj < details.length; sj++) {
+13808:                                     variance += Number(details[sj].variance_qty || 0);
+13809:                                 }
+13810:                                 safeText(byId('ic-ce-counted'), fmtIC(counted));
+13811:                                 safeText(byId('ic-ce-variance'), fmtIC(variance));
+13812:                             }
+13813: 
+13814:                             byId('ic-ce-search').oninput = function() {
+13815:                                 safeHTML(byId('ic-ce-body'), renderCountTable(this.value));
+13816:                             };
+13817: 
+13818:                             byId('ic-ce-refresh').onclick = async function() {
+13819:                                 try {
+13820:                                     showLoader('جاري تحديث أرصدة النظام قبل استكمال الجرد...');
+13821:                                     await callIC('COUNT', { operation: 'REFRESH', payload: { count_id: countId, mode: 'ALL' } });
+13822:                                     var refreshed = await callIC('COUNT', { operation: 'GET', payload: { count_id: countId } });
+13823:                                     count = refreshed.count || count;
+13824:                                     details = refreshed.details || [];
+13825:                                     safeHTML(byId('ic-ce-body'), renderCountTable(byId('ic-ce-search').value));
+13826:                                     updateSummary();
+13827:                                     hideLoader();
+13828:                                     showToast('تم تحديث أرصدة النظام للجلسة', 'success');
+13829:                                 } catch (e) {
+13830:                                     hideLoader();
+13831:                                     showToast(e.message || 'فشل تحديث أرصدة النظام', 'error');
+13832:                                 }
+13833:                             };
+13834: 
+13835:                             byId('ic-ce-save').onclick = async function() {
+13836:                                 try {
+13837:                                     showLoader('جاري حفظ كميات الجرد...');
+13838:                                     var inputs = document.querySelectorAll('[data-count-input]');
+13839:                                     for (var si = 0; si < inputs.length; si++) {
+13840:                                         var dId = inputs[si].getAttribute('data-count-input');
+13841:                                         var value = inputs[si].value;
+13842:                                         if (value === '') continue;
+13843:                                         var noteEl = document.querySelector('[data-count-note="' + dId + '"]');
+13844:                                         var detail = null;
+13845:                                         for (var di2 = 0; di2 < details.length; di2++) {
+13846:                                             if (String(details[di2].id) === String(dId)) { detail = details[di2]; break; }
+13847:                                         }
+13848:                                         if (!detail) continue;
+13849:                                         var countedQty = Number(value);
+13850:                                         if (!Number.isFinite(countedQty) || countedQty < 0) throw new Error('كمية جرد غير صالحة للصنف ' + detail.item_code);
+13851:                                         await callIC('COUNT', {
+13852:                                             operation: 'UPSERT_LINE',
+13853:                                             payload: {
+13854:                                                 count_id: countId,
+13855:                                                 branch_id: detail.branch_id,
+13856:                                                 item_code: detail.item_code,
+13857:                                                 counted_qty: countedQty,
+13858:                                                 notes: noteEl ? (noteEl.value || '') : (detail.notes || '')
+13859:                                             }
+13860:                                         });
+13861:                                     }
+13862:                                     var reloaded = await callIC('COUNT', { operation: 'GET', payload: { count_id: countId } });
+13863:                                     count = reloaded.count || count;
+13864:                                     details = reloaded.details || [];
+13865:                                     safeHTML(byId('ic-ce-body'), renderCountTable(byId('ic-ce-search').value));
+13866:                                     updateSummary();
+13867:                                     safeText(byId('ic-ce-status'), count.status || 'InProgress');
+13868:                                     hideLoader();
+13869:                                     showToast('تم حفظ كميات الجرد', 'success');
+13870:                                 } catch (e) {
+13871:                                     hideLoader();
+13872:                                     showToast(e.message || 'فشل حفظ الجرد', 'error');
+13873:                                 }
+13874:                             };
+13875: 
+13876:                             byId('ic-ce-finalize').onclick = async function() {
+13877:                                 var confirm = await Swal.fire({
+13878:                                     title: 'إتمام وتسوية الجرد؟',
+13879:                                     text: 'سيتم اعتماد الفروق وتنفيذ حركات التسوية الرسمية عبر محرك المخزون المركزي.',
+13880:                                     icon: 'warning',
+13881:                                     showCancelButton: true,
+13882:                                     confirmButtonText: 'إتمام الجرد',
+13883:                                     cancelButtonText: 'إلغاء'
+13884:                                 });
+13885:                                 if (!confirm.isConfirmed) return;
+13886:                                 try {
+13887:                                     showLoader('جاري إتمام الجرد وتنفيذ التسويات...');
+13888:                                     await callIC('COUNT', { operation: 'FINALIZE', payload: { count_id: countId } });
+13889:                                     hideLoader();
+13890:                                     showToast('تم إتمام الجرد وتسوية الفروق بنجاح', 'success');
+13891:                                     Swal.close();
+13892:                                     await refreshCounts();
+13893:                                     await refreshCurrentTab();
+13894:                                 } catch (e) {
+13895:                                     hideLoader();
+13896:                                     showToast(e.message || 'فشل إتمام الجرد', 'error');
+13897:                                 }
+13898:                             };
+13899: 
+13900:                             byId('ic-ce-cancel').onclick = async function() {
+13901:                                 var confirm = await Swal.fire({
+13902:                                     title: 'إلغاء جلسة الجرد؟',
+13903:                                     text: 'لن يتم تنفيذ أي تسوية مخزنية.',
+13904:                                     showCancelButton: true,
+13905:                                     confirmButtonText: 'إلغاء الجلسة',
+13906:                                     cancelButtonText: 'متابعة'
+13907:                                 });
+13908:                                 if (!confirm.isConfirmed) return;
+13909:                                 try {
+13910:                                     await callIC('COUNT', { operation: 'CANCEL', payload: { count_id: countId } });
+13911:                                     showToast('تم إلغاء جلسة الجرد', 'success');
+13912:                                     Swal.close();
+13913:                                     await refreshCounts();
+13914:                                 } catch (e) {
+13915:                                     showToast(e.message || 'فشل إلغاء الجلسة', 'error');
+13916:                                 }
+13917:                             };
+13918: 
+13919:                             updateSummary();
+13920:                         }
+13921:                     });
+13922: 
+13923:                     return editor;
+13924:                 }
+13925: 
+13926:                 await openCountEditor();
+13927:             } catch (e) {
+13928:                 showToast(e.message || 'فشل بدء جلسة الجرد', 'error');
+13929:             } finally {
+13930:                 setBusy(false);
+13931:             }
+13932:         }
+13933: 
+13934:         async function cancelCount() {
+13935:             var id = this.getAttribute('data-count-id');
+13936:             if (!id) return;
+13937:             try {
+13938:                 setBusy(true, 'جاري إلغاء جلسة الجرد...');
+13939:                 await callIC('COUNT', { operation: 'CANCEL', payload: { request_id: id, count_id: id } });
+13940:                 showToast('تم إلغاء جلسة الجرد', 'success');
+13941:                 await refreshCounts();
+13942:             } catch (e) {
+13943:                 showToast(e.message || 'فشل إلغاء الجرد', 'error');
+13944:             } finally {
+13945:                 setBusy(false);
+13946:             }
+13947:         }
+13948: 
+13949:         async function handleRequestAction() {
+13950:             var id = this.getAttribute('data-req-id');
+13951:             var action = this.getAttribute('data-req-action');
+13952:             if (!id || !action) return;
+13953:             var op = action.toUpperCase();
+13954:             var payload = { request_id: id };
+13955:             if (action === 'reject') {
+13956:                 var r = await Swal.fire({ title: 'رفض الطلب', input: 'textarea', inputLabel: 'سبب الرفض', showCancelButton: true, confirmButtonText: 'رفض', cancelButtonText: 'إلغاء' });
+13957:                 if (!r.isConfirmed) return;
+13958:                 payload.reason = r.value || '';
+13959:             }
+13960:             try {
+13961:                 setBusy(true, 'جاري تحديث طلب المخزون...');
+13962:                 var d = await callIC('REQUEST', { operation: op, operation_id: null, payload: payload });
+13963:                 showToast(d.duplicate ? 'تم استرجاع العملية السابقة' : 'تم تنفيذ العملية', 'success');
+13964:                 await refreshRequests();
+13965:             } catch (e) {
+13966:                 showToast(e.message || 'فشل تحديث طلب المخزون', 'error');
+13967:             } finally {
+13968:                 setBusy(false);
+13969:             }
+13970:         }
+13971: 
+13972:         async function createStockRequest() {
+13973:             if (state.branches.length < 2) {
+13974:                 showToast('يلزم وجود فرعي مصدر ووجهة مختلفين لإنشاء طلب نقل', 'warning');
+13975:                 return;
+13976:             }
+13977: 
+13978:             var sourceOptions = '';
+13979:             var targetOptions = '';
+13980:             for (var i = 0; i < state.branches.length; i++) {
+13981:                 var branch = state.branches[i];
+13982:                 sourceOptions += '<option value="' + escIC(branch.id) + '">' + escIC(branch.name || branch.branch_code) + '</option>';
+13983:                 targetOptions += '<option value="' + escIC(branch.id) + '">' + escIC(branch.name || branch.branch_code) + '</option>';
+13984:             }
+13985: 
+13986:             var sourceRows = [];
+13987:             var cart = [];
+13988: 
+13989:             function findSourceRow(code) {
+13990:                 for (var ri = 0; ri < sourceRows.length; ri++) {
+13991:                     if (String(sourceRows[ri].item_code || '') === String(code || '')) return sourceRows[ri];
+13992:                 }
+13993:                 return null;
+13994:             }
+13995: 
+13996:             function cartIndex(code) {
+13997:                 for (var ci = 0; ci < cart.length; ci++) {
+13998:                     if (String(cart[ci].item_code || '') === String(code || '')) return ci;
+13999:                 }
+14000:                 return -1;
+14001:             }
+14002: 
+14003:             function renderSearchResults(query) {
+14004:                 query = String(query || '').trim().toLowerCase();
+14005:                 var html = '';
+14006:                 var shown = 0;
+14007:                 for (var i2 = 0; i2 < sourceRows.length; i2++) {
+14008:                     var x = sourceRows[i2];
+14009:                     var hay = [x.item_code, x.item_name, x.barcode || ''].join(' ').toLowerCase();
+14010:                     if (query && hay.indexOf(query) === -1) continue;
+14011:                     if (cartIndex(x.item_code) !== -1) continue;
+14012:                     html +=
+14013:                         '<button type="button" data-ic-add-item="' + escIC(x.item_code) + '" class="w-full text-right p-3 rounded-xl border hover:bg-indigo-50 hover:border-indigo-200 mb-2 bg-white">' +
+14014:                             '<div class="flex items-center justify-between gap-3">' +
+14015:                                 '<div>' +
+14016:                                     '<div class="font-black text-slate-800">' + escIC(x.item_name || x.item_code) + '</div>' +
+14017:                                     '<div class="text-xs text-slate-500 mt-1">' + escIC(x.item_code) + (x.barcode ? ' • ' + escIC(x.barcode) : '') + '</div>' +
+14018:                                 '</div>' +
+14019:                                 '<div class="text-left">' +
+14020:                                     '<div class="text-xs text-slate-500">المتاح</div>' +
+14021:                                     '<div class="font-black ' + (Number(x.available_qty || 0) > 0 ? 'text-emerald-700' : 'text-red-600') + '">' + fmtIC(x.available_qty) + '</div>' +
+14022:                                 '</div>' +
+14023:                             '</div>' +
+14024:                         '</button>';
+14025:                     shown++;
+14026:                     if (shown >= 25) break;
+14027:                 }
+14028:                 if (!html) html = '<div class="p-6 text-center text-slate-500">لا توجد أصناف مطابقة أو تم إضافتها بالفعل</div>';
+14029:                 return html;
+14030:             }
+14031: 
+14032:             function renderCart() {
+14033:                 var html = '';
+14034:                 var totalQty = 0;
+14035:                 var totalValue = 0;
+14036:                 for (var ci = 0; ci < cart.length; ci++) {
+14037:                     var x = cart[ci];
+14038:                     var before = Number(x.available_qty || 0);
+14039:                     var after = before - Number(x.qty || 0);
+14040:                     var qty = Number(x.qty || 0);
+14041:                     totalQty += qty;
+14042:                     totalValue += qty * Number(x.cost_price || 0);
+14043:                     html +=
+14044:                         '<tr class="border-b">' +
+14045:                             '<td class="p-2 font-black text-indigo-700">' + escIC(x.item_code) + '</td>' +
+14046:                             '<td class="p-2 font-semibold">' + escIC(x.item_name) + '</td>' +
+14047:                             '<td class="p-2 text-center">' + escIC(x.unit || '') + '</td>' +
+14048:                             '<td class="p-2 text-center font-bold text-slate-700">' + fmtIC(before) + '</td>' +
+14049:                             '<td class="p-2 text-center"><input data-ic-req-qty="' + escIC(x.item_code) + '" type="number" min="0.001" step="0.001" value="' + escIC(qty) + '" class="w-24 px-2 py-2 border rounded-lg text-center font-black"></td>' +
+14050:                             '<td class="p-2 text-center font-black ' + (after < 0 ? 'text-red-600' : 'text-emerald-700') + '">' + fmtIC(after) + '</td>' +
+14051:                             '<td class="p-2 text-center">' + fmtIC(Number(x.cost_price || 0)) + '</td>' +
+14052:                             '<td class="p-2 text-center font-black">' + fmtIC(qty * Number(x.cost_price || 0)) + '</td>' +
+14053:                             '<td class="p-2"><button type="button" data-ic-remove-item="' + escIC(x.item_code) + '" class="px-3 py-1 rounded-lg bg-red-50 text-red-700 font-bold">حذف</button></td>' +
+14054:                         '</tr>';
+14055:                 }
+14056:                 if (!html) html = '<tr><td colspan="10" class="p-10 text-center text-slate-500">لم تتم إضافة أصناف بعد</td></tr>';
+14057:                 return { html: html, totalQty: totalQty, totalValue: totalValue };
+14058:             }
+14059: 
+14060:             async function loadSourceSnapshot(branchId) {
+14061:                 var d = await callIC('SNAPSHOT', {
+14062:                     branch_id: branchId,
+14063:                     query: null,
+14064:                     low_only: false,
+14065:                     limit: 500,
+14066:                     offset: 0
+14067:                 });
+14068:                 sourceRows = d.rows || [];
+14069:             }
+14070: 
+14071:             var modal = await Swal.fire({
+14072:                 title: 'طلب نقل مخزني جديد',
+14073:                 width: 1280,
+14074:                 showConfirmButton: false,
+14075:                 showCancelButton: false,
+14076:                 html:
+14077:                     '<div id="ic-request-editor" class="text-right">' +
+14078:                         '<div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">' +
+14079:                             '<div>' +
+14080:                                 '<label class="block text-sm font-black text-slate-700 mb-2">من المخزن</label>' +
+14081:                                 '<select id="ic-r-source" class="!w-full !m-0 swal2-input">' + sourceOptions + '</select>' +
+14082:                             '</div>' +
+14083:                             '<div>' +
+14084:                                 '<label class="block text-sm font-black text-slate-700 mb-2">إلى المخزن</label>' +
+14085:                                 '<select id="ic-r-target" class="!w-full !m-0 swal2-input">' + targetOptions + '</select>' +
+14086:                             '</div>' +
+14087:                             '<div class="rounded-xl bg-blue-50 border border-blue-100 p-3"><div class="text-xs text-blue-700">عدد البنود</div><div id="ic-r-total-lines" class="text-xl font-black text-blue-900">0</div></div>' +
+14088:                             '<div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><div class="text-xs text-emerald-700">إجمالي الكمية</div><div id="ic-r-total-qty" class="text-xl font-black text-emerald-900">0</div></div>' +
+14089:                         '</div>' +
+14090:                         '<div class="grid grid-cols-1 lg:grid-cols-5 gap-4">' +
+14091:                             '<div class="lg:col-span-2 rounded-2xl bg-slate-50 border p-3">' +
+14092:                                 '<div class="font-black text-slate-800 mb-2">إضافة صنف</div>' +
+14093:                                 '<input id="ic-r-search" class="w-full px-3 py-2 border rounded-xl bg-white" placeholder="ابحث بالكود أو الاسم أو الباركود">' +
+14094:                                 '<div id="ic-r-results" class="mt-3 max-h-[48vh] overflow-auto"></div>' +
+14095:                             '</div>' +
+14096:                             '<div class="lg:col-span-3 rounded-2xl bg-white border">' +
+14097:                                 '<div class="flex items-center justify-between p-3 border-b">' +
+14098:                                     '<div class="font-black text-slate-800">بنود الطلب</div>' +
+14099:                                     '<div class="text-xs text-slate-500">Available After = Available Before − Requested Qty</div>' +
+14100:                                 '</div>' +
+14101:                                 '<div class="overflow-auto max-h-[48vh]">' +
+14102:                                     '<table class="w-full text-sm">' +
+14103:                                         '<thead class="bg-slate-800 text-white sticky top-0"><tr>' +
+14104:                                             '<th class="p-2">الكود</th><th class="p-2">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">المتاح قبل</th><th class="p-2">الطلب</th><th class="p-2">المتاح بعد</th><th class="p-2">التكلفة</th><th class="p-2">الإجمالي</th><th class="p-2">إجراء</th>' +
+14105:                                         '</tr></thead>' +
+14106:                                         '<tbody id="ic-r-cart"></tbody>' +
+14107:                                     '</table>' +
+14108:                                 '</div>' +
+14109:                             '</div>' +
+14110:                         '</div>' +
+14111:                         '<div class="mt-4">' +
+14112:                             '<textarea id="ic-r-notes" class="w-full px-3 py-2 border rounded-xl" rows="3" placeholder="ملاحظات الطلب / سبب النقل"></textarea>' +
+14113:                         '</div>' +
+14114:                         '<div class="flex flex-wrap justify-end gap-2 mt-4">' +
+14115:                             '<button id="ic-r-close" type="button" class="px-5 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold">إغلاق</button>' +
+14116:                             '<button id="ic-r-submit" type="button" class="px-5 py-2 rounded-xl bg-indigo-600 text-white font-black">إنشاء طلب النقل</button>' +
+14117:                         '</div>' +
+14118:                     '</div>',
+14119:                 didOpen: async function() {
+14120:                     function repaintCart() {
+14121:                         var p = renderCart();
+14122:                         safeHTML(byId('ic-r-cart'), p.html);
+14123:                         safeText(byId('ic-r-total-lines'), fmtIC(cart.length));
+14124:                         safeText(byId('ic-r-total-qty'), fmtIC(p.totalQty));
+14125: 
+14126:                         var qtyInputs = document.querySelectorAll('[data-ic-req-qty]');
+14127:                         for (var qi = 0; qi < qtyInputs.length; qi++) {
+14128:                             qtyInputs[qi].oninput = function() {
+14129:                                 var code = this.getAttribute('data-ic-req-qty');
+14130:                                 var idx = cartIndex(code);
+14131:                                 if (idx === -1) return;
+14132:                                 var value = Number(this.value);
+14133:                                 cart[idx].qty = Number.isFinite(value) && value > 0 ? value : 0.001;
+14134:                                 repaintCart();
+14135:                             };
+14136:                         }
+14137: 
+14138:                         var removeButtons = document.querySelectorAll('[data-ic-remove-item]');
+14139:                         for (var rb = 0; rb < removeButtons.length; rb++) {
+14140:                             removeButtons[rb].onclick = function() {
+14141:                                 var code = this.getAttribute('data-ic-remove-item');
+14142:                                 var idx = cartIndex(code);
+14143:                                 if (idx !== -1) cart.splice(idx, 1);
+14144:                                 repaintCart();
+14145:                                 safeHTML(byId('ic-r-results'), renderSearchResults(byId('ic-r-search').value));
+14146:                                 bindSearchButtons();
+14147:                             };
+14148:                         }
+14149:                     }
+14150: 
+14151:                     function bindSearchButtons() {
+14152:                         var addButtons = document.querySelectorAll('[data-ic-add-item]');
+14153:                         for (var ab = 0; ab < addButtons.length; ab++) {
+14154:                             addButtons[ab].onclick = function() {
+14155:                                 var code = this.getAttribute('data-ic-add-item');
+14156:                                 var row = findSourceRow(code);
+14157:                                 if (!row) return;
+14158:                                 if (cartIndex(code) !== -1) return;
+14159:                                 cart.push({
+14160:                                     item_code: row.item_code,
+14161:                                     item_name: row.item_name,
+14162:                                     unit: row.unit,
+14163:                                     available_qty: Number(row.available_qty || 0),
+14164:                                     qty: 1,
+14165:                                     cost_price: Number(row.cost_price || row.avg_cost || 0)
+14166:                                 });
+14167:                                 repaintCart();
+14168:                                 safeHTML(byId('ic-r-results'), renderSearchResults(byId('ic-r-search').value));
+14169:                                 bindSearchButtons();
+14170:                             };
+14171:                         }
+14172:                     }
+14173: 
+14174:                     byId('ic-r-source').onchange = async function() {
+14175:                         var target = byId('ic-r-target').value || '';
+14176:                         if (target === this.value) {
+14177:                             for (var ti = 0; ti < state.branches.length; ti++) {
+14178:                                 if (String(state.branches[ti].id) !== String(this.value)) {
+14179:                                     target = state.branches[ti].id;
+14180:                                     break;
+14181:                                 }
+14182:                             }
+14183:                             byId('ic-r-target').value = target;
+14184:                         }
+14185:                         cart = [];
+14186:                         try {
+14187:                             showLoader('جاري تحميل رصيد الفرع المصدر...');
+14188:                             await loadSourceSnapshot(this.value);
+14189:                             safeHTML(byId('ic-r-results'), renderSearchResults(byId('ic-r-search').value));
+14190:                             bindSearchButtons();
+14191:                             repaintCart();
+14192:                             hideLoader();
+14193:                         } catch (e) {
+14194:                             hideLoader();
+14195:                             showToast(e.message || 'فشل تحميل رصيد الفرع', 'error');
+14196:                         }
+14197:                     };
+14198: 
+14199:                     byId('ic-r-target').onchange = function() {
+14200:                         if (this.value === byId('ic-r-source').value) {
+14201:                             showToast('المصدر والوجهة يجب أن يكونا مختلفين', 'warning');
+14202:                             for (var ti2 = 0; ti2 < state.branches.length; ti2++) {
+14203:                                 if (String(state.branches[ti2].id) !== String(byId('ic-r-source').value)) {
+14204:                                     this.value = state.branches[ti2].id;
+14205:                                     break;
+14206:                                 }
+14207:                             }
+14208:                         }
+14209:                     };
+14210: 
+14211:                     byId('ic-r-search').oninput = function() {
+14212:                         safeHTML(byId('ic-r-results'), renderSearchResults(this.value));
+14213:                         bindSearchButtons();
+14214:                     };
+14215: 
+14216:                     byId('ic-r-close').onclick = function() { Swal.close(); };
+14217: 
+14218:                     byId('ic-r-submit').onclick = async function() {
+14219:                         var source = byId('ic-r-source').value || '';
+14220:                         var target = byId('ic-r-target').value || '';
+14221:                         if (!source || !target || source === target) {
+14222:                             showToast('اختر مصدرًا ووجهة مختلفين', 'warning');
+14223:                             return;
+14224:                         }
+14225:                         if (!cart.length) {
+14226:                             showToast('أضف صنفًا واحدًا على الأقل إلى الطلب', 'warning');
+14227:                             return;
+14228:                         }
+14229:                         for (var vi = 0; vi < cart.length; vi++) {
+14230:                             if (!Number.isFinite(Number(cart[vi].qty)) || Number(cart[vi].qty) <= 0) {
+14231:                                 showToast('كمية غير صالحة للصنف ' + cart[vi].item_code, 'error');
+14232:                                 return;
+14233:                             }
+14234:                         }
+14235: 
+14236:                         try {
+14237:                             setBusy(true, 'جاري إنشاء طلب النقل وربطه بدورة المخزون...');
+14238:                             var operationId = (window.crypto && window.crypto.randomUUID) ?
+14239:                                 window.crypto.randomUUID() : ('SR-' + Date.now() + '-' + Math.floor(Math.random() * 100000));
+14240: 
+14241:                             var items = [];
+14242:                             for (var ii = 0; ii < cart.length; ii++) {
+14243:                                 items.push({
+14244:                                     item_code: cart[ii].item_code,
+14245:                                     qty: Number(cart[ii].qty)
+14246:                                 });
+14247:                             }
+14248: 
+14249:                             var d = await callIC('REQUEST', {
+14250:                                 operation: 'CREATE',
+14251:                                 operation_id: operationId,
+14252:                                 payload: {
+14253:                                     source_branch_id: source,
+14254:                                     target_branch_id: target,
+14255:                                     items: items,
+14256:                                     notes: byId('ic-r-notes').value || ''
+14257:                                 }
+14258:                             });
+14259: 
+14260:                             Swal.close();
+14261:                             showToast(d.duplicate ? 'تم استرجاع طلب النقل السابق' : 'تم إنشاء طلب النقل بنجاح', 'success');
+14262:                             state.tab = 'requests';
+14263:                             renderTabButtons();
+14264:                             renderFilters();
+14265:                             await refreshRequests();
+14266:                         } catch (e) {
+14267:                             showToast(e.message || 'فشل إنشاء طلب النقل', 'error');
+14268:                         } finally {
+14269:                             setBusy(false);
+14270:                         }
+14271:                     };
+14272: 
+14273:                     try {
+14274:                         await loadSourceSnapshot(byId('ic-r-source').value);
+14275:                         safeHTML(byId('ic-r-results'), renderSearchResults(''));
+14276:                         bindSearchButtons();
+14277:                         repaintCart();
+14278:                     } catch (e2) {
+14279:                         showToast(e2.message || 'فشل تحميل بيانات المخزون', 'error');
+14280:                     }
+14281:                 }
+14282:             });
+14283: 
+14284:             return modal;
+14285:         }
+14286: 
+14287:         var branchRes = await supabase.from('branches')
+14288:             .select('id,branch_code,name')
+14289:             .eq('company_id', companyId)
+14290:             .eq('is_active', true)
+14291:             .order('name');
+14292:         if (branchRes.error) {
+14293:             showToast(branchRes.error.message, 'error');
+14294:             return;
+14295:         }
+14296:         state.branches = branchRes.data || [];
+14297: 
+14298:         renderShell();
+14299:         renderTabButtons();
+14300:         renderFilters();
+14301:         await refreshAll();
+14302: 
+14303:         try {
+14304:             if (window._rwInventoryControlChannel) {
+14305:                 await supabase.removeChannel(window._rwInventoryControlChannel);
+14306:             }
+14307:             var channel = supabase.channel('rw-inventory-control-' + companyId);
+14308:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'stock_branches' }, function() { refreshCurrentTab(); });
+14309:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_log' }, function() { if (state.tab === 'movements') refreshCurrentTab(); else refreshSnapshot(); });
+14310:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_counts' }, function() { if (state.tab === 'counts') refreshCounts(); });
+14311:             channel.on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_stock_requests' }, function() { if (state.tab === 'requests') refreshRequests(); });
+14312:             window._rwInventoryControlChannel = channel.subscribe();
+14313:         } catch (e) {}
+14314:     }
+14315:     return {
+14316: 			loadInventoryControl: loadInventoryControl,
+14317:             loadReceiving: loadReceiving,
+14318:     _applyReceiving: _applyReceiving,
+14319:     _showReceivingDetails: _showReceivingDetails,
+14320:     loadVouchers: loadVouchers,
+14321:     _applyVouchers: _applyVouchers,
+14322:     _viewVoucherDetails: _viewVoucherDetails,
+14323:     _sendVoucher: _sendVoucher,
+14324:     _receiveVoucher: _receiveVoucher,
+14325:     _openNewVoucherModal: _openNewVoucherModal,
+14326:     loadVoucherForm: loadVoucherForm,
+14327:     _searchVoucherItem: _searchVoucherItem,
+14328:     _addVoucherItem: _addVoucherItem,
+14329:     _renderVoucherCart: _renderVoucherCart,
+14330:     _updateVoucherQty: _updateVoucherQty,
+14331:     _updateVoucherPrice: _updateVoucherPrice,
+14332:     _removeVoucherItem: _removeVoucherItem,
+14333:     _clearVoucherCart: _clearVoucherCart,
+14334:     _saveAndSendVoucher: _saveAndSendVoucher,
+14335:     loadPicking: loadPicking,
+14336:     _applyPicking: _applyPicking,
+14337:     _showPickingDetails: _showPickingDetails,
+14338:     loadLoading: loadLoading,
+14339:     _applyLoading: _applyLoading,
+14340:     _showLoadingDetails: _showLoadingDetails,
+14341:     loadDelivery: loadDelivery,
+14342:     _applyDelivery: _applyDelivery,
+14343:     _showDeliveryDetails: _showDeliveryDetails,
+14344:     loadReturn: loadReturn,
+14345:     _applyReturn: _applyReturn,
+14346:     _showReturnDetails: _showReturnDetails,
+14347:     loadUnloading: loadUnloading,
+14348:     _applyUnloading: _applyUnloading,
+14349:     _showUnloadingDetails: _showUnloadingDetails,
+14350:     loadVehicleCount: loadVehicleCount,
+14351:     loadBranchCount: loadBranchCount,
+14352:     loadGeneralCount: loadGeneralCount,
+14353:     loadSettlement: loadSettlement,
+14354:     _searchDriver: _searchDriver,
+14355:     _selectDriver: _selectDriver,
+14356:     _startBarcodeScanner: _startBarcodeScanner,
+14357:     _searchInvItem: _searchInvItem,
+14358:     _addToInvCart: _addToInvCart,
+14359:     _renderInvCart: _renderInvCart,
+14360:     _updateInvCartQty: _updateInvCartQty,
+14361:     _removeInvCartItem: _removeInvCartItem,
+14362:     _saveVehicleCount: _saveVehicleCount,
+14363:     _saveBranchCount: _saveBranchCount,
+14364:     _saveGeneralCount: _saveGeneralCount,
+14365:     _saveInvCount: _saveInvCount,
+14366:     _onSettlementRsChange: _onSettlementRsChange,
+14367:     _saveSettlement: _saveSettlement,
+14368:     _openPickingModal: _openPickingModal,
+14369:     _openLoadingModal: _openLoadingModal,
+14370:     _openDeliveryModal: _openDeliveryModal,
+14371:     _openReturnModal: _openReturnModal,
+14372:     _startPicking: _changeStatus,
+14373:     _startLoading: _changeStatus,
+14374:     _startDelivery: _changeStatus,
+14375:     _startReturn: _changeStatus,
+14376:     _confirmUnload: _confirmUnload,
+14377:     _changeStatus: _changeStatus
+14378:     };
+14379: })();
