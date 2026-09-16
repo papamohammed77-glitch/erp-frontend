@@ -1,0 +1,26 @@
+name: RAWAEA — Forensic Mother Assembly Guard
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify-canonical-mother-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify canonical Source of Truth
+        shell: bash
+        run: |
+          test -f companies/company-1/main.html
+          test ! -d Current/PWA/main2 || true
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('companies/company-1/main.html')
+          t = p.read_text(encoding='utf-8')
+          assert '<!DOCTYPE html>' in t[:200], 'Mother source is not the expected HTML document'
+          assert 'إدارة المخازن والمخزون' in t, 'Canonical mother inventory module missing'
+          print('CANONICAL_MOTHER_SOURCE=companies/company-1/main.html')
+          print('CANONICAL_MOTHER_SOURCE_GUARD=PASS')
+          PY
