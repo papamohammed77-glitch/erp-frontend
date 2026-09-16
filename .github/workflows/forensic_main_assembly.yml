@@ -11,16 +11,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify canonical Source of Truth
-        shell: bash
+        shell: python
         run: |
-          test -f companies/company-1/main.html
-          test ! -d Current/PWA/main2 || true
-          python - <<'PY'
           from pathlib import Path
           p = Path('companies/company-1/main.html')
+          assert p.is_file(), 'Canonical Mother source is missing'
           t = p.read_text(encoding='utf-8')
-          assert '<!DOCTYPE html>' in t[:200], 'Mother source is not the expected HTML document'
-          assert 'إدارة المخازن والمخزون' in t, 'Canonical mother inventory module missing'
+          assert t.startswith('<!DOCTYPE html>'), 'Canonical Mother source is not the expected HTML document'
+          assert 'إدارة المخازن والمخزون' in t, 'Canonical Mother inventory module missing'
+          assert 'Current/PWA/main2' not in t, 'Mother source must not reference historical split source'
+          assert 'forensic_main_assembly.yml' not in t, 'Mother source must remain application code only'
           print('CANONICAL_MOTHER_SOURCE=companies/company-1/main.html')
+          print('HISTORICAL_SPLIT_SOURCE=Current/PWA/main2 (reference only)')
           print('CANONICAL_MOTHER_SOURCE_GUARD=PASS')
-          PY
+          print('MOTHER_FILE_BYTES=', p.stat().st_size)
+
+      - name: Validate Mother syntax via HTML script extraction
+        shell: python
+        run: |
+          import re
+          import subprocess
+          from pathlib import Path
+          t = Path('companies/company-1/main.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>', t, flags=re.I)
+          Path('/tmp/mother_scripts.js').write_text('\n'.join(scripts), encoding='utf-8')
+          r = subprocess.run(['node','--check','/tmp/mother_scripts.js'], capture_output=True, text=True)
+          if r.returncode:
+              print(r.stdout)
+              print(r.stderr)
+              raise SystemExit(r.returncode)
+          print('MOTHER_INLINE_JS_SYNTAX=PASS')
