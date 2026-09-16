@@ -43,12 +43,20 @@ jobs:
           assert not missing, f'Missing inventory contract tokens: {missing}'
           placeholders = re.findall(r'قيد التطوير|جاري التطوير|TODO|FIXME', text, flags=re.I)
           assert not placeholders, f'Placeholder/debt markers found: {placeholders[:10]}'
-          menu_token = "إدارة المخازن والمخزون"
-          line_no = next(i for i, line in enumerate(text.splitlines(), 1) if menu_token in line)
-          print(f'INVENTORY_MENU_LINE={line_no}')
+          lines = text.splitlines()
+          menu_lines = [i for i,l in enumerate(lines,1) if 'إدارة المخازن والمخزون' in l]
+          print('INVENTORY_MENU_LINES=' + ','.join(map(str,menu_lines)))
           print(f'FILE_BYTES={p.stat().st_size}')
           print('INVENTORY_CONTRACT_STATIC=PASS')
           PY
+
+      - name: Source map for surgical patching
+        shell: bash
+        run: |
+          echo '--- VIEW DISPATCH / RENDER ANCHORS ---'
+          grep -nE "function (show|switch|render)|view[[:space:]]*===|view[[:space:]]*==|switch[[:space:]]*\([^\)]*view|case ['\"](items|branches|receiving|picking|loading|delivery|return|unloading|transfer|direct-sale|direct-return|supplier-return|vouchers|vehicle-count|branch-count|general-count)['\"]|RW_Inventory|Inventory" companies/company-1/main.html | head -n 250 || true
+          echo '--- VIEW OBJECT DECLARATIONS ---'
+          grep -nE "view[[:space:]]*:[[:space:]]*['\"](items|branches|receiving|picking|loading|delivery|return|unloading|transfer|direct-sale|direct-return|supplier-return|vouchers|vehicle-count|branch-count|general-count)['\"]" companies/company-1/main.html | head -n 250 || true
 
       - name: Install Playwright
         run: |
