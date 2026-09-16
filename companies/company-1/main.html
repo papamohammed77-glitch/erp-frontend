@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-16 13:00 UTC -->
+<!-- 2026-09-16 13:40 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -14532,14 +14532,14 @@ var RW_Finance = (function() {
             else if (tab === 'receipts') _renderReceipts();
             else if (tab === 'payments') _renderPayments();
             else if (tab === 'transfers') _renderTransfers();
-			else if (tab === 'journal-list') _renderJournalList();
-			else if (tab === 'recurring-journals') _renderRecurringJournals();
-			else if (tab === 'expenses') _renderExpenses();
-			else if (tab === 'cheques') _renderCheques();
-			else if (tab === 'bank-reconcile') _renderBankReconcile();
-			else if (tab === 'tax') _renderTax();
-			else if (tab === 'assets') _renderAssets();
-			else if (tab === 'periods') _renderPeriods();
+			else if (tab === 'journal-list') RW_Finance._renderJournalList();
+			else if (tab === 'recurring-journals') RW_Finance._renderRecurringJournals();
+			else if (tab === 'expenses') RW_Finance._renderExpenses();
+			else if (tab === 'cheques') RW_Finance._renderCheques();
+			else if (tab === 'bank-reconcile') RW_Finance._renderBankReconcile();
+			else if (tab === 'tax') RW_Finance._renderTax();
+			else if (tab === 'assets') RW_Finance._renderAssets();
+			else if (tab === 'periods') RW_Finance._renderPeriods();
             else if (tab === 'reports') _renderReports();
 			else if (tab === 'installments') _renderInstallments();
 else if (tab === 'commission') _renderCommission();
@@ -17141,7 +17141,132 @@ var RW_Finance_GoldExtension = (function () {
 
     async function renderRecurring(){ var rows=await rpc('finance_list_recurring',{p_company_id:companyId()})||[]; var h='<div class="flex gap-2 mb-4"><button onclick="RW_Finance._goldNewRecurring()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">قالب جديد</button><button onclick="RW_Finance._goldRunRecurring()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">تنفيذ المستحق</button></div><div class="space-y-3">'; rows.forEach(function(t){h+='<div class="border rounded-2xl p-4 flex justify-between"><div><div class="font-black">'+esc(t.name)+'</div><div class="text-xs text-gray-500">'+esc(t.template_code)+' · '+esc(t.frequency)+' · التالي '+esc(t.next_run_date)+'</div></div><span class="px-3 py-1 rounded-full '+(t.active?'bg-green-50 text-green-700':'bg-gray-100 text-gray-500')+'">'+(t.active?'نشط':'موقوف')+'</span></div>';}); h+='</div>'; card('القيود المتكررة','fa-repeat',h); }
 
-    async function renderExpenses(){ var from=prompt('من تاريخ YYYY-MM-DD',today().slice(0,8)+'01')||today().slice(0,8)+'01'; var to=prompt('إلى تاريخ YYYY-MM-DD',today())||today(); var rows=await rpc('finance_list_expenses',{p_company_id:companyId(),p_from:from,p_to:to})||[]; var h='<div class="mb-4"><button onclick="RW_Finance._goldNewExpense()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">مصروف جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الكود</th><th class="p-2 border">التاريخ</th><th class="p-2 border">المستفيد</th><th class="p-2 border">التصنيف</th><th class="p-2 border">الإجمالي</th><th class="p-2 border">الضريبة</th><th class="p-2 border">القيد</th></tr></thead><tbody>'; rows.forEach(function(x){h+='<tr><td class="p-2 border">'+esc(x.expense_code)+'</td><td class="p-2 border">'+esc(x.expense_date)+'</td><td class="p-2 border">'+esc(x.beneficiary_name)+'</td><td class="p-2 border">'+esc(x.category_name)+'</td><td class="p-2 border text-left">'+money(x.total_amount+x.tax_amount)+'</td><td class="p-2 border text-left">'+money(x.tax_amount)+'</td><td class="p-2 border">'+esc(x.journal_entry_id)+'</td></tr>';}); h+='</tbody></table></div>'; card('المصروفات','fa-money-bill-wave',h); }
+   async function newExpense(){
+    var cid=companyId();
+    if(!cid) throw new Error('سياق الشركة غير متوفر');
+
+    var results=await Promise.all([
+        supabase.from('finance_expense_categories').select('id,code,name').eq('company_id',cid).eq('is_active',true).order('code'),
+        supabase.from('treasury').select('id,account_code,account_name').eq('company_id',cid).eq('is_active',true).order('account_code'),
+        supabase.from('chart_of_accounts').select('id,account_code,account_name').eq('company_id',cid).eq('is_active',true).order('account_code'),
+        supabase.from('cost_centers').select('id,code,name').eq('is_active',true).order('code'),
+        supabase.from('finance_tax_codes').select('id,code,name,rate').eq('company_id',cid).eq('is_active',true).order('code')
+    ]);
+
+    for(var rr=0;rr<results.length;rr++) if(results[rr].error) throw results[rr].error;
+
+    var categories=results[0].data||[];
+    var treasuries=results[1].data||[];
+    var accounts=results[2].data||[];
+    var centers=results[3].data||[];
+    var taxes=results[4].data||[];
+
+    var categoryOptions='<option value="">بدون تصنيف</option>';
+    categories.forEach(function(x){ categoryOptions+='<option value="'+esc(x.id)+'">'+esc(x.code)+' — '+esc(x.name)+'</option>'; });
+
+    var treasuryOptions='<option value="">مصروف آجل / على الموردين</option>';
+    treasuries.forEach(function(x){ treasuryOptions+='<option value="'+esc(x.id)+'">'+esc(x.account_code)+' — '+esc(x.account_name)+'</option>'; });
+
+    var accountOptions='<option value="">اختر حساب المصروف</option>';
+    accounts.forEach(function(x){ accountOptions+='<option value="'+esc(x.id)+'">'+esc(x.account_code)+' — '+esc(x.account_name)+'</option>'; });
+
+    var centerOptions='<option value="">بدون مركز تكلفة</option>';
+    centers.forEach(function(x){ centerOptions+='<option value="'+esc(x.id)+'">'+esc(x.code)+' — '+esc(x.name)+'</option>'; });
+
+    var taxOptions='<option value="">بدون ضريبة</option>';
+    taxes.forEach(function(x){ taxOptions+='<option value="'+esc(x.id)+'" data-rate="'+esc(x.rate)+'">'+esc(x.code)+' — '+esc(x.name)+' ('+esc(x.rate)+'%)</option>'; });
+
+    var html=''+
+      '<div class="grid grid-cols-2 gap-3 text-right">'+
+        '<input id="fx_code" class="swal2-input" placeholder="كود المصروف — اختياري" style="margin:0">'+
+        '<input id="fx_date" type="date" value="'+today()+'" class="swal2-input" style="margin:0">'+
+        '<input id="fx_beneficiary" class="swal2-input" placeholder="المستفيد" style="margin:0">'+
+        '<select id="fx_category" class="swal2-select" style="margin:0">'+categoryOptions+'</select>'+
+        '<select id="fx_treasury" class="swal2-select col-span-2" style="margin:0">'+treasuryOptions+'</select>'+
+        '<select id="fx_account" class="swal2-select" style="margin:0">'+accountOptions+'</select>'+
+        '<select id="fx_center" class="swal2-select" style="margin:0">'+centerOptions+'</select>'+
+        '<input id="fx_amount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="قيمة المصروف قبل الضريبة" style="margin:0">'+
+        '<select id="fx_tax" class="swal2-select" style="margin:0">'+taxOptions+'</select>'+
+        '<input id="fx_tax_amount" type="number" min="0" step="0.01" value="0" class="swal2-input" placeholder="قيمة الضريبة" style="margin:0">'+
+        '<input id="fx_reference" class="swal2-input col-span-2" placeholder="المرجع" style="margin:0">'+
+        '<textarea id="fx_description" class="swal2-textarea col-span-2" placeholder="وصف المصروف" style="margin:0"></textarea>'+
+      '</div>';
+
+    var r=await Swal.fire({
+        title:'مصروف جديد',
+        html:html,
+        width:900,
+        showCancelButton:true,
+        confirmButtonText:'تسجيل وترحيل',
+        cancelButtonText:'إلغاء',
+        focusConfirm:false,
+        didOpen:function(){
+            var taxEl=byId('fx_tax');
+            var amountEl=byId('fx_amount');
+            var taxAmountEl=byId('fx_tax_amount');
+            function recalc(){
+                var opt=taxEl&&taxEl.options[taxEl.selectedIndex];
+                var rate=opt?Number(opt.getAttribute('data-rate')||0):0;
+                var amount=Number(amountEl&&amountEl.value||0);
+                if(rate>0) taxAmountEl.value=(amount*rate/100).toFixed(2);
+                else taxAmountEl.value='0';
+            }
+            if(taxEl) taxEl.addEventListener('change',recalc);
+            if(amountEl) amountEl.addEventListener('input',recalc);
+        },
+        preConfirm:function(){
+            var code=(byId('fx_code').value||'').trim()||('EXP-'+crypto.randomUUID().slice(0,8).toUpperCase());
+            var amount=Number(byId('fx_amount').value||0);
+            var taxAmount=Number(byId('fx_tax_amount').value||0);
+            var accountId=(byId('fx_account').value||'').trim();
+            if(!amount||amount<=0){ Swal.showValidationMessage('قيمة المصروف يجب أن تكون أكبر من صفر'); return false; }
+            if(!accountId){ Swal.showValidationMessage('اختر حساب المصروف'); return false; }
+            if(taxAmount<0){ Swal.showValidationMessage('قيمة الضريبة غير صالحة'); return false; }
+            return {
+                expense_code:code,
+                expense_date:byId('fx_date').value||today(),
+                beneficiary_name:(byId('fx_beneficiary').value||'').trim(),
+                category_id:(byId('fx_category').value||'').trim()||null,
+                treasury_id:(byId('fx_treasury').value||'').trim()||null,
+                description:(byId('fx_description').value||'').trim(),
+                reference:(byId('fx_reference').value||'').trim(),
+                account_id:accountId,
+                cost_center_id:(byId('fx_center').value||'').trim()||null,
+                tax_code_id:(byId('fx_tax').value||'').trim()||null,
+                amount:amount,
+                tax_amount:taxAmount
+            };
+        }
+    });
+
+    if(!r.isConfirmed||!r.value) return;
+
+    await rpc('finance_save_expense',{
+        p_company_id:cid,
+        p_expense_id:null,
+        p_expense_code:r.value.expense_code,
+        p_expense_date:r.value.expense_date,
+        p_beneficiary_name:r.value.beneficiary_name,
+        p_category_id:r.value.category_id,
+        p_treasury_id:r.value.treasury_id,
+        p_description:r.value.description,
+        p_attachment_url:null,
+        p_reference:r.value.reference,
+        p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',
+        p_operation_id:crypto.randomUUID(),
+        p_lines:[{
+            account_id:r.value.account_id,
+            cost_center_id:r.value.cost_center_id,
+            tax_code_id:r.value.tax_code_id,
+            description:r.value.description,
+            amount:r.value.amount,
+            tax_amount:r.value.tax_amount
+        }]
+    });
+
+    await renderExpenses();
+}
+	async function renderExpenses(){ var from=prompt('من تاريخ YYYY-MM-DD',today().slice(0,8)+'01')||today().slice(0,8)+'01'; var to=prompt('إلى تاريخ YYYY-MM-DD',today())||today(); var rows=await rpc('finance_list_expenses',{p_company_id:companyId(),p_from:from,p_to:to})||[]; var h='<div class="mb-4"><button onclick="RW_Finance._goldNewExpense()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold">مصروف جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الكود</th><th class="p-2 border">التاريخ</th><th class="p-2 border">المستفيد</th><th class="p-2 border">التصنيف</th><th class="p-2 border">الإجمالي</th><th class="p-2 border">الضريبة</th><th class="p-2 border">القيد</th></tr></thead><tbody>'; rows.forEach(function(x){h+='<tr><td class="p-2 border">'+esc(x.expense_code)+'</td><td class="p-2 border">'+esc(x.expense_date)+'</td><td class="p-2 border">'+esc(x.beneficiary_name)+'</td><td class="p-2 border">'+esc(x.category_name)+'</td><td class="p-2 border text-left">'+money(x.total_amount+x.tax_amount)+'</td><td class="p-2 border text-left">'+money(x.tax_amount)+'</td><td class="p-2 border">'+esc(x.journal_entry_id)+'</td></tr>';}); h+='</tbody></table></div>'; card('المصروفات','fa-money-bill-wave',h); }
 
     async function renderCheques(){ var rows=await rpc('finance_list_cheques',{p_company_id:companyId(),p_status:null})||[]; var h='<div class="mb-4"><button onclick="RW_Finance._goldNewCheque()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">شيك جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الرقم</th><th class="p-2 border">النوع</th><th class="p-2 border">البنك</th><th class="p-2 border">المبلغ</th><th class="p-2 border">الاستحقاق</th><th class="p-2 border">الطرف</th><th class="p-2 border">الحالة</th><th class="p-2 border">إجراء</th></tr></thead><tbody>'; rows.forEach(function(x){h+='<tr><td class="p-2 border">'+esc(x.cheque_number)+'</td><td class="p-2 border">'+esc(x.cheque_type)+'</td><td class="p-2 border">'+esc(x.bank_name)+'</td><td class="p-2 border text-left">'+money(x.amount)+'</td><td class="p-2 border">'+esc(x.due_date)+'</td><td class="p-2 border">'+esc(x.party_name)+'</td><td class="p-2 border">'+esc(x.status)+'</td><td class="p-2 border"><button onclick="RW_Finance._goldChequeTransition(\''+esc(x.id)+'\',\''+esc(x.status)+'\')" class="text-indigo-600 font-bold">تغيير الحالة</button></td></tr>';}); h+='</tbody></table></div>'; card('الشيكات','fa-money-check-dollar',h); }
 
@@ -17221,6 +17346,7 @@ return {
     reverse:reverse,
     newRecurring:newRecurring,
     runRecurring:runRecurring,
+	newExpense:newExpense,
     newCheque:newCheque,
     newBank:newBank,
     closeBank:closeBank,
@@ -17251,6 +17377,7 @@ RW_Finance._goldReverse = RW_Finance_GoldExtension.reverse;
 RW_Finance._goldNewRecurring = RW_Finance_GoldExtension.newRecurring;
 RW_Finance._goldRunRecurring = RW_Finance_GoldExtension.runRecurring;
 RW_Finance._goldNewCheque = RW_Finance_GoldExtension.newCheque;
+RW_Finance._goldNewExpense = RW_Finance_GoldExtension.newExpense;
 RW_Finance._goldNewBankStatement = RW_Finance_GoldExtension.newBank;
 RW_Finance._goldCloseBank = RW_Finance_GoldExtension.closeBank;
 RW_Finance._goldClosePeriod = RW_Finance_GoldExtension.closePeriod;
