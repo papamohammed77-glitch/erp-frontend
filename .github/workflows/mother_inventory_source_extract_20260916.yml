@@ -1,0 +1,55 @@
+name: RAWAEA — Mother Inventory Source Extract 20260916
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract exact current Mother anchors
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          p = Path('companies/company-1/main.html')
+          lines = p.read_text(encoding='utf-8').splitlines()
+          patterns = [
+              'var RW_Warehouse',
+              'window.RW_Warehouse',
+              '/functions/v1/receive-purchase',
+              'async function receive',
+              'function receive',
+              'save-inventory-count',
+              "view === 'picking'",
+          ]
+          for pat in patterns:
+              hits=[i for i,l in enumerate(lines,1) if pat in l]
+              print(f'PATTERN {pat} => {hits[:40]}')
+          anchors=[i for i,l in enumerate(lines,1) if 'var RW_Warehouse' in l]
+          if anchors:
+              s=max(1,anchors[0]-5); e=min(len(lines),anchors[0]+260)
+              print(f'--- RW_Warehouse WINDOW {s}-{e} ---')
+              for i in range(s,e+1): print(f'{i}: {lines[i-1]}')
+          rec=[i for i,l in enumerate(lines,1) if '/functions/v1/receive-purchase' in l]
+          for a in rec[:5]:
+              s=max(1,a-35); e=min(len(lines),a+35)
+              print(f'--- RECEIVE PURCHASE WINDOW {s}-{e} ---')
+              for i in range(s,e+1): print(f'{i}: {lines[i-1]}')
+          disp=[i for i,l in enumerate(lines,1) if "if (view === 'picking')" in l]
+          if disp:
+              s=max(1,disp[0]-10); e=min(len(lines),disp[0]+55)
+              print(f'--- DISPATCH WINDOW {s}-{e} ---')
+              for i in range(s,e+1): print(f'{i}: {lines[i-1]}')
+      - name: Syntax check
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('companies/company-1/main.html').read_text(encoding='utf-8')
+          assert t.startswith('<!DOCTYPE html>')
+          print('MOTHER_SOURCE_READ=PASS')
+          print('FILE_BYTES=', Path('companies/company-1/main.html').stat().st_size)
+          PY
