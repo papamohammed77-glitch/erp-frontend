@@ -15817,104 +15817,192 @@ async function _showCustomerPaymentDetail(receiptId) {
         _hideLoader();
         _showToast(e.message || 'فشل تحميل تفاصيل الدفعة', 'error');
     }
-}
-    function _renderPayments() {
+}    function _renderPayments() {
         var content = byId('finance-content'); if (!content) return;
         content.innerHTML = '<div class="text-center py-8">جاري تحميل سندات الصرف...</div>';
-                supabase.from('cash_box').select('*').eq('company_id', _companyId()).eq('type', 'Payment').order('voucher_date', { ascending: false }).then(function(r) {
+        supabase.from('cash_box').select('*').eq('company_id', _companyId()).eq('type', 'Payment').order('voucher_date', { ascending: false }).then(function(r) {
             if (r.error) throw r.error;
             var data = r.data || [];
-            var html = '<div class="bg-white rounded-2xl shadow-sm border p-4"><div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold"><i class="fa-solid fa-arrow-up ml-2 text-red-600"></i>سندات الصرف</h2><button onclick="RW_Finance._newPayment()" class="bg-red-600 text-white px-4 py-2 rounded-xl"><i class="fa-solid fa-plus ml-1"></i> سند صرف جديد</button></div><div id="payments-list">' + _buildReceiptsTable(data) + '</div></div>';
+            var html = '<div class="bg-white rounded-2xl shadow-sm border p-4">' +
+                '<div class="flex justify-between items-center mb-4">' +
+                    '<h2 class="text-xl font-bold"><i class="fa-solid fa-arrow-up ml-2 text-red-600"></i>سندات الصرف</h2>' +
+                    '<button onclick="RW_Finance._newPayment()" class="bg-red-600 text-white px-4 py-2 rounded-xl"><i class="fa-solid fa-plus ml-1"></i> سند صرف جديد</button>' +
+                '</div>' +
+                '<div id="payments-list">' + _buildReceiptsTable(data) + '</div>' +
+            '</div>';
             safeHTML(content, html);
+        }).catch(function(e) {
+            _showToast(e.message || 'فشل تحميل سندات الصرف', 'error');
         });
     }
-    function _newPayment() {
-        var content = byId('finance-content'); if (!content) return;
+
+    async function _newPayment() {
+        var content = byId('finance-content');
+        if (!content) return;
+
+        var cid = _companyId();
+        var branchResult = await supabase.from('branches')
+            .select('id,branch_code,name')
+            .eq('company_id', cid)
+            .eq('is_active', true)
+            .order('name');
+        if (branchResult.error) {
+            _showToast(branchResult.error.message || 'فشل تحميل الفروع', 'error');
+            return;
+        }
+
+        var branches = branchResult.data || [];
         var treasuryOptions = _cache.treasury.map(function(t) {
-            return '<option value="' + _esc(t.id) + '">' + _esc(t.account_name) + ' (' + _esc(t.account_code) + ')</option>';
+            return '<option value="' + _esc(t.id) + '">' +
+                _esc(t.account_name) + ' (' + _esc(t.account_code) + ')' +
+            '</option>';
         }).join('');
+
+        var branchOptions = branches.map(function(b) {
+            return '<option value="' + _esc(b.id) + '">' +
+                _esc(b.name || b.branch_code) +
+            '</option>';
+        }).join('');
+
+        var operationId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random();
+        content.dataset.paymentOperationId = operationId;
+
+        var html =
+            '<div class="bg-white rounded-2xl shadow-sm border p-5">' +
+                '<div class="flex flex-wrap justify-between items-center gap-3 mb-5">' +
+                    '<div>' +
+                        '<h2 class="text-xl font-black"><i class="fa-solid fa-arrow-up ml-2 text-red-600"></i>مصروف جديد</h2>' +
+                        '<div class="text-sm text-gray-500 mt-1">صرف من خزينة محددة إلى حساب واحد أو عدة حسابات.</div>' +
+                    '</div>' +
+                    '<button type="button" onclick="RW_Finance.renderSubTab(\'payments\')" class="text-gray-500 hover:text-gray-700">' +
+                        '<i class="fa-solid fa-xmark text-xl"></i>' +
+                    '</button>' +
+                '</div>' +
+                '<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-5">' +
+                    '<div><label class="block text-sm font-bold mb-1">التاريخ</label><input type="date" id="pmt-date" class="border rounded-xl p-3 w-full" value="' + new Date().toISOString().slice(0,10) + '"></div>' +
+                    '<div><label class="block text-sm font-bold mb-1">الفرع</label><select id="pmt-branch" class="border rounded-xl p-3 w-full"><option value="">اختر الفرع</option>' + branchOptions + '</select></div>' +
+                    '<div><label class="block text-sm font-bold mb-1">الخزينة</label><select id="pmt-cashbox" class="border rounded-xl p-3 w-full"><option value="">اختر الخزينة</option>' + treasuryOptions + '</select></div>' +
+                    '<div><label class="block text-sm font-bold mb-1">المستفيد</label><input type="text" id="pmt-beneficiary" class="border rounded-xl p-3 w-full" placeholder="اسم المستفيد / الجهة"></div>' +
+                    '<div class="md:col-span-4"><label class="block text-sm font-bold mb-1">المرجع</label><input type="text" id="pmt-reference" class="border rounded-xl p-3 w-full" placeholder="رقم فاتورة، مستند، إيصال..."></div>' +
+                '</div>' +
+                '<div class="border rounded-2xl overflow-hidden">' +
+                    '<div class="bg-slate-50 p-3 flex flex-wrap justify-between items-center gap-2">' +
+                        '<div class="font-black">بنود المصروف</div>' +
+                        '<button type="button" onclick="RW_Finance._addPaymentLine()" class="text-red-600 font-bold"><i class="fa-solid fa-plus-circle ml-1"></i> إضافة حساب</button>' +
+                    '</div>' +
+                    '<div class="hidden md:grid grid-cols-12 gap-2 px-3 py-2 text-xs font-bold text-gray-500 border-b"><div class="col-span-5">الحساب</div><div class="col-span-3">البيان</div><div class="col-span-3">المبلغ</div><div class="col-span-1"></div></div>' +
+                    '<div id="pmt-lines" class="p-3"></div>' +
+                '</div>' +
+                '<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">' +
+                    '<div class="rounded-xl bg-slate-50 border p-4"><div class="text-xs text-gray-500">عدد الحسابات</div><div id="pmt-count" class="text-xl font-black">0</div></div>' +
+                    '<div class="rounded-xl bg-red-50 border border-red-100 p-4"><div class="text-xs text-red-700">إجمالي المصروف</div><div id="pmt-total" class="text-2xl font-black text-red-700">0.00</div></div>' +
+                    '<div class="rounded-xl bg-emerald-50 border border-emerald-100 p-4"><div class="text-xs text-emerald-700">حالة الخزينة</div><div id="pmt-balance-status" class="font-black text-emerald-700">اختر الخزينة</div></div>' +
+                '</div>' +
+                '<div class="mt-4"><label class="block text-sm font-bold mb-1">وصف العملية</label><textarea id="pmt-notes" class="border rounded-xl p-3 w-full" rows="3" placeholder="بيان السند أو الملاحظات"></textarea></div>' +
+                '<div class="flex justify-end gap-3 mt-5">' +
+                    '<button type="button" onclick="RW_Finance.renderSubTab(\'payments\')" class="px-5 py-2 border rounded-xl">إلغاء</button>' +
+                    '<button type="button" onclick="RW_Finance._savePayment()" class="px-6 py-2 bg-red-600 text-white rounded-xl font-black"><i class="fa-solid fa-check ml-1"></i> حفظ وترحيل</button>' +
+                '</div>' +
+            '</div>';
+
+        safeHTML(content, html);
+        _addPaymentLine();
+        _recalcPaymentTotal();
+    }
+
+    function _addPaymentLine() {
         var accountOptions = _cache.accountsFlat.map(function(a) {
             return '<option value="' + _esc(a.id) + '">' + _esc(a.account_name) + ' (' + _esc(a.account_code) + ')</option>';
         }).join('');
-        var html = '<div class="bg-white rounded-2xl shadow-sm border p-4"><div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold"><i class="fa-solid fa-arrow-up ml-2 text-red-600"></i>سند صرف جديد</h2><button onclick="RW_Finance.renderSubTab(\'payments\')" class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-xmark text-xl"></i></button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4"><div><label class="block text-sm font-bold">التاريخ</label><input type="date" id="pmt-date" class="border rounded-lg p-2 w-full" value="' + new Date().toISOString().slice(0,10) + '"></div><div><label class="block text-sm font-bold">الخزينة</label><select id="pmt-cashbox" class="border rounded-lg p-2 w-full"><option value="">اختر الخزينة</option>' + treasuryOptions + '</select></div><div><label class="block text-sm font-bold">الحساب الرئيسي</label><select id="pmt-main-account" class="border rounded-lg p-2 w-full"><option value="">اختر الحساب</option>' + accountOptions + '</select></div></div><div class="mb-4"><h4 class="font-bold mb-2">بنود السند</h4><div id="pmt-lines"></div><button type="button" onclick="RW_Finance._addPaymentLine()" class="mt-2 text-red-600 font-bold"><i class="fa-solid fa-plus-circle ml-1"></i> إضافة بند</button></div><div class="p-3 bg-gray-50 rounded-lg flex justify-between mb-4"><span>الإجمالي: <span id="pmt-total">0.00</span></span></div><div class="flex justify-end gap-3"><button type="button" onclick="RW_Finance.renderSubTab(\'payments\')" class="px-4 py-2 border rounded-lg">إلغاء</button><button type="button" onclick="RW_Finance._savePayment()" class="px-6 py-2 bg-red-600 text-white rounded-lg font-bold"><i class="fa-solid fa-check ml-1"></i> حفظ</button></div></div>';
-        safeHTML(content, html);
-        _addPaymentLine();
+        var html =
+            '<div class="pmt-line grid grid-cols-1 md:grid-cols-12 gap-2 mb-3 bg-gray-50 border rounded-xl p-3">' +
+                '<div class="md:col-span-5"><label class="md:hidden block text-xs font-bold mb-1">الحساب</label><select class="pmt-line-account border rounded-lg p-2 w-full text-sm"><option value="">اختر الحساب</option>' + accountOptions + '</select></div>' +
+                '<div class="md:col-span-3"><label class="md:hidden block text-xs font-bold mb-1">البيان</label><input type="text" class="pmt-line-desc border rounded-lg p-2 w-full text-sm" placeholder="بيان البند"></div>' +
+                '<div class="md:col-span-3"><label class="md:hidden block text-xs font-bold mb-1">المبلغ</label><input type="number" step="0.01" min="0.01" class="pmt-line-amount border rounded-lg p-2 w-full text-sm" placeholder="0.00" oninput="RW_Finance._recalcPaymentTotal()"></div>' +
+                '<div class="md:col-span-1 flex items-end justify-center"><button type="button" onclick="RW_Finance._removePaymentLine(this)" class="text-red-500 px-2 py-2" title="حذف البند"><i class="fa-solid fa-circle-minus"></i></button></div>' +
+            '</div>';
+        var host = byId('pmt-lines');
+        if (host) host.insertAdjacentHTML('beforeend', html);
+        _recalcPaymentTotal();
     }
-    function _addPaymentLine() {
-        var html = '<div class="pmt-line grid grid-cols-12 gap-2 mb-2 bg-gray-50 p-2 rounded-lg"><div class="col-span-5"><input type="text" class="pmt-line-account border rounded p-1.5 w-full text-sm" placeholder="اسم المستفيد"></div><div class="col-span-3"><input type="text" class="pmt-line-desc border rounded p-1.5 w-full text-sm" placeholder="وصف"></div><div class="col-span-3"><input type="number" step="0.01" min="0" class="pmt-line-amount border rounded p-1.5 w-full text-sm" oninput="RW_Finance._recalcPaymentTotal()"></div><div class="col-span-1 flex justify-center"><button onclick="RW_Finance._removePaymentLine(this)" class="text-red-500"><i class="fa-solid fa-circle-minus"></i></button></div></div>';
-        byId('pmt-lines').insertAdjacentHTML('beforeend', html);
+
+    function _removePaymentLine(btn) {
+        var row = btn && btn.closest ? btn.closest('.pmt-line') : null;
+        if (row) row.remove();
+        _recalcPaymentTotal();
     }
-    function _removePaymentLine(btn) { btn.closest('.pmt-line').remove(); _recalcPaymentTotal(); }
-    function _recalcPaymentTotal() { var total = 0; document.querySelectorAll('.pmt-line-amount').forEach(function(el) { total += parseFloat(el.value) || 0; }); safeText(byId('pmt-total'), _fmtNum(total)); }
-    async function _savePayment() {
-        var lines = [];
+
+    function _recalcPaymentTotal() {
+        var total = 0, count = 0;
         document.querySelectorAll('.pmt-line').forEach(function(l) {
-            var account = l.querySelector('.pmt-line-account').value.trim();
-            var description = l.querySelector('.pmt-line-desc').value.trim();
-            var amount = parseFloat(l.querySelector('.pmt-line-amount').value) || 0;
-            if (account && amount > 0) {
-                lines.push({ accountName: account, description: description, amount: amount });
-            }
+            var account = l.querySelector('.pmt-line-account');
+            var amount = l.querySelector('.pmt-line-amount');
+            if (account && account.value) count++;
+            total += parseFloat(amount && amount.value || 0) || 0;
         });
-        if (!lines.length) { _showToast('أضف بنداً', 'warning'); return; }
-
-        var host = byId('finance-content');
-        var treasuryId = byId('pmt-cashbox').value;
-        var offsetAccountId = byId('pmt-main-account').value;
-        var cashAccount = null;
-        for (var i = 0; i < _cache.accountsFlat.length; i++) {
-            if (_cache.accountsFlat[i].account_code === '121') {
-                cashAccount = _cache.accountsFlat[i];
-                break;
-            }
-        }
-        if (!treasuryId || !offsetAccountId || !cashAccount) {
-            _showToast('بيانات الخزينة أو الحساب المقابل غير مكتملة', 'error');
-            return;
-        }
-
-        var op = host.dataset.paymentOperationId || (window.crypto && crypto.randomUUID ? crypto.randomUUID() : null);
-        if (!op) {
-            _showToast('تعذر إنشاء معرف العملية', 'error');
-            return;
-        }
-        host.dataset.paymentOperationId = op;
-        _showLoader('جاري حفظ سند الصرف...');
-        try {
-            var ses = await supabase.auth.getSession();
-            var token = ses.data && ses.data.session ? ses.data.session.access_token : null;
-            if (!token) throw new Error('انتهت الجلسة');
-            var selected = byId('pmt-main-account').selectedOptions[0];
-            var payload = {
-                header: {
-                    operationId: op,
-                    treasuryId: treasuryId,
-                    cashAccountId: cashAccount.id,
-                    offsetAccountId: offsetAccountId,
-                    date: byId('pmt-date').value,
-                    reference: null,
-                    mainAccountName: selected ? selected.textContent : null,
-                    notes: ''
-                },
-                lines: lines
-            };
-            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/save-payment-voucher', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify(payload)
-            });
-            var json = await res.json();
-            if (!res.ok || !json || json.success === false) throw new Error((json && (json.error || json.msg)) || 'فشل الحفظ');
-            delete host.dataset.paymentOperationId;
-            _showToast(json.duplicate ? 'السند موجود بالفعل ولم يُكرر.' : 'تم الحفظ', 'success');
-            renderSubTab('payments');
-        } catch (e) {
-            _showToast(e.message || 'فشل الحفظ', 'error');
-        } finally {
-            _hideLoader();
-        }
+        safeText(byId('pmt-total'), _fmtNum(total));
+        safeText(byId('pmt-count'), String(count));
+        var treasuryId = byId('pmt-cashbox') ? byId('pmt-cashbox').value : '';
+        var status = byId('pmt-balance-status');
+        if (!status) return;
+        if (!treasuryId) { safeText(status, 'اختر الخزينة'); status.className='font-black text-emerald-700'; return; }
+        var treasury = null;
+        for (var i=0;i<_cache.treasury.length;i++) if (_cache.treasury[i].id===treasuryId) { treasury=_cache.treasury[i]; break; }
+        if (!treasury) { safeText(status,'الخزينة غير متاحة'); status.className='font-black text-red-700'; return; }
+        var balance=Number(treasury.current_balance||0);
+        if(total>balance){ safeText(status,'الرصيد غير كافٍ: '+_fmtNum(balance)); status.className='font-black text-red-700'; }
+        else { safeText(status,'متاح: '+_fmtNum(balance)); status.className='font-black text-emerald-700'; }
     }
 
+    async function _savePayment() {
+        var host=byId('finance-content'); if(!host) return;
+        var branchId=byId('pmt-branch')?byId('pmt-branch').value:'';
+        var treasuryId=byId('pmt-cashbox')?byId('pmt-cashbox').value:'';
+        var date=byId('pmt-date')?byId('pmt-date').value:'';
+        var beneficiary=byId('pmt-beneficiary')?byId('pmt-beneficiary').value.trim():'';
+        var reference=byId('pmt-reference')?byId('pmt-reference').value.trim():'';
+        var notes=byId('pmt-notes')?byId('pmt-notes').value.trim():'';
+        var lines=[];
+        document.querySelectorAll('.pmt-line').forEach(function(l){
+            var accountId=l.querySelector('.pmt-line-account')?l.querySelector('.pmt-line-account').value:'';
+            var description=l.querySelector('.pmt-line-desc')?l.querySelector('.pmt-line-desc').value.trim():'';
+            var amount=parseFloat(l.querySelector('.pmt-line-amount')?l.querySelector('.pmt-line-amount').value:0)||0;
+            if(accountId&&amount>0) lines.push({accountId:accountId,description:description,amount:amount,taxAmount:0});
+        });
+        if(!branchId){_showToast('اختر الفرع','warning');return;}
+        if(!treasuryId){_showToast('اختر الخزينة','warning');return;}
+        if(!date){_showToast('حدد تاريخ السند','warning');return;}
+        if(!lines.length){_showToast('أضف حسابًا واحدًا على الأقل','warning');return;}
+        var seen={};
+        for(var i=0;i<lines.length;i++){
+            seen[lines[i].accountId]=(seen[lines[i].accountId]||0)+1;
+            if(seen[lines[i].accountId]>1){_showToast('لا تكرر نفس الحساب داخل السند؛ اجمع القيمة في بند واحد.','warning');return;}
+        }
+        var total=lines.reduce(function(sum,x){return sum+x.amount+x.taxAmount;},0);
+        var treasury=null;
+        for(var t=0;t<_cache.treasury.length;t++) if(_cache.treasury[t].id===treasuryId){treasury=_cache.treasury[t];break;}
+        if(!treasury){_showToast('الخزينة غير موجودة','error');return;}
+        if(Number(treasury.current_balance||0)<total){_showToast('رصيد الخزينة غير كافٍ','error');return;}
+        var operationId=host.dataset.paymentOperationId||((window.crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now())+'-'+Math.random());
+        host.dataset.paymentOperationId=operationId;
+        _showLoader('جاري حفظ المصروف وترحيله...');
+        try{
+            var result=await supabase.rpc('finance_save_expense',{
+                p_company_id:_companyId(),p_expense_id:null,
+                p_expense_code:'EXP-'+operationId.replace(/-/g,'').slice(0,16).toUpperCase(),
+                p_expense_date:date,p_beneficiary_name:beneficiary||null,p_category_id:null,
+                p_treasury_id:treasuryId,p_description:notes||'سند صرف',p_attachment_url:null,
+                p_reference:reference||null,p_created_by:(RW_STATE.user&&RW_STATE.user.email)||'mother',
+                p_operation_id:operationId,p_branch_id:branchId,p_lines:lines
+            });
+            if(result.error) throw result.error;
+            var data=result.data||{};
+            delete host.dataset.paymentOperationId;
+            _showToast(data.duplicate?'السند موجود بالفعل ولم يُكرر.':'تم حفظ المصروف وترحيله بنجاح','success');
+            await renderSubTab('payments');
+        }catch(e){_showToast(e.message||'فشل حفظ سند الصرف','error');}
+        finally{_hideLoader();}
+    }
     function _renderTransfers() {
         var content = byId('finance-content'); if (!content) return;
         content.innerHTML = '<div class="text-center py-8">جاري تحميل التحويلات...</div>';
@@ -17266,70 +17354,86 @@ var RW_Finance_GoldExtension = (function () {
 
     await renderExpenses();
 }
-	async function renderExpenses(){
-    var cid=companyId();
-    var defaultFrom=today().slice(0,8)+'01';
-    var defaultTo=today();
+    async function renderExpenses(){
+        var cid = companyId();
+        var defaultFrom = today().slice(0,8) + '01';
+        var defaultTo = today();
 
-    function load(from,to){
-        return rpc('finance_list_expenses',{
-            p_company_id:cid,
-            p_from:from,
-            p_to:to
-        })||[];
-    }
+        async function paint(from, to){
+            var rows = await rpc('finance_list_expenses_v2', {
+                p_company_id: cid,
+                p_from: from,
+                p_to: to
+            }) || [];
 
-    async function paint(from,to){
-        var rows=await load(from,to);
-        var h='<div class="space-y-4">'+
-            '<div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">'+
-                '<div><label class="block text-sm font-bold mb-1">من تاريخ</label><input id="fin_exp_from" type="date" value="'+esc(from)+'" class="w-full border rounded-xl p-3"></div>'+
-                '<div><label class="block text-sm font-bold mb-1">إلى تاريخ</label><input id="fin_exp_to" type="date" value="'+esc(to)+'" class="w-full border rounded-xl p-3"></div>'+
-                '<button id="fin_exp_apply" class="bg-slate-800 text-white px-4 py-3 rounded-xl font-bold">تحديث النتائج</button>'+
-                '<button id="fin_exp_new" class="bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold">مصروف جديد</button>'+
-            '</div>'+
-            '<div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50">'+
-                '<th class="p-2 border">الكود</th><th class="p-2 border">التاريخ</th><th class="p-2 border">المستفيد</th><th class="p-2 border">التصنيف</th><th class="p-2 border">الإجمالي</th><th class="p-2 border">الضريبة</th><th class="p-2 border">الحالة</th><th class="p-2 border">القيد</th>'+
-            '</tr></thead><tbody>';
+            var total = 0;
+            var count = rows.length;
+            rows.forEach(function(x){ total += Number(x.total_amount || 0) + Number(x.tax_amount || 0); });
 
-        if(!rows.length){
-            h+='<tr><td colspan="8" class="p-8 text-center text-slate-500">لا توجد مصروفات ضمن الفترة المحددة.</td></tr>';
-        }else{
-            rows.forEach(function(x){
-                var total=Number(x.total_amount||0);
-                var tax=Number(x.tax_amount||0);
-                h+='<tr>'+
-                    '<td class="p-2 border">'+esc(x.expense_code)+'</td>'+
-                    '<td class="p-2 border">'+esc(x.expense_date)+'</td>'+
-                    '<td class="p-2 border">'+esc(x.beneficiary_name)+'</td>'+
-                    '<td class="p-2 border">'+esc(x.category_name)+'</td>'+
-                    '<td class="p-2 border text-left font-black">'+money(total+tax)+'</td>'+
-                    '<td class="p-2 border text-left">'+money(tax)+'</td>'+
-                    '<td class="p-2 border">'+esc(x.status||'')+'</td>'+
-                    '<td class="p-2 border">'+esc(x.journal_entry_id||'')+'</td>'+
-                '</tr>';
-            });
+            var h = '<div class="space-y-4">' +
+                '<div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">' +
+                    '<div><label class="block text-sm font-bold mb-1">من تاريخ</label><input id="fin_exp_from" type="date" value="' + esc(from) + '" class="w-full border rounded-xl p-3"></div>' +
+                    '<div><label class="block text-sm font-bold mb-1">إلى تاريخ</label><input id="fin_exp_to" type="date" value="' + esc(to) + '" class="w-full border rounded-xl p-3"></div>' +
+                    '<button id="fin_exp_apply" class="bg-slate-800 text-white px-4 py-3 rounded-xl font-bold">تحديث النتائج</button>' +
+                    '<button id="fin_exp_new" class="bg-red-600 text-white px-4 py-3 rounded-xl font-bold">مصروف جديد</button>' +
+                    '<div class="rounded-xl bg-red-50 border border-red-100 p-3"><div class="text-xs text-red-700">إجمالي الفترة</div><div class="text-lg font-black text-red-700">' + money(total) + '</div></div>' +
+                '</div>' +
+                '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">' +
+                    '<div class="rounded-2xl bg-slate-50 border p-4"><div class="text-xs text-gray-500">عدد المصروفات</div><div class="text-2xl font-black">' + count + '</div></div>' +
+                    '<div class="rounded-2xl bg-indigo-50 border p-4"><div class="text-xs text-indigo-700">الحسابات المستخدمة</div><div class="text-2xl font-black text-indigo-700">' + rows.reduce(function(n,x){ return n + Number(x.line_count || 0); },0) + '</div></div>' +
+                    '<div class="rounded-2xl bg-emerald-50 border p-4"><div class="text-xs text-emerald-700">المستندات المرحّلة</div><div class="text-2xl font-black text-emerald-700">' + rows.filter(function(x){return x.status === 'POSTED';}).length + '</div></div>' +
+                '</div>' +
+                '<div class="overflow-x-auto"><table class="w-full text-sm border">' +
+                    '<thead><tr class="bg-slate-50">' +
+                        '<th class="p-2 border">الكود</th>' +
+                        '<th class="p-2 border">التاريخ</th>' +
+                        '<th class="p-2 border">الفرع</th>' +
+                        '<th class="p-2 border">الخزينة</th>' +
+                        '<th class="p-2 border">المستفيد</th>' +
+                        '<th class="p-2 border">الحسابات</th>' +
+                        '<th class="p-2 border">الإجمالي</th>' +
+                        '<th class="p-2 border">الحالة</th>' +
+                        '<th class="p-2 border">القيد</th>' +
+                    '</tr></thead><tbody>';
+
+            if(!rows.length){
+                h += '<tr><td colspan="9" class="p-8 text-center text-gray-500">لا توجد مصروفات ضمن الفترة المحددة.</td></tr>';
+            }else{
+                rows.forEach(function(x){
+                    var gross = Number(x.total_amount || 0) + Number(x.tax_amount || 0);
+                    h += '<tr class="border-t hover:bg-slate-50">' +
+                        '<td class="p-2 border font-bold">' + esc(x.expense_code) + '</td>' +
+                        '<td class="p-2 border">' + esc(x.expense_date) + '</td>' +
+                        '<td class="p-2 border">' + esc(x.branch_name || '—') + '</td>' +
+                        '<td class="p-2 border">' + esc(x.treasury_name || '—') + '</td>' +
+                        '<td class="p-2 border">' + esc(x.beneficiary_name || '—') + '</td>' +
+                        '<td class="p-2 border text-center font-black">' + Number(x.line_count || 0) + '</td>' +
+                        '<td class="p-2 border text-left font-black text-red-700">' + money(gross) + '</td>' +
+                        '<td class="p-2 border">' + esc(x.status || '') + '</td>' +
+                        '<td class="p-2 border text-xs">' + esc(x.journal_entry_id || '') + '</td>' +
+                    '</tr>';
+                });
+            }
+
+            h += '</tbody></table></div></div>';
+            card('المصروفات','fa-money-bill-wave',h);
+
+            var apply = byId('fin_exp_apply');
+            var add = byId('fin_exp_new');
+            if(apply){
+                apply.onclick = async function(){
+                    var f = byId('fin_exp_from').value;
+                    var t = byId('fin_exp_to').value;
+                    if(!f || !t){ await Swal.fire({icon:'warning',title:'الفترة غير مكتملة',text:'حدد تاريخ البداية والنهاية.'}); return; }
+                    if(f > t){ await Swal.fire({icon:'warning',title:'الفترة غير صحيحة',text:'تاريخ البداية لا يجوز أن يتجاوز تاريخ النهاية.'}); return; }
+                    await paint(f,t);
+                };
+            }
+            if(add) add.onclick = function(){ RW_Finance._newPayment(); };
         }
 
-        h+='</tbody></table></div></div>';
-        card('المصروفات','fa-money-bill-wave',h);
-
-        var apply=byId('fin_exp_apply');
-        var add=byId('fin_exp_new');
-        if(apply){
-            apply.onclick=async function(){
-                var f=byId('fin_exp_from').value;
-                var t=byId('fin_exp_to').value;
-                if(!f||!t){await Swal.fire({icon:'warning',title:'الفترة غير مكتملة',text:'حدد تاريخ البداية والنهاية.'});return;}
-                if(f>t){await Swal.fire({icon:'warning',title:'الفترة غير صحيحة',text:'تاريخ البداية لا يجوز أن يتجاوز تاريخ النهاية.'});return;}
-                await paint(f,t);
-            };
-        }
-        if(add) add.onclick=function(){RW_Finance._goldNewExpense();};
-    }
-
-    await paint(defaultFrom,defaultTo);
-}
+        await paint(defaultFrom, defaultTo);
+    }	
     async function renderCheques(){ var rows=await rpc('finance_list_cheques',{p_company_id:companyId(),p_status:null})||[]; var h='<div class="mb-4"><button onclick="RW_Finance._goldNewCheque()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">شيك جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الرقم</th><th class="p-2 border">النوع</th><th class="p-2 border">البنك</th><th class="p-2 border">المبلغ</th><th class="p-2 border">الاستحقاق</th><th class="p-2 border">الطرف</th><th class="p-2 border">الحالة</th><th class="p-2 border">إجراء</th></tr></thead><tbody>'; rows.forEach(function(x){h+='<tr><td class="p-2 border">'+esc(x.cheque_number)+'</td><td class="p-2 border">'+esc(x.cheque_type)+'</td><td class="p-2 border">'+esc(x.bank_name)+'</td><td class="p-2 border text-left">'+money(x.amount)+'</td><td class="p-2 border">'+esc(x.due_date)+'</td><td class="p-2 border">'+esc(x.party_name)+'</td><td class="p-2 border">'+esc(x.status)+'</td><td class="p-2 border"><button onclick="RW_Finance._goldChequeTransition(\''+esc(x.id)+'\',\''+esc(x.status)+'\')" class="text-indigo-600 font-bold">تغيير الحالة</button></td></tr>';}); h+='</tbody></table></div>'; card('الشيكات','fa-money-check-dollar',h); }
 
     async function renderAssets(){ var rows=await rpc('finance_list_assets',{p_company_id:companyId()})||[]; var h='<div class="mb-4"><button onclick="RW_Finance._goldAddAsset()" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold">أصل جديد</button></div><div class="overflow-x-auto"><table class="w-full text-sm border"><thead><tr class="bg-slate-50"><th class="p-2 border">الكود</th><th class="p-2 border">الأصل</th><th class="p-2 border">التكلفة</th><th class="p-2 border">مجمع الإهلاك</th><th class="p-2 border">صافي القيمة</th><th class="p-2 border">الحالة</th><th class="p-2 border">إجراء</th></tr></thead><tbody>'; rows.forEach(function(a){h+='<tr><td class="p-2 border">'+esc(a.asset_code)+'</td><td class="p-2 border">'+esc(a.name)+'</td><td class="p-2 border text-left">'+money(a.cost)+'</td><td class="p-2 border text-left">'+money(a.accumulated_depreciation)+'</td><td class="p-2 border text-left font-black">'+money(a.net_book_value)+'</td><td class="p-2 border">'+esc(a.status)+'</td><td class="p-2 border"><button onclick="RW_Finance._goldDepreciate(\''+esc(a.id)+'\')" class="text-amber-700 font-bold">إهلاك</button> <button onclick="RW_Finance._goldDispose(\''+esc(a.id)+'\')" class="text-red-600 font-bold">استبعاد</button></td></tr>';}); h+='</tbody></table></div>'; card('الأصول والإهلاك','fa-building',h); }
