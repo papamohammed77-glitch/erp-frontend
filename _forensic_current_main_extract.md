@@ -1,8 +1,8 @@
 # FORENSIC CURRENT MOTHER EXTRACT
 
 FILE_LINES=25374
-FILE_BYTES=1462518
-SHA256=ba703e44c5f55ddd55d73df9afed72273f4e64ae6fb76a593ad43d699922b954
+FILE_BYTES=1462517
+SHA256=b610ae6b962954beae817a7a0bded54d61f296c1193e430743dc9eeee48b9c6c
 PATTERN var RW_Warehouse: [10969]
 PATTERN var RW_HR: [23788]
 PATTERN RW_HR: [23741, 23786, 23788, 23866, 23895, 23897]
@@ -168,7 +168,7 @@ PATTERN FIXME: []
 23893:   }());
 23894:   realtime();
 23895:   window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23896: }());
+23896: }();
 23897: window.RW_HR = RW_HR;
 23898: // ============================================================
 23899: // RW_CRM – إدارة علاقات العملاء (CRM)
@@ -360,7 +360,7 @@ PATTERN FIXME: []
 23893:   }());
 23894:   realtime();
 23895:   window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23896: }());
+23896: }();
 23897: window.RW_HR = RW_HR;
 23898: // ============================================================
 23899: // RW_CRM – إدارة علاقات العملاء (CRM)
@@ -573,7 +573,7 @@ PATTERN FIXME: []
 23893:   }());
 23894:   realtime();
 23895:   window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23896: }());
+23896: }();
 23897: window.RW_HR = RW_HR;
 23898: // ============================================================
 23899: // RW_CRM – إدارة علاقات العملاء (CRM)
@@ -726,7 +726,7 @@ PATTERN FIXME: []
 23893:   }());
 23894:   realtime();
 23895:   window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23896: }());
+23896: }();
 23897: window.RW_HR = RW_HR;
 23898: // ============================================================
 23899: // RW_CRM – إدارة علاقات العملاء (CRM)
@@ -986,5 +986,5 @@ PATTERN FIXME: []
 23893:   }());
 23894:   realtime();
 23895:   window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23896: }());
+23896: }();
 23897: window.RW_HR = RW_HR;
