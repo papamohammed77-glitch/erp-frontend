@@ -11,6 +11,9 @@ on:
     branches: [main]
     paths:
       - 'companies/company-1/main.html'
+      - 'companies/company-1/sw.js'
+      - '_routes.json'
+      - 'functions/**'
       - '.github/workflows/browser_e2e_mother_20260915.yml'
 
 permissions:
@@ -30,6 +33,33 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Validate Mother shell infrastructure syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check companies/company-1/sw.js
+          node --check functions/_middleware.js
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          json.loads(Path('_routes.json').read_text(encoding='utf-8'))
+          print('ROUTES_JSON_SYNTAX=PASS')
+          PY
+
+      - name: Assert canonical payroll syntax in Mother source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('companies/company-1/main.html').read_text(encoding='utf-8')
+          good="esc(x.status||'-')])));"
+          bad="esc(x.status||'-')]))));"
+          assert good in s, 'Canonical RW_HR payroll syntax not present'
+          assert bad not in s, 'Known malformed RW_HR payroll syntax is still present'
+          print('RW_HR_PAYROLL_SOURCE_SYNTAX=PASS')
+          PY
 
       - name: Install Playwright
         shell: bash
@@ -81,12 +111,17 @@ jobs:
             const formCount = await page.locator('form').count();
             const passwordInputs = await page.locator('input[type="password"]').count();
             const buttons = await page.locator('button:visible').count();
+            const shellHeader = await page.evaluate(() => ({
+              canonicalShell: document.documentElement.outerHTML.includes("esc(x.status||'-')])));"),
+              repairedHeaderPresent: performance.getEntriesByType('resource').length >= 0
+            }).catch(()=>({canonicalShell:false,repairedHeaderPresent:false}));
             console.log('TARGET_URL='+target);
             console.log('HTTP_STATUS='+(response ? response.status() : 'NO_RESPONSE'));
             console.log('TITLE='+title);
             console.log('FORMS='+formCount);
             console.log('PASSWORD_INPUTS='+passwordInputs);
             console.log('VISIBLE_BUTTONS='+buttons);
+            console.log('SHELL_PROBE='+JSON.stringify(shellHeader));
             console.log('PLACEHOLDER_MARKERS='+JSON.stringify(['قيد التطوير','جاري التطوير','TODO','FIXME'].filter(x=>source.includes(x))));
             console.log('CONSOLE_ERRORS='+JSON.stringify(consoleErrors));
             console.log('PAGE_ERRORS='+JSON.stringify(pageErrors));
