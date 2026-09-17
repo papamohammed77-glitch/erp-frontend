@@ -23,7 +23,7 @@ export async function onRequest(context) {
     ambiguous = true;
   }
 
-  const brokenTerminal = /(\r?\n)\s*window\.RW_HR=\{render:render,reload:render,openEmployee360:open360\};\s*\r?\n\s*\}\(\);\s*\r?\n\s*window\.RW_HR = RW_HR;/g;
+  const brokenTerminal = /(\r?\n)\s*window\.RW_HR=\{render:render,reload:render,openEmployee360:open360\};\s*\r?\n\s*\}\(\)\);\s*\r?\n\s*window\.RW_HR = RW_HR;/g;
   const terminalMatches = html.match(brokenTerminal) || [];
 
   if (terminalMatches.length === 1) {
