@@ -1,4 +1,4 @@
-// sw.js – إصدار 3.4 AUTO-UPDATE FINAL
+// sw.js – إصدار 3.5 HR republish boundary
 // RAWAEA ERP — Production Service Worker
 // Contract:
 // - HTML/navigation/API/runtime code are network-backed and never cached.
@@ -9,7 +9,7 @@
 // - No authentication or business-data caching.
 // - Known RW_HR syntax drift is repaired before HTML parse.
 
-var SW_BUILD = 'RAWAEA_SW_P155_HR_TERMINAL_SYNTAX_HARDENING_20260917';
+var SW_BUILD = 'RAWAEA_SW_P156_HR_REPUBLISH_20260918';
 var STATIC_CACHE = 'rw-static-' + SW_BUILD;
 var STATIC_EXTENSIONS = ['.css', '.woff', '.woff2', '.ttf', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp'];
 var MAX_STATIC_ITEMS = 200;
