@@ -111,7 +111,7 @@ function patchKnownHRShell(html) {
         return html;
     }
 
-    var terminalBroken = /(\r?\n)\s*window\.RW_HR=\{render:render,reload:render,openEmployee360:open360\};\s*\r?\n\s*\}\(\);\s*\r?\n\s*window\.RW_HR = RW_HR;/g;
+    var terminalBroken = /(\r?\n)\s*window\.RW_HR=\{render:render,reload:render,openEmployee360:open360\};\s*\r?\n\s*\}\(\)\);\s*\r?\n\s*window\.RW_HR = RW_HR;/g;
     var terminalMatches = html.match(terminalBroken) || [];
     if (terminalMatches.length === 1) {
         html = html.replace(
