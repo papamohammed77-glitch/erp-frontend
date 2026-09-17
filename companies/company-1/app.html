@@ -50,7 +50,7 @@
             </div>
             <div class="flex justify-between items-center text-sm">
                 <label class="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" id="rememberMe" class="accent-blue-600 w-4 h-4"> 
+                    <input type="checkbox" id="rememberMe" class="accent-blue-600 w-4 h-4">
                     <span class="text-xs text-gray-600 font-bold">تذكرني</span>
                 </label>
                 <button onclick="App.forgotPassword()" class="text-blue-600 font-bold text-xs hover:underline">نسيت كلمة المرور؟</button>
@@ -68,7 +68,7 @@
 
 <script>
 var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBcC5kOc4';
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function byId(id) { return document.getElementById(id); }
@@ -148,10 +148,8 @@ var App = {
     _doRedirect: function(isOwner, perms, activeWarehouseRole) {
         var base = '/companies/company-1';
 
-        // 1. المالك
         if (isOwner) { window.location.replace(base + '/main.html'); return; }
 
-        // 2. عمال المخازن (حسب الدور النشط)
         if (activeWarehouseRole === 'استلام') { window.location.replace(base + '/warehouse/receiver.html'); return; }
         if (activeWarehouseRole === 'تحضير') { window.location.replace(base + '/warehouse/picker.html'); return; }
         if (activeWarehouseRole === 'تحميل') { window.location.replace(base + '/warehouse/loader.html'); return; }
@@ -160,11 +158,9 @@ var App = {
         if (activeWarehouseRole === 'جرد') { window.location.replace(base + '/warehouse/counter.html'); return; }
         if (activeWarehouseRole === 'أذونات') { window.location.replace(base + '/warehouse/vouchers.html'); return; }
 
-        // 3. مشرفو ومديرو المخازن
         if (perms.indexOf('warehouse_supervisor') !== -1) { window.location.replace(base + '/warehouse/supervisor.html'); return; }
         if (perms.indexOf('warehouse_manager') !== -1) { window.location.replace(base + '/warehouse/manager.html'); return; }
 
-        // 4. المبيعات
         if (perms.indexOf('pos') !== -1) { window.location.replace(base + '/sales/pos.html'); return; }
         if (perms.indexOf('telesales') !== -1) { window.location.replace(base + '/sales/telesales.html'); return; }
         if (perms.indexOf('orders') !== -1) { window.location.replace(base + '/sales/order-taker.html'); return; }
@@ -172,24 +168,21 @@ var App = {
         if (perms.indexOf('sales_supervisor') !== -1) { window.location.replace(base + '/sales/supervisor.html'); return; }
         if (perms.indexOf('sales_manager') !== -1) { window.location.replace(base + '/sales/manager.html'); return; }
 
-        // 5. التوصيل
         if (perms.indexOf('delivery') !== -1) { window.location.replace(base + '/delivery/driver.html'); return; }
         if (perms.indexOf('delivery_supervisor') !== -1) { window.location.replace(base + '/delivery/supervisor.html'); return; }
 
-        // 6. المشتريات
         if (perms.indexOf('purchases') !== -1) { window.location.replace(base + '/purchasing/buyer.html'); return; }
         if (perms.indexOf('purchases_supervisor') !== -1) { window.location.replace(base + '/purchasing/supervisor.html'); return; }
 
-        // 7. المكتب
         if (perms.indexOf('finance') !== -1) { window.location.replace(base + '/office/accountant.html'); return; }
         if (perms.indexOf('finance_manager') !== -1) { window.location.replace(base + '/office/finance-manager.html'); return; }
         if (perms.indexOf('general_manager') !== -1) { window.location.replace(base + '/office/general-manager.html'); return; }
-        if (perms.indexOf('hr') !== -1) { window.location.replace(base + '/office/hr.html'); return; }
 
-        // 8. المتجر
+        // HR — النظام الأم فقط؛ لا يتم توجيه مستخدم HR إلى التطبيق القديم.
+        if (perms.indexOf('hr') !== -1) { window.location.replace(base + '/main.html'); return; }
+
         if (perms.indexOf('online-store') !== -1) { window.location.replace(base + '/store/index.html'); return; }
 
-        // 9. إذا كان لديه صلاحية warehouse لكن active_warehouse_role فارغ
         if (perms.indexOf('warehouse') !== -1) {
             Swal.fire({
                 title: 'تنبيه',
@@ -201,7 +194,6 @@ var App = {
             return;
         }
 
-        // 10. افتراضي – النظام الأم
         window.location.replace(base + '/main.html');
     }
 };
@@ -214,12 +206,10 @@ supabase.auth.getSession().then(function(res) {
 });
 
 if ('serviceWorker' in navigator) {
-    // 1. تسجيل السيرفر وركر
     navigator.serviceWorker.register('sw.js').catch(function(err) {
         console.warn('SW Register error:', err);
     });
-    
-    // 2. الاستماع لتحديثات السيرفر وركر في الخلفية
+
     navigator.serviceWorker.addEventListener('message', function(event) {
         if (event.data && event.data.type === 'RW_SW_UPDATED') {
             console.log('[Auth] تحديث خلفي للنظام، إعادة تحميل الصفحة...');
