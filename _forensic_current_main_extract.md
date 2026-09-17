@@ -1,21 +1,21 @@
 # FORENSIC CURRENT MOTHER EXTRACT
 
-FILE_LINES=24854
-FILE_BYTES=1394331
-SHA256=d1be7eb82cd9237945dd977c686369f467cb489b56b6350e228bc026fe013a1b
+FILE_LINES=24958
+FILE_BYTES=1402338
+SHA256=69bd591d52b8a3fd38364a61774b247d172c37dbff2bbc93da11c99aabe68360
 PATTERN var RW_Warehouse: [10969]
-PATTERN loadInventoryControl: [13254, 14335, 23052]
-PATTERN loadReceiving: [10973, 14336, 23078]
-PATTERN loadVouchers: [11142, 11463, 11471, 11593, 11658, 14339, 23079]
-PATTERN loadVoucherForm: [11123, 11698, 14345, 23080, 23081, 23082, 23083]
-PATTERN loadPicking: [11702, 14354, 23069]
-PATTERN loadLoading: [11754, 14357, 23070]
-PATTERN loadDelivery: [11843, 14360, 23071]
-PATTERN loadReturn: [11892, 14363, 23072]
-PATTERN loadUnloading: [11941, 14366, 23077]
-PATTERN loadVehicleCount: [12103, 14369, 23084]
-PATTERN loadBranchCount: [12487, 14370, 23085]
-PATTERN loadGeneralCount: [12518, 14371, 23086]
+PATTERN loadInventoryControl: [13254, 14335, 23156]
+PATTERN loadReceiving: [10973, 14336, 23182]
+PATTERN loadVouchers: [11142, 11463, 11471, 11593, 11658, 14339, 23183]
+PATTERN loadVoucherForm: [11123, 11698, 14345, 23184, 23185, 23186, 23187]
+PATTERN loadPicking: [11702, 14354, 23173]
+PATTERN loadLoading: [11754, 14357, 23174]
+PATTERN loadDelivery: [11843, 14360, 23175]
+PATTERN loadReturn: [11892, 14363, 23176]
+PATTERN loadUnloading: [11941, 14366, 23181]
+PATTERN loadVehicleCount: [12103, 14369, 23188]
+PATTERN loadBranchCount: [12487, 14370, 23189]
+PATTERN loadGeneralCount: [12518, 14371, 23190]
 PATTERN inventory-stock-snapshot: []
 PATTERN inventory_stock_snapshot: []
 PATTERN inventory_movement_report: []
@@ -293,138 +293,138 @@ PATTERN FIXME: []
 14433: 
 14434:         _showLoader('جاري تحميل البيانات المالية...');
 14435:         Promise.all([
---- WINDOW 23022-23152 around 23052 ---
-23022:             'receiving':'الاستلام',
-23023:             'picking':'التحضير',
-23024:             'loading':'التحميل',
-23025:             'delivery':'التوصيل',
-23026:             'return':'المرتجعات',
-23027: 			'sales-returns':'إدارة مرتجعات المبيعات',
-23028:             'unloading':'التفريغ',
-23029:             'vouchers':'الأذونات المخزنية',
-23030:             'transfer':'تحويل مخزني',
-23031:             'direct-sale':'صرف سيارة بيع مباشر',
-23032:             'direct-return':'استلام مرتجع سيارة',
-23033:             'supplier-return':'مرتجع لمورد',
-23034:             'vehicle-count':'جرد سيارة',
-23035:             'branch-count':'جرد فرع',
-23036:             'general-count':'جرد عام',
-23037:             'finance':'الإدارة المالية',
-23038:             'reports-dashboard':'لوحة القيادة',
-23039:             'reports-detailed':'التقارير التفصيلية',
-23040:             'reports-comprehensive':'التقارير الشاملة',
-23041:             'audit-log':'سجل التدقيق',
-23042:             'hr':'الموارد البشرية',
-23043:             'crm':'إدارة علاقات العملاء'
-23044:         };
-23045:         safeText(byId('rw-header-title'), titles[view] || view);
-23046: 
-23047:         if (view === 'dashboard') { RW_Dashboard.render(); return; }
-23048:         if (view === 'items') { RW_Items.render(); return; }
-23049:         if (view === 'customers') { RW_Customers.render(); return; }
-23050:         if (view === 'suppliers') { RW_Suppliers.render(); return; }
-23051:         if (view === 'branches') { RW_Branches.render(); return; }
-23052: 		if (view === 'inventory-control') { RW_Warehouse.loadInventoryControl(); return; }
-23053:         if (view === 'settings') { RW_Settings.render(); return; }
-23054:         if (view === 'hr') { RW_HR.render(); return; }
-23055:         if (view === 'crm') { RW_CRM.render(); return; }
-23056:         if (view === 'users') { RW_Users.render(); return; }
-23057:         if (view === 'roles') { RW_Roles.render(); return; }
-23058:         if (view === 'license') { RW_OwnerLicense.render(); return; }
-23059:         if (view === 'telesales') { RW_TeleSales.render(); return; }
-23060:         if (view === 'pos') { RW_POS.render(); return; }
-23061:         if (view === 'orders') { RW_Orders.render(); return; }
-23062: 		if (view === 'quotes') { RW_SalesQuotes.render(); return; }
-23063: 		if (view === 'price-lists') { RW_PriceLists.render(); return; }
-23064: 		if (view === 'promotions') { RW_Promotions.render(); return; }
-23065:         if (view === 'runsheets') { RW_Runsheets.render(); return; }
-23066:         if (view === 'online-store') { RW_OnlineStore.render(); return; }
-23067:         if (view === 'purchases') { RW_Purchases.renderOrders(); return; }
-23068:         if (view === 'purchase-pos') { RW_Purchases.renderPOS(); return; }
-23069:         if (view === 'picking') { RW_Warehouse.loadPicking(); return; }
-23070:         if (view === 'loading') { RW_Warehouse.loadLoading(); return; }
-23071:         if (view === 'delivery') { RW_Warehouse.loadDelivery(); return; }
-23072:         if (view === 'return') { RW_Warehouse.loadReturn(); return; }
-23073: 		if (view === 'sales-returns') { RW_SalesReturnsManagement.render(); return; }
-23074: 		if (view === 'loyalty') { RW_LoyaltyMain.render(); return; }
-23075: 		if (view === 'sales-decision-center') { RW_SalesDecisionCenter.render(); return; }
-23076: 		if (view === 'sales-targets') { RW_SalesTargetsMain.render(); return; }
-23077:         if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
-23078:         if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
-23079:         if (view === 'vouchers') { RW_Warehouse.loadVouchers(); return; }
-23080:         if (view === 'transfer') { RW_Warehouse.loadVoucherForm('Transfer'); return; }
-23081:         if (view === 'direct-sale') { RW_Warehouse.loadVoucherForm('DirectSale'); return; }
-23082:         if (view === 'direct-return') { RW_Warehouse.loadVoucherForm('DirectReturn'); return; }
-23083:         if (view === 'supplier-return') { RW_Warehouse.loadVoucherForm('SupplierReturn'); return; }
-23084:         if (view === 'vehicle-count') { RW_Warehouse.loadVehicleCount(); return; }
-23085:         if (view === 'branch-count') { RW_Warehouse.loadBranchCount(); return; }
-23086:         if (view === 'general-count') { RW_Warehouse.loadGeneralCount(); return; }
-23087:         if (view === 'settlement') { RW_Warehouse.loadSettlement(); return; }
-23088:         if (view === 'finance') { RW_Finance.render(); return; }
-23089:         if (view === 'reports-dashboard') { RW_Reports.renderDashboard(); return; }
-23090:         if (view === 'reports-detailed') { RW_Reports.renderDetailedReports(); return; }
-23091:         if (view === 'reports-comprehensive') { RW_Reports_Comprehensive.render(); return; }
-23092:         if (view === 'audit-log') { RW_Audit_renderTab(); return; }
-23093: 
-23094:         safeHTML(c, '<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">⚠️</div><h2>' + (titles[view] || view) + '</h2><p style="color:#6b7280">التبويب غير معروف</p></div>');
-23095:     }
-23096: };
-23097: window.RW_Views = RW_Views;
-23098: // ============================================================
-23099: // RW_HR – الموارد البشرية (HR) - الوحدة المتقدمة
-23100: // ============================================================
-23101: var RW_HR = (function() {
-23102:     'use strict';
-23103: 
-23104:     var hrData = [];
-23105: 
-23106:     function _esc(s) {
-23107:         return String(s == null ? '' : s)
-23108:             .replace(/&/g, '&amp;')
-23109:             .replace(/</g, '&lt;')
-23110:             .replace(/>/g, '&gt;');
-23111:     }
-23112: 
-23113:     function _escAttr(s) {
-23114:         return _esc(s)
-23115:             .replace(/\"/g, '&quot;')
-23116:             .replace(/'/g, '&#39;');
-23117:     }
-23118: 
-23119:     function _fmtNum(n) {
-23120:         return Number(n || 0).toLocaleString('ar-EG');
-23121:     }
-23122: 
-23123:     function _companyId() {
-23124:         if (typeof _rwCompanyId === 'function') return _rwCompanyId();
-23125:         if (typeof RW_STATE !== 'undefined' && RW_STATE) {
-23126:             if (RW_STATE.app && RW_STATE.app.companyId) return RW_STATE.app.companyId;
-23127:             if (RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id) return RW_STATE.app.company.id;
-23128:             if (RW_STATE.user && RW_STATE.user.companyId) return RW_STATE.user.companyId;
-23129:         }
-23130:         return null;
-23131:     }
-23132: 
-23133:     async function _loadEmployees() {
-23134:         var res = await supabase.rpc('hr_list_employees');
-23135:         if (res.error) throw res.error;
-23136:         hrData = res.data || [];
-23137:         return hrData;
-23138:     }
-23139: 
-23140:     function _employeeCard(emp) {
-23141:         var profileSalary = Number(emp.basic_salary || 0) +
-23142:             Number(emp.housing_allowance || 0) +
-23143:             Number(emp.transport_allowance || 0) +
-23144:             Number(emp.other_allowance || 0) -
-23145:             Number(emp.default_deduction || 0);
-23146:         return '<div class="bg-white rounded-2xl shadow-sm border p-5 hover:shadow-md transition cursor-pointer" data-hr-employee-id="' + _escAttr(emp.id) + '">' +
-23147:             '<div class="flex items-center gap-4 mb-4">' +
-23148:                 '<div class="w-14 h-14 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-xl font-black">' + _esc((emp.name || '?').charAt(0)) + '</div>' +
-23149:                 '<div class="min-w-0"><h3 class="font-black text-base text-gray-800 truncate">' + _esc(emp.name) + '</h3><p class="text-xs text-gray-500 truncate">' + _esc(emp.job_title || emp.role || 'موظف') + '</p></div>' +
-23150:             '</div>' +
-23151:             '<div class="space-y-2 text-sm">' +
-23152:                 '<div class="flex justify-between"><span class="text-gray-500">البريد</span><span class="font-bold text-gray-700">' + _esc(emp.email) + '</span></div>' +
+--- WINDOW 23126-23256 around 23156 ---
+23126:             'receiving':'الاستلام',
+23127:             'picking':'التحضير',
+23128:             'loading':'التحميل',
+23129:             'delivery':'التوصيل',
+23130:             'return':'المرتجعات',
+23131: 			'sales-returns':'إدارة مرتجعات المبيعات',
+23132:             'unloading':'التفريغ',
+23133:             'vouchers':'الأذونات المخزنية',
+23134:             'transfer':'تحويل مخزني',
+23135:             'direct-sale':'صرف سيارة بيع مباشر',
+23136:             'direct-return':'استلام مرتجع سيارة',
+23137:             'supplier-return':'مرتجع لمورد',
+23138:             'vehicle-count':'جرد سيارة',
+23139:             'branch-count':'جرد فرع',
+23140:             'general-count':'جرد عام',
+23141:             'finance':'الإدارة المالية',
+23142:             'reports-dashboard':'لوحة القيادة',
+23143:             'reports-detailed':'التقارير التفصيلية',
+23144:             'reports-comprehensive':'التقارير الشاملة',
+23145:             'audit-log':'سجل التدقيق',
+23146:             'hr':'الموارد البشرية',
+23147:             'crm':'إدارة علاقات العملاء'
+23148:         };
+23149:         safeText(byId('rw-header-title'), titles[view] || view);
+23150: 
+23151:         if (view === 'dashboard') { RW_Dashboard.render(); return; }
+23152:         if (view === 'items') { RW_Items.render(); return; }
+23153:         if (view === 'customers') { RW_Customers.render(); return; }
+23154:         if (view === 'suppliers') { RW_Suppliers.render(); return; }
+23155:         if (view === 'branches') { RW_Branches.render(); return; }
+23156: 		if (view === 'inventory-control') { RW_Warehouse.loadInventoryControl(); return; }
+23157:         if (view === 'settings') { RW_Settings.render(); return; }
+23158:         if (view === 'hr') { RW_HR.render(); return; }
+23159:         if (view === 'crm') { RW_CRM.render(); return; }
+23160:         if (view === 'users') { RW_Users.render(); return; }
+23161:         if (view === 'roles') { RW_Roles.render(); return; }
+23162:         if (view === 'license') { RW_OwnerLicense.render(); return; }
+23163:         if (view === 'telesales') { RW_TeleSales.render(); return; }
+23164:         if (view === 'pos') { RW_POS.render(); return; }
+23165:         if (view === 'orders') { RW_Orders.render(); return; }
+23166: 		if (view === 'quotes') { RW_SalesQuotes.render(); return; }
+23167: 		if (view === 'price-lists') { RW_PriceLists.render(); return; }
+23168: 		if (view === 'promotions') { RW_Promotions.render(); return; }
+23169:         if (view === 'runsheets') { RW_Runsheets.render(); return; }
+23170:         if (view === 'online-store') { RW_OnlineStore.render(); return; }
+23171:         if (view === 'purchases') { RW_Purchases.renderOrders(); return; }
+23172:         if (view === 'purchase-pos') { RW_Purchases.renderPOS(); return; }
+23173:         if (view === 'picking') { RW_Warehouse.loadPicking(); return; }
+23174:         if (view === 'loading') { RW_Warehouse.loadLoading(); return; }
+23175:         if (view === 'delivery') { RW_Warehouse.loadDelivery(); return; }
+23176:         if (view === 'return') { RW_Warehouse.loadReturn(); return; }
+23177: 		if (view === 'sales-returns') { RW_SalesReturnsManagement.render(); return; }
+23178: 		if (view === 'loyalty') { RW_LoyaltyMain.render(); return; }
+23179: 		if (view === 'sales-decision-center') { RW_SalesDecisionCenter.render(); return; }
+23180: 		if (view === 'sales-targets') { RW_SalesTargetsMain.render(); return; }
+23181:         if (view === 'unloading') { RW_Warehouse.loadUnloading(); return; }
+23182:         if (view === 'receiving') { RW_Warehouse.loadReceiving(); return; }
+23183:         if (view === 'vouchers') { RW_Warehouse.loadVouchers(); return; }
+23184:         if (view === 'transfer') { RW_Warehouse.loadVoucherForm('Transfer'); return; }
+23185:         if (view === 'direct-sale') { RW_Warehouse.loadVoucherForm('DirectSale'); return; }
+23186:         if (view === 'direct-return') { RW_Warehouse.loadVoucherForm('DirectReturn'); return; }
+23187:         if (view === 'supplier-return') { RW_Warehouse.loadVoucherForm('SupplierReturn'); return; }
+23188:         if (view === 'vehicle-count') { RW_Warehouse.loadVehicleCount(); return; }
+23189:         if (view === 'branch-count') { RW_Warehouse.loadBranchCount(); return; }
+23190:         if (view === 'general-count') { RW_Warehouse.loadGeneralCount(); return; }
+23191:         if (view === 'settlement') { RW_Warehouse.loadSettlement(); return; }
+23192:         if (view === 'finance') { RW_Finance.render(); return; }
+23193:         if (view === 'reports-dashboard') { RW_Reports.renderDashboard(); return; }
+23194:         if (view === 'reports-detailed') { RW_Reports.renderDetailedReports(); return; }
+23195:         if (view === 'reports-comprehensive') { RW_Reports_Comprehensive.render(); return; }
+23196:         if (view === 'audit-log') { RW_Audit_renderTab(); return; }
+23197: 
+23198:         safeHTML(c, '<div class="rw-card" style="text-align:center;padding:60px 20px"><div style="font-size:64px;margin-bottom:20px">⚠️</div><h2>' + (titles[view] || view) + '</h2><p style="color:#6b7280">التبويب غير معروف</p></div>');
+23199:     }
+23200: };
+23201: window.RW_Views = RW_Views;
+23202: // ============================================================
+23203: // RW_HR – الموارد البشرية (HR) - الوحدة المتقدمة
+23204: // ============================================================
+23205: var RW_HR = (function() {
+23206:     'use strict';
+23207: 
+23208:     var hrData = [];
+23209: 
+23210:     function _esc(s) {
+23211:         return String(s == null ? '' : s)
+23212:             .replace(/&/g, '&amp;')
+23213:             .replace(/</g, '&lt;')
+23214:             .replace(/>/g, '&gt;');
+23215:     }
+23216: 
+23217:     function _escAttr(s) {
+23218:         return _esc(s)
+23219:             .replace(/\"/g, '&quot;')
+23220:             .replace(/'/g, '&#39;');
+23221:     }
+23222: 
+23223:     function _fmtNum(n) {
+23224:         return Number(n || 0).toLocaleString('ar-EG');
+23225:     }
+23226: 
+23227:     function _companyId() {
+23228:         if (typeof _rwCompanyId === 'function') return _rwCompanyId();
+23229:         if (typeof RW_STATE !== 'undefined' && RW_STATE) {
+23230:             if (RW_STATE.app && RW_STATE.app.companyId) return RW_STATE.app.companyId;
+23231:             if (RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id) return RW_STATE.app.company.id;
+23232:             if (RW_STATE.user && RW_STATE.user.companyId) return RW_STATE.user.companyId;
+23233:         }
+23234:         return null;
+23235:     }
+23236: 
+23237:     async function _loadEmployees() {
+23238:         var res = await supabase.rpc('hr_list_employees');
+23239:         if (res.error) throw res.error;
+23240:         hrData = res.data || [];
+23241:         return hrData;
+23242:     }
+23243: 
+23244:     function _employeeCard(emp) {
+23245:         var profileSalary = Number(emp.basic_salary || 0) +
+23246:             Number(emp.housing_allowance || 0) +
+23247:             Number(emp.transport_allowance || 0) +
+23248:             Number(emp.other_allowance || 0) -
+23249:             Number(emp.default_deduction || 0);
+23250:         return '<div class="bg-white rounded-2xl shadow-sm border p-5 hover:shadow-md transition cursor-pointer" data-hr-employee-id="' + _escAttr(emp.id) + '">' +
+23251:             '<div class="flex items-center gap-4 mb-4">' +
+23252:                 '<div class="w-14 h-14 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-xl font-black">' + _esc((emp.name || '?').charAt(0)) + '</div>' +
+23253:                 '<div class="min-w-0"><h3 class="font-black text-base text-gray-800 truncate">' + _esc(emp.name) + '</h3><p class="text-xs text-gray-500 truncate">' + _esc(emp.job_title || emp.role || 'موظف') + '</p></div>' +
+23254:             '</div>' +
+23255:             '<div class="space-y-2 text-sm">' +
+23256:                 '<div class="flex justify-between"><span class="text-gray-500">البريد</span><span class="font-bold text-gray-700">' + _esc(emp.email) + '</span></div>' +
 --- WINDOW 8961-9091 around 8991 ---
 8961:       var poRes = await supabase.from('purchase_orders').select('*').eq('company_id', companyId).eq('po_code', poCode).maybeSingle();
 8962:       if (poRes.error || !poRes.data) throw new Error('أمر الشراء غير موجود');
