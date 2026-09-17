@@ -1,4 +1,4 @@
-// sw.js – إصدار 3.2 AUTO-UPDATE FINAL
+// sw.js – إصدار 3.3 AUTO-UPDATE FINAL
 // RAWAEA ERP — Production Service Worker
 // Contract:
 // - HTML/navigation/API/runtime code are network-backed and never cached.
@@ -7,8 +7,9 @@
 // - Every new SW build activates immediately and reloads in-scope windows.
 // - Manifest is network-backed so PWA metadata cannot remain stale.
 // - No authentication or business-data caching.
+// - Known RW_HR payroll shell syntax drift is repaired before HTML parse.
 
-var SW_BUILD = 'RAWAEA_SW_P153_HELPER_CACHE_HARDENING_20260912';
+var SW_BUILD = 'RAWAEA_SW_P154_HR_SHELL_HARDENING_20260917';
 var STATIC_CACHE = 'rw-static-' + SW_BUILD;
 var STATIC_EXTENSIONS = ['.css', '.woff', '.woff2', '.ttf', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp'];
 var MAX_STATIC_ITEMS = 200;
@@ -97,31 +98,49 @@ function putStatic(cache, request, response) {
     });
 }
 
+function patchKnownHRShell(html) {
+    var broken = "esc(x.status||'-')]))));";
+    var canonical = "esc(x.status||'-')])));";
+    var count = html.split(broken).length - 1;
+    if (count === 1) {
+        console.warn('[SW] Repaired stale RW_HR payroll syntax before HTML parse');
+        return html.replace(broken, canonical);
+    }
+    if (count > 1) {
+        console.error('[SW] Refused ambiguous RW_HR payroll repair; multiple stale tokens found:', count);
+    }
+    return html;
+}
+
 function injectUpdateCoordinator(response) {
     if (!response || response.status !== 200) return response;
     var contentType = response.headers.get('content-type') || '';
     if (contentType.indexOf('text/html') === -1) return response;
 
     return response.text().then(function(html) {
-        if (html.indexOf('RAWAEA_UPDATE_COORDINATOR') !== -1) return response;
+        var before = html;
+        html = patchKnownHRShell(html);
 
-        var scopeUrl = new URL(self.registration.scope);
-        var coordinatorUrl = new URL('register-sw.js', scopeUrl).pathname;
-        var script = '<script id="RAWAEA_UPDATE_COORDINATOR" src="' + coordinatorUrl + '"></script>';
-        var marker = html.indexOf('</head>');
-        if (marker >= 0) {
-            html = html.slice(0, marker) + script + html.slice(marker);
-        } else {
-            html = script + html;
+        if (html.indexOf('RAWAEA_UPDATE_COORDINATOR') === -1) {
+            var scopeUrl = new URL(self.registration.scope);
+            var coordinatorUrl = new URL('register-sw.js', scopeUrl).pathname;
+            var script = '<script id="RAWAEA_UPDATE_COORDINATOR" src="' + coordinatorUrl + '"></script>';
+            var marker = html.indexOf('</head>');
+            if (marker >= 0) {
+                html = html.slice(0, marker) + script + html.slice(marker);
+            } else {
+                html = script + html;
+            }
         }
 
+        if (html === before) return response;
         return new Response(html, {
             status: response.status,
             statusText: response.statusText,
             headers: new Headers(response.headers)
         });
     }).catch(function(error) {
-        console.warn('[SW] coordinator injection skipped:', error);
+        console.warn('[SW] coordinator/HR shell transform skipped:', error);
         return response;
     });
 }
