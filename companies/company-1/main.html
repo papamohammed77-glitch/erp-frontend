@@ -15523,7 +15523,7 @@ function _renderReceipts() {
                         '</div>' +
 
                         '<button type="button" ' +
-                            'onclick="RW_Finance.renderSubTab(\\'receipts\\')" ' +
+                            'onclick="RW_Finance.renderSubTab(\'receipts\')" ' +
                             'class="text-gray-500 hover:text-gray-800">' +
                             '<i class="fa-solid fa-xmark text-xl"></i>' +
                         '</button>' +
@@ -15634,7 +15634,7 @@ function _renderReceipts() {
 
                 '<div class="flex justify-end gap-3">' +
                     '<button type="button" ' +
-                        'onclick="RW_Finance.renderSubTab(\\'receipts\\')" ' +
+                        'onclick="RW_Finance.renderSubTab(\'receipts\')" ' +
                         'class="px-5 py-3 border rounded-xl font-bold">' +
                         'إلغاء' +
                     '</button>' +
@@ -15961,278 +15961,139 @@ function _renderReceipts() {
         }
     }
 
-    function _renderRevenues() {
-        var content = byId('finance-content');
-        if (!content) return;
+    async function _renderRevenues() {
+    var content = byId('finance-content');
+    if (!content) return;
 
-        var companyId = _companyId();
+    var companyId = _companyId();
+    if (!companyId) {
+        safeHTML(content, '<div class="bg-white rounded-2xl border p-6 text-red-600 font-bold">تعذر تحديد الشركة الحالية.</div>');
+        return;
+    }
 
-        safeHTML(
-            content,
-            '<div class="text-center py-10">' +
-                '<i class="fa-solid fa-spinner fa-spin text-emerald-600 text-2xl"></i>' +
-                '<div class="mt-2 text-gray-500">جاري تحميل الإيرادات...</div>' +
-            '</div>'
-        );
+    var now = new Date();
+    var today = now.toISOString().slice(0, 10);
+    var firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
 
-        Promise.all([
-            supabase.from('finance_revenues')
-                .select('*')
-                .eq('company_id', companyId)
-                .order('revenue_date', { ascending: false })
-                .order('created_at', { ascending: false }),
+    async function loadRevenueRows(fromDate, toDate) {
+        var result = await supabase.rpc('finance_list_revenues_v2', {
+            p_company_id: companyId,
+            p_from: fromDate,
+            p_to: toDate
+        });
+        if (result.error) throw result.error;
+        return result.data || [];
+    }
 
-            supabase.from('finance_revenue_categories')
-                .select('id,code,name')
-                .eq('company_id', companyId)
-                .eq('is_active', true)
-        ])
-        .then(function(results) {
-            var revenueResult = results[0];
-            var categoryResult = results[1];
+    async function renderResults() {
+        var fromInput = byId('fin_rev_from');
+        var toInput = byId('fin_rev_to');
+        var fromDate = fromInput && fromInput.value ? fromInput.value : firstDay;
+        var toDate = toInput && toInput.value ? toInput.value : today;
 
-            if (revenueResult.error) throw revenueResult.error;
-            if (categoryResult.error) throw categoryResult.error;
+        if (fromDate > toDate) {
+            _showToast('تاريخ البداية يجب أن يسبق تاريخ النهاية.', 'warning');
+            return;
+        }
 
-            var rows = revenueResult.data || [];
-            var categories = categoryResult.data || [];
+        content.dataset.revenueFrom = fromDate;
+        content.dataset.revenueTo = toDate;
 
-            var categoryMap = {};
-            categories.forEach(function(c) {
-                categoryMap[c.id] = c.name || c.code;
+        safeHTML(content, '<div class="bg-white rounded-2xl border p-8 text-center text-gray-500">جاري تحميل الإيرادات...</div>');
+
+        try {
+            var rows = await loadRevenueRows(fromDate, toDate);
+            var postedRows = rows.filter(function(r) {
+                return String(r.status || '').toUpperCase() !== 'VOID';
             });
-
-            var revenueAccounts = {};
-            _cache.accountsFlat.forEach(function(a) {
-                revenueAccounts[a.id] =
-                    a.account_name + ' (' + a.account_code + ')';
+            var voidRows = rows.filter(function(r) {
+                return String(r.status || '').toUpperCase() === 'VOID';
             });
-
-            var totalPosted = 0;
-            var totalVoided = 0;
-
-            rows.forEach(function(r) {
-                var amount =
-                    Number(r.total_amount || 0) +
-                    Number(r.tax_amount || 0);
-
-                if (r.status === 'VOID') {
-                    totalVoided += amount;
-                } else {
-                    totalPosted += amount;
-                }
-            });
+            var total = rows.reduce(function(sum, r) {
+                return sum + Number(r.total_amount || 0) + Number(r.tax_amount || 0);
+            }, 0);
+            var postedTotal = postedRows.reduce(function(sum, r) {
+                return sum + Number(r.total_amount || 0) + Number(r.tax_amount || 0);
+            }, 0);
 
             var html =
-                '<div class="space-y-5">' +
-
-                    '<div class="flex flex-wrap justify-between items-center gap-3">' +
-                        '<div>' +
-                            '<h2 class="text-2xl font-black text-emerald-800">' +
-                                '<i class="fa-solid fa-money-bill-trend-up ml-2"></i>' +
-                                'الإيرادات' +
-                            '</h2>' +
-                            '<div class="text-sm text-gray-500 mt-1">' +
-                                'سجل الإيرادات المرحّلة المرتبطة بالخزينة والحسابات.' +
-                            '</div>' +
-                        '</div>' +
-
-                        '<button type="button" ' +
-                            'onclick="RW_Finance._newReceipt()" ' +
-                            'class="bg-emerald-600 text-white px-5 py-3 rounded-xl font-black">' +
-                            '<i class="fa-solid fa-plus ml-1"></i>' +
-                            ' إيراد جديد' +
-                        '</button>' +
+                '<div class="space-y-4">' +
+                    '<div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">' +
+                        '<div><label class="block text-sm font-bold mb-1">من تاريخ</label><input id="fin_rev_from" type="date" value="' + _esc(fromDate) + '" class="w-full border rounded-xl p-3"></div>' +
+                        '<div><label class="block text-sm font-bold mb-1">إلى تاريخ</label><input id="fin_rev_to" type="date" value="' + _esc(toDate) + '" class="w-full border rounded-xl p-3"></div>' +
+                        '<button id="fin_rev_apply" type="button" class="bg-slate-800 text-white px-4 py-3 rounded-xl font-bold">تحديث النتائج</button>' +
+                        '<button id="fin_rev_new" type="button" class="bg-emerald-600 text-white px-4 py-3 rounded-xl font-bold"><i class="fa-solid fa-money-bill-trend-up ml-1"></i> إيراد جديد</button>' +
+                        '<button id="fin_rev_receipts" type="button" class="bg-white border px-4 py-3 rounded-xl font-bold text-gray-700">سندات القبض</button>' +
                     '</div>' +
 
-                    '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">' +
-
-                        '<div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-5">' +
-                            '<div class="text-sm text-emerald-700">صافي الإيرادات المرحّلة</div>' +
-                            '<div class="text-3xl font-black text-emerald-800 mt-1">' +
-                                _fmtNum(totalPosted - totalVoided) +
-                            '</div>' +
-                        '</div>' +
-
-                        '<div class="bg-slate-50 border rounded-2xl p-5">' +
-                            '<div class="text-sm text-gray-500">عدد السندات</div>' +
-                            '<div class="text-3xl font-black mt-1">' +
-                                String(rows.length) +
-                            '</div>' +
-                        '</div>' +
-
-                        '<div class="bg-amber-50 border border-amber-100 rounded-2xl p-5">' +
-                            '<div class="text-sm text-amber-700">المعكوس</div>' +
-                            '<div class="text-3xl font-black text-amber-800 mt-1">' +
-                                _fmtNum(totalVoided) +
-                            '</div>' +
-                        '</div>' +
-
+                    '<div class="grid grid-cols-1 md:grid-cols-4 gap-3">' +
+                        '<div class="bg-white border rounded-2xl p-4"><div class="text-xs text-gray-500">عدد العمليات</div><div class="text-2xl font-black">' + _fmtNum(rows.length) + '</div></div>' +
+                        '<div class="bg-emerald-50 border border-emerald-100 rounded-2xl p-4"><div class="text-xs text-emerald-700">الإيرادات المرحلة</div><div class="text-2xl font-black text-emerald-700">' + _fmtNum(postedTotal) + ' EGP</div></div>' +
+                        '<div class="bg-slate-50 border rounded-2xl p-4"><div class="text-xs text-gray-500">إجمالي العمليات</div><div class="text-2xl font-black">' + _fmtNum(total) + ' EGP</div></div>' +
+                        '<div class="bg-red-50 border border-red-100 rounded-2xl p-4"><div class="text-xs text-red-700">المعكوس</div><div class="text-2xl font-black text-red-700">' + _fmtNum(voidRows.length) + '</div></div>' +
                     '</div>' +
 
                     '<div class="bg-white rounded-2xl shadow-sm border overflow-hidden">' +
+                        '<div class="px-4 py-3 bg-emerald-50 border-b flex flex-wrap justify-between items-center gap-2">' +
+                            '<div><div class="font-black text-lg text-emerald-800">الإيرادات</div><div class="text-xs text-emerald-700">قبض نقدي/خزينة مرتبط بالقيد المحاسبي وسند الإيراد.</div></div>' +
+                            '<div class="text-xs font-bold text-gray-500">من ' + _esc(fromDate) + ' إلى ' + _esc(toDate) + '</div>' +
+                        '</div>' +
                         '<div class="overflow-x-auto">' +
                             '<table class="w-full text-sm border-collapse">' +
-                                '<thead>' +
-                                    '<tr class="bg-emerald-50">' +
-                                        '<th class="p-3 border">السند</th>' +
-                                        '<th class="p-3 border">التاريخ</th>' +
-                                        '<th class="p-3 border">الدافع</th>' +
-                                        '<th class="p-3 border">الفئة</th>' +
-                                        '<th class="p-3 border">الحسابات</th>' +
-                                        '<th class="p-3 border">الخزينة</th>' +
-                                        '<th class="p-3 border">الفرع</th>' +
-                                        '<th class="p-3 border">المبلغ</th>' +
-                                        '<th class="p-3 border">الحالة</th>' +
-                                    '</tr>' +
-                                '</thead>' +
-                                '<tbody>';
+                                '<thead><tr class="bg-slate-50 border-b">' +
+                                    '<th class="p-3 border">الكود</th>' +
+                                    '<th class="p-3 border">التاريخ</th>' +
+                                    '<th class="p-3 border">الدافع / الجهة</th>' +
+                                    '<th class="p-3 border">الفئة</th>' +
+                                    '<th class="p-3 border">الفرع</th>' +
+                                    '<th class="p-3 border">الخزينة</th>' +
+                                    '<th class="p-3 border">الحسابات</th>' +
+                                    '<th class="p-3 border">الإجمالي</th>' +
+                                    '<th class="p-3 border">الحالة</th>' +
+                                '</tr></thead><tbody>';
 
             if (!rows.length) {
-                html +=
-                    '<tr>' +
-                        '<td colspan="9" class="p-10 text-center text-gray-500">' +
-                            'لا توجد إيرادات مسجلة بعد.' +
-                        '</td>' +
-                    '</tr>';
+                html += '<tr><td colspan="9" class="p-10 text-center text-gray-500">لا توجد إيرادات خلال الفترة المحددة.</td></tr>';
             } else {
-                var lineQueryIds = rows.map(function(r) { return r.id; });
+                for (var i = 0; i < rows.length; i++) {
+                    var r = rows[i];
+                    var isVoid = String(r.status || '').toUpperCase() === 'VOID';
+                    var statusLabel = isVoid ? 'معكوس' : 'مرحل';
+                    var statusClass = isVoid ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700';
+                    var rowTotal = Number(r.total_amount || 0) + Number(r.tax_amount || 0);
+                    html += '<tr class="border-t hover:bg-slate-50">' +
+                        '<td class="p-3 border font-bold">' + _esc(r.revenue_code) + '</td>' +
+                        '<td class="p-3 border">' + _esc(r.revenue_date) + '</td>' +
+                        '<td class="p-3 border">' + _esc(r.payer_name || '—') + '</td>' +
+                        '<td class="p-3 border">' + _esc(r.category_name || '—') + '</td>' +
+                        '<td class="p-3 border">' + _esc(r.branch_name || r.branch_id || '—') + '</td>' +
+                        '<td class="p-3 border">' + _esc(r.treasury_name || r.treasury_id || '—') + '</td>' +
+                        '<td class="p-3 border text-center font-bold">' + _fmtNum(r.line_count || 0) + '</td>' +
+                        '<td class="p-3 border font-black text-emerald-700">' + _fmtNum(rowTotal) + ' EGP</td>' +
+                        '<td class="p-3 border"><span class="px-2 py-1 rounded-full text-xs font-bold ' + statusClass + '">' + statusLabel + '</span></td>' +
+                    '</tr>';
+                }
+            }
 
-                return supabase.from('finance_revenue_lines')
-                    .select('revenue_id,account_id,amount,tax_amount')
-                    .eq('company_id', companyId)
-                    .in('revenue_id', lineQueryIds)
-                    .then(function(lineResult) {
-                        if (lineResult.error) throw lineResult.error;
+            html += '</tbody></table></div></div></div>';
+            safeHTML(content, html);
 
-                        var lineMap = {};
-
-                        (lineResult.data || []).forEach(function(line) {
-                            if (!lineMap[line.revenue_id]) {
-                                lineMap[line.revenue_id] = [];
-                            }
-
-                            lineMap[line.revenue_id].push(
-                                revenueAccounts[line.account_id] ||
-                                line.account_id
-                            );
-                        });
-
-                        rows.forEach(function(r) {
-                            var amount =
-                                Number(r.total_amount || 0) +
-                                Number(r.tax_amount || 0);
-
-                            var statusLabel =
-                                r.status === 'VOID'
-                                    ? 'معكوس'
-                                    : 'مرحّل';
-
-                            var statusClass =
-                                r.status === 'VOID'
-                                    ? 'text-red-700 bg-red-50'
-                                    : 'text-emerald-700 bg-emerald-50';
-
-                            var branch = null;
-                            var treasury = null;
-
-                            for (var i = 0; i < branchesForRevenue.length; i++) {
-                                if (branchesForRevenue[i].id === r.branch_id) {
-                                    branch = branchesForRevenue[i];
-                                    break;
-                                }
-                            }
-
-                            for (var j = 0; j < _cache.treasury.length; j++) {
-                                if (_cache.treasury[j].id === r.treasury_id) {
-                                    treasury = _cache.treasury[j];
-                                    break;
-                                }
-                            }
-
-                            html +=
-                                '<tr class="border-t hover:bg-emerald-50/40">' +
-                                    '<td class="p-3 border font-black text-emerald-700">' +
-                                        _esc(r.revenue_code) +
-                                    '</td>' +
-
-                                    '<td class="p-3 border">' +
-                                        _esc(r.revenue_date || '') +
-                                    '</td>' +
-
-                                    '<td class="p-3 border">' +
-                                        _esc(r.payer_name || '-') +
-                                    '</td>' +
-
-                                    '<td class="p-3 border">' +
-                                        _esc(categoryMap[r.category_id] || '-') +
-                                    '</td>' +
-
-                                    '<td class="p-3 border">' +
-                                        _esc(
-                                            (lineMap[r.id] || []).join('، ') ||
-                                            '-'
-                                        ) +
-                                    '</td>' +
-
-                                    '<td class="p-3 border">' +
-                                        _esc(
-                                            treasury
-                                                ? treasury.account_name
-                                                : r.treasury_id
-                                        ) +
-                                    '</td>' +
-
-                                    '<td class="p-3 border">' +
-                                        _esc(
-                                            branch
-                                                ? (branch.name || branch.branch_code)
-                                                : r.branch_id
-                                        ) +
-                                    '</td>' +
-
-                                    '<td class="p-3 border text-left font-black text-emerald-700">' +
-                                        _fmtNum(amount) +
-                                    '</td>' +
-
-                                    '<td class="p-3 border text-center">' +
-                                        '<span class="px-3 py-1 rounded-full text-xs font-black ' +
-                                            statusClass +
-                                        '">' +
-                                            statusLabel +
-                                        '</span>' +
-                                    '</td>' +
-
-                                '</tr>';
-                        });
-
-                        html +=
-                                '</tbody>' +
-                            '</table>' +
-                        '</div>' +
-                    '</div>' +
-                '</div>';
-
-                safeHTML(content, html);
-            })
-            .catch(function(e) {
-                safeHTML(
-                    content,
-                    '<div class="text-center py-10 text-red-500">' +
-                        _esc(e.message || 'فشل تحميل الإيرادات') +
-                    '</div>'
-                );
-            });
-        })
-        .catch(function(e) {
-            safeHTML(
-                content,
-                '<div class="text-center py-10 text-red-500">' +
-                    _esc(e.message || 'فشل تحميل الإيرادات') +
-                '</div>'
-            );
-        });
+            var applyButton = byId('fin_rev_apply');
+            var newButton = byId('fin_rev_new');
+            var receiptsButton = byId('fin_rev_receipts');
+            if (applyButton) applyButton.onclick = renderResults;
+            if (newButton) newButton.onclick = _newReceipt;
+            if (receiptsButton) receiptsButton.onclick = function() {
+                renderSubTab('receipts');
+            };
+        } catch (e) {
+            safeHTML(content, '<div class="bg-white rounded-2xl border p-6 text-red-600"><div class="font-black mb-2">تعذر تحميل الإيرادات</div><div>' + _esc(e && e.message ? e.message : 'خطأ غير معروف') + '</div></div>');
+            _showToast(e && e.message ? e.message : 'فشل تحميل الإيرادات', 'error');
+        }
     }
+
+    await renderResults();
+}
 	var _customerPaymentRealtimeChannel = null;
 	function _startCustomerPaymentRealtime() {
     if (_customerPaymentRealtimeChannel) {
