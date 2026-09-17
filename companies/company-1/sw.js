@@ -1,4 +1,4 @@
-// sw.js – إصدار 3.3 AUTO-UPDATE FINAL
+// sw.js – إصدار 3.4 AUTO-UPDATE FINAL
 // RAWAEA ERP — Production Service Worker
 // Contract:
 // - HTML/navigation/API/runtime code are network-backed and never cached.
@@ -7,9 +7,9 @@
 // - Every new SW build activates immediately and reloads in-scope windows.
 // - Manifest is network-backed so PWA metadata cannot remain stale.
 // - No authentication or business-data caching.
-// - Known RW_HR payroll shell syntax drift is repaired before HTML parse.
+// - Known RW_HR syntax drift is repaired before HTML parse.
 
-var SW_BUILD = 'RAWAEA_SW_P154_HR_SHELL_HARDENING_20260917';
+var SW_BUILD = 'RAWAEA_SW_P155_HR_TERMINAL_SYNTAX_HARDENING_20260917';
 var STATIC_CACHE = 'rw-static-' + SW_BUILD;
 var STATIC_EXTENSIONS = ['.css', '.woff', '.woff2', '.ttf', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp'];
 var MAX_STATIC_ITEMS = 200;
@@ -99,16 +99,32 @@ function putStatic(cache, request, response) {
 }
 
 function patchKnownHRShell(html) {
-    var broken = "esc(x.status||'-')]))));";
-    var canonical = "esc(x.status||'-')])));";
-    var count = html.split(broken).length - 1;
-    if (count === 1) {
-        console.warn('[SW] Repaired stale RW_HR payroll syntax before HTML parse');
-        return html.replace(broken, canonical);
+    var repaired = false;
+    var payrollBroken = "esc(x.status||'-')]))));";
+    var payrollCanonical = "esc(x.status||'-')])));";
+    var payrollCount = html.split(payrollBroken).length - 1;
+    if (payrollCount === 1) {
+        html = html.replace(payrollBroken, payrollCanonical);
+        repaired = true;
+    } else if (payrollCount > 1) {
+        console.error('[SW] Refused ambiguous RW_HR payroll repair:', payrollCount);
+        return html;
     }
-    if (count > 1) {
-        console.error('[SW] Refused ambiguous RW_HR payroll repair; multiple stale tokens found:', count);
+
+    var terminalBroken = /(\r?\n)\s*window\.RW_HR=\{render:render,reload:render,openEmployee360:open360\};\s*\r?\n\s*\}\(\);\s*\r?\n\s*window\.RW_HR = RW_HR;/g;
+    var terminalMatches = html.match(terminalBroken) || [];
+    if (terminalMatches.length === 1) {
+        html = html.replace(
+            terminalBroken,
+            '$1  window.RW_HR={render:render,reload:render,openEmployee360:open360};\n  window.RW_HR = RW_HR;'
+        );
+        repaired = true;
+    } else if (terminalMatches.length > 1) {
+        console.error('[SW] Refused ambiguous RW_HR terminal repair:', terminalMatches.length);
+        return html;
     }
+
+    if (repaired) console.warn('[SW] Repaired RW_HR syntax before HTML parse');
     return html;
 }
 
