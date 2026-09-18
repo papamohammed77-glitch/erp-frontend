@@ -5280,10 +5280,47 @@ async function render() {
         '<div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="emp-table-wrapper" style="max-height:65vh"></div>' +
     '</div>');
 
-    var usersRes = await supabase.from('users').select('*').eq('company_id', _rwCompanyId());
-    employeesData = usersRes.data || [];
-    try { var rRes = await supabase.from('roles').select('*').eq('company_id', _rwCompanyId()); rolesList = rRes.data || []; } catch(e) { rolesList = []; }
-    try { branchesList = await RW_Data.loadBranches(); } catch(e) { branchesList = []; }
+var usersRes = await supabase.from('users')
+    .select('*')
+    .eq('company_id', _rwCompanyId());
+
+if (usersRes.error) {
+    console.error('RW_Users: failed to load users', usersRes.error);
+    employeesData = [];
+    safeHTML(
+        container,
+        '<div class="p-6 text-center text-red-600 font-bold">تعذر تحميل المستخدمين</div>'
+    );
+    return;
+}
+
+employeesData = usersRes.data || [];
+
+var rRes = await supabase.from('roles')
+    .select('*')
+    .eq('company_id', _rwCompanyId())
+    .order('created_at', { ascending: true });
+
+if (rRes.error) {
+    console.error('RW_Users: failed to load roles', rRes.error);
+    rolesList = [];
+    safeHTML(
+        container,
+        '<div class="p-6 text-center text-red-600 font-bold">' +
+        'تعذر تحميل الأدوار. لا يمكن إضافة أو تعديل مستخدم قبل تحميل الأدوار.' +
+        '</div>'
+    );
+    return;
+}
+
+rolesList = rRes.data || [];
+
+try {
+    branchesList = await RW_Data.loadBranches();
+} catch (e) {
+    console.error('RW_Users: failed to load branches', e);
+    branchesList = [];
+}
 
     renderTable(employeesData);
 
@@ -5303,8 +5340,18 @@ async function render() {
         var filtered = [];
         for (var i = 0; i < data.length; i++) {
             var emp = data[i];
-            if (emp.role === 'مالك' || emp.role === 'Owner' || emp.is_owner === true) continue;
-            filtered.push(emp);
+		var employeePermissions = Array.isArray(emp.permissions)
+		    ? emp.permissions
+		    : (typeof emp.permissions === 'string' ? emp.permissions.split(',') : []);
+		
+		var isOwnerRecord =
+		    emp.role === 'مالك' ||
+		    emp.role === 'Owner' ||
+		    emp.is_owner === true ||
+		    employeePermissions.indexOf('*') !== -1;
+		
+		if (isOwnerRecord) continue;
+			filtered.push(emp);
         }
         if (!filtered.length) { safeHTML(w, '<div class="text-center p-10">لا يوجد مستخدمون</div>'); return; }
         
@@ -5353,9 +5400,14 @@ async function render() {
         var filtered = [];
         for (var i = 0; i < employeesData.length; i++) {
             var e = employeesData[i];
-            if ((e.name||'').toLowerCase().indexOf(q) !== -1 || (e.email||'').toLowerCase().indexOf(q) !== -1) {
-                filtered.push(e);
-            }
+            var nameMatch = (e.name || '').toLowerCase().indexOf(q) !== -1;
+			var emailMatch = (e.email || '').toLowerCase().indexOf(q) !== -1;
+			var phoneMatch = (e.phone || '').toLowerCase().indexOf(q) !== -1;
+			var roleMatch = (e.role || '').toLowerCase().indexOf(q) !== -1;
+			
+			if (nameMatch || emailMatch || phoneMatch || roleMatch) {
+			    filtered.push(e);
+			}
         }
         renderTable(filtered);
     }
@@ -5418,9 +5470,9 @@ function openModal(email) {
         if (emp && emp.role === rolesList[r].role_name) selectedAttr = ' selected';
         roleOptions += '<option value="' + rolesList[r].role_name + '"' + selectedAttr + '>' + rolesList[r].role_name + '</option>';
     }
-    if (rolesList.length === 0) {
-        roleOptions += '<option value="مدير">مدير</option><option value="محاسب">محاسب</option><option value="مندوب">مندوب</option><option value="سائق">سائق</option><option value="مخزني">مخزني</option>';
-    }
+	if (rolesList.length === 0) {
+	    roleOptions = '<option value="">لا توجد أدوار متاحة</option>';
+	}
     
     var branchOptions = '';
     for (var b = 0; b < branchesList.length; b++) {
@@ -5475,7 +5527,7 @@ function openModal(email) {
         { key: 'general_manager', label: '📱 المدير العام' },
         { key: 'hr', label: '📱 الموارد البشرية' },
         { key: 'dash', label: '🏢 لوحة التحكم' },
-        { key: 'items', label: '🏢 الأصناف والمخزون' },
+        { key: 'stock_adjustment', label: '🏢 تحديث الأرصدة (تسوية)' },
         { key: 'customers', label: '🏢 العملاء' },
         { key: 'suppliers', label: '🏢 الموردين' },
         { key: 'branches', label: '🏢 الفروع والمخازن' },
@@ -5500,18 +5552,103 @@ function openModal(email) {
         { key: 'settlement', label: '🏢 إغلاق اليومية' }
     ];
     
-    var permsHTML = '';
-    for (var p = 0; p < permLabels.length; p++) {
-        var checked = '';
-        if (emp && emp.permissions) {
-            var perms = emp.permissions;
-            if (typeof perms === 'string') perms = perms.split(',');
-            for (var c = 0; c < perms.length; c++) {
-                if (perms[c].trim() === permLabels[p].key) { checked = ' checked'; break; }
+var currentRolePermissions = [];
+
+if (emp && emp.role) {
+    for (var rp = 0; rp < rolesList.length; rp++) {
+        if (rolesList[rp].role_name === emp.role) {
+            var rawRolePerms = rolesList[rp].permissions;
+
+            if (typeof rawRolePerms === 'string') {
+                try {
+                    rawRolePerms = JSON.parse(rawRolePerms);
+                } catch (rolePermParseError) {
+                    rawRolePerms = rawRolePerms.split(',');
+                }
+            }
+
+            if (Array.isArray(rawRolePerms)) {
+                for (var rpi = 0; rpi < rawRolePerms.length; rpi++) {
+                    var rolePermKey = String(rawRolePerms[rpi]).trim();
+
+                    if (
+                        rolePermKey &&
+                        currentRolePermissions.indexOf(rolePermKey) === -1
+                    ) {
+                        currentRolePermissions.push(rolePermKey);
+                    }
+                }
+            }
+
+            break;
+        }
+    }
+}
+
+var existingPermissions = [];
+
+if (emp && emp.permissions) {
+    var rawEmpPerms = emp.permissions;
+
+    if (typeof rawEmpPerms === 'string') {
+        try {
+            rawEmpPerms = JSON.parse(rawEmpPerms);
+        } catch (empPermParseError) {
+            rawEmpPerms = rawEmpPerms.split(',');
+        }
+    }
+
+    if (Array.isArray(rawEmpPerms)) {
+        for (var epi = 0; epi < rawEmpPerms.length; epi++) {
+            var empPermKey = String(rawEmpPerms[epi]).trim();
+
+            if (
+                empPermKey &&
+                existingPermissions.indexOf(empPermKey) === -1
+            ) {
+                existingPermissions.push(empPermKey);
             }
         }
-        permsHTML += '<label class="flex items-center gap-1 text-xs"><input type="checkbox" value="' + permLabels[p].key + '" class="emp-custom-perm"' + checked + '> ' + permLabels[p].label + '</label>';
     }
+}
+
+var customExistingPermissions = [];
+
+for (var cep = 0; cep < existingPermissions.length; cep++) {
+    var candidatePermission = existingPermissions[cep];
+
+    if (
+        candidatePermission !== '*' &&
+        currentRolePermissions.indexOf(candidatePermission) === -1
+    ) {
+        customExistingPermissions.push(candidatePermission);
+    }
+}
+
+var customPermsEnabled =
+    customExistingPermissions.length > 0;
+
+var permsHTML = '';
+
+for (var p = 0; p < permLabels.length; p++) {
+    var checked = '';
+
+    if (
+        customExistingPermissions.indexOf(permLabels[p].key) !== -1
+    ) {
+        checked = ' checked';
+    }
+
+    permsHTML +=
+        '<label class="flex items-center gap-1 text-xs">' +
+        '<input type="checkbox" value="' +
+        permLabels[p].key +
+        '" class="emp-custom-perm"' +
+        checked +
+        '> ' +
+        permLabels[p].label +
+        '</label>';
+}
 
     var html = '<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">' +
     '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">' +
@@ -5541,15 +5678,22 @@ function openModal(email) {
     '<div id="emp-panel-perms" class="hidden">' +
     '<div class="md:col-span-2">' +
     '<label class="flex items-center gap-2 cursor-pointer mt-2">' +
-    '<input type="checkbox" id="emp-custom-perms-toggle" onchange="document.getElementById(\'emp-custom-perms-section\').classList.toggle(\'hidden\')">' +
+    '<input type="checkbox" id="emp-custom-perms-toggle" ' +
+(customPermsEnabled ? 'checked' : '') +
+' onchange="document.getElementById(\'emp-custom-perms-section\').classList.toggle(\'hidden\')">' +
     '<span class="text-sm font-bold">تفعيل صلاحيات مخصصة (تضاف لصلاحيات الدور)</span>' +
     '</label>' +
-    '<div id="emp-custom-perms-section" class="hidden mt-3 p-3 bg-gray-50 rounded-xl">' +
+    '<div id="emp-custom-perms-section" class="' +
+(customPermsEnabled ? 'mt-3' : 'hidden mt-3') +
+' p-3 bg-gray-50 rounded-xl">' +
     '<label class="text-xs font-bold text-gray-500 block mb-2">الصلاحيات الإضافية:</label>' +
     '<div class="grid grid-cols-2 md:grid-cols-4 gap-2" id="emp-permissions-checkboxes">' + permsHTML + '</div>' +
     '</div></div></div>' +
 
     '<div id="emp-panel-field" class="hidden">' +
+	'<div class="mb-2 text-xs text-gray-500">' +
+	'صلاحيات الدور تُطبق تلقائيًا. الاختيارات التالية هي الإضافات المباشرة لهذا المستخدم.' +
+	'</div>'
     '<div class="space-y-4 p-4 bg-amber-50 rounded-xl border border-amber-200">' +
     '<h4 class="font-black text-amber-700"><i class="fa-solid fa-truck-fast ml-2"></i>إعدادات الصلاحيات الميدانية</h4>' +
     '<div class="grid grid-cols-1 gap-4">' +
@@ -5579,7 +5723,7 @@ function openModal(email) {
     '</div></div>' : '') +
 
     '<div class="flex justify-end gap-3 pt-4 border-t">' +
-    (isEdit ? '<button type="button" id="btn-delete-emp" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fas fa-trash-alt ml-1"></i> حذف</button>' : '') +
+    (isEdit ? '<button type="button" id="btn-delete-emp" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fas fa-user-slash ml-1"></i> تعطيل المستخدم</button>' : '') +
     '<button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>' +
     '<button type="button" id="btn-save-emp" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold">حفظ</button>' +
     '</div></form></div></div>';
@@ -5658,9 +5802,9 @@ function openModal(email) {
                 var deleteBtn = byId('btn-delete-emp');
                 if (deleteBtn) {
                     deleteBtn.addEventListener('click', async function() {
-                        var confirm = await Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا الموظف؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' });
+                        var confirm = await Swal.fire({ title: 'تأكيد تعطيل المستخدم', text: 'سيتم تعطيل المستخدم ومنع دخوله مع الاحتفاظ بسجله التاريخي. هل تريد المتابعة؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'تعطيل المستخدم', cancelButtonText: 'إلغاء' });
                         if (!confirm.isConfirmed) return;
-                        showLoader('جاري الحذف...');
+                        showLoader('جاري تعطيل المستخدم...');
                         var sessionRes = await supabase.auth.getSession();
                         var token = null;
                         if (sessionRes && sessionRes.data && sessionRes.data.session) {
@@ -5670,8 +5814,8 @@ function openModal(email) {
                             var res = await fetch(RW_SUPABASE_URL + '/functions/v1/delete-employee', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ email: emp.email }) });
                             var json = await res.json();
                             hideLoader();
-                            if (json.success) { showToast('تم الحذف', 'success'); Swal.close(); var usersRes = await supabase.from('users').select('*').eq('company_id', _rwCompanyId()); employeesData = usersRes.data || []; renderTable(employeesData); }
-                            else { showToast(json.error || 'فشل الحذف', 'error'); }
+                            if (json.success) { showToast('تم تعطيل المستخدم', 'success'); Swal.close(); var usersRes = await supabase.from('users').select('*').eq('company_id', _rwCompanyId()); employeesData = usersRes.data || []; renderTable(employeesData); }
+                            else { showToast(json.error || 'فشل تعطيل المستخدم', 'error'); }
                         } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
                     });
                 }
