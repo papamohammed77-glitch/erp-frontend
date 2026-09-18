@@ -20020,64 +20020,163 @@ var RW_Reports_Comprehensive = (function() {
         safeText(byId('rw-header-title'), 'التقارير الشاملة');
     }
 
-    function _openReport(sectionKey, reportId) {
-        var section = _reportsStructure[sectionKey];
-        if (!section) return;
-        var report = null;
-        for (var i = 0; i < section.reports.length; i++) {
-            if (section.reports[i].id === reportId) { report = section.reports[i]; break; }
-        }
-        if (!report) return;
-        _currentReport = reportId;
+function _openReport(sectionKey, reportId) {
+    var section = _reportsStructure[sectionKey];
+    if (!section) return;
 
-        var container = byId('report-detail-container');
-        if (!container) return;
+    var report = null;
 
-        var html = '<div class="border-t pt-6 mt-6">';
-        html += '<h3 class="font-black text-lg mb-4"><i class="fa-solid fa-sliders ml-2 text-indigo-600"></i> معايير التقرير: ' + report.label + '</h3>';
-        html += '<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4" id="report-params">';
-
-        var params = report.params || [];
-        if (params.indexOf('date') !== -1) {
-            var today = new Date().toISOString().split('T')[0];
-            var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-            html += '<div><label class="block text-xs font-bold text-gray-500 mb-1">من تاريخ</label><input type="date" id="rp-date-from" value="' + firstDay + '" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"></div>';
-            html += '<div><label class="block text-xs font-bold text-gray-500 mb-1">إلى تاريخ</label><input type="date" id="rp-date-to" value="' + today + '" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"></div>';
+    for (var i = 0; i < section.reports.length; i++) {
+        if (section.reports[i].id === reportId) {
+            report = section.reports[i];
+            break;
         }
-        if (params.indexOf('customer') !== -1) {
-            html += '<div><label class="block text-xs font-bold text-gray-500 mb-1">العميل</label><select id="rp-customer" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"><option value="">جميع العملاء</option></select></div>';
-        }
-        if (params.indexOf('supplier') !== -1) {
-            html += '<div><label class="block text-xs font-bold text-gray-500 mb-1">المورد</label><select id="rp-supplier" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"><option value="">جميع الموردين</option></select></div>';
-        }
-        if (params.indexOf('item') !== -1) {
-            html += '<div><label class="block text-xs font-bold text-gray-500 mb-1">الصنف</label><select id="rp-item" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"><option value="">جميع الأصناف</option></select></div>';
-        }
-        if (params.indexOf('account') !== -1) {
-            html += '<div><label class="block text-xs font-bold text-gray-500 mb-1">الحساب</label><select id="rp-account" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"><option value="">اختر حساباً</option></select></div>';
-        }
-        if (params.indexOf('treasury') !== -1) {
-            html += '<div><label class="block text-xs font-bold text-gray-500 mb-1">الخزينة</label><select id="rp-treasury" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"><option value="">جميع الخزائن</option></select></div>';
-        }
-        if (params.indexOf('driver') !== -1) {
-            html += '<div><label class="block text-xs font-bold text-gray-500 mb-1">السائق</label><select id="rp-driver" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"><option value="">جميع السائقين</option></select></div>';
-        }
-        if (params.indexOf('area') !== -1) {
-            html += '<div><label class="block text-xs font-bold text-gray-500 mb-1">المنطقة</label><select id="rp-area" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"><option value="">جميع المناطق</option></select></div>';
-        }
-
-        html += '</div>';
-        html += '<div class="flex gap-2">';
-        html += '<button onclick="RW_Reports_Comprehensive._generateReport(\'' + sectionKey + '\', \'' + reportId + '\')" class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold shadow"><i class="fa-solid fa-play ml-1"></i> عرض التقرير</button>';
-        html += '<button onclick="RW_Reports_Comprehensive._printReport()" class="bg-gray-100 text-gray-600 px-4 py-2.5 rounded-xl font-bold"><i class="fa-solid fa-print ml-1"></i> طباعة</button>';
-        html += '</div>';
-        html += '<div id="report-result" class="mt-6 overflow-x-auto"></div>';
-        html += '</div>';
-
-        safeHTML(container, html);
-        _loadDropdowns(params);
     }
 
+    if (!report) return;
+
+    _currentSection = sectionKey;
+    _currentReport = reportId;
+
+    var container = byId('report-detail-container');
+    if (!container) return;
+
+    function localISODate(d) {
+        var x = d || new Date();
+        var y = x.getFullYear();
+        var m = String(x.getMonth() + 1);
+        var day = String(x.getDate());
+        if (m.length < 2) m = '0' + m;
+        if (day.length < 2) day = '0' + day;
+        return y + '-' + m + '-' + day;
+    }
+
+    var today = localISODate(new Date());
+    var firstDay = localISODate(
+        new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    );
+
+    var html =
+        '<div class="border-t pt-6 mt-6">' +
+        '<div class="flex flex-wrap justify-between items-start gap-4 mb-6">' +
+        '<div>' +
+        '<div class="flex items-center gap-3 mb-1">' +
+        '<i class="fa-solid fa-chart-column text-2xl ' + section.color + '"></i>' +
+        '<h3 class="font-black text-lg text-gray-800">' + _esc(report.label) + '</h3>' +
+        '</div>' +
+        '<p class="text-sm text-gray-500">' + _esc(report.desc) + '</p>' +
+        '</div>' +
+        '<div class="text-xs text-gray-500 bg-gray-50 border rounded-xl px-3 py-2">' +
+        '<div>المصدر: Production</div>' +
+        '<div>يتم إنشاء التقرير لحظة الضغط على عرض التقرير</div>' +
+        '</div>' +
+        '</div>';
+
+    var params = report.params || [];
+
+    html += '<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4" id="report-params">';
+
+    if (params.indexOf('date') !== -1) {
+        html +=
+            '<div><label class="block text-xs font-bold text-gray-500 mb-1">من تاريخ</label>' +
+            '<input type="date" id="rp-date-from" value="' + firstDay + '" ' +
+            'class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"></div>';
+
+        html +=
+            '<div><label class="block text-xs font-bold text-gray-500 mb-1">إلى تاريخ</label>' +
+            '<input type="date" id="rp-date-to" value="' + today + '" ' +
+            'class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm"></div>';
+    }
+
+    if (params.indexOf('customer') !== -1) {
+        html +=
+            '<div><label class="block text-xs font-bold text-gray-500 mb-1">العميل</label>' +
+            '<select id="rp-customer" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm">' +
+            '<option value="">جميع العملاء</option></select></div>';
+    }
+
+    if (params.indexOf('supplier') !== -1) {
+        html +=
+            '<div><label class="block text-xs font-bold text-gray-500 mb-1">المورد</label>' +
+            '<select id="rp-supplier" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm">' +
+            '<option value="">جميع الموردين</option></select></div>';
+    }
+
+    if (params.indexOf('item') !== -1) {
+        html +=
+            '<div><label class="block text-xs font-bold text-gray-500 mb-1">الصنف</label>' +
+            '<select id="rp-item" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm">' +
+            '<option value="">جميع الأصناف</option></select></div>';
+    }
+
+    if (params.indexOf('account') !== -1) {
+        html +=
+            '<div><label class="block text-xs font-bold text-gray-500 mb-1">الحساب</label>' +
+            '<select id="rp-account" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm">' +
+            '<option value="">اختر حساباً</option></select></div>';
+    }
+
+    if (params.indexOf('treasury') !== -1) {
+        html +=
+            '<div><label class="block text-xs font-bold text-gray-500 mb-1">الخزينة</label>' +
+            '<select id="rp-treasury" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm">' +
+            '<option value="">جميع الخزائن</option></select></div>';
+    }
+
+    if (params.indexOf('driver') !== -1) {
+        html +=
+            '<div><label class="block text-xs font-bold text-gray-500 mb-1">السائق</label>' +
+            '<select id="rp-driver" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm">' +
+            '<option value="">جميع السائقين</option></select></div>';
+    }
+
+    if (params.indexOf('area') !== -1) {
+        html +=
+            '<div><label class="block text-xs font-bold text-gray-500 mb-1">المنطقة</label>' +
+            '<select id="rp-area" class="w-full p-2.5 bg-gray-50 border rounded-lg text-sm">' +
+            '<option value="">جميع المناطق</option></select></div>';
+    }
+
+    html += '</div>';
+
+    html +=
+        '<div class="flex flex-wrap gap-2">' +
+        '<button onclick="RW_Reports_Comprehensive._generateReport('' +
+        sectionKey +
+        '', '' +
+        reportId +
+        '')" ' +
+        'class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold shadow">' +
+        '<i class="fa-solid fa-play ml-1"></i> عرض التقرير</button>' +
+
+        '<button onclick="RW_Reports_Comprehensive._generateReport('' +
+        sectionKey +
+        '', '' +
+        reportId +
+        '')" ' +
+        'class="bg-blue-50 text-blue-700 px-5 py-2.5 rounded-xl font-bold border border-blue-100">' +
+        '<i class="fa-solid fa-rotate ml-1"></i> تحديث</button>' +
+
+        '<button onclick="RW_Reports_Comprehensive._exportReportCsv()" ' +
+        'class="bg-emerald-50 text-emerald-700 px-5 py-2.5 rounded-xl font-bold border border-emerald-100">' +
+        '<i class="fa-solid fa-file-csv ml-1"></i> CSV</button>' +
+
+        '<button onclick="RW_Reports_Comprehensive._printReport()" ' +
+        'class="bg-gray-100 text-gray-600 px-5 py-2.5 rounded-xl font-bold">' +
+        '<i class="fa-solid fa-print ml-1"></i> طباعة</button>' +
+
+        '<button onclick="RW_Reports_Comprehensive._closeSection()" ' +
+        'class="bg-gray-50 text-gray-600 px-5 py-2.5 rounded-xl font-bold border">' +
+        '<i class="fa-solid fa-arrow-right ml-1"></i> رجوع</button>' +
+        '</div>' +
+
+        '<div id="report-result" class="mt-6 overflow-x-auto"></div>' +
+        '</div>';
+
+    safeHTML(container, html);
+
+    _loadDropdowns(params);
+}
     async function _loadDropdowns(params) {
         try {
             var companyId = _companyId();
@@ -20825,346 +20924,319 @@ async function _generateReport(sectionKey, reportId) {
            SALES
         ========================================================= */
 
-        if (reportId === 'sales-summary') {
+if (reportId === 'sales-summary') {
 
-            if (customer) {
-                await _validateCustomer(customer);
-            }
+    if (customer) {
+        await _validateCustomer(customer);
+    }
 
-            var q1 = supabase
-                .from('orders')
-                .select('total_amount')
-                .eq('company_id', companyId)
-                .gte('order_date', fromDate)
-                .lte('order_date', toDate);
+    var q1 = supabase
+        .from('orders')
+        .select('total_amount')
+        .eq('company_id', companyId)
+        .in('order_status', ['Invoiced', 'Delivered'])
+        .gte('order_date', fromDate)
+        .lte('order_date', toDate);
 
-            if (customer) {
-                q1 = q1.eq('customer_id', customer);
-            }
+    if (customer) {
+        q1 = q1.eq('customer_id', customer);
+    }
 
-            var r1 = await q1;
+    var r1 = await q1;
 
-            if (r1.error) throw r1.error;
+    if (r1.error) throw r1.error;
 
-            data = r1.data || [];
+    data = r1.data || [];
 
-            var totalSales = 0;
+    var totalSales = 0;
 
-            for (var i1 = 0; i1 < data.length; i1++) {
-                totalSales += Number(data[i1].total_amount) || 0;
-            }
+    for (var i1 = 0; i1 < data.length; i1++) {
+        totalSales += Number(data[i1].total_amount) || 0;
+    }
 
-            var avgOrder =
-                data.length
-                    ? Math.round(totalSales / data.length)
-                    : 0;
+    var avgOrder =
+        data.length > 0
+            ? totalSales / data.length
+            : 0;
 
-            html =
-                '<h4 class="font-bold mb-3">ملخص المبيعات</h4>' +
-                '<div class="grid grid-cols-3 gap-4">' +
+    html =
+        '<h4 class="font-bold mb-3">ملخص المبيعات</h4>' +
+        '<div class="grid grid-cols-1 md:grid-cols-3 gap-4">' +
 
-                '<div class="bg-blue-50 p-4 rounded-xl text-center">' +
-                '<p class="text-xs">عدد الأوردرات</p>' +
-                '<p class="text-2xl font-black">' +
-                data.length +
-                '</p></div>' +
+        '<div class="bg-blue-50 p-4 rounded-xl text-center">' +
+        '<p class="text-xs text-gray-500">عدد الفواتير المحققة</p>' +
+        '<p class="text-2xl font-black">' +
+        data.length +
+        '</p></div>' +
 
-                '<div class="bg-green-50 p-4 rounded-xl text-center">' +
-                '<p class="text-xs">الإجمالي</p>' +
-                '<p class="text-2xl font-black">' +
-                _fmtNum(totalSales) +
-                ' EGP</p></div>' +
+        '<div class="bg-green-50 p-4 rounded-xl text-center">' +
+        '<p class="text-xs text-gray-500">إجمالي المبيعات</p>' +
+        '<p class="text-2xl font-black">' +
+        _fmtNum(totalSales) +
+        ' EGP</p></div>' +
 
-                '<div class="bg-amber-50 p-4 rounded-xl text-center">' +
-                '<p class="text-xs">متوسط الأوردر</p>' +
-                '<p class="text-2xl font-black">' +
-                _fmtNum(avgOrder) +
-                ' EGP</p></div>' +
+        '<div class="bg-amber-50 p-4 rounded-xl text-center">' +
+        '<p class="text-xs text-gray-500">متوسط الفاتورة</p>' +
+        '<p class="text-2xl font-black">' +
+        _fmtNum(avgOrder) +
+        ' EGP</p></div>' +
 
-                '</div>';
+        '</div>';
+}
+else if (reportId === 'sales-by-customer') {
+
+    if (customer) {
+        await _validateCustomer(customer);
+    }
+
+    var q2 = supabase
+        .from('orders')
+        .select('customer_id, customer_name, total_amount')
+        .eq('company_id', companyId)
+        .in('order_status', ['Invoiced', 'Delivered'])
+        .gte('order_date', fromDate)
+        .lte('order_date', toDate);
+
+    if (customer) {
+        q2 = q2.eq('customer_id', customer);
+    }
+
+    var r2 = await q2;
+
+    if (r2.error) throw r2.error;
+
+    data = r2.data || [];
+
+    var customerMap = {};
+
+    for (var i2 = 0; i2 < data.length; i2++) {
+
+        var cid2 = data[i2].customer_id || 'غير محدد';
+
+        if (!customerMap[cid2]) {
+            customerMap[cid2] = {
+                name: data[i2].customer_name || cid2,
+                total: 0,
+                count: 0
+            };
         }
 
-        else if (reportId === 'sales-by-customer') {
+        customerMap[cid2].total +=
+            Number(data[i2].total_amount) || 0;
 
-            if (customer) {
-                await _validateCustomer(customer);
+        customerMap[cid2].count += 1;
+    }
+
+    var customerArr =
+        Object.keys(customerMap)
+            .map(function(key) {
+                return {
+                    id: key,
+                    name: customerMap[key].name,
+                    total: customerMap[key].total,
+                    count: customerMap[key].count
+                };
+            })
+            .sort(function(a, b) {
+                return b.total - a.total;
+            });
+
+    var grandCustomerTotal =
+        customerArr.reduce(function(sum, row) {
+            return sum + row.total;
+        }, 0);
+
+    var customerRows = [];
+
+    for (var c2 = 0; c2 < customerArr.length; c2++) {
+
+        var pct2 =
+            grandCustomerTotal > 0
+                ? (customerArr[c2].total / grandCustomerTotal) * 100
+                : 0;
+
+        customerRows.push(
+            '<tr class="border-t">' +
+            '<td class="p-2">' + _esc(customerArr[c2].id) + '</td>' +
+            '<td class="p-2 font-semibold">' + _esc(customerArr[c2].name) + '</td>' +
+            '<td class="p-2 text-center">' + customerArr[c2].count + '</td>' +
+            '<td class="p-2 text-center font-bold">' + _fmtNum(customerArr[c2].total) + ' EGP</td>' +
+            '<td class="p-2 text-center">' + pct2.toFixed(1) + '%</td>' +
+            '</tr>'
+        );
+    }
+
+    html =
+        '<h4 class="font-bold mb-3">المبيعات حسب العميل</h4>' +
+        _table(
+            [
+                'كود العميل',
+                'اسم العميل',
+                'عدد الفواتير',
+                'إجمالي المبيعات',
+                'النسبة'
+            ],
+            customerRows
+        );
+}
+
+else if (reportId === 'sales-by-item') {
+
+    var ordersRes3 = await supabase
+        .from('orders')
+        .select('id')
+        .eq('company_id', companyId)
+        .in('order_status', ['Invoiced', 'Delivered'])
+        .gte('order_date', fromDate)
+        .lte('order_date', toDate);
+
+    if (ordersRes3.error) throw ordersRes3.error;
+
+    var orderIds3 =
+        (ordersRes3.data || [])
+            .map(function(o) { return o.id; })
+            .filter(Boolean);
+
+    if (!orderIds3.length) {
+
+        html =
+            '<h4 class="font-bold mb-3">المبيعات حسب الصنف</h4>' +
+            '<div class="text-center py-4 text-gray-500">لا توجد بيانات</div>';
+
+    } else {
+
+        var detailsRes3 =
+            await supabase
+                .from('order_details')
+                .select(
+                    'item_id, item_code, item_name, qty, qty_delivered, qty_returned, unit_price'
+                )
+                .in('order_id', orderIds3);
+
+        if (detailsRes3.error) throw detailsRes3.error;
+
+        data = detailsRes3.data || [];
+
+        var itemMap3 = {};
+
+        for (var d3 = 0; d3 < data.length; d3++) {
+
+            var key3 =
+                data[d3].item_id ||
+                data[d3].item_code;
+
+            if (!key3) continue;
+
+            if (!itemMap3[key3]) {
+                itemMap3[key3] = {
+                    code: data[d3].item_code || '',
+                    name: data[d3].item_name || data[d3].item_code || '',
+                    qty: 0,
+                    total: 0
+                };
             }
 
-            var q2 = supabase
-                .from('orders')
-                .select('customer_id, customer_name, total_amount')
-                .eq('company_id', companyId)
-                .gte('order_date', fromDate)
-                .lte('order_date', toDate);
+            var sourceOrderQty =
+                Number(data[d3].qty_delivered) > 0
+                    ? Number(data[d3].qty_delivered)
+                    : Number(data[d3].qty) || 0;
 
-            if (customer) {
-                q2 = q2.eq('customer_id', customer);
-            }
+            var returnedQty =
+                Number(data[d3].qty_returned) || 0;
 
-            var r2 = await q2;
+            var netQty =
+                Math.max(0, sourceOrderQty - returnedQty);
 
-            if (r2.error) throw r2.error;
+            itemMap3[key3].qty += netQty;
 
-            data = r2.data || [];
-
-            var customerMap = {};
-
-            for (var i2 = 0; i2 < data.length; i2++) {
-
-                var cid2 =
-                    data[i2].customer_id || 'غير محدد';
-
-                if (!customerMap[cid2]) {
-                    customerMap[cid2] = {
-                        name: data[i2].customer_name || cid2,
-                        total: 0,
-                        count: 0
-                    };
-                }
-
-                customerMap[cid2].total +=
-                    Number(data[i2].total_amount) || 0;
-
-                customerMap[cid2].count += 1;
-            }
-
-            var customerArr =
-                Object.keys(customerMap)
-                    .map(function(key) {
-                        return {
-                            id: key,
-                            name: customerMap[key].name,
-                            total: customerMap[key].total,
-                            count: customerMap[key].count
-                        };
-                    })
-                    .sort(function(a, b) {
-                        return b.total - a.total;
-                    });
-
-            var grandCustomerTotal =
-                customerArr.reduce(function(sum, row) {
-                    return sum + row.total;
-                }, 0);
-
-            var customerRows = [];
-
-            for (var c2 = 0; c2 < customerArr.length; c2++) {
-
-                var pct2 =
-                    grandCustomerTotal > 0
-                        ? Math.round(
-                            customerArr[c2].total /
-                            grandCustomerTotal *
-                            100
-                        )
-                        : 0;
-
-                customerRows.push(
-                    '<tr class="border-t">' +
-                    '<td class="p-2">' +
-                    _esc(customerArr[c2].id) +
-                    '</td>' +
-                    '<td class="p-2 font-semibold">' +
-                    _esc(customerArr[c2].name) +
-                    '</td>' +
-                    '<td class="p-2 text-center">' +
-                    customerArr[c2].count +
-                    '</td>' +
-                    '<td class="p-2 text-center font-bold">' +
-                    _fmtNum(customerArr[c2].total) +
-                    ' EGP</td>' +
-                    '<td class="p-2 text-center">' +
-                    pct2 +
-                    '%</td>' +
-                    '</tr>'
-                );
-            }
-
-            html =
-                '<h4 class="font-bold mb-3">المبيعات حسب العميل</h4>' +
-                _table(
-                    [
-                        'كود العميل',
-                        'اسم العميل',
-                        'عدد الفواتير',
-                        'إجمالي المبيعات',
-                        'النسبة'
-                    ],
-                    customerRows
-                );
+            itemMap3[key3].total +=
+                netQty *
+                (Number(data[d3].unit_price) || 0);
         }
 
-        else if (reportId === 'sales-by-item') {
-
-            var ordersRes3 = await supabase
-                .from('orders')
-                .select('id')
-                .eq('company_id', companyId)
-                .gte('order_date', fromDate)
-                .lte('order_date', toDate);
-
-            if (ordersRes3.error) {
-                throw ordersRes3.error;
-            }
-
-            var orderIds3 =
-                (ordersRes3.data || [])
-                    .map(function(o) {
-                        return o.id;
-                    })
-                    .filter(Boolean);
-
-            if (!orderIds3.length) {
-
-                html =
-                    '<h4 class="font-bold mb-3">المبيعات حسب الصنف</h4>' +
-                    '<div class="text-center py-4 text-gray-500">' +
-                    'لا توجد بيانات' +
-                    '</div>';
-
-            } else {
-
-                var detailsRes3 =
-                    await supabase
-                        .from('order_details')
-                        .select(
-                            'item_id, item_code, item_name, qty, unit_price'
-                        )
-                        .in('order_id', orderIds3);
-
-                if (detailsRes3.error) {
-                    throw detailsRes3.error;
-                }
-
-                data = detailsRes3.data || [];
-
-                var itemMap3 = {};
-
-                for (var d3 = 0; d3 < data.length; d3++) {
-
-                    var key3 =
-                        data[d3].item_id ||
-                        data[d3].item_code;
-
-                    if (!key3) continue;
-
-                    if (!itemMap3[key3]) {
-                        itemMap3[key3] = {
-                            code: data[d3].item_code || '',
-                            name:
-                                data[d3].item_name ||
-                                data[d3].item_code ||
-                                '',
-                            qty: 0,
-                            total: 0
-                        };
-                    }
-
-                    itemMap3[key3].qty +=
-                        Number(data[d3].qty) || 0;
-
-                    itemMap3[key3].total +=
-                        (Number(data[d3].qty) || 0) *
-                        (Number(data[d3].unit_price) || 0);
-                }
-
-                var itemArr3 =
-                    Object.keys(itemMap3)
-                        .map(function(key) {
-                            return itemMap3[key];
-                        })
-                        .sort(function(a, b) {
-                            return b.total - a.total;
-                        });
-
-                var itemRows3 = [];
-
-                for (var ir3 = 0; ir3 < itemArr3.length; ir3++) {
-
-                    itemRows3.push(
-                        '<tr class="border-t">' +
-                        '<td class="p-2">' +
-                        _esc(itemArr3[ir3].code) +
-                        '</td>' +
-                        '<td class="p-2 font-semibold">' +
-                        _esc(itemArr3[ir3].name) +
-                        '</td>' +
-                        '<td class="p-2 text-center">' +
-                        itemArr3[ir3].qty +
-                        '</td>' +
-                        '<td class="p-2 text-center font-bold">' +
-                        _fmtNum(itemArr3[ir3].total) +
-                        ' EGP</td>' +
-                        '</tr>'
-                    );
-                }
-
-                html =
-                    '<h4 class="font-bold mb-3">المبيعات حسب الصنف</h4>' +
-                    _table(
-                        [
-                            'كود الصنف',
-                            'اسم الصنف',
-                            'الكمية المباعة',
-                            'إجمالي المبيعات'
-                        ],
-                        itemRows3
-                    );
-            }
-        }
-
-        else if (reportId === 'sales-by-area') {
-
-            var r4 = await supabase
-                .from('orders')
-                .select('area, total_amount')
-                .eq('company_id', companyId)
-                .gte('order_date', fromDate)
-                .lte('order_date', toDate);
-
-            if (r4.error) throw r4.error;
-
-            data = r4.data || [];
-
-            var areaMap4 = {};
-
-            for (var a4 = 0; a4 < data.length; a4++) {
-
-                var areaKey4 =
-                    data[a4].area || 'غير محدد';
-
-                areaMap4[areaKey4] =
-                    (areaMap4[areaKey4] || 0) +
-                    (Number(data[a4].total_amount) || 0);
-            }
-
-            var areaRows4 = [];
-
-            Object.keys(areaMap4)
-                .sort()
-                .forEach(function(key) {
-
-                    areaRows4.push(
-                        '<tr class="border-t">' +
-                        '<td class="p-2 font-semibold">' +
-                        _esc(key) +
-                        '</td>' +
-                        '<td class="p-2 text-center font-bold">' +
-                        _fmtNum(areaMap4[key]) +
-                        ' EGP</td>' +
-                        '</tr>'
-                    );
+        var itemArr3 =
+            Object.keys(itemMap3)
+                .map(function(key) {
+                    return itemMap3[key];
+                })
+                .sort(function(a, b) {
+                    return b.total - a.total;
                 });
 
-            html =
-                '<h4 class="font-bold mb-3">المبيعات حسب المنطقة</h4>' +
-                _table(
-                    ['المنطقة', 'الإجمالي'],
-                    areaRows4
-                );
+        var itemRows3 = [];
+
+        for (var ir3 = 0; ir3 < itemArr3.length; ir3++) {
+
+            itemRows3.push(
+                '<tr class="border-t">' +
+                '<td class="p-2">' + _esc(itemArr3[ir3].code) + '</td>' +
+                '<td class="p-2 font-semibold">' + _esc(itemArr3[ir3].name) + '</td>' +
+                '<td class="p-2 text-center">' + itemArr3[ir3].qty + '</td>' +
+                '<td class="p-2 text-center font-bold">' + _fmtNum(itemArr3[ir3].total) + ' EGP</td>' +
+                '</tr>'
+            );
         }
 
+        html =
+            '<h4 class="font-bold mb-3">المبيعات حسب الصنف</h4>' +
+            _table(
+                [
+                    'كود الصنف',
+                    'اسم الصنف',
+                    'الكمية الصافية المباعة',
+                    'إجمالي المبيعات'
+                ],
+                itemRows3
+            );
+    }
+}
+else if (reportId === 'sales-by-area') {
+
+    var r4 = await supabase
+        .from('orders')
+        .select('area, total_amount')
+        .eq('company_id', companyId)
+        .in('order_status', ['Invoiced', 'Delivered'])
+        .gte('order_date', fromDate)
+        .lte('order_date', toDate);
+
+    if (r4.error) throw r4.error;
+
+    data = r4.data || [];
+
+    var areaMap4 = {};
+
+    for (var a4 = 0; a4 < data.length; a4++) {
+
+        var areaKey4 =
+            data[a4].area || 'غير محدد';
+
+        areaMap4[areaKey4] =
+            (areaMap4[areaKey4] || 0) +
+            (Number(data[a4].total_amount) || 0);
+    }
+
+    var areaRows4 = [];
+
+    Object.keys(areaMap4)
+        .sort()
+        .forEach(function(key) {
+
+            areaRows4.push(
+                '<tr class="border-t">' +
+                '<td class="p-2 font-semibold">' + _esc(key) + '</td>' +
+                '<td class="p-2 text-center font-bold">' + _fmtNum(areaMap4[key]) + ' EGP</td>' +
+                '</tr>'
+            );
+        });
+
+    html =
+        '<h4 class="font-bold mb-3">المبيعات حسب المنطقة</h4>' +
+        _table(
+            ['المنطقة', 'إجمالي المبيعات'],
+            areaRows4
+        );
+}
         else if (reportId === 'sales-order-status') {
 
             var r5 = await supabase
@@ -21442,9 +21514,11 @@ async function _generateReport(sectionKey, reportId) {
                         st8.qty - st8.allocated
                     );
 
-                var value8 =
-                    st8.qty *
-                    (Number(items8[i8].sales_price) || 0);
+				var cost8 =
+				    Number(items8[i8].cost_price) || 0;
+				
+				var value8 =
+				    st8.qty * cost8;
 
                 rows8.push(
                     '<tr class="border-t hover:bg-gray-50 cursor-pointer" ' +
@@ -21470,7 +21544,7 @@ async function _generateReport(sectionKey, reportId) {
                     available8 +
                     '</td>' +
                     '<td class="p-2 text-center">' +
-                    _fmtNum(items8[i8].sales_price) +
+                    _fmtNum(cost8) +
                     '</td>' +
                     '<td class="p-2 text-center font-bold">' +
                     _fmtNum(value8) +
@@ -21489,414 +21563,248 @@ async function _generateReport(sectionKey, reportId) {
                         'الكمية الفعلية',
                         'المحجوزة',
                         'المتاحة',
-                        'سعر البيع',
-                        'قيمة المخزون'
+                        'سعر التكلفة',
+                        'قيمة المخزون بالتكلفة'
                     ],
                     rows8
                 );
         }
 
-        else if (reportId === 'inventory-movement') {
+else if (reportId === 'inventory-movement') {
 
-            if (!itemCode) {
-                safeHTML(
-                    resultDiv,
-                    '<div class="text-center py-4 text-gray-500">' +
-                    'يرجى اختيار صنف' +
-                    '</div>'
-                );
-                return;
+    if (!itemCode) {
+        safeHTML(
+            resultDiv,
+            '<div class="text-center py-4 text-gray-500">' +
+            'يرجى اختيار صنف' +
+            '</div>'
+        );
+        return;
+    }
+
+    var item9 =
+        await _validateItem(itemCode);
+
+    var currentUserEmail9 =
+        RW_STATE &&
+        RW_STATE.app &&
+        RW_STATE.app.currentUser
+            ? RW_STATE.app.currentUser.email
+            : null;
+
+    var movementReport9 =
+        await supabase.rpc(
+            'inventory_movement_report',
+            {
+                p_company_id: companyId,
+                p_user_email: currentUserEmail9,
+                p_from_date: fromDate,
+                p_to_date: toDate,
+                p_branch_id: null,
+                p_item_id: item9.id,
+                p_movement_type: null,
+                p_query: null,
+                p_limit: 500,
+                p_offset: 0
             }
+        );
 
-            var item9 =
-                await _validateItem(itemCode);
+    if (movementReport9.error) {
+        throw movementReport9.error;
+    }
 
-            var r9 = await supabase
-                .from('inventory_log')
-                .select(
-                    'id, log_code, movement_date, voucher_id, item_id, item_code, item_name, movement_type, qty, reference, user_email, created_at, source_branch_id, target_branch_id'
-                )
-                .eq('company_id', companyId)
-                .eq('item_id', item9.id)
-                .gte('movement_date', fromDate)
-                .lte('movement_date', toDate)
-                .order(
-                    'movement_date',
-                    { ascending: false }
-                )
-                .order(
-                    'created_at',
-                    { ascending: false }
-                )
-                .order(
-                    'id',
-                    { ascending: false }
-                );
+    var payload9 =
+        movementReport9.data || {};
 
-            if (r9.error) throw r9.error;
+    data =
+        Array.isArray(payload9.rows)
+            ? payload9.rows
+            : [];
 
-            data = r9.data || [];
+    var rows9 = [];
 
-            var rows9 = [];
+    for (var m9 = 0; m9 < data.length; m9++) {
 
-            for (var m9 = 0; m9 < data.length; m9++) {
+        rows9.push(
+            '<tr class="border-t">' +
+            '<td class="p-2">' + _esc(data[m9].movement_date) + '</td>' +
+            '<td class="p-2">' + _esc(data[m9].branch_name || '') + '</td>' +
+            '<td class="p-2">' + _esc(data[m9].movement_type || '') + '</td>' +
+            '<td class="p-2">' + _esc(data[m9].reference || data[m9].voucher_id || '') + '</td>' +
+            '<td class="p-2 text-center">' + _fmtNum(data[m9].before_qty) + '</td>' +
+            '<td class="p-2 text-center">' + _fmtNum(data[m9].effect_qty) + '</td>' +
+            '<td class="p-2 text-center font-bold">' + _fmtNum(data[m9].after_qty) + '</td>' +
+            '<td class="p-2">' + _esc(data[m9].user_email || '') + '</td>' +
+            '</tr>'
+        );
+    }
 
-                rows9.push(
+    html =
+        '<h4 class="font-bold mb-3">الحركة التفصيلية للصنف: ' +
+        _esc(item9.name || item9.item_code) +
+        '</h4>' +
+        '<div class="mb-3 text-xs text-gray-500">' +
+        'المصدر: Production inventory_movement_report' +
+        '</div>' +
+        _table(
+            [
+                'التاريخ',
+                'الفرع',
+                'نوع الحركة',
+                'المرجع',
+                'قبل الحركة',
+                'التأثير',
+                'بعد الحركة',
+                'المستخدم'
+            ],
+            rows9
+        );
+}
+else if (reportId === 'inventory-low-stock') {
+
+    var currentUserEmail10 =
+        RW_STATE &&
+        RW_STATE.app &&
+        RW_STATE.app.currentUser
+            ? RW_STATE.app.currentUser.email
+            : null;
+
+    var lowStockReport10 =
+        await supabase.rpc(
+            'inventory_replenishment_report',
+            {
+                p_company_id: companyId,
+                p_user_email: currentUserEmail10,
+                p_branch_id: null,
+                p_limit: 500,
+                p_offset: 0
+            }
+        );
+
+    if (lowStockReport10.error) {
+        throw lowStockReport10.error;
+    }
+
+    var lowPayload10 =
+        lowStockReport10.data || {};
+
+    var lowRows10 =
+        Array.isArray(lowPayload10.rows)
+            ? lowPayload10.rows
+            : [];
+
+    html =
+        '<h4 class="font-bold mb-3">الأصناف الأقل من حد الطلب</h4>' +
+        '<div class="mb-3 text-xs text-gray-500">' +
+        'المصدر: Production inventory_replenishment_report' +
+        '</div>' +
+        _table(
+            [
+                'الفرع',
+                'كود الصنف',
+                'الصنف',
+                'المتاح',
+                'المحجوز',
+                'حد الطلب',
+                'العجز',
+                'الكمية المقترحة',
+                'قيمة الطلب المقترحة'
+            ],
+            lowRows10.map(function(it) {
+
+                return (
                     '<tr class="border-t">' +
-                    '<td class="p-2">' +
-                    _esc(data[m9].movement_date) +
-                    '</td>' +
-                    '<td class="p-2">' +
-                    _esc(data[m9].movement_type) +
-                    '</td>' +
-                    '<td class="p-2 text-center font-bold">' +
-                    _fmtNum(data[m9].qty) +
-                    '</td>' +
-                    '<td class="p-2">' +
-                    _esc(
-                        data[m9].reference ||
-                        data[m9].voucher_id ||
-                        ''
-                    ) +
-                    '</td>' +
+                    '<td class="p-2">' + _esc(it.branch_name || '') + '</td>' +
+                    '<td class="p-2">' + _esc(it.item_code || '') + '</td>' +
+                    '<td class="p-2 font-semibold">' + _esc(it.item_name || '') + '</td>' +
+                    '<td class="p-2 text-center font-bold">' + _fmtNum(it.available_qty) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.allocated_qty) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.reorder_point) + '</td>' +
+                    '<td class="p-2 text-center font-bold text-red-600">' + _fmtNum(it.deficit_qty) + '</td>' +
+                    '<td class="p-2 text-center font-bold text-blue-700">' + _fmtNum(it.recommended_order_qty) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.recommended_order_value) + ' EGP</td>' +
                     '</tr>'
                 );
-            }
+            })
+        );
+}
 
-            html =
-                '<h4 class="font-bold mb-3">حركة الصنف: ' +
-                _esc(item9.name || item9.item_code) +
-                '</h4>' +
-                _table(
-                    [
-                        'التاريخ',
-                        'النوع',
-                        'الكمية',
-                        'المرجع'
-                    ],
-                    rows9
+else if (reportId === 'inventory-dormant') {
+
+    var turnoverReport11 =
+        await supabase.rpc(
+            'comprehensive_inventory_turnover_report',
+            {
+                p_company_id: companyId,
+                p_from_date: fromDate,
+                p_to_date: toDate,
+                p_item_id: itemCode
+                    ? (await _validateItem(itemCode)).id
+                    : null
+            }
+        );
+
+    if (turnoverReport11.error) {
+        throw turnoverReport11.error;
+    }
+
+    var turnoverPayload11 =
+        turnoverReport11.data || {};
+
+    var turnoverRows11 =
+        Array.isArray(turnoverPayload11.rows)
+            ? turnoverPayload11.rows
+            : [];
+
+    html =
+        '<h4 class="font-bold mb-3">تحليل دوران المخزون</h4>' +
+        '<div class="mb-3 text-xs text-gray-500">' +
+        'المصدر: Production comprehensive_inventory_turnover_report' +
+        '</div>' +
+        _table(
+            [
+                'كود الصنف',
+                'الصنف',
+                'الافتتاحي',
+                'الحالي',
+                'المتاح',
+                'المحجوز',
+                'صافي المبيعات',
+                'متوسط المخزون',
+                'معدل الدوران',
+                'متوسط البيع اليومي',
+                'أيام التغطية',
+                'التكلفة',
+                'قيمة المخزون بالتكلفة'
+            ],
+            turnoverRows11.map(function(it) {
+
+                return (
+                    '<tr class="border-t">' +
+                    '<td class="p-2">' + _esc(it.item_code || '') + '</td>' +
+                    '<td class="p-2 font-semibold">' + _esc(it.item_name || '') + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.opening_qty) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.current_qty) + '</td>' +
+                    '<td class="p-2 text-center font-bold">' + _fmtNum(it.available_qty) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.allocated_qty) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.net_sales_qty) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.average_qty) + '</td>' +
+                    '<td class="p-2 text-center font-bold">' + _fmtNum(it.turnover_ratio) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.avg_daily_sales) + '</td>' +
+                    '<td class="p-2 text-center">' +
+                    (
+                        it.days_on_hand == null
+                            ? '—'
+                            : _fmtNum(it.days_on_hand)
+                    ) +
+                    '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(it.cost_price) + '</td>' +
+                    '<td class="p-2 text-center font-bold">' + _fmtNum(it.stock_value_at_cost) + ' EGP</td>' +
+                    '</tr>'
                 );
-        }
-
-        else if (reportId === 'inventory-low-stock') {
-
-            var itemsRes10 = await supabase
-                .from('items')
-                .select(
-                    'id, item_code, name, reorder_point, max_qty'
-                )
-                .eq('company_id', companyId)
-                .eq('is_active', true)
-                .order(
-                    'item_code',
-                    { ascending: true }
-                );
-
-            if (itemsRes10.error) {
-                throw itemsRes10.error;
-            }
-
-            var branchesRes10 =
-                await supabase
-                    .from('branches')
-                    .select('id')
-                    .eq('company_id', companyId)
-                    .eq('is_active', true);
-
-            if (branchesRes10.error) {
-                throw branchesRes10.error;
-            }
-
-            var branchIds10 =
-                (branchesRes10.data || [])
-                    .map(function(b) {
-                        return b.id;
-                    })
-                    .filter(Boolean);
-
-            var stockRows10 = [];
-
-            if (branchIds10.length) {
-
-                var stockRes10 =
-                    await supabase
-                        .from('stock_branches')
-                        .select(
-                            'item_id, qty, allocated_qty'
-                        )
-                        .in('branch_id', branchIds10);
-
-                if (stockRes10.error) {
-                    throw stockRes10.error;
-                }
-
-                stockRows10 =
-                    stockRes10.data || [];
-            }
-
-            var stockMap10 = {};
-
-            for (var s10 = 0; s10 < stockRows10.length; s10++) {
-
-                if (!stockMap10[stockRows10[s10].item_id]) {
-                    stockMap10[stockRows10[s10].item_id] = {
-                        qty: 0,
-                        allocated: 0
-                    };
-                }
-
-                stockMap10[stockRows10[s10].item_id].qty +=
-                    Number(stockRows10[s10].qty) || 0;
-
-                stockMap10[stockRows10[s10].item_id].allocated +=
-                    Number(stockRows10[s10].allocated_qty) || 0;
-            }
-
-            var lowRows10 = [];
-
-            for (
-                var i10 = 0;
-                i10 < (itemsRes10.data || []).length;
-                i10++
-            ) {
-
-                var it10 = itemsRes10.data[i10];
-
-                var st10 =
-                    stockMap10[it10.id] || {
-                        qty: 0,
-                        allocated: 0
-                    };
-
-                var avail10 =
-                    Math.max(
-                        0,
-                        st10.qty - st10.allocated
-                    );
-
-                var reorder10 =
-                    Number(it10.reorder_point) || 5;
-
-                if (avail10 <= reorder10) {
-
-                    lowRows10.push(
-                        '<tr class="border-t">' +
-                        '<td class="p-2 font-semibold">' +
-                        _esc(it10.name) +
-                        '</td>' +
-                        '<td class="p-2 text-center font-bold text-red-600">' +
-                        avail10 +
-                        '</td>' +
-                        '<td class="p-2 text-center">' +
-                        reorder10 +
-                        '</td>' +
-                        '</tr>'
-                    );
-                }
-            }
-
-            html =
-                '<h4 class="font-bold mb-3">الأصناف الأقل من حد الطلب</h4>' +
-                _table(
-                    [
-                        'الصنف',
-                        'المتاح',
-                        'حد الطلب'
-                    ],
-                    lowRows10
-                );
-        }
-
-        else if (reportId === 'inventory-dormant') {
-
-            var itemsRes11 =
-                await supabase
-                    .from('items')
-                    .select(
-                        'id, item_code, name'
-                    )
-                    .eq('company_id', companyId)
-                    .eq('is_active', true);
-
-            if (itemsRes11.error) {
-                throw itemsRes11.error;
-            }
-
-            var ordersRes11 =
-                await supabase
-                    .from('orders')
-                    .select('id')
-                    .eq('company_id', companyId)
-                    .gte('order_date', fromDate)
-                    .lte('order_date', toDate);
-
-            if (ordersRes11.error) {
-                throw ordersRes11.error;
-            }
-
-            var orderIds11 =
-                (ordersRes11.data || [])
-                    .map(function(o) {
-                        return o.id;
-                    })
-                    .filter(Boolean);
-
-            var sold11 = {};
-
-            if (orderIds11.length) {
-
-                var detailsRes11 =
-                    await supabase
-                        .from('order_details')
-                        .select(
-                            'item_id, item_code'
-                        )
-                        .in(
-                            'order_id',
-                            orderIds11
-                        );
-
-                if (detailsRes11.error) {
-                    throw detailsRes11.error;
-                }
-
-                (detailsRes11.data || [])
-                    .forEach(function(d) {
-
-                        sold11[
-                            d.item_id ||
-                            d.item_code
-                        ] = true;
-                    });
-            }
-
-            var branchesRes11 =
-                await supabase
-                    .from('branches')
-                    .select('id')
-                    .eq('company_id', companyId)
-                    .eq('is_active', true);
-
-            if (branchesRes11.error) {
-                throw branchesRes11.error;
-            }
-
-            var branchIds11 =
-                (branchesRes11.data || [])
-                    .map(function(b) {
-                        return b.id;
-                    })
-                    .filter(Boolean);
-
-            var stockRows11 = [];
-
-            if (branchIds11.length) {
-
-                var stockRes11 =
-                    await supabase
-                        .from('stock_branches')
-                        .select(
-                            'item_id, qty, allocated_qty'
-                        )
-                        .in(
-                            'branch_id',
-                            branchIds11
-                        );
-
-                if (stockRes11.error) {
-                    throw stockRes11.error;
-                }
-
-                stockRows11 =
-                    stockRes11.data || [];
-            }
-
-            var stockMap11 = {};
-
-            for (
-                var s11 = 0;
-                s11 < stockRows11.length;
-                s11++
-            ) {
-
-                if (!stockMap11[stockRows11[s11].item_id]) {
-                    stockMap11[
-                        stockRows11[s11].item_id
-                    ] = {
-                        qty: 0,
-                        allocated: 0
-                    };
-                }
-
-                stockMap11[
-                    stockRows11[s11].item_id
-                ].qty +=
-                    Number(stockRows11[s11].qty) || 0;
-
-                stockMap11[
-                    stockRows11[s11].item_id
-                ].allocated +=
-                    Number(
-                        stockRows11[s11].allocated_qty
-                    ) || 0;
-            }
-
-            var dormantRows11 = [];
-
-            for (
-                var i11 = 0;
-                i11 < (itemsRes11.data || []).length;
-                i11++
-            ) {
-
-                var it11 =
-                    itemsRes11.data[i11];
-
-                var st11 =
-                    stockMap11[it11.id] || {
-                        qty: 0,
-                        allocated: 0
-                    };
-
-                var avail11 =
-                    Math.max(
-                        0,
-                        st11.qty -
-                        st11.allocated
-                    );
-
-                if (
-                    avail11 > 0 &&
-                    !sold11[it11.id] &&
-                    !sold11[it11.item_code]
-                ) {
-
-                    dormantRows11.push(
-                        '<tr class="border-t">' +
-                        '<td class="p-2 font-semibold">' +
-                        _esc(it11.name) +
-                        '</td>' +
-                        '<td class="p-2 text-center font-bold">' +
-                        avail11 +
-                        '</td>' +
-                        '</tr>'
-                    );
-                }
-            }
-
-            html =
-                '<h4 class="font-bold mb-3">' +
-                'تحليل دوران المخزون (الأصناف الراكدة)' +
-                '</h4>' +
-                _table(
-                    [
-                        'الصنف',
-                        'المتاح'
-                    ],
-                    dormantRows11.slice(0, 30)
-                );
-        }
-
+            })
+        );
+}
         else if (reportId === 'purchase-by-supplier') {
 
             if (supplier) {
@@ -22419,120 +22327,76 @@ async function _generateReport(sectionKey, reportId) {
                 );
         }
 
-        else if (reportId === 'finance-general-ledger') {
+else if (reportId === 'finance-general-ledger') {
 
-            if (!account) {
+    if (!account) {
 
-                safeHTML(
-                    resultDiv,
-                    '<div class="text-center py-4 text-gray-500">' +
-                    'يرجى اختيار حساب' +
-                    '</div>'
-                );
+        safeHTML(
+            resultDiv,
+            '<div class="text-center py-4 text-gray-500">' +
+            'يرجى اختيار حساب' +
+            '</div>'
+        );
 
-                return;
+        return;
+    }
+
+    var account12 =
+        await _validateAccount(account);
+
+    var glReport12 =
+        await supabase.rpc(
+            'accountant_gl_account_activity',
+            {
+                p_account_id: account12.id,
+                p_from_date: fromDate,
+                p_to_date: toDate
             }
+        );
 
-            await _validateAccount(account);
+    if (glReport12.error) {
+        throw glReport12.error;
+    }
 
-            var entryRes19 =
-                await supabase
-                    .from('journal_entries')
-                    .select(
-                        'id, entry_date, reference, description'
-                    )
-                    .eq('company_id', companyId)
-                    .gte('entry_date', fromDate)
-                    .lte('entry_date', toDate)
-                    .order(
-                        'entry_date',
-                        { ascending: false }
-                    );
+    data =
+        Array.isArray(glReport12.data)
+            ? glReport12.data
+            : [];
 
-            if (entryRes19.error) {
-                throw entryRes19.error;
-            }
+    var rows12 = [];
 
-            var entryIds19 =
-                (entryRes19.data || [])
-                    .map(function(e) {
-                        return e.id;
-                    })
-                    .filter(Boolean);
+    for (var g12 = 0; g12 < data.length; g12++) {
 
-            var entriesMap19 = {};
+        rows12.push(
+            '<tr class="border-t">' +
+            '<td class="p-2">' + _esc(data[g12].entry_date) + '</td>' +
+            '<td class="p-2">' + _esc(data[g12].entry_code || '') + '</td>' +
+            '<td class="p-2">' + _esc(data[g12].reference || '') + '</td>' +
+            '<td class="p-2">' + _esc(data[g12].description || '') + '</td>' +
+            '<td class="p-2 text-center">' + _fmtNum(data[g12].debit) + '</td>' +
+            '<td class="p-2 text-center">' + _fmtNum(data[g12].credit) + '</td>' +
+            '<td class="p-2 text-center font-bold">' + _fmtNum(data[g12].running_balance) + '</td>' +
+            '</tr>'
+        );
+    }
 
-            (entryRes19.data || [])
-                .forEach(function(e) {
-                    entriesMap19[e.id] = e;
-                });
-
-            var lines19 = [];
-
-            if (entryIds19.length) {
-
-                var lineRes19 =
-                    await supabase
-                        .from('journal_lines')
-                        .select(
-                            'entry_id, debit, credit'
-                        )
-                        .eq('account_id', account)
-                        .in(
-                            'entry_id',
-                            entryIds19
-                        );
-
-                if (lineRes19.error) {
-                    throw lineRes19.error;
-                }
-
-                lines19 =
-                    lineRes19.data || [];
-            }
-
-            var rows19 =
-                lines19.map(function(row) {
-
-                    var entry =
-                        entriesMap19[
-                            row.entry_id
-                        ] || {};
-
-                    return (
-                        '<tr class="border-t">' +
-                        '<td class="p-2">' +
-                        _esc(entry.entry_date) +
-                        '</td>' +
-                        '<td class="p-2">' +
-                        _esc(entry.reference) +
-                        '</td>' +
-                        '<td class="p-2">' +
-                        _esc(entry.description) +
-                        '</td>' +
-                        '<td class="p-2 text-center">' +
-                        _fmtNum(row.debit) +
-                        '</td>' +
-                        '<td class="p-2 text-center">' +
-                        _fmtNum(row.credit) +
-                        '</td>' +
-                        '</tr>'
-                    );
-                });
-
-            html =
-                '<h4 class="font-bold mb-3">دفتر الأستاذ العام</h4>' +
-                _table(
-                    [
-                        'التاريخ',
-                        'المرجع',
-                        'البيان',
-                        'مدين',
-                        'دائن'
-                    ],
-                    rows19
-                );
-        }
+    html =
+        '<h4 class="font-bold mb-3">دفتر الأستاذ العام — ' +
+        _esc(account12.account_name || account12.account_code) +
+        '</h4>' +
+        _table(
+            [
+                'التاريخ',
+                'رقم القيد',
+                'المرجع',
+                'البيان',
+                'مدين',
+                'دائن',
+                'الرصيد الجاري'
+            ],
+            rows12
+        );
+}
 
         else if (reportId === 'finance-treasury') {
 
@@ -22551,17 +22415,15 @@ async function _generateReport(sectionKey, reportId) {
             await _validateTreasury(treasury);
 
             var r20 =
-                await supabase
-                    .from('cash_box')
-                    .select('*')
-                    .eq(
-                        'treasury_id',
-                        treasury
-                    )
-                    .order(
-                        'voucher_date',
-                        { ascending: false }
-                    );
+			    await supabase
+			        .from('cash_box')
+			        .select('*')
+			        .eq('company_id', companyId)
+			        .eq('treasury_id', treasury)
+			        .order(
+			            'voucher_date',
+			            { ascending: false }
+			        );
 
             if (r20.error) throw r20.error;
 
@@ -22662,9 +22524,101 @@ async function _generateReport(sectionKey, reportId) {
             html = '<h4 class="font-bold mb-3">مركز الاستثناءات حتى ' + _esc(toDate) + '</h4>' + _table(['النوع','الخطورة','السجل','الوصف','المبلغ','وقت الاكتشاف'], exceptionRows);
         }
 
-        else if (reportId === 'finance-tax') {
-            html = '<div class="text-center py-4 text-amber-700 bg-amber-50 border border-amber-200 rounded-xl">Capability Gate: مصدر Production سلطوي للضريبة غير مثبت، لذلك لم يتم اختلاق التقرير.</div>';
-        }
+else if (reportId === 'finance-tax') {
+
+    var taxReport14 =
+        await supabase.rpc(
+            'finance_tax_report',
+            {
+                p_company_id: companyId,
+                p_from: fromDate,
+                p_to: toDate
+            }
+        );
+
+    if (taxReport14.error) {
+        throw taxReport14.error;
+    }
+
+    var taxRows14 =
+        Array.isArray(taxReport14.data)
+            ? taxReport14.data
+            : [];
+
+    var taxSettlementReport14 =
+        await supabase.rpc(
+            'finance_tax_settlements_report',
+            {
+                p_company_id: companyId,
+                p_from: fromDate,
+                p_to: toDate
+            }
+        );
+
+    if (taxSettlementReport14.error) {
+        throw taxSettlementReport14.error;
+    }
+
+    var taxSettlementRows14 =
+        Array.isArray(taxSettlementReport14.data)
+            ? taxSettlementReport14.data
+            : [];
+
+    html =
+        '<h4 class="font-bold mb-3">تقرير الضرائب</h4>' +
+        '<div class="mb-6">' +
+        _table(
+            [
+                'الكود',
+                'الضريبة',
+                'النسبة',
+                'ضريبة المدخلات',
+                'ضريبة المخرجات',
+                'ضرائب أخرى',
+                'صافي الضريبة'
+            ],
+            taxRows14.map(function(row) {
+                return (
+                    '<tr class="border-t">' +
+                    '<td class="p-2">' + _esc(row.code) + '</td>' +
+                    '<td class="p-2 font-semibold">' + _esc(row.name) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(row.rate) + '%</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(row.input_tax) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(row.output_tax) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(row.other_tax) + '</td>' +
+                    '<td class="p-2 text-center font-bold">' + _fmtNum(row.net_tax) + '</td>' +
+                    '</tr>'
+                );
+            })
+        ) +
+        '</div>' +
+
+        '<h4 class="font-bold mb-3">تسويات الضرائب</h4>' +
+        _table(
+            [
+                'رقم التسوية',
+                'من',
+                'إلى',
+                'المخرجات',
+                'المدخلات',
+                'الصافي',
+                'الحالة'
+            ],
+            taxSettlementRows14.map(function(row) {
+                return (
+                    '<tr class="border-t">' +
+                    '<td class="p-2 font-semibold">' + _esc(row.settlement_code) + '</td>' +
+                    '<td class="p-2">' + _esc(row.from_date) + '</td>' +
+                    '<td class="p-2">' + _esc(row.to_date) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(row.output_tax) + '</td>' +
+                    '<td class="p-2 text-center">' + _fmtNum(row.input_tax) + '</td>' +
+                    '<td class="p-2 text-center font-bold">' + _fmtNum(row.net_tax) + '</td>' +
+                    '<td class="p-2 text-center">' + _esc(row.status || '') + '</td>' +
+                    '</tr>'
+                );
+            })
+        );
+}
 
         /* =========================================================
            CRM
@@ -23277,7 +23231,18 @@ async function _generateReport(sectionKey, reportId) {
                 '</div>';
         }
 
-        safeHTML(resultDiv, html);
+        safeHTML(
+    resultDiv,
+    html +
+    '<div class="mt-4 pt-3 border-t text-xs text-gray-400 flex flex-wrap justify-between gap-2">' +
+    '<span>المصدر: Production</span>' +
+    '<span>آخر تنفيذ: ' +
+    _esc(
+        new Date().toLocaleString('ar-EG')
+    ) +
+    '</span>' +
+    '</div>'
+);
 
     } catch (e) {
 
@@ -23299,16 +23264,119 @@ async function _generateReport(sectionKey, reportId) {
     }
 }
 
-    function _printReport() {
-        var resultDiv = byId('report-result');
-        if (!resultDiv || !resultDiv.innerHTML) { _showToast('لا يوجد تقرير للطباعة', 'info'); return; }
-        var printWindow = window.open('', '_blank');
-        if (!printWindow) { _showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning'); return; }
-        var html = '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>تقرير</title><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet"><style>body{font-family:Cairo,sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px}th{background:#f2f2f2}</style></head><body>' + resultDiv.innerHTML + '<script>window.print();<\/script></body></html>';
-        printWindow.document.write(html); printWindow.document.close();
+function _exportReportCsv() {
+    var resultDiv = byId('report-result');
+    if (!resultDiv) {
+        _showToast('لا يوجد تقرير للتصدير', 'info');
+        return;
     }
 
-    return { render: render, _openSection: _openSection, _closeSection: _closeSection, _openReport: _openReport, _generateReport: _generateReport, _printReport: _printReport, _showCustomerLedgerDetail: _showCustomerLedgerDetail, _showItemMovementDetail: _showItemMovementDetail, _showRunsheetDetail: _showRunsheetDetail, _showSettlementDetail: _showSettlementDetail };
+    var table = resultDiv.querySelector('table');
+    if (!table) {
+        _showToast('لا يوجد جدول قابل للتصدير', 'info');
+        return;
+    }
+
+    var rows = table.querySelectorAll('tr');
+    var csv = [];
+
+    function csvCell(value) {
+        var s = String(value == null ? '' : value)
+            .replace(/
+?
+|
+/g, ' ')
+            .replace(/"/g, '""');
+        return '"' + s + '"';
+    }
+
+    for (var i = 0; i < rows.length; i++) {
+        var cells = rows[i].querySelectorAll('th,td');
+        var line = [];
+
+        for (var j = 0; j < cells.length; j++) {
+            line.push(csvCell(cells[j].innerText || ''));
+        }
+
+        csv.push(line.join(','));
+    }
+
+    var blob = new Blob(
+        ['' + csv.join('
+')],
+        { type: 'text/csv;charset=utf-8;' }
+    );
+
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+
+    a.href = url;
+    a.download =
+        'rawaea-report-' +
+        String(_currentReport || 'report') +
+        '-' +
+        new Date().toISOString().slice(0, 10) +
+        '.csv';
+
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function _printReport() {
+    var resultDiv = byId('report-result');
+
+    if (!resultDiv || !resultDiv.innerHTML) {
+        _showToast('لا يوجد تقرير للطباعة', 'info');
+        return;
+    }
+
+    var printWindow = window.open('', '_blank');
+
+    if (!printWindow) {
+        _showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
+        return;
+    }
+
+    var html =
+        '<!DOCTYPE html>' +
+        '<html dir="rtl">' +
+        '<head>' +
+        '<meta charset="UTF-8">' +
+        '<title>تقرير الروائع ERP</title>' +
+        '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">' +
+        '<style>' +
+        'body{font-family:Cairo,sans-serif;padding:20px;color:#111827}' +
+        'table{width:100%;border-collapse:collapse;margin-top:15px}' +
+        'th,td{border:1px solid #ddd;padding:8px}' +
+        'th{background:#f2f2f2;font-weight:800}' +
+        '.text-center{text-align:center}' +
+        '</style>' +
+        '</head>' +
+        '<body>' +
+        resultDiv.innerHTML +
+        '<script>window.onload=function(){window.print();};</script>' +
+        '</body></html>';
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+}
+
+    return {
+    render: render,
+    _openSection: _openSection,
+    _closeSection: _closeSection,
+    _openReport: _openReport,
+    _generateReport: _generateReport,
+    _exportReportCsv: _exportReportCsv,
+    _printReport: _printReport,
+    _showCustomerLedgerDetail: _showCustomerLedgerDetail,
+    _showItemMovementDetail: _showItemMovementDetail,
+    _showRunsheetDetail: _showRunsheetDetail,
+    _showSettlementDetail: _showSettlementDetail
+};
 })();
 window.RW_Reports_Comprehensive = RW_Reports_Comprehensive;
 var RW_OwnerLicense = (function() {
