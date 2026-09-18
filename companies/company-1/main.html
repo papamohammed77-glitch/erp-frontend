@@ -19901,7 +19901,7 @@ var RW_Reports_Comprehensive = (function() {
                 { id: 'finance-period-readiness', label: 'جاهزية إغلاق الفترة', desc: 'فحوص القيود والعمليات والمخزون قبل الإقفال', params: ['date'] },
                 { id: 'finance-reconciliation', label: 'مطابقة الحسابات', desc: 'مطابقة النقد والعملاء والموردين وميزان القيود', params: ['date'] },
                 { id: 'finance-exceptions', label: 'مركز الاستثناءات', desc: 'العمليات الفاشلة والقيود غير المتزنة ومشكلات المخزون والذمم', params: ['date'] },
-                { id: 'finance-tax', label: 'تقرير الضرائب', desc: 'ضريبة القيمة المضافة — لا يفعّل دون مصدر Production سلطوي', params: ['date'] }
+                { id: 'finance-tax', label: 'تقرير الضرائب', desc: 'ضريبة القيمة المضافة وتسويات الضرائب من مصادر Production الحالية', params: ['date'] }
             ]
         },
         'crm': {
@@ -20141,19 +20141,19 @@ function _openReport(sectionKey, reportId) {
 
     html +=
         '<div class="flex flex-wrap gap-2">' +
-        '<button onclick="RW_Reports_Comprehensive._generateReport('' +
+        '<button type="button" onclick="RW_Reports_Comprehensive._generateReport(\'' +
         sectionKey +
-        '', '' +
+        '\', \'' +
         reportId +
-        '')" ' +
+        '\')" ' +
         'class="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold shadow">' +
         '<i class="fa-solid fa-play ml-1"></i> عرض التقرير</button>' +
 
-        '<button onclick="RW_Reports_Comprehensive._generateReport('' +
+        '<button type="button" onclick="RW_Reports_Comprehensive._generateReport(\'' +
         sectionKey +
-        '', '' +
+        '\', \'' +
         reportId +
-        '')" ' +
+        '\')" ' +
         'class="bg-blue-50 text-blue-700 px-5 py-2.5 rounded-xl font-bold border border-blue-100">' +
         '<i class="fa-solid fa-rotate ml-1"></i> تحديث</button>' +
 
@@ -23266,12 +23266,14 @@ else if (reportId === 'finance-tax') {
 
 function _exportReportCsv() {
     var resultDiv = byId('report-result');
+
     if (!resultDiv) {
         _showToast('لا يوجد تقرير للتصدير', 'info');
         return;
     }
 
     var table = resultDiv.querySelector('table');
+
     if (!table) {
         _showToast('لا يوجد جدول قابل للتصدير', 'info');
         return;
@@ -23282,11 +23284,9 @@ function _exportReportCsv() {
 
     function csvCell(value) {
         var s = String(value == null ? '' : value)
-            .replace(/
-?
-|
-/g, ' ')
+            .replace(/\r?\n|\r/g, ' ')
             .replace(/"/g, '""');
+
         return '"' + s + '"';
     }
 
@@ -23302,8 +23302,7 @@ function _exportReportCsv() {
     }
 
     var blob = new Blob(
-        ['' + csv.join('
-')],
+        ['\uFEFF' + csv.join('\r\n')],
         { type: 'text/csv;charset=utf-8;' }
     );
 
@@ -23321,9 +23320,9 @@ function _exportReportCsv() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+
     URL.revokeObjectURL(url);
 }
-
 function _printReport() {
     var resultDiv = byId('report-result');
 
@@ -23356,7 +23355,7 @@ function _printReport() {
         '</head>' +
         '<body>' +
         resultDiv.innerHTML +
-        '<script>window.onload=function(){window.print();};</script>' +
+        '<script>window.onload=function(){window.print();};<\/script>' +
         '</body></html>';
 
     printWindow.document.open();
