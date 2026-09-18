@@ -1,11 +1,11 @@
 # FORENSIC CURRENT MOTHER EXTRACT
 
 FILE_LINES=25412
-FILE_BYTES=1462740
-SHA256=b6f079ce423d1869c672ba265d2c473a5fc3853f8f2ea0cf1949e02c83e5d218
+FILE_BYTES=1462744
+SHA256=913280d6a3dce468756c5dde649f910ce00a26219439b26a27055c4b83ed7e0b
 PATTERN var RW_Warehouse: [10969]
 PATTERN var RW_HR: [23788]
-PATTERN RW_HR: [23741, 23786, 23788, 23904, 23933, 23935]
+PATTERN RW_HR: [23741, 23786, 23788, 23904, 23933]
 PATTERN hr_list_employees: []
 PATTERN hr_command_atomic: [23808]
 PATTERN hr_query: [23807]
@@ -204,10 +204,10 @@ PATTERN FIXME: []
 23929:       mo.observe(document.body,{childList:true,subtree:true});
 23930:     }catch(e){}
 23931:   }());
-23932: realtime();
-23933: window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23934: }());
-23935: window.RW_HR = RW_HR;
+23932: 
+23933: realtime(); return { render: render, reload: render, openEmployee360: open360 }; }()); window.RW_HR = RW_HR;
+23934: 
+23935: 
 23936: // ============================================================
 23937: // RW_CRM – إدارة علاقات العملاء (CRM)
 23938: // ============================================================
@@ -396,10 +396,10 @@ PATTERN FIXME: []
 23929:       mo.observe(document.body,{childList:true,subtree:true});
 23930:     }catch(e){}
 23931:   }());
-23932: realtime();
-23933: window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23934: }());
-23935: window.RW_HR = RW_HR;
+23932: 
+23933: realtime(); return { render: render, reload: render, openEmployee360: open360 }; }()); window.RW_HR = RW_HR;
+23934: 
+23935: 
 23936: // ============================================================
 23937: // RW_CRM – إدارة علاقات العملاء (CRM)
 23938: // ============================================================
@@ -609,10 +609,10 @@ PATTERN FIXME: []
 23929:       mo.observe(document.body,{childList:true,subtree:true});
 23930:     }catch(e){}
 23931:   }());
-23932: realtime();
-23933: window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23934: }());
-23935: window.RW_HR = RW_HR;
+23932: 
+23933: realtime(); return { render: render, reload: render, openEmployee360: open360 }; }()); window.RW_HR = RW_HR;
+23934: 
+23935: 
 23936: // ============================================================
 23937: // RW_CRM – إدارة علاقات العملاء (CRM)
 23938: // ============================================================
@@ -724,10 +724,10 @@ PATTERN FIXME: []
 23929:       mo.observe(document.body,{childList:true,subtree:true});
 23930:     }catch(e){}
 23931:   }());
-23932: realtime();
-23933: window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23934: }());
-23935: window.RW_HR = RW_HR;
+23932: 
+23933: realtime(); return { render: render, reload: render, openEmployee360: open360 }; }()); window.RW_HR = RW_HR;
+23934: 
+23935: 
 23936: // ============================================================
 23937: // RW_CRM – إدارة علاقات العملاء (CRM)
 23938: // ============================================================
@@ -877,7 +877,7 @@ PATTERN FIXME: []
 24082:             if (RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id) return RW_STATE.app.company.id;
 24083:             if (RW_STATE.user && RW_STATE.user.companyId) return RW_STATE.user.companyId;
 24084:         }
---- RW_HR_FULL 23788-23935 ---
+--- RW_HR_FULL 23788-23933 ---
 23788: var RW_HR = (function() {
 23789:  'use strict';
 23790:   var H={tab:'dashboard',actor:null,companyId:null,employees:[],branches:[],channel:null,timer:null,busy:false,ops:{}};
@@ -1022,7 +1022,5 @@ PATTERN FIXME: []
 23929:       mo.observe(document.body,{childList:true,subtree:true});
 23930:     }catch(e){}
 23931:   }());
-23932: realtime();
-23933: window.RW_HR={render:render,reload:render,openEmployee360:open360};
-23934: }());
-23935: window.RW_HR = RW_HR;
+23932: 
+23933: realtime(); return { render: render, reload: render, openEmployee360: open360 }; }()); window.RW_HR = RW_HR;
