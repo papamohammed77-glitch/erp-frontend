@@ -23226,17 +23226,320 @@ else if (reportId === 'finance-tax') {
                 );
         }
 
-        else if (
-            reportId === 'hr-attendance' ||
-            reportId === 'hr-salary'
-        ) {
+        else if (reportId === 'hr-attendance') {
+
+            var hrAttendanceReport =
+                await supabase.rpc(
+                    'hr_query',
+                    {
+                        p_view: 'attendance',
+                        p_payload: {
+                            from: fromDate,
+                            to: toDate,
+                            limit: 5000
+                        }
+                    }
+                );
+
+            if (hrAttendanceReport.error) {
+                throw hrAttendanceReport.error;
+            }
+
+            var hrAttendancePayload =
+                hrAttendanceReport.data || {};
+
+            if (hrAttendancePayload.success === false) {
+                throw new Error(
+                    hrAttendancePayload.msg ||
+                    hrAttendancePayload.code ||
+                    'لا توجد صلاحية أو مصدر صالح لتقرير الحضور'
+                );
+            }
+
+            var hrAttendanceRows =
+                Array.isArray(hrAttendancePayload.rows)
+                    ? hrAttendancePayload.rows
+                    : [];
+
+            var attendanceWorkedHours = 0;
+            var attendanceLateMinutes = 0;
+            var attendanceOvertimeHours = 0;
+
+            var hrAttendanceTableRows =
+                hrAttendanceRows.map(function(row) {
+
+                    attendanceWorkedHours +=
+                        Number(row.worked_hours) || 0;
+
+                    attendanceLateMinutes +=
+                        Number(row.late_minutes) || 0;
+
+                    attendanceOvertimeHours +=
+                        Number(row.overtime_hours) || 0;
+
+                    return (
+                        '<tr class="border-t">' +
+                        '<td class="p-2">' +
+                        _esc(row.attendance_date) +
+                        '</td>' +
+                        '<td class="p-2 font-semibold">' +
+                        _esc(row.employee_name || row.email || '') +
+                        '</td>' +
+                        '<td class="p-2">' +
+                        _esc(row.status || '') +
+                        '</td>' +
+                        '<td class="p-2 text-center">' +
+                        _esc(
+                            row.check_in
+                                ? new Date(row.check_in).toLocaleTimeString(
+                                    'ar-EG',
+                                    {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    }
+                                  )
+                                : '-'
+                        ) +
+                        '</td>' +
+                        '<td class="p-2 text-center">' +
+                        _esc(
+                            row.check_out
+                                ? new Date(row.check_out).toLocaleTimeString(
+                                    'ar-EG',
+                                    {
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    }
+                                  )
+                                : '-'
+                        ) +
+                        '</td>' +
+                        '<td class="p-2 text-center font-bold">' +
+                        _fmtNum(row.worked_hours) +
+                        '</td>' +
+                        '<td class="p-2 text-center">' +
+                        _fmtNum(row.late_minutes) +
+                        '</td>' +
+                        '<td class="p-2 text-center">' +
+                        _fmtNum(row.overtime_hours) +
+                        '</td>' +
+                        '<td class="p-2 text-center">' +
+                        _fmtNum(row.absence_minutes) +
+                        '</td>' +
+                        '</tr>'
+                    );
+                });
 
             html =
-                '<div class="text-center py-4 text-amber-700 bg-amber-50 border border-amber-200 rounded-xl">' +
-                'Capability Gate: لا يوجد مصدر Production سلطوي مثبت للحضور/الرواتب.' +
-                '</div>';
+                '<h4 class="font-bold mb-3">تقرير الحضور والانصراف</h4>' +
+                '<div class="mb-4 text-xs text-gray-500">' +
+                'المصدر: Production hr_query(attendance)' +
+                '</div>' +
+                '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">' +
+                '<div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">' +
+                '<div class="text-xs text-blue-700">عدد السجلات</div>' +
+                '<div class="text-lg font-black">' +
+                _fmtNum(hrAttendanceRows.length) +
+                '</div></div>' +
+                '<div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">' +
+                '<div class="text-xs text-emerald-700">ساعات العمل</div>' +
+                '<div class="text-lg font-black">' +
+                _fmtNum(attendanceWorkedHours) +
+                '</div></div>' +
+                '<div class="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">' +
+                '<div class="text-xs text-amber-700">دقائق التأخير</div>' +
+                '<div class="text-lg font-black">' +
+                _fmtNum(attendanceLateMinutes) +
+                '</div></div>' +
+                '<div class="bg-purple-50 border border-purple-100 rounded-xl p-3 text-center">' +
+                '<div class="text-xs text-purple-700">ساعات الإضافي</div>' +
+                '<div class="text-lg font-black">' +
+                _fmtNum(attendanceOvertimeHours) +
+                '</div></div>' +
+                '</div>' +
+                _table(
+                    [
+                        'التاريخ',
+                        'الموظف',
+                        'الحالة',
+                        'الدخول',
+                        'الخروج',
+                        'ساعات العمل',
+                        'التأخير بالدقائق',
+                        'الساعات الإضافية',
+                        'دقائق الغياب'
+                    ],
+                    hrAttendanceTableRows
+                );
         }
 
+        else if (reportId === 'hr-salary') {
+
+            var hrPayrollReport =
+                await supabase.rpc(
+                    'hr_query',
+                    {
+                        p_view: 'payroll_runs',
+                        p_payload: {}
+                    }
+                );
+
+            if (hrPayrollReport.error) {
+                throw hrPayrollReport.error;
+            }
+
+            var hrPayrollPayload =
+                hrPayrollReport.data || {};
+
+            if (hrPayrollPayload.success === false) {
+                throw new Error(
+                    hrPayrollPayload.msg ||
+                    hrPayrollPayload.code ||
+                    'لا توجد صلاحية أو مصدر صالح لتقرير الرواتب'
+                );
+            }
+
+            var hrPayrollRows =
+                Array.isArray(hrPayrollPayload.rows)
+                    ? hrPayrollPayload.rows
+                    : [];
+
+            var filteredPayrollRows = [];
+
+            var payrollGrossTotal = 0;
+            var payrollDeductionTotal = 0;
+            var payrollNetTotal = 0;
+            var payrollEmployeeTotal = 0;
+
+            for (var pr = 0; pr < hrPayrollRows.length; pr++) {
+
+                var payrollRow = hrPayrollRows[pr] || {};
+
+                var periodStart =
+                    String(
+                        payrollRow.start_date ||
+                        ''
+                    ).slice(0, 10);
+
+                var periodEnd =
+                    String(
+                        payrollRow.end_date ||
+                        ''
+                    ).slice(0, 10);
+
+                if (
+                    periodStart &&
+                    periodEnd &&
+                    periodEnd < fromDate
+                ) {
+                    continue;
+                }
+
+                if (
+                    periodStart &&
+                    periodEnd &&
+                    periodStart > toDate
+                ) {
+                    continue;
+                }
+
+                filteredPayrollRows.push(
+                    payrollRow
+                );
+
+                payrollGrossTotal +=
+                    Number(payrollRow.gross_total) || 0;
+
+                payrollDeductionTotal +=
+                    Number(payrollRow.deduction_total) || 0;
+
+                payrollNetTotal +=
+                    Number(payrollRow.net_total) || 0;
+
+                payrollEmployeeTotal +=
+                    Number(payrollRow.employee_count) || 0;
+            }
+
+            var payrollTableRows =
+                filteredPayrollRows.map(function(row) {
+
+                    return (
+                        '<tr class="border-t">' +
+                        '<td class="p-2">' +
+                        _esc(row.run_no || '') +
+                        '</td>' +
+                        '<td class="p-2 font-semibold">' +
+                        _esc(row.period_code || '') +
+                        '</td>' +
+                        '<td class="p-2">' +
+                        _esc(row.start_date || '') +
+                        ' → ' +
+                        _esc(row.end_date || '') +
+                        '</td>' +
+                        '<td class="p-2 text-center">' +
+                        _fmtNum(row.employee_count) +
+                        '</td>' +
+                        '<td class="p-2 text-center">' +
+                        _fmtNum(row.gross_total) +
+                        '</td>' +
+                        '<td class="p-2 text-center">' +
+                        _fmtNum(row.deduction_total) +
+                        '</td>' +
+                        '<td class="p-2 text-center font-bold">' +
+                        _fmtNum(row.net_total) +
+                        '</td>' +
+                        '<td class="p-2">' +
+                        _esc(row.status || '') +
+                        '</td>' +
+                        '</tr>'
+                    );
+                });
+
+            html =
+                '<h4 class="font-bold mb-3">تقرير الرواتب</h4>' +
+                '<div class="mb-4 text-xs text-gray-500">' +
+                'المصدر: Production hr_query(payroll_runs)' +
+                '</div>' +
+                '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">' +
+                '<div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">' +
+                '<div class="text-xs text-blue-700">عدد مسيرات الرواتب</div>' +
+                '<div class="text-lg font-black">' +
+                _fmtNum(filteredPayrollRows.length) +
+                '</div></div>' +
+                '<div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-center">' +
+                '<div class="text-xs text-emerald-700">إجمالي الأجور</div>' +
+                '<div class="text-lg font-black">' +
+                _fmtNum(payrollGrossTotal) +
+                '</div></div>' +
+                '<div class="bg-amber-50 border border-amber-100 rounded-xl p-3 text-center">' +
+                '<div class="text-xs text-amber-700">إجمالي الاستقطاعات</div>' +
+                '<div class="text-lg font-black">' +
+                _fmtNum(payrollDeductionTotal) +
+                '</div></div>' +
+                '<div class="bg-purple-50 border border-purple-100 rounded-xl p-3 text-center">' +
+                '<div class="text-xs text-purple-700">صافي الرواتب</div>' +
+                '<div class="text-lg font-black">' +
+                _fmtNum(payrollNetTotal) +
+                '</div></div>' +
+                '</div>' +
+                '<div class="mb-4 text-xs text-gray-500">' +
+                'إجمالي عدد الموظفين داخل المسيرات: ' +
+                _fmtNum(payrollEmployeeTotal) +
+                '</div>' +
+                _table(
+                    [
+                        'رقم المسير',
+                        'الفترة',
+                        'النطاق',
+                        'الموظفون',
+                        'إجمالي الأجور',
+                        'الاستقطاعات',
+                        'الصافي',
+                        'الحالة'
+                    ],
+                    payrollTableRows
+                );
+        }
         else {
 
             html =
