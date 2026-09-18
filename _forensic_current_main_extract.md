@@ -2,7 +2,7 @@
 
 FILE_LINES=25836
 FILE_BYTES=1481669
-SHA256=8a1c4cea7813f0c5172918e93bb5cc32afad1539457b59df11f9f2a490e31a3c
+SHA256=0dc6ac253d916cebd23d3bb39c2829c9aef81b9418c2811d273e21350305e353
 PATTERN var RW_Warehouse: [10969]
 PATTERN var RW_HR: [23788]
 PATTERN RW_HR: [23741, 23786, 23788, 23904, 23933]
@@ -852,7 +852,7 @@ PATTERN FIXME: []
 24057:                 '<td class="p-3 text-center font-black">' + _fmtNum(c.order_count) + '</td>' +
 24058:                 '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-black ' + (overdue ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700') + '">' + _esc(next) + '</span></td>' +
 24059:                 '<td class="p-3">' + _esc(_assignedLabel(c)) + '</td>' +
-24060:                 '<td class="p-3 text-center"><button type="button" data-crm-open360="' + _esc(c.id) + '" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black">Customer 360</button></td>' +
+24060:                 '<td class="p-3 text-center"><button type="button" data-crm-open360="' + _esc(c.id) + '" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black">متابعة</button></td>' +
 24061:             '</tr>';
 24062:         }
 24063: 
