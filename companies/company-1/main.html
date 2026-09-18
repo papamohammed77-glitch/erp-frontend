@@ -23939,18 +23939,21 @@ realtime(); return { render: render, reload: render, openEmployee360: open360 };
 var RW_CRM = (function() {
     'use strict';
 
-    var customersData = [];
+    var state = {
+        customers: [],
+        assignees: [],
+        kpi: {},
+        search: '',
+        activeOnly: false,
+        searchTimer: null
+    };
 
     function _esc(s) {
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-    }
-
-    function _escAttr(s) {
-        return _esc(s)
-            .replace(/\"/g, '&quot;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
 
@@ -23958,98 +23961,519 @@ var RW_CRM = (function() {
         return Number(n || 0).toLocaleString('ar-EG');
     }
 
-    function _companyId() {
-        if (typeof _rwCompanyId === 'function') return _rwCompanyId();
-        if (typeof RW_STATE !== 'undefined' && RW_STATE) {
-            if (RW_STATE.app && RW_STATE.app.companyId) return RW_STATE.app.companyId;
-            if (RW_STATE.app && RW_STATE.app.company && RW_STATE.app.company.id) return RW_STATE.app.company.id;
-            if (RW_STATE.user && RW_STATE.user.companyId) return RW_STATE.user.companyId;
+    function _fmtMoney(n) {
+        return Number(n || 0).toLocaleString('ar-EG') + ' EGP';
+    }
+
+    function _today() {
+        var d = new Date();
+        var local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+        return local.toISOString().slice(0, 10);
+    }
+
+    function _statusLabel(s) {
+        var map = {
+            Open: 'مفتوحة',
+            'معلقة': 'معلقة',
+            completed: 'مكتملة',
+            'مكتملة': 'مكتملة',
+            cancelled: 'ملغاة',
+            'ملغاة': 'ملغاة'
+        };
+        return map[s] || s || 'غير محددة';
+    }
+
+    function _statusClass(s) {
+        if (s === 'completed' || s === 'مكتملة') return 'bg-green-100 text-green-700';
+        if (s === 'cancelled' || s === 'ملغاة') return 'bg-gray-100 text-gray-600';
+        return 'bg-amber-100 text-amber-700';
+    }
+
+    function _assignedLabel(customer) {
+        var rows = Array.isArray(customer && customer.assigned_to) ? customer.assigned_to : [];
+        if (!rows.length) return 'غير مسند';
+        var active = rows.filter(function(x) { return x && x.active !== false; });
+        if (!active.length) active = rows;
+        return active.slice(0, 2).map(function(x) {
+            return x.name || x.email || '—';
+        }).join('، ') + (active.length > 2 ? ' +' + (active.length - 2) : '');
+    }
+
+    async function _loadDirectory() {
+        var res = await supabase.rpc('crm_customer_directory', {
+            p_search: state.search || null,
+            p_active_only: state.activeOnly,
+            p_limit: 200,
+            p_offset: 0
+        });
+        if (res.error) throw res.error;
+
+        var payload = res.data || {};
+        state.customers = Array.isArray(payload.customers) ? payload.customers : [];
+        state.assignees = Array.isArray(payload.assignees) ? payload.assignees : [];
+        state.kpi = payload.kpi || {};
+        return payload;
+    }
+
+    function _renderKpis() {
+        var k = state.kpi || {};
+        return '<div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">' +
+            '<div class="bg-white rounded-2xl border p-4"><div class="text-xs text-gray-500">إجمالي العملاء</div><div class="text-2xl font-black text-indigo-600 mt-2">' + _fmtNum(k.total_customers) + '</div></div>' +
+            '<div class="bg-white rounded-2xl border p-4"><div class="text-xs text-gray-500">عملاء نشطون</div><div class="text-2xl font-black text-green-600 mt-2">' + _fmtNum(k.active_customers) + '</div></div>' +
+            '<div class="bg-white rounded-2xl border p-4"><div class="text-xs text-gray-500">ذمم مسجلة</div><div class="text-2xl font-black text-red-600 mt-2">' + _fmtMoney(k.master_debt_total) + '</div></div>' +
+            '<div class="bg-white rounded-2xl border p-4"><div class="text-xs text-gray-500">متابعات مفتوحة</div><div class="text-2xl font-black text-amber-600 mt-2">' + _fmtNum(k.open_followups) + '</div></div>' +
+            '<div class="bg-white rounded-2xl border p-4"><div class="text-xs text-gray-500">متأخرة</div><div class="text-2xl font-black text-rose-600 mt-2">' + _fmtNum(k.overdue_followups) + '</div></div>' +
+            '<div class="bg-white rounded-2xl border p-4"><div class="text-xs text-gray-500">مستحقة اليوم</div><div class="text-2xl font-black text-blue-600 mt-2">' + _fmtNum(k.due_today) + '</div></div>' +
+        '</div>';
+    }
+
+    function _renderTable() {
+        if (!state.customers.length) {
+            return '<div class="text-center py-16 text-gray-400"><div class="text-5xl mb-3">👥</div><div class="font-black text-lg">لا توجد عملاء مطابقون</div><div class="text-sm mt-2">غيّر البحث أو الفلاتر ثم أعد المحاولة.</div></div>';
+        }
+
+        var html = '<div class="overflow-x-auto"><table class="w-full text-sm">' +
+            '<thead class="bg-slate-50"><tr>' +
+            '<th class="p-3 text-right">العميل</th>' +
+            '<th class="p-3 text-right">التواصل</th>' +
+            '<th class="p-3 text-right">التصنيف</th>' +
+            '<th class="p-3 text-center">المبيعات</th>' +
+            '<th class="p-3 text-center">الأوردرات</th>' +
+            '<th class="p-3 text-center">المتابعة القادمة</th>' +
+            '<th class="p-3 text-right">المسؤول</th>' +
+            '<th class="p-3 text-center">الإجراء</th>' +
+            '</tr></thead><tbody>';
+
+        for (var i = 0; i < state.customers.length; i++) {
+            var c = state.customers[i] || {};
+            var overdue = Number(c.overdue_followups || 0) > 0;
+            var next = c.next_followup_date ? String(c.next_followup_date) : '—';
+
+            html += '<tr class="border-b hover:bg-slate-50">' +
+                '<td class="p-3"><div class="font-black">' + _esc(c.name) + '</div><div class="text-xs text-gray-400">' + _esc(c.customer_code) + '</div></td>' +
+                '<td class="p-3"><div>' + _esc(c.phone || '—') + '</div><div class="text-xs text-gray-400">' + _esc(c.area || '—') + '</div></td>' +
+                '<td class="p-3"><div class="font-bold">' + _esc(c.customer_type || '—') + '</div><div class="text-xs text-gray-400">' + _esc(c.payment_type || '—') + '</div></td>' +
+                '<td class="p-3 text-center font-black">' + _fmtMoney(c.sales_total) + '</td>' +
+                '<td class="p-3 text-center font-black">' + _fmtNum(c.order_count) + '</td>' +
+                '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-black ' + (overdue ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700') + '">' + _esc(next) + '</span></td>' +
+                '<td class="p-3">' + _esc(_assignedLabel(c)) + '</td>' +
+                '<td class="p-3 text-center"><button type="button" data-crm-open360="' + _esc(c.id) + '" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black">Customer 360</button></td>' +
+            '</tr>';
+        }
+
+        return html + '</tbody></table></div>';
+    }
+
+    function _bindDirectory() {
+        var search = byId('crm-search');
+        if (search) {
+            search.value = state.search;
+            search.addEventListener('input', function() {
+                state.search = search.value.trim();
+                clearTimeout(state.searchTimer);
+                state.searchTimer = setTimeout(function() {
+                    _loadDirectory().then(function() {
+                        safeHTML(byId('crm-customers-list'), _renderTable());
+                        _bindOpen360();
+                        safeHTML(byId('crm-kpis'), _renderKpis());
+                    }).catch(function(e) {
+                        showToast(e.message || 'فشل البحث', 'error');
+                    });
+                }, 250);
+            });
+        }
+
+        var active = byId('crm-active-only');
+        if (active) {
+            active.checked = state.activeOnly;
+            active.addEventListener('change', function() {
+                state.activeOnly = active.checked;
+                render();
+            });
+        }
+
+        var refresh = byId('crm-refresh');
+        if (refresh) refresh.addEventListener('click', render);
+
+        _bindOpen360();
+    }
+
+    function _bindOpen360() {
+        var buttons = document.querySelectorAll('[data-crm-open360]');
+        for (var i = 0; i < buttons.length; i++) {
+            buttons[i].addEventListener('click', function() {
+                _openCustomer360(this.getAttribute('data-crm-open360'));
+            });
+        }
+    }
+
+    async function render() {
+        var container = byId('rw-page-container');
+        if (!container) return;
+
+        safeText(byId('rw-header-title'), 'إدارة علاقات العملاء (CRM)');
+        safeText(byId('rw-header-subtitle'), 'Customer 360 • المتابعة • المبيعات • الذمم • التعيينات');
+
+        showLoader('جاري تحميل مركز علاقات العملاء...');
+        try {
+            await _loadDirectory();
+        } catch (e) {
+            hideLoader();
+            safeHTML(container, '<div class="rw-card p-8 text-center"><div class="text-5xl mb-3">⚠️</div><h3 class="font-black text-xl">تعذر تحميل CRM</h3><p class="text-gray-500 mt-2">' + _esc(e.message || 'خطأ غير معروف') + '</p></div>');
+            return;
+        }
+        hideLoader();
+
+        var html = '<div class="space-y-5">' +
+            '<div id="crm-kpis">' + _renderKpis() + '</div>' +
+            '<div class="bg-white rounded-2xl border p-4">' +
+                '<div class="flex flex-col xl:flex-row gap-3 xl:items-center">' +
+                    '<div class="flex-1"><input id="crm-search" type="search" autocomplete="off" class="w-full p-3 bg-slate-50 border rounded-xl" placeholder="بحث بالاسم أو الكود أو الهاتف أو المنطقة"></div>' +
+                    '<label class="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border text-sm font-bold"><input id="crm-active-only" type="checkbox"> <span>النشط فقط</span></label>' +
+                    '<button id="crm-refresh" type="button" class="px-5 py-3 bg-slate-900 text-white rounded-xl font-black">تحديث</button>' +
+                '</div>' +
+            '</div>' +
+            '<div id="crm-customers-list" class="bg-white rounded-2xl border overflow-hidden">' + _renderTable() + '</div>' +
+        '</div>';
+
+        safeHTML(container, html);
+        _bindDirectory();
+    }
+
+    function _assignmentOptions(assignments, selectedId) {
+        var html = '<option value="">اختر موظفًا</option>';
+        for (var i = 0; i < state.assignees.length; i++) {
+            var a = state.assignees[i] || {};
+            html += '<option value="' + _esc(a.id) + '"' + (selectedId === a.id ? ' selected' : '') + '>' +
+                _esc(a.name || a.email) + (a.role ? ' — ' + _esc(a.role) : '') + '</option>';
+        }
+        return html;
+    }
+
+    function _firstActiveAssignment(assignments) {
+        var rows = Array.isArray(assignments) ? assignments : [];
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i] && rows[i].is_active !== false) return rows[i];
         }
         return null;
     }
 
-    async function _loadCustomers() {
-        var res = await supabase.from('customers')
-            .select('id,customer_code,name,phone,area,debt,is_active')
-            .eq('company_id', _companyId())
-            .order('name',{ascending:true});
-        if (res.error) throw res.error;
-        customersData = res.data || [];
-        return customersData;
+    function _renderProfile(c) {
+        return '<div class="bg-indigo-50 rounded-2xl p-5">' +
+            '<div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">' +
+                '<div><div class="text-xs text-indigo-700 font-black">' + _esc(c.customer_code) + '</div>' +
+                '<h3 class="text-2xl font-black mt-1">' + _esc(c.name) + '</h3>' +
+                '<div class="text-sm text-slate-600 mt-2">' + _esc(c.customer_type || '—') + ' • ' + _esc(c.payment_type || '—') + '</div></div>' +
+                '<div class="flex flex-wrap gap-2">' +
+                    (c.phone ? '<a href="tel:' + _esc(c.phone) + '" class="px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-black">اتصال</a>' : '') +
+                    (c.phone ? '<a href="https://wa.me/' + _esc(String(c.phone).replace(/\D/g, '')) + '" target="_blank" rel="noopener" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black">واتساب</a>' : '') +
+                '</div>' +
+            '</div>' +
+            '<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">' +
+                '<div class="bg-white/80 rounded-xl p-3"><div class="text-xs text-slate-500">الهاتف</div><div class="font-black mt-1">' + _esc(c.phone || '—') + '</div></div>' +
+                '<div class="bg-white/80 rounded-xl p-3"><div class="text-xs text-slate-500">المنطقة</div><div class="font-black mt-1">' + _esc(c.area || '—') + '</div></div>' +
+                '<div class="bg-white/80 rounded-xl p-3"><div class="text-xs text-slate-500">جهة الاتصال</div><div class="font-black mt-1">' + _esc(c.contact_person || '—') + '</div></div>' +
+                '<div class="bg-white/80 rounded-xl p-3"><div class="text-xs text-slate-500">حد الائتمان</div><div class="font-black mt-1">' + _fmtMoney(c.credit_limit) + '</div></div>' +
+            '</div>' +
+            '<div class="text-sm text-slate-700 mt-4">' + _esc(c.address || c.location || 'لا يوجد عنوان مسجل') + '</div>' +
+            '</div>';
     }
 
-    function _table(customers) {
-        if (!customers.length) return '<div class="text-center py-10 text-gray-500">لا يوجد عملاء</div>';
-        var html='<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3 text-right">العميل</th><th class="p-3 text-right">الهاتف</th><th class="p-3 text-right">المنطقة</th><th class="p-3 text-center">الرصيد</th><th class="p-3 text-center">الإجراء</th></tr></thead><tbody>';
-        for(var i=0;i<customers.length;i++){
-            var c=customers[i];
-            html+='<tr class="border-b hover:bg-gray-50" data-crm-customer="'+_escAttr(c.customer_code)+'">'+
-                '<td class="p-3"><div class="font-bold">'+_esc(c.name)+'</div><div class="text-xs text-gray-400">'+_esc(c.customer_code)+'</div></td>'+
-                '<td class="p-3">'+_esc(c.phone||'-')+'</td>'+
-                '<td class="p-3">'+_esc(c.area||'-')+'</td>'+
-                '<td class="p-3 text-center font-black '+(Number(c.debt)>0?'text-red-600':'text-green-600')+'">'+_fmtNum(c.debt)+' EGP</td>'+
-                '<td class="p-3 text-center"><button data-crm-open="'+_escAttr(c.customer_code)+'" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-bold">متابعة</button></td>'+
-            '</tr>';
+    function _renderMetrics(m) {
+        return '<div class="grid grid-cols-2 md:grid-cols-5 gap-3">' +
+            '<div class="bg-white border rounded-xl p-3"><div class="text-xs text-gray-500">الأوردرات</div><div class="text-xl font-black mt-1">' + _fmtNum(m.order_count) + '</div></div>' +
+            '<div class="bg-white border rounded-xl p-3"><div class="text-xs text-gray-500">قيمة المبيعات</div><div class="text-xl font-black mt-1">' + _fmtMoney(m.sales_total) + '</div></div>' +
+            '<div class="bg-white border rounded-xl p-3"><div class="text-xs text-gray-500">رصيد الدفتر</div><div class="text-xl font-black mt-1">' + (m.ledger_balance == null ? 'لا يوجد دفتر' : _fmtMoney(m.ledger_balance)) + '</div></div>' +
+            '<div class="bg-white border rounded-xl p-3"><div class="text-xs text-gray-500">متابعات مفتوحة</div><div class="text-xl font-black mt-1 text-amber-600">' + _fmtNum(m.open_followups) + '</div></div>' +
+            '<div class="bg-white border rounded-xl p-3"><div class="text-xs text-gray-500">متابعات متأخرة</div><div class="text-xl font-black mt-1 text-rose-600">' + _fmtNum(m.overdue_followups) + '</div></div>' +
+        '</div>';
+    }
+
+    function _renderAssignments(assignments) {
+        var rows = Array.isArray(assignments) ? assignments : [];
+        var selected = _firstActiveAssignment(rows);
+        var html = '<div class="bg-white border rounded-2xl p-4">' +
+            '<div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">' +
+                '<div><h4 class="font-black">مسؤولو العميل</h4><div class="text-xs text-gray-500 mt-1">التعيين هنا لإدارة العلاقة فقط ولا يغير المندوب التاريخي في الأوردرات.</div></div>' +
+                '<div class="flex gap-2">' +
+                    '<select id="crm-assignee-select" class="p-2 border rounded-xl min-w-[230px]">' + _assignmentOptions(rows, selected ? selected.user_id : null) + '</select>' +
+                    '<button type="button" id="crm-assign-save" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black">حفظ</button>' +
+                '</div>' +
+            '</div>' +
+            '<div class="flex flex-wrap gap-2 mt-3">';
+
+        if (!rows.length) {
+            html += '<span class="text-sm text-gray-400">لا يوجد تعيينات حالية.</span>';
+        } else {
+            for (var i = 0; i < rows.length; i++) {
+                var a = rows[i] || {};
+                html += '<span class="px-3 py-2 rounded-full text-xs font-black ' + (a.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500') + '">' +
+                    _esc(a.name || a.email) + (a.is_active ? '' : ' (غير نشط)') + '</span>';
+            }
         }
-        return html+'</tbody></table></div>';
+
+        return html + '</div></div>';
     }
 
-    async function render() {
-        var container=byId('rw-page-container'); if(!container) return;
-        safeText(byId('rw-header-title'),'إدارة علاقات العملاء (CRM)');
-        safeText(byId('rw-header-subtitle'),'سجل الاتصالات والمتابعات والإجراءات القادمة للعملاء');
-        if(!_companyId()){safeHTML(container,'<div class="rw-card p-8 text-center"><div class="text-5xl mb-3">⚠️</div><h3 class="font-black text-xl">سياق الشركة غير محدد</h3></div>');return;}
-        showLoader('جاري تحميل العملاء...');
-        try{await _loadCustomers();}catch(e){hideLoader();safeHTML(container,'<div class="rw-card p-8 text-center"><h3 class="font-black text-xl">تعذر تحميل العملاء</h3><p class="text-gray-500 mt-2">'+_esc(e.message||'خطأ غير معروف')+'</p></div>');return;}
+    function _renderOrders(rows) {
+        var list = Array.isArray(rows) ? rows : [];
+        if (!list.length) return '<div class="text-center py-8 text-gray-400">لا توجد أوردرات مرتبطة بهذا العميل.</div>';
+
+        var html = '<div class="overflow-auto max-h-[34vh]"><table class="w-full text-sm"><thead class="bg-slate-50"><tr>' +
+            '<th class="p-2 text-right">الأوردر</th><th class="p-2 text-right">التاريخ</th><th class="p-2 text-right">الحالة</th>' +
+            '<th class="p-2 text-right">الرانشيت</th><th class="p-2 text-center">المطلوب</th><th class="p-2 text-center">المسلم</th><th class="p-2 text-left">القيمة</th>' +
+            '</tr></thead><tbody>';
+
+        for (var i = 0; i < list.length; i++) {
+            var o = list[i] || {};
+            html += '<tr class="border-b"><td class="p-2 font-black">' + _esc(o.order_code) + '</td>' +
+                '<td class="p-2">' + _esc(o.order_date) + '</td>' +
+                '<td class="p-2">' + _esc(o.order_status || '—') + '</td>' +
+                '<td class="p-2">' + _esc(o.runsheet_code || '—') + (o.runsheet_status ? ' <span class="text-xs text-gray-400">(' + _esc(o.runsheet_status) + ')</span>' : '') + '</td>' +
+                '<td class="p-2 text-center">' + _fmtNum(o.qty_ordered) + '</td>' +
+                '<td class="p-2 text-center">' + _fmtNum(o.qty_delivered) + '</td>' +
+                '<td class="p-2 text-left font-black">' + _fmtMoney(o.total_amount) + '</td></tr>';
+        }
+
+        return html + '</tbody></table></div>';
+    }
+
+    function _renderFollowups(rows) {
+        var list = Array.isArray(rows) ? rows : [];
+        if (!list.length) return '<div class="text-center py-8 text-gray-400">لا توجد متابعات سابقة.</div>';
+
+        var html = '';
+        for (var i = 0; i < list.length; i++) {
+            var f = list[i] || {};
+            var isOpen = f.status === 'Open' || f.status === 'معلقة';
+            html += '<div class="border-b py-3">' +
+                '<div class="flex flex-col md:flex-row md:items-start md:justify-between gap-2">' +
+                    '<div><div class="font-black">' + _esc(f.subject || f.followup_type || 'متابعة') + '</div>' +
+                    '<div class="text-xs text-gray-500 mt-1">' + _esc(f.followup_date) + ' • ' + _esc(f.assigned_to || 'غير مسند') + ' • أنشأها ' + _esc(f.created_by || '—') + '</div></div>' +
+                    '<span class="px-2 py-1 rounded-full text-xs font-black ' + _statusClass(f.status) + '">' + _esc(_statusLabel(f.status)) + '</span>' +
+                '</div>' +
+                '<div class="text-sm text-slate-700 mt-2">' + _esc(f.notes || '—') + '</div>' +
+                '<div class="flex flex-wrap gap-2 mt-2">' +
+                    (isOpen ?
+                        '<button type="button" data-crm-followup-status="completed" data-crm-followup-id="' + _esc(f.id) + '" class="px-3 py-1 rounded-lg bg-green-50 text-green-700 text-xs font-black">إتمام</button>' +
+                        '<button type="button" data-crm-followup-status="cancelled" data-crm-followup-id="' + _esc(f.id) + '" class="px-3 py-1 rounded-lg bg-rose-50 text-rose-700 text-xs font-black">إلغاء</button>' :
+                        '<button type="button" data-crm-followup-status="Open" data-crm-followup-id="' + _esc(f.id) + '" class="px-3 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-black">إعادة فتح</button>') +
+                '</div>' +
+            '</div>';
+        }
+
+        return html;
+    }
+
+    function _renderLedger(rows) {
+        var list = Array.isArray(rows) ? rows : [];
+        if (!list.length) return '<div class="text-center py-8 text-gray-400">لا توجد حركة دفترية لهذا العميل.</div>';
+
+        var html = '<div class="overflow-auto max-h-[30vh]"><table class="w-full text-sm"><thead class="bg-slate-50"><tr>' +
+            '<th class="p-2 text-right">التاريخ</th><th class="p-2 text-right">المرجع</th><th class="p-2 text-right">الوصف</th>' +
+            '<th class="p-2 text-left">مدين</th><th class="p-2 text-left">دائن</th><th class="p-2 text-left">الرصيد</th>' +
+            '</tr></thead><tbody>';
+
+        for (var i = 0; i < list.length; i++) {
+            var l = list[i] || {};
+            html += '<tr class="border-b"><td class="p-2">' + _esc(l.entry_date) + '</td>' +
+                '<td class="p-2 font-bold">' + _esc(l.reference || '—') + '</td>' +
+                '<td class="p-2">' + _esc(l.description || '—') + '</td>' +
+                '<td class="p-2 text-left">' + _fmtMoney(l.debit) + '</td>' +
+                '<td class="p-2 text-left">' + _fmtMoney(l.credit) + '</td>' +
+                '<td class="p-2 text-left font-black">' + _fmtMoney(l.balance) + '</td></tr>';
+        }
+
+        return html + '</tbody></table></div>';
+    }
+
+    function _followupTypeOptions() {
+        return '<option value="Call">هاتف</option>' +
+            '<option value="WhatsApp">واتساب</option>' +
+            '<option value="Visit">زيارة</option>' +
+            '<option value="Email">بريد</option>' +
+            '<option value="Other">أخرى</option>';
+    }
+
+    async function _saveFollowup(customerCode) {
+        var current = (RW_STATE && RW_STATE.app && RW_STATE.app.currentUser) || {};
+        var assigned = byId('crm-followup-assignee') ? byId('crm-followup-assignee').value : '';
+        var r = await supabase.rpc('crm_save_customer_followup', {
+            p_customer_code: customerCode,
+            p_followup_date: byId('crm-followup-date').value,
+            p_followup_type: byId('crm-followup-type').value,
+            p_status: byId('crm-followup-status').value,
+            p_subject: byId('crm-followup-subject').value.trim() || null,
+            p_notes: byId('crm-followup-notes').value.trim() || null,
+            p_assigned_to: assigned || current.email || null
+        });
+        if (r.error) throw r.error;
+        return r.data;
+    }
+
+    async function _setFollowupStatus(id, status) {
+        var r = await supabase.rpc('crm_set_customer_followup_status', {
+            p_followup_id: id,
+            p_status: status
+        });
+        if (r.error) throw r.error;
+        return r.data;
+    }
+
+    async function _setAssignment(customerId) {
+        var select = byId('crm-assignee-select');
+        if (!select || !select.value) {
+            showToast('اختر موظفًا أولًا', 'warning');
+            return null;
+        }
+
+        var r = await supabase.rpc('crm_set_customer_assignment', {
+            p_customer_id: customerId,
+            p_user_id: select.value,
+            p_is_active: true,
+            p_notes: 'تعيين من CRM'
+        });
+        if (r.error) throw r.error;
+        return r.data;
+    }
+
+    async function _refreshAfterMutation(customerId) {
+        await _loadDirectory();
+        safeHTML(byId('crm-kpis'), _renderKpis());
+        safeHTML(byId('crm-customers-list'), _renderTable());
+        _bindOpen360();
+        if (customerId) await _openCustomer360(customerId);
+    }
+
+    function _bind360(customerId, customerCode) {
+        var save = byId('crm-save-followup');
+        if (save) {
+            save.addEventListener('click', async function() {
+                try {
+                    if (!byId('crm-followup-date').value) {
+                        showToast('تاريخ المتابعة مطلوب', 'warning');
+                        return;
+                    }
+                    showLoader('جاري حفظ المتابعة...');
+                    await _saveFollowup(customerCode);
+                    hideLoader();
+                    showToast('تم حفظ المتابعة', 'success');
+                    await _refreshAfterMutation(customerId);
+                } catch (e) {
+                    hideLoader();
+                    showToast(e.message || 'فشل حفظ المتابعة', 'error');
+                }
+            });
+        }
+
+        var assign = byId('crm-assign-save');
+        if (assign) {
+            assign.addEventListener('click', async function() {
+                try {
+                    showLoader('جاري حفظ التعيين...');
+                    var result = await _setAssignment(customerId);
+                    hideLoader();
+                    if (!result) return;
+                    showToast('تم تحديث مسؤول العميل', 'success');
+                    await _refreshAfterMutation(customerId);
+                } catch (e) {
+                    hideLoader();
+                    showToast(e.message || 'فشل تحديث التعيين', 'error');
+                }
+            });
+        }
+
+        var actionButtons = document.querySelectorAll('[data-crm-followup-status]');
+        for (var i = 0; i < actionButtons.length; i++) {
+            actionButtons[i].addEventListener('click', async function() {
+                var id = this.getAttribute('data-crm-followup-id');
+                var status = this.getAttribute('data-crm-followup-status');
+                if (status === 'cancelled') {
+                    var confirm = await Swal.fire({
+                        title: 'إلغاء المتابعة؟',
+                        text: 'سيتم إبقاء السجل مع حالة ملغاة.',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'إلغاء المتابعة',
+                        cancelButtonText: 'تراجع'
+                    });
+                    if (!confirm.isConfirmed) return;
+                }
+
+                try {
+                    showLoader('جاري تحديث حالة المتابعة...');
+                    await _setFollowupStatus(id, status);
+                    hideLoader();
+                    showToast('تم تحديث المتابعة', 'success');
+                    await _refreshAfterMutation(customerId);
+                } catch (e) {
+                    hideLoader();
+                    showToast(e.message || 'فشل تحديث المتابعة', 'error');
+                }
+            });
+        }
+    }
+
+    async function _openCustomer360(customerId) {
+        showLoader('جاري تحميل Customer 360...');
+        var res = await supabase.rpc('crm_customer_360', { p_customer_id: customerId });
         hideLoader();
 
-        var html='<div class="p-4 space-y-5">';
-        html+='<div class="grid grid-cols-1 md:grid-cols-4 gap-4">';
-        html+='<div class="bg-white rounded-2xl border p-5"><div class="text-xs text-gray-500">إجمالي العملاء</div><div class="text-3xl font-black text-indigo-600 mt-2">'+customersData.length+'</div></div>';
-        html+='<div class="bg-white rounded-2xl border p-5"><div class="text-xs text-gray-500">عملاء نشطون</div><div class="text-3xl font-black text-green-600 mt-2">'+customersData.filter(function(c){return c.is_active!==false;}).length+'</div></div>';
-        html+='<div class="bg-white rounded-2xl border p-5"><div class="text-xs text-gray-500">إجمالي الذمم</div><div class="text-3xl font-black text-red-600 mt-2">'+_fmtNum(customersData.reduce(function(s,c){return s+Number(c.debt||0);},0))+' EGP</div></div>';
-        html+='<div class="bg-white rounded-2xl border p-5"><div class="text-xs text-gray-500">تحتاج متابعة</div><div id="crm-open-count" class="text-3xl font-black text-amber-600 mt-2">—</div></div>';
-        html+='</div>';
-        html+='<div class="flex flex-col md:flex-row gap-3"><input id="crm-search" class="flex-1 p-3 bg-white border rounded-xl" placeholder="بحث بالاسم أو الكود أو الهاتف"><button id="crm-refresh" class="px-5 py-3 bg-indigo-600 text-white rounded-xl font-bold">تحديث</button></div>';
-        html+='<div id="crm-customers-list" class="bg-white rounded-2xl border overflow-hidden">'+_table(customersData)+'</div></div>';
-        safeHTML(container,html);
+        if (res.error) {
+            showToast(res.error.message || 'تعذر تحميل ملف العميل', 'error');
+            return;
+        }
 
-        var search=byId('crm-search');
-        if(search) search.addEventListener('input',function(){var q=search.value.trim().toLowerCase();var filtered=customersData.filter(function(c){return !q||((c.name||'')+' '+(c.customer_code||'')+' '+(c.phone||'')).toLowerCase().indexOf(q)!==-1;});safeHTML(byId('crm-customers-list'),_table(filtered));_bindCustomerButtons();});
-        var refresh=byId('crm-refresh'); if(refresh) refresh.addEventListener('click',render);
-        _bindCustomerButtons();
-        _loadOpenCount();
+        var payload = res.data || {};
+        var c = payload.customer || {};
+        var m = payload.metrics || {};
+        var assignments = payload.assignments || [];
+        var orders = payload.orders || [];
+        var followups = payload.followups || [];
+        var ledger = payload.ledger || [];
+        var firstAssignment = _firstActiveAssignment(assignments);
+
+        var html = '<div class="text-right space-y-4">' +
+            _renderProfile(c) +
+            _renderMetrics(m) +
+            _renderAssignments(assignments) +
+            '<div class="bg-white border rounded-2xl p-4">' +
+                '<div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">' +
+                    '<h4 class="font-black">إضافة متابعة</h4>' +
+                    '<span class="text-xs text-gray-500">حدد الإجراء القادم واحفظه داخل سجل العميل.</span>' +
+                '</div>' +
+                '<div class="grid grid-cols-1 md:grid-cols-4 gap-2">' +
+                    '<input id="crm-followup-date" type="date" class="p-2 border rounded-xl" value="' + _today() + '">' +
+                    '<select id="crm-followup-type" class="p-2 border rounded-xl">' + _followupTypeOptions() + '</select>' +
+                    '<select id="crm-followup-status" class="p-2 border rounded-xl"><option value="Open">مفتوحة</option><option value="completed">مكتملة</option><option value="cancelled">ملغاة</option></select>' +
+                    '<select id="crm-followup-assignee" class="p-2 border rounded-xl">' + _assignmentOptions(assignments, firstAssignment ? firstAssignment.user_id : null) + '</select>' +
+                '</div>' +
+                '<input id="crm-followup-subject" class="w-full mt-2 p-2 border rounded-xl" placeholder="موضوع المتابعة">' +
+                '<textarea id="crm-followup-notes" class="w-full mt-2 p-2 border rounded-xl" rows="3" placeholder="الملاحظات والإجراء المطلوب"></textarea>' +
+                '<div class="flex justify-end mt-2"><button id="crm-save-followup" type="button" class="px-6 py-2 bg-indigo-600 text-white rounded-xl font-black">حفظ المتابعة</button></div>' +
+            '</div>' +
+            '<div class="bg-white border rounded-2xl p-4"><h4 class="font-black mb-3">آخر الأوردرات والتوصيل</h4>' + _renderOrders(orders) + '</div>' +
+            '<div class="bg-white border rounded-2xl p-4"><h4 class="font-black mb-3">سجل المتابعات</h4>' + _renderFollowups(followups) + '</div>' +
+            '<div class="bg-white border rounded-2xl p-4"><h4 class="font-black mb-3">الحركة المالية</h4>' + _renderLedger(ledger) + '</div>' +
+        '</div>';
+
+        Swal.fire({
+            title: 'Customer 360 — ' + _esc(c.name || c.customer_code),
+            html: html,
+            width: '1100px',
+            showCloseButton: true,
+            showConfirmButton: false,
+            customClass: { popup: 'rounded-3xl overflow-hidden' },
+            didOpen: function() {
+                _bind360(c.id, c.customer_code);
+            }
+        });
     }
 
-    function _bindCustomerButtons(){
-        var buttons=document.querySelectorAll('[data-crm-open]');
-        for(var i=0;i<buttons.length;i++) buttons[i].addEventListener('click',function(){_openFollowupModal(this.getAttribute('data-crm-open'));});
-    }
-
-    async function _loadOpenCount(){
-        var res=await supabase.from('customer_followups').select('id',{count:'exact',head:true}).eq('company_id',_companyId()).in('status',['Open','معلقة']);
-        var el=byId('crm-open-count'); if(el) el.textContent=res.error?'—':String(res.count||0);
-    }
-
-    async function _openFollowupModal(customerCode){
-        var cust=customersData.filter(function(c){return c.customer_code===customerCode;})[0];
-        if(!cust){showToast('العميل غير موجود','error');return;}
-        showLoader('جاري تحميل سجل المتابعة...');
-        var res=await supabase.from('customer_followups').select('id,followup_date,followup_type,subject,notes,assigned_to,status,created_by,created_at,completed_at').eq('company_id',_companyId()).eq('customer_id',customerCode).order('followup_date',{ascending:false}).order('created_at',{ascending:false});
-        hideLoader();
-        if(res.error){showToast('فشل تحميل المتابعة: '+res.error.message,'error');return;}
-        var followups=res.data||[];
-        var html='<div class="text-right space-y-5">';
-        html+='<div class="bg-indigo-50 rounded-2xl p-5"><div class="flex justify-between"><div><h3 class="font-black text-xl">'+_esc(cust.name)+'</h3><p class="text-sm text-gray-500">'+_esc(cust.customer_code)+'</p></div><div class="text-left font-black">'+_fmtNum(cust.debt)+' EGP</div></div><div class="flex gap-2 mt-3"><a href="tel:'+_escAttr(cust.phone||'')+'" class="px-4 py-2 bg-green-600 text-white rounded-xl text-xs font-bold">اتصال</a><a href="https://wa.me/'+_escAttr(String(cust.phone||'').replace(/\D/g,''))+'" target="_blank" rel="noopener" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">واتساب</a></div></div>';
-        html+='<div class="bg-white border rounded-2xl p-5"><h4 class="font-black mb-4">إضافة متابعة</h4><div class="grid grid-cols-1 md:grid-cols-4 gap-3"><input id="crm-date" type="date" class="p-2 border rounded" value="'+new Date().toISOString().slice(0,10)+'"><select id="crm-type" class="p-2 border rounded"><option value="Call">هاتف</option><option value="WhatsApp">واتساب</option><option value="Visit">زيارة</option><option value="Email">بريد</option><option value="Other">أخرى</option></select><select id="crm-status" class="p-2 border rounded"><option value="Open">مفتوحة</option><option value="completed">مكتملة</option><option value="cancelled">ملغاة</option></select><input id="crm-assigned" class="p-2 border rounded" placeholder="مسؤول المتابعة"></div><input id="crm-subject" class="w-full mt-3 p-2 border rounded" placeholder="موضوع المتابعة"><textarea id="crm-notes" class="w-full mt-3 p-2 border rounded" rows="3" placeholder="ملاحظات وتفاصيل الإجراء"></textarea><div class="flex justify-end mt-3"><button id="crm-save-followup" class="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold">حفظ المتابعة</button></div></div>';
-        html+='<div class="bg-white border rounded-2xl p-5"><h4 class="font-black mb-3">السجل</h4>';
-        if(!followups.length) html+='<div class="text-center py-6 text-gray-400">لا توجد متابعات سابقة</div>';
-        for(var i=0;i<followups.length;i++){var f=followups[i];html+='<div class="border-t py-3"><div class="flex justify-between"><div><b>'+_esc(f.subject||f.followup_type||'متابعة')+'</b><div class="text-xs text-gray-500">'+_esc(f.followup_date)+' — '+_esc(f.assigned_to||'-')+'</div></div><span class="px-2 py-1 rounded-full text-xs font-bold '+(f.status==='completed'?'bg-green-100 text-green-700':f.status==='cancelled'?'bg-red-100 text-red-700':'bg-yellow-100 text-yellow-700')+'">'+_esc(f.status)+'</span></div><p class="text-sm mt-2">'+_esc(f.notes||'-')+'</p></div>';}
-        html+='</div></div>';
-        Swal.fire({title:'متابعة العميل: '+_esc(cust.name),html:html,width:'900px',showCloseButton:true,showConfirmButton:false,didOpen:function(){var save=byId('crm-save-followup');if(save)save.addEventListener('click',async function(){var current=(RW_STATE&&RW_STATE.app&&RW_STATE.app.currentUser)||{};var payload={customerCode:customerCode};var r=await supabase.rpc('crm_save_customer_followup',{p_customer_code:customerCode,p_followup_date:byId('crm-date').value,p_followup_type:byId('crm-type').value,p_status:byId('crm-status').value,p_subject:byId('crm-subject').value.trim()||null,p_notes:byId('crm-notes').value.trim()||null,p_assigned_to:byId('crm-assigned').value.trim()||current.email||null});if(r.error){showToast('فشل الحفظ: '+r.error.message,'error');return;}showToast('تم حفظ المتابعة','success');Swal.close();_openFollowupModal(customerCode);});}});
-    }
-
-    return {render:render,_openFollowupModal:_openFollowupModal};
+    return {
+        render: render,
+        openCustomer360: _openCustomer360
+    };
 })();
 window.RW_CRM = RW_CRM;
 	// ============================================================
