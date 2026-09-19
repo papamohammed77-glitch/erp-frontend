@@ -22596,13 +22596,41 @@ async function renderDetailedReports() {
         tabs.forEach(function (tab) {
             tab.addEventListener('click', function () {
                 state.activeKey = tab.getAttribute('data-report-key') || 'inventory_gl_reconciliation';
+
                 tabs.forEach(function (x) {
                     var active = x === tab;
                     x.className = 'rw-sov-tab px-4 py-3 rounded-xl font-black text-sm border ' +
                         (active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200');
+                    x.setAttribute('aria-selected', active ? 'true' : 'false');
                 });
+
+                var heading = container.querySelector('h3.font-black.text-xl');
+                if (heading) safeText(heading, reportTitle(state.activeKey));
+
                 var results = byId('rw-sovereign-results');
-                if (results) safeHTML(results, '<div class="bg-slate-50 border rounded-2xl p-6 text-center font-bold text-slate-500">اضغط «تنفيذ التقرير» للصفحة المحددة.</div>');
+
+                if (state.activeKey === 'traceability' && !selectedValue('rw-sov-trace-item')) {
+                    if (results) {
+                        safeHTML(
+                            results,
+                            '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center font-bold text-amber-900">اختر صنف التتبع أولاً ثم سيُنفذ التقرير تلقائيًا.</div>'
+                        );
+                    }
+                    showToast('اختر صنف التتبع أولًا', 'warning');
+                    return;
+                }
+
+                runSovereignReport().catch(function (e) {
+                    console.error('detailed-report-tab-run', e);
+                    if (results) {
+                        safeHTML(
+                            results,
+                            '<div class="bg-red-50 border border-red-200 rounded-3xl p-8 text-center text-red-700 font-black">' +
+                            esc(e.message || 'فشل تنفيذ التقرير') +
+                            '</div>'
+                        );
+                    }
+                });
             });
         });
 
