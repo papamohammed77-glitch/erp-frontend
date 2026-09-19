@@ -2957,7 +2957,7 @@ window.RW_Navigation = RW_Navigation;
 	var RW_SalesManagementCenter = (function () {
     'use strict';
 
-    var state = { timer: null, data: null };
+    var state = { timer: null, data: null, contextObserver: null };
 
     function esc(v) {
         return String(v == null ? '' : v)
@@ -2995,7 +2995,130 @@ window.RW_Navigation = RW_Navigation;
     function nav(view) {
         if (typeof RW_Navigation !== 'undefined' && RW_Navigation.navigate) RW_Navigation.navigate(view);
     }
+function salesChildLabel(view) {
+    var labels = {
+        telesales: 'التلي سيلز',
+        customers: 'العملاء',
+        'online-store': 'المتجر الإلكتروني',
+        pos: 'نقطة البيع',
+        orders: 'أوردرات المبيعات',
+        quotes: 'عروض الأسعار',
+        'price-lists': 'قوائم الأسعار',
+        promotions: 'العروض والخصومات',
+        'sales-decision-center': 'مركز قرار المبيعات',
+        'sales-targets': 'أهداف المبيعات',
+        loyalty: 'الولاء والمكافآت',
+        runsheets: 'الرانشيتات',
+        'sales-returns': 'إدارة مرتجعات المبيعات'
+    };
 
+    return labels[view] || 'إدارة المبيعات';
+}
+
+function isSalesChildView(view) {
+    return [
+        'telesales',
+        'customers',
+        'online-store',
+        'pos',
+        'orders',
+        'quotes',
+        'price-lists',
+        'promotions',
+        'sales-decision-center',
+        'sales-targets',
+        'loyalty',
+        'runsheets',
+        'sales-returns'
+    ].indexOf(view) !== -1;
+}
+
+function renderSalesContextBack() {
+    var c = byId('rw-page-container');
+
+    if (!c || typeof RW_STATE === 'undefined' || !RW_STATE.app) return;
+
+    var view = RW_STATE.app.currentView || '';
+    var existing = byId('rw-sales-parent-context');
+
+    if (!isSalesChildView(view)) {
+        if (existing && existing.parentNode) {
+            existing.parentNode.removeChild(existing);
+        }
+        return;
+    }
+
+    if (existing && c.contains(existing)) return;
+
+    var node = document.createElement('div');
+
+    node.id = 'rw-sales-parent-context';
+    node.setAttribute('role', 'navigation');
+    node.setAttribute('aria-label', 'مسار إدارة المبيعات');
+
+    node.style.cssText =
+        'display:flex;' +
+        'align-items:center;' +
+        'justify-content:space-between;' +
+        'gap:12px;' +
+        'flex-wrap:wrap;' +
+        'margin-bottom:18px;' +
+        'padding:12px 14px;' +
+        'background:#f8fafc;' +
+        'border:1px solid #e2e8f0;' +
+        'border-radius:18px;';
+
+    node.innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px;min-width:0;font-size:13px;font-weight:800;color:#64748b">' +
+            '<span>إدارة المبيعات</span>' +
+            '<span aria-hidden="true">/</span>' +
+            '<span style="color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+                esc(salesChildLabel(view)) +
+            '</span>' +
+        '</div>' +
+        '<button type="button" data-smc-parent-back="1" aria-label="العودة إلى مركز إدارة المبيعات" ' +
+            'style="display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;font-weight:900;cursor:pointer;white-space:nowrap">' +
+            '<i class="fa-solid fa-arrow-right"></i>' +
+            '<span>العودة إلى مركز إدارة المبيعات</span>' +
+        '</button>';
+
+    c.insertBefore(node, c.firstChild || null);
+
+    var back = node.querySelector('[data-smc-parent-back]');
+
+    if (back) {
+        back.onclick = function () {
+            nav('sales-management-center');
+        };
+    }
+}
+
+function installSalesContextBack() {
+    var c = byId('rw-page-container');
+
+    if (!c) return;
+
+    if (state.contextObserver || typeof MutationObserver === 'undefined') {
+        renderSalesContextBack();
+        return;
+    }
+
+    state.contextObserver = new MutationObserver(function () {
+        if (window.requestAnimationFrame) {
+            window.requestAnimationFrame(renderSalesContextBack);
+        } else {
+            setTimeout(renderSalesContextBack, 0);
+        }
+    });
+
+    state.contextObserver.observe(c, {
+        childList: true,
+        subtree: true
+    });
+
+    renderSalesContextBack();
+}
+		
     function kpi(label, value, icon, sub, action) {
         return '<button type="button" data-smc-nav="' + esc(action || '') + '" class="text-right bg-white border rounded-3xl p-5 shadow-sm hover:-translate-y-1 transition-all w-full">' +
             '<div class="flex items-start justify-between gap-3"><div><div class="text-xs text-slate-500 font-bold">' + esc(label) + '</div>' +
@@ -3133,16 +3256,29 @@ window.RW_Navigation = RW_Navigation;
         };
     }
 
-    async function render() {
-        var c = byId('rw-page-container');
-        if (!c) return;
-        safeHTML(c, '<div class="p-10 text-center text-slate-500 font-bold">جاري تحميل مركز إدارة المبيعات...</div>');
-        await load();
-        clearInterval(state.timer);
-        state.timer = setInterval(function () {
-            if (RW_STATE.app.currentView === 'sales-management-center') load().catch(function(){});
-        }, 30000);
-    }
+async function render() {
+    var c = byId('rw-page-container');
+    if (!c) return;
+
+    installSalesContextBack();
+
+    safeHTML(
+        c,
+        '<div class="p-10 text-center text-slate-500 font-bold">' +
+            'جاري تحميل مركز إدارة المبيعات...' +
+        '</div>'
+    );
+
+    await load();
+
+    clearInterval(state.timer);
+
+    state.timer = setInterval(function () {
+        if (RW_STATE.app.currentView === 'sales-management-center') {
+            load().catch(function () {});
+        }
+    }, 30000);
+}
 
     return { render: render, refresh: load };
 })();
