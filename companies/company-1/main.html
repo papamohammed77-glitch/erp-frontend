@@ -6651,301 +6651,447 @@ window.RW_POS = RW_POS;
 // RW_Roles – إدارة أدوار المستخدمين (قراءة وكتابة Supabase)
 // ============================================================
 var RW_Roles = (function() {
-    var rolesData = [];
+      var rolesData = [];
+    var usersData = [];
+
+    function roleEsc(v) {
+        return String(v == null ? '' : v)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
     async function render() {
-        var container = byId('rw-page-container'); if (!container) return;
+        var container = byId('rw-page-container');
+        if (!container) return;
+
+        var companyId = _rwCompanyId();
+        if (!companyId) {
+            safeText(byId('rw-header-title'), 'إدارة أدوار المستخدمين');
+            safeText(byId('rw-header-subtitle'), 'تعذر تحديد سياق الشركة الحالية');
+            safeHTML(container, '<div class="p-8 text-center bg-white rounded-3xl border border-rose-100 text-rose-700 font-black">سياق الشركة غير محدد.</div>');
+            return;
+        }
+
         safeText(byId('rw-header-title'), 'إدارة أدوار المستخدمين');
-        safeHTML(container, '<div class="p-4">' +
-            '<div class="flex justify-between mb-4"><h2 class="text-xl font-bold"><i class="fas fa-user-shield ml-2"></i>أدوار المستخدمين</h2>' +
-            '<div class="flex gap-2"><button id="btn-seed-roles" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-seedling ml-1"></i> تهيئة الأدوار الافتراضية</button>' +
-            '<button id="btn-add-role" class="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold"><i class="fa-solid fa-plus ml-1"></i> إضافة دور</button></div></div>' +
-            '<div class="bg-white rounded-2xl shadow-sm border overflow-y-auto" id="roles-table-wrapper" style="max-height:65vh"></div>' +
-        '</div>');
-        var dRes = await supabase.from('roles')
-            .select('*')
-            .eq('company_id', _rwCompanyId())
-            .order('created_at', { ascending: true });
-        rolesData = dRes.data || [];
+        safeText(byId('rw-header-subtitle'), 'إدارة مركزية للأدوار والصلاحيات وتأثيرها على المستخدمين');
+
+        safeHTML(container,
+            '<div id="rw-roles-page" class="max-w-[1700px] mx-auto p-4 md:p-6 space-y-5" dir="rtl">' +
+                '<div class="bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-900 rounded-[32px] p-6 md:p-8 text-white shadow-2xl"><div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6"><div><div class="text-xs md:text-sm text-indigo-200 font-black mb-2">RAWAEA ERP / SECURITY & ACCESS</div><h2 class="text-2xl md:text-4xl font-black">إدارة أدوار المستخدمين</h2><p class="text-sm md:text-base text-slate-200 mt-2 max-w-4xl leading-7">الدور هو ملف الصلاحيات القابل لإعادة الاستخدام. هذه الصفحة تدير نفس عقد الصلاحيات الحالي دون إنشاء محرك صلاحيات موازٍ.</p></div><div class="flex flex-wrap gap-2"><button type="button" id="btn-seed-roles" class="px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 font-black"><i class="fa-solid fa-seedling ml-2"></i>تهيئة الأدوار الافتراضية</button><button type="button" id="btn-add-role" class="px-5 py-3 rounded-2xl bg-white text-indigo-700 hover:bg-indigo-50 font-black shadow-lg"><i class="fa-solid fa-plus ml-2"></i>إضافة دور جديد</button></div></div></div>' +
+                '<div class="grid grid-cols-2 xl:grid-cols-5 gap-4">' +
+                    '<div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm"><div class="text-xs font-black text-slate-500">إجمالي الأدوار</div><div id="roles-stat-total" class="mt-2 text-3xl font-black text-slate-900">—</div></div>' +
+                    '<div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm"><div class="text-xs font-black text-slate-500">أدوار النظام</div><div id="roles-stat-system" class="mt-2 text-3xl font-black text-blue-700">—</div></div>' +
+                    '<div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm"><div class="text-xs font-black text-slate-500">أدوار مخصصة</div><div id="roles-stat-custom" class="mt-2 text-3xl font-black text-indigo-700">—</div></div>' +
+                    '<div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm"><div class="text-xs font-black text-slate-500">مستخدمون بلا دور</div><div id="roles-stat-unassigned" class="mt-2 text-3xl font-black text-amber-700">—</div></div>' +
+                    '<div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm"><div class="text-xs font-black text-slate-500">أدوار غير مستخدمة</div><div id="roles-stat-unused" class="mt-2 text-3xl font-black text-rose-700">—</div></div>' +
+                '</div>' +
+                '<div id="roles-data-warning" class="hidden"></div>' +
+                '<div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 md:p-5"><div class="flex flex-col xl:flex-row xl:items-center gap-3"><div class="flex-1 relative"><i class="fas fa-search absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input id="roles-search" type="search" class="w-full pr-11 pl-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 font-bold" placeholder="ابحث باسم الدور أو الوصف..."></div><select id="roles-type-filter" class="px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 font-black"><option value="all">كل الأدوار</option><option value="system">أدوار النظام</option><option value="custom">الأدوار المخصصة</option><option value="unused">غير مستخدمة</option></select></div></div>' +
+                '<div id="roles-table-wrapper"></div>' +
+            '</div>'
+        );
+
+        var results = await Promise.all([
+            supabase.from('roles').select('*').eq('company_id', companyId).order('created_at', { ascending: true }),
+            supabase.from('users').select('id,name,email,status,role_id,role').eq('company_id', companyId).order('name', { ascending: true })
+        ]);
+
+        var rolesRes = results[0];
+        var usersRes = results[1];
+
+        if (rolesRes.error) {
+            rolesData = [];
+            usersData = [];
+            safeHTML(byId('roles-table-wrapper'), '<div class="p-8 rounded-3xl bg-rose-50 border border-rose-100 text-rose-700 font-black">تعذر تحميل الأدوار: ' + roleEsc(rolesRes.error.message || 'خطأ غير معروف') + '</div>');
+            return;
+        }
+
+        if (usersRes.error) {
+            rolesData = [];
+            usersData = [];
+            safeHTML(byId('roles-table-wrapper'), '<div class="p-8 rounded-3xl bg-rose-50 border border-rose-100 text-rose-700 font-black">تعذر تحميل المستخدمين لحساب تأثير الدور: ' + roleEsc(usersRes.error.message || 'خطأ غير معروف') + '</div>');
+            return;
+        }
+
+        rolesData = rolesRes.data || [];
+        usersData = usersRes.data || [];
         renderTable(rolesData);
+
+        var searchEl = byId('roles-search');
+        var typeEl = byId('roles-type-filter');
+        var rerender = function() { renderTable(rolesData); };
+        if (searchEl) searchEl.addEventListener('input', rerender);
+        if (typeEl) typeEl.addEventListener('change', rerender);
+
         var addBtn = byId('btn-add-role');
-        if (addBtn) addBtn.addEventListener('click', function() { openModal(null); });
+        if (addBtn) addBtn.addEventListener('click', function() { openRolePage(null); });
+
         var seedBtn = byId('btn-seed-roles');
         if (seedBtn) seedBtn.addEventListener('click', seedDefaultRoles);
     }
 
     function renderTable(data) {
-        var w = byId('roles-table-wrapper'); if (!w) return;
-        if (!data.length) { safeHTML(w, '<div class="text-center p-10">لا توجد أدوار</div>'); return; }
-        var html = '<table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="p-3">اسم الدور</th><th class="p-3">الوصف</th><th class="p-3">النوع</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody>';
-        for (var i = 0; i < data.length; i++) {
-            var r = data[i];
-            var typeBadge = r.is_system ? '<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">أساسي</span>' : '<span class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs">مخصص</span>';
-            html += '<tr class="hover:bg-gray-50"><td class="p-3 font-semibold">' + (r.role_name||'') + '</td><td class="p-3">' + (r.description||'') + '</td><td class="p-3">' + typeBadge + '</td><td class="p-3 text-center"><button class="text-blue-600" onclick="RW_Roles._openModal(\'' + r.id + '\')"><i class="fa-solid fa-pen"></i></button></td></tr>';
+        var w = byId('roles-table-wrapper');
+        if (!w) return;
+
+        var searchTerm = String((byId('roles-search') && byId('roles-search').value) || '').trim().toLowerCase();
+        var typeFilter = String((byId('roles-type-filter') && byId('roles-type-filter').value) || 'all');
+        var activeMemberCountByRole = {};
+        var activeUsersWithoutRole = 0;
+
+        for (var ui = 0; ui < usersData.length; ui++) {
+            var usr = usersData[ui];
+            if (usr.status !== 'Inactive' && !usr.role_id) activeUsersWithoutRole++;
+            if (usr.status !== 'Inactive' && usr.role_id) {
+                activeMemberCountByRole[usr.role_id] = (activeMemberCountByRole[usr.role_id] || 0) + 1;
+            }
         }
-        html += '</tbody></table>';
+
+        var systemCount = 0;
+        var customCount = 0;
+        var unusedCount = 0;
+
+        for (var ri = 0; ri < data.length; ri++) {
+            var rr = data[ri];
+            var count = activeMemberCountByRole[rr.id] || 0;
+            if (rr.is_system) systemCount++; else customCount++;
+            if (count === 0) unusedCount++;
+        }
+
+        safeText(byId('roles-stat-total'), data.length);
+        safeText(byId('roles-stat-system'), systemCount);
+        safeText(byId('roles-stat-custom'), customCount);
+        safeText(byId('roles-stat-unassigned'), activeUsersWithoutRole);
+        safeText(byId('roles-stat-unused'), unusedCount);
+
+        var warning = byId('roles-data-warning');
+        if (warning) {
+            if (activeUsersWithoutRole > 0) {
+                warning.className = 'block p-4 rounded-3xl bg-amber-50 border border-amber-200 text-amber-900 text-sm font-bold';
+                safeHTML(warning, '<div class="flex items-start gap-3"><div class="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center"><i class="fas fa-triangle-exclamation"></i></div><div><div class="font-black">يوجد ' + activeUsersWithoutRole + ' مستخدم نشط بلا role_id.</div><div class="mt-1 text-xs font-bold text-amber-800">لم يتم تعيينه تلقائيًا؛ لأن اسم الدور النصي الحالي لا يطابق دورًا Production قائمًا، وأي تعيين آلي سيكون افتراضًا غير مسموح به.</div></div></div>');
+            } else {
+                warning.className = 'hidden';
+                safeHTML(warning, '');
+            }
+        }
+
+        var filtered = [];
+        for (var fi = 0; fi < data.length; fi++) {
+            var r = data[fi];
+            var memberCount = activeMemberCountByRole[r.id] || 0;
+            var hay = (String(r.role_name || '') + ' ' + String(r.description || '')).toLowerCase();
+            var searchMatch = !searchTerm || hay.indexOf(searchTerm) !== -1;
+            var typeMatch = typeFilter === 'all' || (typeFilter === 'system' && r.is_system) || (typeFilter === 'custom' && !r.is_system) || (typeFilter === 'unused' && memberCount === 0);
+            if (searchMatch && typeMatch) filtered.push(r);
+        }
+
+        if (!filtered.length) {
+            safeHTML(w, '<div class="bg-white rounded-3xl border border-slate-100 p-12 text-center text-slate-500 font-black">لا توجد نتائج مطابقة للبحث الحالي.</div>');
+            return;
+        }
+
+        var html = '<div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"><div class="hidden xl:block overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-50 border-b"><tr><th class="p-4 text-right font-black">الدور</th><th class="p-4 text-right font-black">الوصف</th><th class="p-4 text-center font-black">النوع</th><th class="p-4 text-center font-black">الصلاحيات</th><th class="p-4 text-center font-black">المستخدمون</th><th class="p-4 text-center font-black">الإجراء</th></tr></thead><tbody>';
+
+        for (var i = 0; i < filtered.length; i++) {
+            var role = filtered[i];
+            var permissionCount = Array.isArray(role.permissions) ? role.permissions.length : 0;
+            var members = activeMemberCountByRole[role.id] || 0;
+            var typeBadge = role.is_system ? '<span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 text-xs font-black"><i class="fas fa-shield-halved"></i>نظام</span>' : '<span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-50 text-slate-700 border border-slate-200 text-xs font-black"><i class="fas fa-user-shield"></i>مخصص</span>';
+            html += '<tr class="hover:bg-slate-50/80 border-b last:border-0 transition-colors"><td class="p-4"><div class="font-black text-slate-900">' + roleEsc(role.role_name) + '</div><div class="text-xs text-slate-400 mt-1">آخر تحديث: ' + roleEsc(role.updated_at || role.created_at || 'غير متاح') + '</div></td><td class="p-4 text-slate-600 font-bold max-w-md">' + roleEsc(role.description || 'بدون وصف') + '</td><td class="p-4 text-center">' + typeBadge + '</td><td class="p-4 text-center"><span class="inline-flex items-center gap-2 font-black text-indigo-700"><i class="fas fa-key"></i>' + permissionCount + '</span></td><td class="p-4 text-center"><span class="font-black ' + (members > 0 ? 'text-emerald-700' : 'text-rose-600') + '">' + members + '</span></td><td class="p-4 text-center"><button type="button" data-role-open="' + roleEsc(role.id) + '" class="px-4 py-2.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-black"><i class="fas fa-arrow-left ml-2"></i>فتح الصفحة</button></td></tr>';
+        }
+
+        html += '</tbody></table></div><div class="xl:hidden divide-y">';
+
+        for (var ci = 0; ci < filtered.length; ci++) {
+            var cr = filtered[ci];
+            var cp = Array.isArray(cr.permissions) ? cr.permissions.length : 0;
+            var cm = activeMemberCountByRole[cr.id] || 0;
+            html += '<button type="button" data-role-open="' + roleEsc(cr.id) + '" class="w-full text-right p-5 hover:bg-slate-50 transition-colors"><div class="flex items-start justify-between gap-4"><div class="min-w-0"><div class="font-black text-lg text-slate-900 truncate">' + roleEsc(cr.role_name) + '</div><div class="text-xs text-slate-500 mt-1 line-clamp-2">' + roleEsc(cr.description || 'بدون وصف') + '</div></div>' + (cr.is_system ? '<span class="shrink-0 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-black">نظام</span>' : '<span class="shrink-0 px-3 py-1 rounded-full bg-slate-50 text-slate-700 text-xs font-black">مخصص</span>') + '</div><div class="mt-4 flex items-center justify-between text-xs font-black text-slate-500"><span><i class="fas fa-key ml-1"></i>' + cp + ' صلاحية</span><span><i class="fas fa-users ml-1"></i>' + cm + ' مستخدم</span><span class="text-indigo-700">فتح <i class="fas fa-arrow-left mr-1"></i></span></div></button>';
+        }
+
+        html += '</div></div>';
         safeHTML(w, html);
+
+        var openButtons = w.querySelectorAll('[data-role-open]');
+        for (var bi = 0; bi < openButtons.length; bi++) {
+            openButtons[bi].addEventListener('click', function() {
+                openRolePage(this.getAttribute('data-role-open'));
+            });
+        }
     }
 
-    function openModal(roleId) {
-        var role = roleId ? rolesData.find(function(r) { return r.id == roleId; }) : null;
+	    function openRolePage(roleId) {
+        var container = byId('rw-page-container');
+        if (!container) return;
+
+        var role = null;
+        if (roleId) {
+            for (var i = 0; i < rolesData.length; i++) {
+                if (String(rolesData[i].id) === String(roleId)) {
+                    role = rolesData[i];
+                    break;
+                }
+            }
+            if (!role) {
+                showToast('الدور المطلوب غير موجود في السياق الحالي', 'error');
+                return;
+            }
+        }
+
         var isEdit = !!role;
-        var title = isEdit ? 'تعديل دور' : 'إضافة دور جديد';
+        var currentPermissions = role && Array.isArray(role.permissions) ? role.permissions.slice() : [];
+        var currentPermissionMap = {};
+        for (var pm = 0; pm < currentPermissions.length; pm++) currentPermissionMap[String(currentPermissions[pm])] = true;
 
         var appPerms = [
-            { key: 'pos', label: 'نقطة البيع (POS)' },
-            { key: 'telesales', label: 'التلي سيلز' },
-            { key: 'orders', label: 'الأوردرات (مندوب المبيعات)' },
-            { key: 'van-sales', label: 'فان سيلز' },
-            { key: 'sales_supervisor', label: 'مشرف المبيعات' },
-            { key: 'warehouse_supervisor', label: 'مشرف المخازن' },
-            { key: 'warehouse', label: 'عمال المخازن (استلام/تحضير/تحميل...)' },
-            { key: 'delivery', label: 'مندوب التوصيل' },
-            { key: 'delivery_supervisor', label: 'مشرف التوصيل' },
-            { key: 'purchases', label: 'مسؤول المشتريات' },
-            { key: 'purchases_supervisor', label: 'مشرف المشتريات' },
-            { key: 'finance', label: 'المحاسب' },
-            { key: 'online-store', label: 'المتجر الإلكتروني' },
-            { key: 'sales_manager', label: 'مدير المبيعات' },
-            { key: 'warehouse_manager', label: 'مدير المخازن' },
-            { key: 'finance_manager', label: 'المدير المالي' },
-            { key: 'general_manager', label: 'المدير العام' },
-            { key: 'hr', label: 'الموارد البشرية' }
+            { key: 'pos', label: 'نقطة البيع (POS)', hint: 'بيع مباشر وفواتير POS' },
+            { key: 'telesales', label: 'التلي سيلز', hint: 'الطلبات الهاتفية' },
+            { key: 'orders', label: 'الأوردرات', hint: 'طلبات مندوبي المبيعات' },
+            { key: 'van-sales', label: 'فان سيلز', hint: 'البيع المباشر بالسيارة' },
+            { key: 'sales_supervisor', label: 'مشرف المبيعات', hint: 'إشراف تشغيل المبيعات' },
+            { key: 'warehouse_supervisor', label: 'مشرف المخازن', hint: 'إشراف العمليات المخزنية' },
+            { key: 'warehouse', label: 'عمال المخازن', hint: 'الاستلام والتحضير والتحميل وغيرها' },
+            { key: 'delivery', label: 'مندوب التوصيل', hint: 'تنفيذ عمليات التسليم' },
+            { key: 'delivery_supervisor', label: 'مشرف التوصيل', hint: 'إشراف دورة التوصيل' },
+            { key: 'purchases', label: 'مسؤول المشتريات', hint: 'المشتريات' },
+            { key: 'purchases_supervisor', label: 'مشرف المشتريات', hint: 'إشراف المشتريات' },
+            { key: 'finance', label: 'المحاسب', hint: 'المالية' },
+            { key: 'online-store', label: 'المتجر الإلكتروني', hint: 'تشغيل المتجر' },
+            { key: 'sales_manager', label: 'مدير المبيعات', hint: 'إدارة المبيعات' },
+            { key: 'warehouse_manager', label: 'مدير المخازن', hint: 'إدارة المخزون' },
+            { key: 'finance_manager', label: 'المدير المالي', hint: 'الإدارة المالية' },
+            { key: 'general_manager', label: 'المدير العام', hint: 'الإدارة العامة' },
+            { key: 'hr', label: 'الموارد البشرية', hint: 'HR' }
         ];
 
         var erpPerms = [
-            { key: 'dash', label: 'لوحة التحكم' },
-            { key: 'items', label: 'الأصناف والمخزون' },
-            { key: 'stock_adjustment', label: 'تحديث الأرصدة (تسوية)' },
-            { key: 'customers', label: 'العملاء' },
-            { key: 'suppliers', label: 'الموردين' },
-            { key: 'branches', label: 'الفروع والمخازن' },
-            { key: 'runsheets', label: 'الرانشيتات' },
-            { key: 'receiving', label: 'سجل الاستلام' },
-            { key: 'picking', label: 'سجل التحضير' },
-            { key: 'loading', label: 'سجل التحميل' },
-            { key: 'return', label: 'سجل المرتجعات' },
-            { key: 'unloading', label: 'سجل التفريغ' },
-            { key: 'vouchers', label: 'الأذونات المخزنية' },
-            { key: 'transfer', label: 'تحويل مخزني' },
-            { key: 'direct-sale', label: 'صرف سيارة بيع مباشر' },
-            { key: 'direct-return', label: 'استلام مرتجع سيارة' },
-            { key: 'supplier-return', label: 'مرتجع لمورد' },
-            { key: 'vehicle-count', label: 'جرد سيارة' },
-            { key: 'branch-count', label: 'جرد فرع' },
-            { key: 'general-count', label: 'جرد عام' },
-            { key: 'reports', label: 'التقارير' },
-            { key: 'users', label: 'المستخدمين والصلاحيات' },
-            { key: 'roles', label: 'إدارة الأدوار' },
-            { key: 'settings', label: 'إعدادات النظام' },
-            { key: 'settlement', label: 'إغلاق اليومية' }
+            { key: 'dash', label: 'لوحة التحكم', hint: 'الواجهة الإدارية الرئيسية' },
+            { key: 'items', label: 'الأصناف والمخزون', hint: 'دليل الأصناف ومتابعة المخزون' },
+            { key: 'stock_adjustment', label: 'تحديث الأرصدة', hint: 'التسويات المخزنية' },
+            { key: 'customers', label: 'العملاء', hint: 'دليل العملاء' },
+            { key: 'suppliers', label: 'الموردين', hint: 'دليل الموردين' },
+            { key: 'branches', label: 'الفروع والمخازن', hint: 'نطاق الفروع' },
+            { key: 'runsheets', label: 'الرانشيتات', hint: 'فتح ومتابعة الرانشيت' },
+            { key: 'receiving', label: 'سجل الاستلام', hint: 'عمليات الاستلام' },
+            { key: 'picking', label: 'سجل التحضير', hint: 'عمليات التحضير' },
+            { key: 'loading', label: 'سجل التحميل', hint: 'عمليات التحميل' },
+            { key: 'return', label: 'سجل المرتجعات', hint: 'المرتجعات' },
+            { key: 'unloading', label: 'سجل التفريغ', hint: 'عمليات التفريغ' },
+            { key: 'vouchers', label: 'الأذونات المخزنية', hint: 'إدارة الأذونات' },
+            { key: 'transfer', label: 'تحويل مخزني', hint: 'نقل المخزون' },
+            { key: 'direct-sale', label: 'صرف سيارة بيع مباشر', hint: 'صرف بضاعة للبيع المباشر' },
+            { key: 'direct-return', label: 'استلام مرتجع سيارة', hint: 'استلام مرتجعات السيارات' },
+            { key: 'supplier-return', label: 'مرتجع لمورد', hint: 'مرتجعات الموردين' },
+            { key: 'vehicle-count', label: 'جرد سيارة', hint: 'جرد المخزون بالسيارة' },
+            { key: 'branch-count', label: 'جرد فرع', hint: 'جرد مخزون الفرع' },
+            { key: 'general-count', label: 'جرد عام', hint: 'الجرد الشامل' },
+            { key: 'reports', label: 'التقارير', hint: 'التقارير الإدارية' },
+            { key: 'users', label: 'المستخدمين والصلاحيات', hint: 'إدارة المستخدمين' },
+            { key: 'roles', label: 'إدارة الأدوار', hint: 'إدارة ملفات الصلاحيات' },
+            { key: 'settings', label: 'إعدادات النظام', hint: 'الإعدادات العامة' },
+            { key: 'settlement', label: 'إغلاق اليومية', hint: 'التسويات والإغلاق' }
         ];
 
-        function buildCheckboxes(list) {
-            var h = '<div class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">';
-            for (var i = 0; i < list.length; i++) {
-                var p = list[i];
-                var checked = '';
-                if (role && role.permissions && role.permissions.indexOf(p.key) !== -1) {
-                    checked = ' checked';
-                }
-                h += '<label class="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 p-1 rounded">';
-                h += '<input type="checkbox" value="' + p.key + '"' + checked + ' class="role-perm-checkbox">';
-                h += ' ' + p.label;
-                h += '</label>';
-            }
-            h += '</div>';
-            return h;
+        var members = [];
+        if (role) {
+            for (var mi = 0; mi < usersData.length; mi++) if (usersData[mi].role_id === role.id) members.push(usersData[mi]);
         }
 
-        var appHTML = buildCheckboxes(appPerms);
-        var erpHTML = buildCheckboxes(erpPerms);
+        function permissionCard(item, group) {
+            var checked = !!currentPermissionMap[item.key];
+            return '<label class="role-page-perm-card flex items-start gap-3 p-4 rounded-2xl border ' + (checked ? 'border-indigo-200 bg-indigo-50/70' : 'border-slate-200 bg-white hover:bg-slate-50') + ' cursor-pointer transition-colors" data-role-perm-group="' + group + '" data-role-perm-search="' + roleEsc(item.key + ' ' + item.label + ' ' + item.hint) + '"><input type="checkbox" value="' + roleEsc(item.key) + '" class="role-page-perm mt-1 w-5 h-5 accent-indigo-600"' + (checked ? ' checked' : '') + '><span class="min-w-0 flex-1"><span class="block font-black text-sm text-slate-900">' + roleEsc(item.label) + '</span><span class="block text-[11px] text-slate-500 font-bold mt-1">' + roleEsc(item.hint) + '</span><span class="block text-[10px] text-slate-400 font-black mt-2">' + roleEsc(item.key) + '</span></span></label>';
+        }
+
+        var appHtml = '';
+        for (var ai = 0; ai < appPerms.length; ai++) appHtml += permissionCard(appPerms[ai], 'apps');
+
+        var erpHtml = '';
+        for (var ei = 0; ei < erpPerms.length; ei++) erpHtml += permissionCard(erpPerms[ei], 'erp');
+
+        var permissionCount = currentPermissions.filter(function(x) { return String(x).trim() && String(x).trim() !== '*'; }).length;
+        var statusLabel = role && role.is_system ? 'دور نظامي' : 'دور مخصص';
+
+        safeText(byId('rw-header-title'), isEdit ? 'تعديل الدور' : 'إضافة دور جديد');
+        safeText(byId('rw-header-subtitle'), 'صفحة كاملة لإدارة هوية الدور وملف الصلاحيات وتأثيره على المستخدمين');
 
         var html =
-            '<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl">' +
-            '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">' +
-            '<div class="bg-indigo-600 px-6 py-4 flex justify-between text-white">' +
-            '<h3 class="text-xl font-bold"><i class="fas fa-user-shield ml-2"></i>' + title + '</h3>' +
-            '<button type="button" onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button>' +
-            '</div>' +
-            '<form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto" onsubmit="return false;">' +
-            '<input type="hidden" id="role-id-hidden" value="' + (role ? (role.id || '') : '') + '">' +
-            '<div class="flex flex-col"><label class="text-sm font-bold">اسم الدور *</label><input id="role-name" value="' + (role ? (role.role_name || '') : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
-            '<div class="flex flex-col"><label class="text-sm font-bold">الوصف</label><input id="role-desc" value="' + (role ? (role.description || '') : '') + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>' +
-            '<div>' +
-            '<div class="flex border-b mb-4">' +
-            '<button type="button" onclick="RW_Roles._switchRoleTab(\'apps\')" class="px-4 py-2 font-bold text-sm border-b-2 border-blue-600 text-blue-600" id="role-tab-apps">📱 صلاحيات التطبيقات</button>' +
-            '<button type="button" onclick="RW_Roles._switchRoleTab(\'erp\')" class="px-4 py-2 font-bold text-sm text-gray-500" id="role-tab-erp">🏢 صلاحيات النظام الأم</button>' +
-            '</div>' +
-            '<div id="role-panel-apps">' + appHTML + '</div>' +
-            '<div id="role-panel-erp" class="hidden">' + erpHTML + '</div>' +
-            '</div>' +
-            '<div class="flex justify-end gap-3 pt-4 border-t">' +
-            (isEdit && !role.is_system ? '<button type="button" id="btn-delete-role" class="px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold mr-auto"><i class="fas fa-trash-alt ml-1"></i> حذف الدور</button>' : '') +
-            (isEdit && role.is_system ? '<span class="px-4 py-2.5 bg-slate-100 text-slate-500 rounded-xl font-bold mr-auto"><i class="fas fa-lock ml-1"></i> دور نظامي</span>' : '') +
-            '<button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button>' +
-            '<button type="button" id="btn-save-role" class="px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold">حفظ</button>' +
-            '</div></form></div></div>';
+            '<div id="rw-role-page" class="max-w-[1700px] mx-auto p-4 md:p-6 space-y-5" dir="rtl">' +
+                '<div class="bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-900 rounded-[32px] p-6 md:p-8 text-white shadow-2xl"><div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6"><div class="flex items-start gap-4 min-w-0"><button type="button" data-role-action="back" class="shrink-0 w-12 h-12 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15"><i class="fas fa-arrow-right"></i></button><div class="min-w-0"><div class="text-xs md:text-sm text-indigo-200 font-black mb-2">RAWAEA ERP / ROLE PROFILE</div><div class="flex flex-wrap items-center gap-2"><h2 class="text-2xl md:text-4xl font-black truncate">' + roleEsc(isEdit ? role.role_name : 'دور جديد') + '</h2><span class="px-3 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-black">' + roleEsc(statusLabel) + '</span></div><p class="text-sm text-slate-200 mt-2">' + roleEsc(isEdit ? (role.description || 'بدون وصف') : 'أنشئ ملف صلاحيات قابلًا لإعادة الاستخدام للمستخدمين.') + '</p></div></div><div class="flex flex-wrap gap-2">' + (isEdit ? '<button type="button" data-role-action="clone" class="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 font-black"><i class="fas fa-copy ml-2"></i>نسخ الدور</button>' : '') + '<button type="button" data-role-action="save" class="px-6 py-3 rounded-2xl bg-white text-indigo-700 hover:bg-indigo-50 font-black shadow-lg"><i class="fas fa-floppy-disk ml-2"></i>حفظ الدور</button></div></div></div>' +
+                '<div class="grid grid-cols-2 xl:grid-cols-4 gap-4"><div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm"><div class="text-xs text-slate-500 font-black">الصلاحيات الحالية</div><div class="mt-2 text-3xl font-black text-indigo-700">' + permissionCount + '</div></div><div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm"><div class="text-xs text-slate-500 font-black">المستخدمون النشطون</div><div class="mt-2 text-3xl font-black text-emerald-700">' + members.filter(function(x){ return x.status !== 'Inactive'; }).length + '</div></div><div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm"><div class="text-xs text-slate-500 font-black">التطبيقات</div><div class="mt-2 text-3xl font-black text-blue-700">' + appPerms.filter(function(x){ return !!currentPermissionMap[x.key]; }).length + '</div></div><div class="bg-white rounded-3xl border border-slate-100 p-5 shadow-sm"><div class="text-xs text-slate-500 font-black">النظام الأم</div><div class="mt-2 text-3xl font-black text-slate-800">' + erpPerms.filter(function(x){ return !!currentPermissionMap[x.key]; }).length + '</div></div></div>' +
+                '<div class="sticky top-[96px] z-40 bg-white/95 backdrop-blur rounded-2xl border border-slate-100 shadow-sm p-2 overflow-x-auto"><div class="flex gap-2 min-w-max"><button type="button" data-role-tab="overview" class="px-5 py-3 rounded-xl font-black text-sm border-b-2 border-indigo-600 text-indigo-600">نظرة عامة</button><button type="button" data-role-tab="permissions" class="px-5 py-3 rounded-xl font-black text-sm text-slate-500">الصلاحيات</button><button type="button" data-role-tab="members" class="px-5 py-3 rounded-xl font-black text-sm text-slate-500">المستخدمون</button><button type="button" data-role-tab="audit" class="px-5 py-3 rounded-xl font-black text-sm text-slate-500">سجل التغييرات</button></div></div>' +
+                '<section data-role-panel="overview" class="space-y-5"><div class="grid grid-cols-1 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.8fr)] gap-5"><div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"><div class="px-6 py-5 bg-slate-50 border-b"><h3 class="font-black text-xl text-slate-900">هوية الدور</h3><p class="text-xs text-slate-500 mt-1">البيانات الأساسية التي تُحفظ في نفس Production contract الحالي.</p></div><div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5"><label class="block md:col-span-2"><span class="block text-xs font-black text-slate-600 mb-2">اسم الدور *</span><input id="role-name" value="' + roleEsc(role ? role.role_name : '') + '" class="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 font-bold"></label><label class="block md:col-span-2"><span class="block text-xs font-black text-slate-600 mb-2">الوصف</span><textarea id="role-desc" rows="4" class="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 font-bold">' + roleEsc(role ? (role.description || '') : '') + '</textarea></label></div></div><div class="space-y-5"><div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6"><div class="flex items-start gap-3"><div class="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center"><i class="fas fa-shield-halved"></i></div><div><h4 class="font-black text-lg text-slate-900">عقد الصلاحيات الحالي</h4><p class="text-sm text-slate-500 mt-2 leading-6">الدور يحفظ قائمة مفاتيح صلاحيات موجودة أصلًا في النظام. لا يتم هنا اختراع CRUD/Record Rules جديدة حتى لا ينفصل إعداد الدور عن الـruntime الحالي.</p></div></div></div><div class="bg-slate-950 rounded-3xl p-6 text-white"><div class="text-xs text-slate-400 font-black">مفتاح الحماية</div><div class="mt-2 font-black text-lg">company_id → roles → users.role_id</div><div class="mt-2 text-xs text-slate-400 leading-6">كل قراءة Production في هذه الصفحة Company-scoped، والحفظ والحذف يمران عبر Edge Functions الحالية.</div></div></div></div></section>' +
+                '<section data-role-panel="permissions" class="hidden space-y-5"><div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5"><div class="flex flex-col xl:flex-row xl:items-center gap-3"><div class="flex-1 relative"><i class="fas fa-search absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"></i><input id="role-permission-search" type="search" class="w-full pr-11 pl-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200 font-bold" placeholder="ابحث في اسم الصلاحية أو المفتاح أو الوصف..."></div><div class="flex flex-wrap gap-2"><button type="button" data-role-bulk="apps-on" class="px-4 py-3 rounded-2xl bg-indigo-50 text-indigo-700 font-black">تفعيل التطبيقات</button><button type="button" data-role-bulk="apps-off" class="px-4 py-3 rounded-2xl bg-slate-100 text-slate-700 font-black">مسح التطبيقات</button><button type="button" data-role-bulk="erp-on" class="px-4 py-3 rounded-2xl bg-blue-50 text-blue-700 font-black">تفعيل النظام الأم</button><button type="button" data-role-bulk="erp-off" class="px-4 py-3 rounded-2xl bg-slate-100 text-slate-700 font-black">مسح النظام الأم</button></div></div></div><div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"><div class="px-6 py-5 bg-indigo-50 border-b border-indigo-100"><h3 class="font-black text-xl text-indigo-950">تطبيقات التشغيل</h3><p class="text-xs text-indigo-800/70 mt-1">المفاتيح التي تتحكم في التطبيقات التنفيذية المنفصلة.</p></div><div class="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">' + appHtml + '</div></div><div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"><div class="px-6 py-5 bg-slate-50 border-b"><h3 class="font-black text-xl text-slate-900">النظام الأم</h3><p class="text-xs text-slate-500 mt-1">المفاتيح التي تدير تبويبات وعمليات النظام المركزي.</p></div><div class="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">' + erpHtml + '</div></div></section>' +
+                '<section data-role-panel="members" class="hidden space-y-5"><div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"><div class="px-6 py-5 bg-sky-50 border-b border-sky-100"><h3 class="font-black text-xl text-sky-950">المستخدمون المرتبطون بالدور</h3><p class="text-xs text-sky-800/70 mt-1">المرجع هو users.role_id. المستخدم الذي لا يملك role_id لا يتم ربطه تلقائيًا بأي دور.</p></div><div class="p-6">' + (members.length ? '<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">' + members.map(function(member){ return '<div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/60"><div class="flex items-start justify-between gap-3"><div><div class="font-black text-slate-900">' + roleEsc(member.name || member.email) + '</div><div class="text-xs text-slate-500 mt-1">' + roleEsc(member.email) + '</div></div><span class="px-2.5 py-1 rounded-full text-[10px] font-black ' + (member.status === 'Inactive' ? 'bg-slate-200 text-slate-600' : 'bg-emerald-50 text-emerald-700') + '">' + (member.status === 'Inactive' ? 'غير نشط' : 'نشط') + '</span></div><div class="mt-3 text-xs font-bold text-slate-500">الدور النصي: ' + roleEsc(member.role || '—') + '</div></div>'; }).join('') + '</div>' : '<div class="py-12 text-center text-slate-400 font-black">لا يوجد مستخدمون مرتبطون بهذا الدور حاليًا.</div>') + '</div></div></section>' +
+                '<section data-role-panel="audit" class="hidden space-y-5"><div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"><div class="px-6 py-5 bg-violet-50 border-b border-violet-100"><h3 class="font-black text-xl text-violet-950">سجل تغييرات الدور</h3><p class="text-xs text-violet-800/70 mt-1">السجل يقرأ فقط أحداث roles لهذا السجل دون كشف audit العام.</p></div><div id="role-audit-wrapper" class="p-6"><div class="text-center py-10 text-slate-400 font-black">جاري تحميل السجل...</div></div></div></section>' +
+                '<div class="sticky bottom-0 z-40 bg-white/95 backdrop-blur border border-slate-100 rounded-3xl shadow-2xl p-4"><div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3"><div class="text-xs text-slate-500 font-bold">' + (isEdit ? 'الدور الحالي: ' + roleEsc(role.role_name) : 'إنشاء دور جديد') + '</div><div class="flex flex-wrap gap-2"><button type="button" data-role-action="back" class="px-5 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black">العودة للأدوار</button>' + (isEdit && !role.is_system ? '<button type="button" data-role-action="delete" class="px-5 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black"><i class="fas fa-trash-alt ml-2"></i>حذف الدور</button>' : '') + '<button type="button" data-role-action="save" class="px-7 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black shadow-lg">حفظ الدور</button></div></div></div>' +
+            '</div>';
 
-        Swal.fire({
-            html: html,
-            width: '700px',
-            showConfirmButton: false,
-            showCancelButton: false,
-            customClass: { popup: '!bg-transparent !shadow-none !p-0' },
-            didOpen: function() {
-                var saveBtn = byId('btn-save-role');
-                if (saveBtn) {
-                    saveBtn.addEventListener('click', async function() {
-                        var nameEl = byId('role-name');
-                        var descEl = byId('role-desc');
-                        var name = nameEl ? nameEl.value.trim() : '';
-                        if (!name) {
-                            showToast('اسم الدور مطلوب', 'error');
-                            return;
-                        }
+        safeHTML(container, html);
 
-                        var selectedPerms = [];
-                        var checkboxes = document.querySelectorAll('.role-perm-checkbox:checked');
-                        for (var i = 0; i < checkboxes.length; i++) {
-                            selectedPerms.push(checkboxes[i].value);
-                        }
-
-                        var payload = {
-                            id: role ? role.id : null,
-                            role_name: name,
-                            description: descEl ? descEl.value.trim() : '',
-                            permissions: selectedPerms,
-                            is_system: role ? (role.is_system || false) : false
-                        };
-
-                        showLoader('جاري الحفظ...');
-                        var sessionRes = await supabase.auth.getSession();
-                        var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
-                        if (!token) {
-                            hideLoader();
-                            showToast('جلسة غير صالحة', 'error');
-                            return;
-                        }
-
-                        try {
-                            var res = await fetch(RW_SUPABASE_URL + '/functions/v1/save-role', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    Authorization: 'Bearer ' + token
-                                },
-                                body: JSON.stringify(payload)
-                            });
-                            var json = await res.json();
-                            hideLoader();
-
-                            if (json.success) {
-                                showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success');
-                                Swal.close();
-
-                                var refreshedRoles = await supabase.from('roles')
-                                    .select('*')
-                                    .eq('company_id', _rwCompanyId())
-                                    .order('created_at', { ascending: true });
-
-                                if (refreshedRoles.error) {
-                                    showToast('تم الحفظ لكن تعذر تحديث قائمة الأدوار', 'warning');
-                                    return;
-                                }
-
-                                rolesData = refreshedRoles.data || [];
-                                renderTable(rolesData);
-                            } else {
-                                showToast(json.error || 'فشل الحفظ', 'error');
-                            }
-                        } catch (e) {
-                            hideLoader();
-                            showToast('فشل الاتصال بـ Edge Function', 'error');
-                        }
-                    });
-                }
-
-                if (!isEdit) return;
-                var deleteBtn = byId('btn-delete-role');
-                if (!deleteBtn) return;
-
-                deleteBtn.addEventListener('click', async function() {
-                    var confirmResult = await Swal.fire({
-                        title: 'تأكيد الحذف',
-                        text: 'حذف هذا الدور؟',
-                        icon: 'warning',
-                        showCancelButton: true,
-                        confirmButtonText: 'حذف',
-                        cancelButtonText: 'إلغاء'
-                    });
-
-                    if (!confirmResult.isConfirmed) return;
-                    showLoader('جاري الحذف...');
-
-                    var sessionRes = await supabase.auth.getSession();
-                    var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
-                    if (!token) {
-                        hideLoader();
-                        showToast('جلسة غير صالحة', 'error');
-                        return;
-                    }
-
-                    try {
-                        var res = await fetch(RW_SUPABASE_URL + '/functions/v1/delete-role', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                Authorization: 'Bearer ' + token
-                            },
-                            body: JSON.stringify({ roleId: role.id })
-                        });
-
-                        var json = await res.json();
-                        hideLoader();
-
-                        if (json.success) {
-                            showToast('تم الحذف', 'success');
-                            Swal.close();
-
-                            var dRes = await supabase.from('roles')
-                                .select('*')
-                                .eq('company_id', _rwCompanyId())
-                                .order('created_at', { ascending: true });
-
-                            rolesData = dRes.data || [];
-                            renderTable(rolesData);
-                        } else {
-                            showToast(json.error || 'فشل الحذف', 'error');
-                        }
-                    } catch (e) {
-                        hideLoader();
-                        showToast('فشل الاتصال بـ Edge Function', 'error');
-                    }
-                });
+        function switchTab(tabId) {
+            var tabs = document.querySelectorAll('#rw-role-page [data-role-tab]');
+            var panels = document.querySelectorAll('#rw-role-page [data-role-panel]');
+            for (var ti = 0; ti < tabs.length; ti++) {
+                var active = tabs[ti].getAttribute('data-role-tab') === tabId;
+                tabs[ti].classList.toggle('border-indigo-600', active);
+                tabs[ti].classList.toggle('text-indigo-600', active);
+                tabs[ti].classList.toggle('text-slate-500', !active);
             }
-        });
-    }
-    function _switchRoleTab(tabId) {
-        var appPanel = byId('role-panel-apps');
-        var erpPanel = byId('role-panel-erp');
-        var appTab = byId('role-tab-apps');
-        var erpTab = byId('role-tab-erp');
-        
-        if (tabId === 'apps') {
-            appPanel.classList.remove('hidden');
-            erpPanel.classList.add('hidden');
-            appTab.classList.add('border-blue-600', 'text-blue-600');
-            appTab.classList.remove('text-gray-500');
-            erpTab.classList.remove('border-blue-600', 'text-blue-600');
-            erpTab.classList.add('text-gray-500');
+            for (var pi = 0; pi < panels.length; pi++) panels[pi].classList.toggle('hidden', panels[pi].getAttribute('data-role-panel') !== tabId);
+        }
+
+        var pageRoot = byId('rw-role-page');
+        if (pageRoot) {
+            var tabs = pageRoot.querySelectorAll('[data-role-tab]');
+            for (var ti = 0; ti < tabs.length; ti++) tabs[ti].addEventListener('click', function() { switchTab(this.getAttribute('data-role-tab')); });
+
+            var permSearch = byId('role-permission-search');
+            if (permSearch) permSearch.addEventListener('input', function() {
+                var q = String(permSearch.value || '').trim().toLowerCase();
+                var cards = pageRoot.querySelectorAll('.role-page-perm-card');
+                for (var ci = 0; ci < cards.length; ci++) {
+                    var hay = String(cards[ci].getAttribute('data-role-perm-search') || '').toLowerCase();
+                    cards[ci].style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
+                }
+            });
+
+            var permInputs = pageRoot.querySelectorAll('.role-page-perm');
+            for (var pi = 0; pi < permInputs.length; pi++) permInputs[pi].addEventListener('change', function() {
+                var label = this.parentNode;
+                if (!label) return;
+                label.classList.toggle('border-indigo-200', this.checked);
+                label.classList.toggle('bg-indigo-50/70', this.checked);
+                label.classList.toggle('border-slate-200', !this.checked);
+                label.classList.toggle('bg-white', !this.checked);
+            });
+
+            var bulkButtons = pageRoot.querySelectorAll('[data-role-bulk]');
+            for (var bii = 0; bii < bulkButtons.length; bii++) bulkButtons[bii].addEventListener('click', function() {
+                var action = this.getAttribute('data-role-bulk');
+                var group = action.indexOf('apps') === 0 ? 'apps' : 'erp';
+                var makeOn = action.indexOf('-on') !== -1;
+                var all = pageRoot.querySelectorAll('.role-page-perm');
+                for (var bi = 0; bi < all.length; bi++) if (all[bi].parentNode && all[bi].parentNode.getAttribute('data-role-perm-group') === group) {
+                    all[bi].checked = makeOn;
+                    all[bi].dispatchEvent(new Event('change'));
+                }
+            });
+
+            var actions = pageRoot.querySelectorAll('[data-role-action]');
+            for (var ac = 0; ac < actions.length; ac++) actions[ac].addEventListener('click', function() {
+                var action = this.getAttribute('data-role-action');
+                if (action === 'back') render();
+                else if (action === 'save') saveRole(false);
+                else if (action === 'clone') saveRole(true);
+                else if (action === 'delete') deleteRole();
+            });
+        }
+
+        function collectPermissions() {
+            var selected = [];
+            var checkboxes = document.querySelectorAll('#rw-role-page .role-page-perm:checked');
+            for (var i = 0; i < checkboxes.length; i++) {
+                var key = String(checkboxes[i].value || '').trim();
+                if (key && selected.indexOf(key) === -1) selected.push(key);
+            }
+            return selected;
+        }
+
+        async function saveRole(cloneMode) {
+            var nameEl = byId('role-name');
+            var descEl = byId('role-desc');
+            var name = nameEl ? String(nameEl.value || '').trim() : '';
+            var description = descEl ? String(descEl.value || '').trim() : '';
+            if (!name) { showToast('اسم الدور مطلوب', 'error'); return; }
+            if (cloneMode) { name = name + ' - نسخة'; description = description || ('نسخة من الدور ' + (role ? role.role_name : '')); }
+
+            var payload = { id: cloneMode ? null : (role ? role.id : null), role_name: name, description: description, permissions: collectPermissions(), is_system: cloneMode ? false : (role ? !!role.is_system : false) };
+            showLoader(cloneMode ? 'جاري نسخ الدور...' : 'جاري حفظ الدور...');
+
+            try {
+                var sessionRes = await supabase.auth.getSession();
+                var token = sessionRes && sessionRes.data && sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                if (!token) throw new Error('جلسة غير صالحة');
+                var res = await fetch(RW_SUPABASE_URL + '/functions/v1/save-role', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(payload) });
+                var json = await res.json();
+                if (!json || !json.success) throw new Error((json && (json.error || json.msg)) || 'فشل حفظ الدور');
+                hideLoader();
+                showToast(cloneMode ? 'تم نسخ الدور' : (isEdit ? 'تم تحديث الدور' : 'تم إنشاء الدور'), 'success');
+                await render();
+            } catch (e) {
+                hideLoader();
+                showToast(e.message || 'فشل الاتصال بـ save-role', 'error');
+            }
+        }
+
+        async function deleteRole() {
+            if (!role) return;
+            var activeMembers = members.filter(function(x) { return x.status !== 'Inactive'; });
+            if (activeMembers.length) { showToast('لا يمكن حذف دور مرتبط بمستخدمين نشطين؛ أعد تعيينهم أولًا', 'warning'); return; }
+
+            var confirmResult = await Swal.fire({ title: 'حذف الدور', text: 'سيتم حذف الدور المخصص فقط بعد التحقق من عدم ارتباطه بمستخدمين.', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف الدور', cancelButtonText: 'إلغاء' });
+            if (!confirmResult.isConfirmed) return;
+
+            showLoader('جاري حذف الدور...');
+            try {
+                var sessionRes = await supabase.auth.getSession();
+                var token = sessionRes && sessionRes.data && sessionRes.data.session ? sessionRes.data.session.access_token : null;
+                if (!token) throw new Error('جلسة غير صالحة');
+                var res = await fetch(RW_SUPABASE_URL + '/functions/v1/delete-role', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ roleId: role.id }) });
+                var json = await res.json();
+                if (!json || !json.success) throw new Error((json && (json.error || json.msg)) || 'فشل حذف الدور');
+                hideLoader();
+                showToast('تم حذف الدور', 'success');
+                await render();
+            } catch (e) {
+                hideLoader();
+                showToast(e.message || 'فشل الاتصال بـ delete-role', 'error');
+            }
+        }
+
+        if (isEdit && role.id) {
+            supabase.from('audit_log').select('action,user_email,old_data,new_data,created_at').eq('table_name', 'roles').eq('record_id', String(role.id)).order('created_at', { ascending: false }).limit(20).then(function(res) {
+                var box = byId('role-audit-wrapper');
+                if (!box) return;
+                if (res.error) { safeHTML(box, '<div class="text-center py-8 text-rose-600 font-black">تعذر قراءة سجل التغييرات: ' + roleEsc(res.error.message || 'خطأ غير معروف') + '</div>'); return; }
+                var rows = res.data || [];
+                if (!rows.length) { safeHTML(box, '<div class="text-center py-10 text-slate-400 font-black">لا توجد أحداث مسجلة لهذا الدور حتى الآن.</div>'); return; }
+                var out = '';
+                for (var ai = 0; ai < rows.length; ai++) {
+                    var row = rows[ai];
+                    var oldPerms = row.old_data && Array.isArray(row.old_data.permissions) ? row.old_data.permissions.length : null;
+                    var newPerms = row.new_data && Array.isArray(row.new_data.permissions) ? row.new_data.permissions.length : null;
+                    var detail = row.action === 'delete' ? 'تم حذف الدور' : (row.action === 'create' ? 'تم إنشاء الدور' : (row.action === 'role_permissions_sync' ? 'تمت مزامنة صلاحيات مستخدم مرتبط' : 'تم تحديث ملف الدور'));
+                    if (oldPerms !== null || newPerms !== null) detail += ' — الصلاحيات: ' + (oldPerms === null ? '—' : oldPerms) + ' → ' + (newPerms === null ? '—' : newPerms);
+                    out += '<div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/60 mb-3"><div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2"><div><div class="font-black text-slate-900">' + roleEsc(detail) + '</div><div class="text-xs text-slate-500 mt-1">المنفذ: ' + roleEsc(row.user_email || 'system') + '</div></div><div class="text-xs font-black text-slate-400">' + roleEsc(row.created_at || '') + '</div></div></div>';
+                }
+                safeHTML(box, out);
+            }).catch(function() {
+                var box = byId('role-audit-wrapper');
+                if (box) safeHTML(box, '<div class="text-center py-8 text-rose-600 font-black">تعذر تحميل سجل التغييرات.</div>');
+            });
         } else {
-            appPanel.classList.add('hidden');
-            erpPanel.classList.remove('hidden');
-            appTab.classList.remove('border-blue-600', 'text-blue-600');
-            appTab.classList.add('text-gray-500');
-            erpTab.classList.add('border-blue-600', 'text-blue-600');
-            erpTab.classList.remove('text-gray-500');
+            var auditBox = byId('role-audit-wrapper');
+            if (auditBox) safeHTML(auditBox, '<div class="text-center py-10 text-slate-400 font-black">سجل التغييرات سيبدأ عند أول حفظ للدور.</div>');
+        }
+    }
+	
+    function _switchRoleTab(tabId) {
+        var root = byId('rw-role-page');
+        if (!root) return;
+        var tabs = root.querySelectorAll('[data-role-tab]');
+        var panels = root.querySelectorAll('[data-role-panel]');
+        for (var i = 0; i < tabs.length; i++) {
+            var active = tabs[i].getAttribute('data-role-tab') === tabId;
+            tabs[i].classList.toggle('border-indigo-600', active);
+            tabs[i].classList.toggle('text-indigo-600', active);
+            tabs[i].classList.toggle('text-slate-500', !active);
+        }
+        for (var p = 0; p < panels.length; p++) {
+            panels[p].classList.toggle('hidden', panels[p].getAttribute('data-role-panel') !== tabId);
         }
     }
 
@@ -6966,7 +7112,12 @@ var RW_Roles = (function() {
         } catch(e) { hideLoader(); showToast('فشل الاتصال', 'error'); }
     }
 
-    return { render: render, _openModal: openModal, _switchRoleTab: _switchRoleTab };
+    return {
+        render: render,
+        _openRolePage: openRolePage,
+        _openModal: openRolePage,
+        _switchRoleTab: _switchRoleTab
+    };
 })();
 window.RW_Roles = RW_Roles;
 // ============================================================
