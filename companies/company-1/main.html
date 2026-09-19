@@ -5140,126 +5140,385 @@ window.RW_Branches = RW_Branches;
 // ============================================================
 var RW_Settings = (function() {
     var currentSettings = {};
+    var currentBranches = [];
+    var companyId = null;
+
+    function escapeHtml(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function fmtNumber(value) {
+        var n = Number(value);
+        if (!Number.isFinite(n)) return '0';
+        return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    }
+
+    function imageFallback() {
+        return 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22240%22%3E%3Crect fill=%22%23f1f5f9%22 width=%22400%22 height=%22240%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2224%22 x=%2250%25%22 y=%2252%25%22 text-anchor=%22middle%22%3ENo Logo%3C/text%3E%3C/svg%3E';
+    }
+
+    function uploadLogo(file, folder) {
+        if (!file) return Promise.resolve(null);
+        if (!/^image\//i.test(file.type || '')) {
+            return Promise.reject(new Error('الملف المختار ليس صورة'));
+        }
+        if (file.size > 3 * 1024 * 1024) {
+            return Promise.reject(new Error('حجم الشعار يجب ألا يتجاوز 3 ميجابايت'));
+        }
+
+        var safeName = String(file.name || 'logo')
+            .replace(/[^A-Za-z0-9._-]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        if (!safeName) safeName = 'logo';
+
+        var fileName = folder + '/' + Date.now() + '-' + safeName;
+
+        return supabase.storage
+            .from('product-images')
+            .upload(fileName, file, { upsert: true, cacheControl: '31536000' })
+            .then(function(result) {
+                if (result.error) throw new Error(result.error.message || 'فشل رفع الشعار');
+                var pub = supabase.storage.from('product-images').getPublicUrl(fileName);
+                return pub.data && pub.data.publicUrl ? pub.data.publicUrl : null;
+            });
+    }
+
+    function sectionButton(id, icon, label) {
+        return '<button type="button" data-settings-section="' + id + '" class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">' +
+            '<i class="fa-solid ' + icon + '"></i><span>' + label + '</span></button>';
+    }
+
+    function field(label, id, type, value, extra, help) {
+        return '<div class="flex flex-col gap-2">' +
+            '<label for="' + id + '" class="text-sm font-extrabold text-slate-700">' + label + '</label>' +
+            '<input id="' + id + '" type="' + type + '" value="' + escapeHtml(value) + '" ' + (extra || '') +
+            ' class="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500">' +
+            (help ? '<div class="text-[11px] text-slate-500">' + help + '</div>' : '') +
+            '</div>';
+    }
+
+    function colorField(label, id, value, help) {
+        return '<div class="flex flex-col gap-2">' +
+            '<label for="' + id + '" class="text-sm font-extrabold text-slate-700">' + label + '</label>' +
+            '<div class="flex items-center gap-3">' +
+            '<input id="' + id + '" type="color" value="' + escapeHtml(value || '#2563eb') + '" class="h-12 w-16 rounded-xl border border-slate-200 bg-white p-1 cursor-pointer">' +
+            '<input id="' + id + '-text" type="text" value="' + escapeHtml(value || '#2563eb') + '" maxlength="7" class="flex-1 h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-800">' +
+            '</div>' +
+            (help ? '<div class="text-[11px] text-slate-500">' + help + '</div>' : '') +
+            '</div>';
+    }
+
+    function syncColorPair(colorId) {
+        var color = byId(colorId);
+        var text = byId(colorId + '-text');
+        if (!color || !text) return;
+        color.addEventListener('input', function() { text.value = color.value; });
+        text.addEventListener('input', function() {
+            var value = text.value.trim();
+            if (/^#[0-9A-Fa-f]{6}$/.test(value)) color.value = value;
+        });
+    }
+
+    function readNumber(id) {
+        var el = byId(id);
+        var value = el ? Number(el.value) : NaN;
+        if (!Number.isFinite(value) || value < 0) throw new Error('قيمة غير صالحة في الحقل: ' + id);
+        return value;
+    }
+
+    function readPayload() {
+        var primary = (byId('settings-primary-color-text')?.value || '#2563eb').trim();
+        var secondary = (byId('settings-secondary-color-text')?.value || '#1e40af').trim();
+
+        if (!/^#[0-9A-Fa-f]{6}$/.test(primary)) throw new Error('اللون الأساسي يجب أن يكون بصيغة #RRGGBB');
+        if (!/^#[0-9A-Fa-f]{6}$/.test(secondary)) throw new Error('اللون الثانوي يجب أن يكون بصيغة #RRGGBB');
+
+        var branch = byId('settings-main-branch');
+        if (!branch || !branch.value) throw new Error('يجب تحديد الفرع الرئيسي');
+
+        return {
+            company_name: (byId('settings-company-name')?.value || '').trim(),
+            company_phone: (byId('settings-company-phone')?.value || '').trim() || null,
+            company_logo: currentSettings.company_logo || null,
+            store_name: (byId('settings-store-name')?.value || '').trim(),
+            store_logo: currentSettings.store_logo || null,
+            store_primary_color: primary,
+            store_secondary_color: secondary,
+            currency: byId('settings-currency')?.value || 'SAR',
+            delivery_fee: readNumber('settings-delivery-fee'),
+            min_invoice_amount: readNumber('settings-min-invoice'),
+            tax_rate: readNumber('settings-tax-rate'),
+            free_shipping_threshold: readNumber('settings-free-shipping-threshold'),
+            main_branch_id: branch.value
+        };
+    }
+
+    function renderReadOnlySummary() {
+        var branch = currentBranches.find(function(b) { return b.id === currentSettings.main_branch_id; });
+        safeHTML(byId('rw-settings-summary'), '' +
+            '<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">' +
+            '<div class="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div class="text-[11px] font-bold text-slate-500">الفرع الرئيسي</div><div class="mt-1 font-black text-slate-800">' + escapeHtml(branch ? branch.name : 'غير محدد') + '</div></div>' +
+            '<div class="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div class="text-[11px] font-bold text-slate-500">العملة</div><div class="mt-1 font-black text-slate-800">' + escapeHtml(currentSettings.currency || 'SAR') + '</div></div>' +
+            '<div class="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div class="text-[11px] font-bold text-slate-500">حالة النظام</div><div class="mt-1 font-black text-slate-800">' + escapeHtml(currentSettings.status || 'trial') + '</div></div>' +
+            '<div class="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div class="text-[11px] font-bold text-slate-500">آخر تحديث</div><div class="mt-1 font-black text-slate-800">' + escapeHtml(currentSettings.updated_at || '—') + '</div></div>' +
+            '</div>'
+        );
+    }
+
+    function refreshFormFromState() {
+        var ids = {
+            'settings-company-name': currentSettings.company_name || '',
+            'settings-company-phone': currentSettings.company_phone || '',
+            'settings-store-name': currentSettings.store_name || '',
+            'settings-delivery-fee': currentSettings.delivery_fee ?? 0,
+            'settings-min-invoice': currentSettings.min_invoice_amount ?? 0,
+            'settings-tax-rate': currentSettings.tax_rate ?? 0,
+            'settings-free-shipping-threshold': currentSettings.free_shipping_threshold ?? 0,
+            'settings-currency': currentSettings.currency || 'SAR',
+            'settings-main-branch': currentSettings.main_branch_id || ''
+        };
+        Object.keys(ids).forEach(function(id) {
+            var el = byId(id);
+            if (el) el.value = ids[id];
+        });
+
+        ['settings-primary-color', 'settings-secondary-color'].forEach(function(id) {
+            var color = byId(id);
+            var text = byId(id + '-text');
+            var value = id === 'settings-primary-color' ? (currentSettings.store_primary_color || '#2563eb') : (currentSettings.store_secondary_color || '#1e40af');
+            if (color) color.value = value;
+            if (text) text.value = value;
+        });
+
+        var companyPreview = byId('settings-company-logo-preview');
+        var storePreview = byId('settings-store-logo-preview');
+        if (companyPreview) companyPreview.src = currentSettings.company_logo || imageFallback();
+        if (storePreview) storePreview.src = currentSettings.store_logo || imageFallback();
+        renderReadOnlySummary();
+    }
+
+    async function loadData() {
+        companyId = _rwCompanyId();
+        if (!companyId) throw new Error('سياق الشركة غير محدد');
+
+        var settingsResult = await supabase.from('app_settings')
+            .select('id,company_id,company_name,company_phone,company_logo,store_name,store_logo,store_primary_color,store_secondary_color,payment_method,currency,delivery_fee,min_invoice_amount,tax_rate,free_shipping_threshold,main_branch_id,runsheet_serial,order_serial,status,trial_end_date,subscription_end_date,updated_at')
+            .eq('company_id', companyId)
+            .limit(1)
+            .maybeSingle();
+
+        if (settingsResult.error) throw new Error(settingsResult.error.message);
+        if (!settingsResult.data) throw new Error('إعدادات الشركة غير موجودة');
+
+        currentSettings = settingsResult.data;
+
+        var branchesResult = await supabase.from('branches')
+            .select('id,branch_code,name,is_active')
+            .eq('company_id', companyId)
+            .order('branch_code', { ascending: true });
+
+        if (branchesResult.error) throw new Error(branchesResult.error.message);
+        currentBranches = (branchesResult.data || []).filter(function(b) { return b.is_active !== false; });
+        if (!currentBranches.length) throw new Error('لا توجد فروع نشطة للشركة');
+    }
+
+    function build() {
+        var container = byId('rw-page-container');
+        if (!container) return;
+
+        var branchOptions = currentBranches.map(function(b) {
+            return '<option value="' + escapeHtml(b.id) + '"' + (b.id === currentSettings.main_branch_id ? ' selected' : '') + '>' +
+                escapeHtml(b.branch_code + ' — ' + b.name) + '</option>';
+        }).join('');
+
+        var html = '' +
+            '<div class="max-w-7xl mx-auto pb-28">' +
+            '<div class="sticky top-0 z-30 -mx-4 px-4 pt-2 pb-3 bg-slate-50/95 backdrop-blur">' +
+            '<div class="rounded-3xl border border-slate-200 bg-white shadow-sm p-4">' +
+            '<div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">' +
+            '<div><div class="flex items-center gap-3"><div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center"><i class="fa-solid fa-sliders text-xl"></i></div>' +
+            '<div><h1 class="text-2xl font-black text-slate-900">إعدادات النظام</h1><div class="text-xs font-bold text-slate-500 mt-1">مركز الإعدادات الموحد للشركة والمتجر والتشغيل</div></div></div></div>' +
+            '<div class="flex items-center gap-2 flex-wrap">' +
+            sectionButton('identity', 'fa-building', 'هوية الشركة') +
+            sectionButton('store', 'fa-store', 'هوية المتجر') +
+            sectionButton('sales', 'fa-receipt', 'المبيعات') +
+            sectionButton('operations', 'fa-code-branch', 'التشغيل') +
+            '<button type="button" id="rw-settings-save-all" class="px-5 py-3 rounded-xl bg-blue-600 text-white text-sm font-black shadow-md hover:bg-blue-700 transition"><i class="fa-solid fa-floppy-disk ml-2"></i>حفظ كل الإعدادات</button>' +
+            '</div></div></div></div>' +
+
+            '<div id="rw-settings-summary" class="mt-4"></div>' +
+
+            '<section id="settings-section-identity" class="mt-6 scroll-mt-32">' +
+            '<div class="rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">' +
+            '<div class="p-6 border-b border-slate-100"><h2 class="text-lg font-black text-slate-900"><i class="fa-solid fa-building text-blue-600 ml-2"></i>هوية الشركة</h2><p class="text-xs text-slate-500 mt-1">بيانات الشركة التي يعتمد عليها النظام في العرض والمستندات.</p></div>' +
+            '<div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-5">' +
+            field('اسم الشركة', 'settings-company-name', 'text', currentSettings.company_name || '', 'maxlength="200" required', 'الاسم التشغيلي المسجل حاليًا في إعدادات الشركة.') +
+            field('هاتف الشركة', 'settings-company-phone', 'tel', currentSettings.company_phone || '', 'maxlength="50" inputmode="tel"', 'بيانات الاتصال الأساسية.') +
+            '<div class="lg:col-span-2 rounded-2xl border border-slate-200 p-5 bg-slate-50/70"><div class="flex items-center justify-between mb-4"><div><div class="font-black text-slate-800">شعار الشركة</div><div class="text-[11px] text-slate-500">يظهر في واجهات ومستندات النظام التي تستخدم company_logo.</div></div></div><div class="flex flex-col md:flex-row items-start md:items-center gap-5"><img id="settings-company-logo-preview" src="' + escapeHtml(currentSettings.company_logo || imageFallback()) + '" onerror="this.src='' + imageFallback() + ''" class="w-24 h-24 rounded-2xl border border-slate-200 bg-white object-contain p-2"><div><input type="file" id="settings-company-logo-file" accept="image/*" class="text-xs file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-blue-50 file:text-blue-700"><div class="text-[11px] text-slate-500 mt-2">PNG/JPG/WebP — بحد أقصى 3MB.</div></div></div></div>' +
+            '</div></div></section>' +
+
+            '<section id="settings-section-store" class="mt-6 scroll-mt-32">' +
+            '<div class="rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">' +
+            '<div class="p-6 border-b border-slate-100"><h2 class="text-lg font-black text-slate-900"><i class="fa-solid fa-store text-emerald-600 ml-2"></i>هوية المتجر والواجهة</h2><p class="text-xs text-slate-500 mt-1">الإعدادات المرتبطة بالمتجر الإلكتروني والمظهر العام.</p></div>' +
+            '<div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-5">' +
+            field('اسم المتجر', 'settings-store-name', 'text', currentSettings.store_name || '', 'maxlength="200" required', 'الاسم الذي يقرأه Store PWA من app_settings.store_name.') +
+            '<div class="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-5">' +
+            colorField('اللون الأساسي', 'settings-primary-color', currentSettings.store_primary_color || '#2563eb', 'محصور بصيغة #RRGGBB.') +
+            colorField('اللون الثانوي', 'settings-secondary-color', currentSettings.store_secondary_color || '#1e40af', 'محصور بصيغة #RRGGBB.') +
+            '</div>' +
+            '<div class="lg:col-span-2 rounded-2xl border border-slate-200 p-5 bg-slate-50/70"><div class="font-black text-slate-800 mb-4">شعار المتجر</div><div class="flex flex-col md:flex-row items-start md:items-center gap-5"><img id="settings-store-logo-preview" src="' + escapeHtml(currentSettings.store_logo || imageFallback()) + '" onerror="this.src='' + imageFallback() + ''" class="w-24 h-24 rounded-2xl border border-slate-200 bg-white object-contain p-2"><div><input type="file" id="settings-store-logo-file" accept="image/*" class="text-xs file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-emerald-50 file:text-emerald-700"><div class="text-[11px] text-slate-500 mt-2">يُحفظ في نفس مخزن الشعارات المستخدم حاليًا.</div></div></div></div>' +
+            '</div></div></section>' +
+
+            '<section id="settings-section-sales" class="mt-6 scroll-mt-32">' +
+            '<div class="rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">' +
+            '<div class="p-6 border-b border-slate-100"><h2 class="text-lg font-black text-slate-900"><i class="fa-solid fa-receipt text-amber-600 ml-2"></i>إعدادات المبيعات والتسعير</h2><p class="text-xs text-slate-500 mt-1">قيم افتراضية مستهلكة فعليًا بواسطة النظام والمتجر.</p></div>' +
+            '<div class="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">' +
+            field('رسوم التوصيل الافتراضية', 'settings-delivery-fee', 'number', currentSettings.delivery_fee ?? 0, 'min="0" step="0.01"', 'قيمة غير سالبة.') +
+            field('الحد الأدنى للفاتورة', 'settings-min-invoice', 'number', currentSettings.min_invoice_amount ?? 0, 'min="0" step="0.01"', 'قيمة غير سالبة.') +
+            field('نسبة الضريبة (%)', 'settings-tax-rate', 'number', currentSettings.tax_rate ?? 0, 'min="0" max="100" step="0.01"', 'النطاق المسموح 0–100%.') +
+            field('حد التوصيل المجاني', 'settings-free-shipping-threshold', 'number', currentSettings.free_shipping_threshold ?? 0, 'min="0" step="0.01"', 'تمت إضافته لأن Store PWA الحالي يقرأ هذا المفتاح فعليًا.') +
+            '<div class="flex flex-col gap-2"><label for="settings-currency" class="text-sm font-extrabold text-slate-700">العملة</label><select id="settings-currency" class="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-800"><option value="SAR">ريال سعودي (SAR)</option><option value="EGP">جنيه مصري (EGP)</option><option value="AED">درهم إماراتي (AED)</option><option value="KWD">دينار كويتي (KWD)</option><option value="QAR">ريال قطري (QAR)</option><option value="BHD">دينار بحريني (BHD)</option><option value="OMR">ريال عماني (OMR)</option><option value="USD">دولار أمريكي (USD)</option></select><div class="text-[11px] text-slate-500">القيم المسموح بها محكومة أيضًا في Production.</div></div>' +
+            '<div class="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div class="text-[11px] font-bold text-slate-500">نمط الدفع المحفوظ</div><div class="mt-1 text-sm font-black text-slate-800">' + escapeHtml(currentSettings.payment_method || 'both') + '</div><div class="text-[11px] text-slate-500 mt-1">عرض فقط؛ لم يتم اختراع قاموس قيم جديد لهذا الحقل.</div></div>' +
+            '</div></div></section>' +
+
+            '<section id="settings-section-operations" class="mt-6 scroll-mt-32">' +
+            '<div class="rounded-3xl bg-white border border-slate-200 shadow-sm overflow-hidden">' +
+            '<div class="p-6 border-b border-slate-100"><h2 class="text-lg font-black text-slate-900"><i class="fa-solid fa-code-branch text-indigo-600 ml-2"></i>التشغيل والتحكم</h2><p class="text-xs text-slate-500 mt-1">قيم تشغيلية مرتبطة بدورة المخزون والتطبيقات المنفصلة.</p></div>' +
+            '<div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-5">' +
+            '<div class="flex flex-col gap-2"><label for="settings-main-branch" class="text-sm font-extrabold text-slate-700">الفرع الرئيسي</label><select id="settings-main-branch" class="w-full h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-800">' + branchOptions + '</select><div class="text-[11px] text-slate-500">يُحفظ فقط إذا كان الفرع تابعًا لنفس الشركة، ثم تُزامن projection الموجودة في companies.</div></div>' +
+            '<div class="rounded-2xl border border-slate-200 p-5 bg-slate-50"><div class="font-black text-slate-800 mb-3">قيم نظامية للقراءة فقط</div><div class="grid grid-cols-2 gap-3"><div><div class="text-[11px] text-slate-500">عداد أوامر البيع</div><div class="font-black">' + fmtNumber(currentSettings.order_serial) + '</div></div><div><div class="text-[11px] text-slate-500">عداد الرانشيت</div><div class="font-black">' + fmtNumber(currentSettings.runsheet_serial) + '</div></div><div><div class="text-[11px] text-slate-500">حالة الترخيص</div><div class="font-black">' + escapeHtml(currentSettings.status || 'trial') + '</div></div><div><div class="text-[11px] text-slate-500">آخر تحديث</div><div class="font-black text-xs">' + escapeHtml(currentSettings.updated_at || '—') + '</div></div></div></div>' +
+            '</div></div></section>' +
+
+            '<div class="fixed bottom-4 left-4 right-4 xl:left-[310px] xl:right-[34px] z-40 pointer-events-none"><div class="max-w-7xl mx-auto flex justify-end"><div class="pointer-events-auto rounded-2xl border border-slate-200 bg-white/95 backdrop-blur shadow-lg px-3 py-3 flex items-center gap-3"><span id="rw-settings-save-state" class="text-xs font-bold text-slate-500">لا توجد تغييرات محفوظة</span><button type="button" id="rw-settings-save-bottom" class="px-5 py-3 rounded-xl bg-blue-600 text-white text-sm font-black hover:bg-blue-700 transition"><i class="fa-solid fa-floppy-disk ml-2"></i>حفظ</button></div></div></div>' +
+            '</div>';
+
+        safeHTML(container, html);
+        refreshFormFromState();
+        syncColorPair('settings-primary-color');
+        syncColorPair('settings-secondary-color');
+
+        byId('settings-currency').value = currentSettings.currency || 'SAR';
+
+        function markDirty() {
+            var label = byId('rw-settings-save-state');
+            if (label) label.textContent = 'هناك تغييرات غير محفوظة';
+        }
+
+        container.querySelectorAll('input,select,textarea').forEach(function(el) {
+            if (el.type !== 'file') el.addEventListener('input', markDirty);
+            el.addEventListener('change', markDirty);
+        });
+
+        container.querySelectorAll('[data-settings-section]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var target = byId('settings-section-' + btn.getAttribute('data-settings-section'));
+                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+
+        ['settings-company-logo-file','settings-store-logo-file'].forEach(function(id) {
+            var input = byId(id);
+            if (!input) return;
+            input.addEventListener('change', function() {
+                var file = input.files && input.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    var previewId = id.indexOf('company') >= 0 ? 'settings-company-logo-preview' : 'settings-store-logo-preview';
+                    var preview = byId(previewId);
+                    if (preview) preview.src = e.target.result;
+                    markDirty();
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        var saveButtons = [byId('rw-settings-save-all'), byId('rw-settings-save-bottom')].filter(Boolean);
+        saveButtons.forEach(function(btn) {
+            btn.addEventListener('click', save);
+        });
+
+        async function save() {
+            try {
+                var payload = readPayload();
+
+                var companyFile = byId('settings-company-logo-file')?.files?.[0];
+                var storeFile = byId('settings-store-logo-file')?.files?.[0];
+
+                showLoader('جاري تجهيز إعدادات النظام...');
+                if (companyFile) {
+                    payload.company_logo = await uploadLogo(companyFile, 'logos');
+                }
+                if (storeFile) {
+                    payload.store_logo = await uploadLogo(storeFile, 'store-logos');
+                }
+
+                var result = await _saveSettings(payload);
+                if (!result || !result.success) throw new Error(result?.error || result?.msg || 'فشل حفظ الإعدادات');
+
+                currentSettings = result.settings || Object.assign({}, currentSettings, payload);
+                hideLoader();
+                refreshFormFromState();
+
+                var state = byId('rw-settings-save-state');
+                if (state) state.textContent = result.changed ? 'تم حفظ الإعدادات بنجاح' : 'لا توجد تغييرات جديدة';
+
+                var companyInput = byId('settings-company-logo-file');
+                var storeInput = byId('settings-store-logo-file');
+                if (companyInput) companyInput.value = '';
+                if (storeInput) storeInput.value = '';
+
+                showToast(result.changed ? 'تم حفظ إعدادات النظام' : 'لا توجد تغييرات جديدة', 'success');
+            } catch (e) {
+                hideLoader();
+                showToast(e.message || 'فشل حفظ الإعدادات', 'error');
+            }
+        }
+    }
 
     async function render() {
-        const container = byId('rw-page-container'); if (!container) return;
         safeText(byId('rw-header-title'), 'إعدادات النظام');
         showLoader('جاري تحميل الإعدادات...');
         try {
-            const { data: appSets, error } = await supabase.from('app_settings').select('*').eq('company_id', _rwCompanyId()).order('created_at', { ascending: true }).limit(1).maybeSingle();
-            if (!error && appSets) {
-                currentSettings = {
-                    delivery_fee: appSets.delivery_fee || 0,
-                    min_invoice_amount: appSets.min_invoice_amount || 0,
-                    tax_rate: appSets.tax_rate || 0,
-                    currency: appSets.currency || 'SAR',
-                    company_name: appSets.company_name || 'الروائع',
-                    company_logo: appSets.company_logo || '',
-                    vat_number: appSets.vat_number || '',
-                    registered_name: appSets.registered_name || '',
-                    business_address: appSets.business_address || ''
-                };
-            } else {
-                currentSettings = { delivery_fee: 0, min_invoice_amount: 0, tax_rate: 0, currency: 'SAR', company_name: 'الروائع', company_logo: '', vat_number: '', registered_name: '', business_address: '' };
-            }
-        } catch(e) { console.error(e); }
-        hideLoader();
-        safeHTML(container, `<div class="p-4 max-w-2xl mx-auto space-y-6">
-            <!-- قسم إعدادات الفاتورة والرسوم -->
-            <div class="bg-white rounded-2xl shadow-sm border p-6">
-                <h2 class="text-xl font-bold mb-6"><i class="fas fa-file-invoice-dollar ml-2"></i>إعدادات الفاتورة والرسوم</h2>
-                <div class="space-y-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="flex flex-col"><label class="text-sm font-bold">رسوم التوصيل</label><input id="settings-delivery-fee" type="number" value="${currentSettings.delivery_fee}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-                <div class="flex flex-col"><label class="text-sm font-bold">الحد الأدنى للفاتورة</label><input id="settings-min-invoice" type="number" value="${currentSettings.min_invoice_amount}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-                <div class="flex flex-col"><label class="text-sm font-bold">نسبة الضريبة (%)</label><input id="settings-tax-rate" type="number" step="0.01" value="${currentSettings.tax_rate}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-                <div class="flex flex-col"><label class="text-sm font-bold">العملة</label><select id="settings-currency" class="p-2.5 bg-gray-50 border rounded-lg"><option value="SAR"${currentSettings.currency==='SAR'?' selected':''}>ريال سعودي (SAR)</option><option value="EGP"${currentSettings.currency==='EGP'?' selected':''}>جنيه مصري (EGP)</option><option value="AED"${currentSettings.currency==='AED'?' selected':''}>درهم إماراتي (AED)</option><option value="KWD"${currentSettings.currency==='KWD'?' selected':''}>دينار كويتي (KWD)</option><option value="QAR"${currentSettings.currency==='QAR'?' selected':''}>ريال قطري (QAR)</option><option value="BHD"${currentSettings.currency==='BHD'?' selected':''}>دينار بحريني (BHD)</option><option value="OMR"${currentSettings.currency==='OMR'?' selected':''}>ريال عماني (OMR)</option><option value="USD"${currentSettings.currency==='USD'?' selected':''}>دولار أمريكي (USD)</option></select></div>
-                <div class="flex flex-col"><label class="text-sm font-bold">اسم الشركة</label><input id="settings-company-name" value="${currentSettings.company_name}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-                <div class="flex flex-col"><label class="text-sm font-bold">شعار الشركة</label>
-                    <div class="flex items-center gap-4">
-                        <div class="w-20 h-20 rounded-xl border-2 border-dashed bg-gray-50 flex items-center justify-center overflow-hidden">
-                            <img id="settings-logo-preview" src="${currentSettings.company_logo || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22%3E%3Crect fill=%22%23e2e8f0%22 width=%2280%22 height=%2280%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2210%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E'}" class="max-w-full max-h-full object-contain" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22%3E%3Crect fill=%22%23e2e8f0%22 width=%2280%22 height=%2280%22/%3E%3Ctext fill=%22%2394a3b8%22 font-family=%22Arial%22 font-size=%2210%22 x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22%3E📦%3C/text%3E%3C/svg%3E'">
-                        </div>
-                        <div>
-                            <input type="file" id="settings-logo-file" accept="image/*" class="text-xs file:py-2 file:px-4 file:rounded-lg file:bg-blue-50 file:text-blue-700">
-                            <p class="text-xs text-gray-500 mt-1">يفضل صورة مربعة (مثلاً 200×200)</p>
-                        </div>
-                    </div>
-                </div>
-                </div>
-                <div class="flex justify-end pt-4"><button id="btn-save-invoice-settings" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold">حفظ الإعدادات</button></div>
-                </div>
-            </div>
-            <!-- قسم إعدادات الفوترة الإلكترونية -->
-            <div class="bg-white rounded-2xl shadow-sm border p-6">
-                <h2 class="text-xl font-bold mb-6"><i class="fas fa-file-invoice ml-2 text-emerald-600"></i>إعدادات الفوترة الإلكترونية (ZATCA)</h2>
-                <div class="space-y-4">
-                <div class="flex flex-col"><label class="text-sm font-bold">رقم التسجيل الضريبي</label><input id="settings-vat-number" value="${currentSettings.vat_number}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-                <div class="flex flex-col"><label class="text-sm font-bold">الاسم التجاري المسجّل</label><input id="settings-registered-name" value="${currentSettings.registered_name}" class="p-2.5 bg-gray-50 border rounded-lg"></div>
-                <div class="flex flex-col"><label class="text-sm font-bold">العنوان التجاري</label><textarea id="settings-business-address" rows="2" class="p-2.5 bg-gray-50 border rounded-lg">${currentSettings.business_address}</textarea></div>
-                <div class="flex justify-end pt-4"><button id="btn-save-zatca-settings" class="bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-bold">حفظ إعدادات الفوترة</button></div>
-                </div>
-            </div>
-        </div>`);
-        // معاينة الصورة
-        byId('settings-logo-file')?.addEventListener('change', function() {
-            var file = this.files[0];
-            if (file) {
-                var reader = new FileReader();
-                reader.onload = function(e) { byId('settings-logo-preview').src = e.target.result; };
-                reader.readAsDataURL(file);
-            }
-        });
-
-        // زر حفظ إعدادات الفاتورة
-        byId('btn-save-invoice-settings').addEventListener('click', async () => {
-            var company_logo = currentSettings.company_logo;
-            var fileInput = byId('settings-logo-file');
-            if (fileInput && fileInput.files.length > 0) {
-                showLoader('جاري رفع الشعار...');
-                var file = fileInput.files[0];
-                var fileName = `logos/${Date.now()}-${file.name}`;
-                var { data: uploadData, error: uploadError } = await supabase.storage.from('product-images').upload(fileName, file, { upsert: true });
-                if (!uploadError) {
-                    var { data: publicUrl } = supabase.storage.from('product-images').getPublicUrl(fileName);
-                    company_logo = publicUrl.publicUrl;
-                }
-            }
-            var payload = {
-                delivery_fee: parseFloat(byId('settings-delivery-fee').value) || 0,
-                min_invoice_amount: parseFloat(byId('settings-min-invoice').value) || 0,
-                tax_rate: parseFloat(byId('settings-tax-rate').value) || 0,
-                currency: byId('settings-currency') ? byId('settings-currency').value : 'SAR',
-                company_name: byId('settings-company-name').value.trim(),
-                company_logo: company_logo
-            };
-            await _saveSettings(payload);
-        });
-
-        // زر حفظ إعدادات الفوترة الإلكترونية
-        byId('btn-save-zatca-settings').addEventListener('click', async () => {
-            var payload = {
-                vat_number: byId('settings-vat-number').value.trim(),
-                registered_name: byId('settings-registered-name').value.trim(),
-                business_address: byId('settings-business-address').value.trim()
-            };
-            await _saveSettings(payload);
-        });
+            await loadData();
+            build();
+        } catch (e) {
+            console.error('RW_Settings.render', e);
+            var c = byId('rw-page-container');
+            if (c) safeHTML(c, '<div class="max-w-3xl mx-auto p-8"><div class="rounded-3xl border border-red-200 bg-red-50 p-6 text-red-800"><div class="font-black text-lg">تعذر تحميل إعدادات النظام</div><div class="text-sm mt-2">' + escapeHtml(e.message || 'خطأ غير معروف') + '</div></div></div>');
+        } finally {
+            hideLoader();
+        }
     }
 
     async function _saveSettings(payload) {
-        showLoader('جاري حفظ الإعدادات...');
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        try {
-            const res = await fetch(`${RW_SUPABASE_URL}/functions/v1/save-settings`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
-            const json = await res.json();
-            hideLoader();
-            if (json.success) { showToast('تم حفظ الإعدادات', 'success'); }
-            else { showToast(json.error || 'فشل الحفظ', 'error'); }
-        } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); }
+        var sessionRes = await supabase.auth.getSession();
+        if (sessionRes.error || !sessionRes.data || !sessionRes.data.session || !sessionRes.data.session.access_token) {
+            throw new Error('جلسة المصادقة غير صالحة أو منتهية');
+        }
+
+        var response = await fetch(RW_SUPABASE_URL + '/functions/v1/save-settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + sessionRes.data.session.access_token
+            },
+            body: JSON.stringify(payload)
+        });
+
+        var json = await response.json().catch(function() { return {}; });
+        if (!response.ok || !json.success) {
+            throw new Error(json.error || json.msg || ('HTTP ' + response.status));
+        }
+        return json;
     }
-    return { render };
+
+    return { render: render };
 })();
 window.RW_Settings = RW_Settings;
 // ============================================================
