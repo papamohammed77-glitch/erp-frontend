@@ -249,41 +249,42 @@ window.RW_Table = RW_Table;
 // ============================================================
 function RW_Audit_log(action, tableName, recordId, oldData, newData) {
     try {
+        var allowed = action === 'login' || action === 'logout' || action === 'failed_login';
+        if (!allowed) return;
+
+        if (typeof supabase === 'undefined' || !supabase || !supabase.auth) return;
+
         var payload = {
             action: action,
-            table_name: tableName || null,
             record_id: recordId || null,
-            old_data: oldData || null,
-            new_data: newData || null
+            new_data: action === 'failed_login' ? (newData || null) : null
         };
-        if (typeof supabase !== 'undefined' && supabase && supabase.auth) {
-            supabase.auth.getSession().then(function(sessionRes) {
-                var token = (sessionRes && sessionRes.data && sessionRes.data.session) ? sessionRes.data.session.access_token : null;
-                if (!token) return;
-                
-                fetch(RW_SUPABASE_URL + '/functions/v1/log-action', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify(payload)
-                }).then(function(res) {
-                    if (!res.ok) {
-                        console.warn('Audit log failed: HTTP ' + res.status);
-                    }
-                }).catch(function(e) {
-                    console.warn('Audit log fetch error:', e);
-                });
-            }).catch(function(e) {
-                console.warn('Audit log session error:', e);
+
+        supabase.auth.getSession().then(function (sessionRes) {
+            var session = sessionRes && sessionRes.data && sessionRes.data.session;
+            var token = session ? session.access_token : null;
+
+            if (action !== 'failed_login' && !token) return;
+
+            var headers = { 'Content-Type': 'application/json' };
+            if (token) headers.Authorization = 'Bearer ' + token;
+
+            return fetch(RW_SUPABASE_URL + '/functions/v1/log-action', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(payload)
+            }).then(function (res) {
+                if (!res.ok) {
+                    console.warn('Audit event logging failed: HTTP ' + res.status);
+                }
             });
-        }
+        }).catch(function (e) {
+            console.warn('Audit event session error:', e);
+        });
     } catch (e) {
-        console.warn('Audit log exception:', e);
+        console.warn('Audit event exception:', e);
     }
 }
-
 // ============================================================
 // RW_Permissions_check – التحقق من صلاحية محددة
 // ============================================================
@@ -564,288 +565,631 @@ window.RW_Notification = RW_Notification;
 // ============================================================
 // RW_Audit_renderTab – تبويب سجل التدقيق (للمالك فقط)
 // ============================================================
+var RW_AUDIT_STATE = {
+    page: 1,
+    pageSize: 50,
+    total: 0,
+    rows: [],
+    selectedId: null,
+    loading: false
+};
+
+function RW_Audit_escape(value) {
+    var s = value == null ? '' : String(value);
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function RW_Audit_isOwner() {
+    try {
+        return !!(
+            typeof RW_STATE !== 'undefined' &&
+            RW_STATE &&
+            RW_STATE.app &&
+            RW_STATE.app.currentUser &&
+            RW_STATE.app.currentUser.isOwner === true
+        );
+    } catch (e) {
+        return false;
+    }
+}
+
+function RW_Audit_statusTone(trust) {
+    if (trust === 'verified') return 'background:#ecfdf5;color:#047857;';
+    if (trust === 'system') return 'background:#eff6ff;color:#1d4ed8;';
+    if (trust === 'unverified') return 'background:#fff7ed;color:#c2410c;';
+    return 'background:#f8fafc;color:#64748b;';
+}
+
+function RW_Audit_actionLabel(action) {
+    var map = {
+        create: 'إنشاء',
+        update: 'تعديل',
+        delete: 'حذف',
+        login: 'دخول',
+        logout: 'خروج',
+        failed_login: 'دخول فاشل'
+    };
+    return map[action] || action || 'غير محدد';
+}
+
+function RW_Audit_sourceLabel(source) {
+    if (source === 'database_trigger') return 'قاعدة البيانات';
+    if (source === 'application_event') return 'حدث تطبيقي';
+    if (source === 'legacy') return 'تاريخي';
+    return source || 'غير مصنف';
+}
+
+function RW_Audit_trustLabel(trust) {
+    if (trust === 'verified') return 'موثق';
+    if (trust === 'system') return 'نظام';
+    if (trust === 'unverified') return 'غير موثق';
+    return 'تاريخي';
+}
+
+function RW_Audit_formatDate(value) {
+    if (!value) return 'غير محدد';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return RW_Audit_escape(value);
+    try {
+        return d.toLocaleString('ar-EG', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } catch (e) {
+        return d.toISOString().replace('T', ' ').slice(0, 19);
+    }
+}
+
+function RW_Audit_dateValue(value, endOfDay) {
+    if (!value) return null;
+    var suffix = endOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
+    var d = new Date(String(value) + suffix);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+}
+
+function RW_Audit_filterValue(id) {
+    var el = byId(id);
+    return el ? String(el.value || '').trim() : '';
+}
+
+async function RW_Audit_loadCompanies() {
+    if (!RW_Audit_isOwner()) return;
+    var select = byId('rw-audit-company');
+    if (!select) return;
+    try {
+        var res = await supabase.from('companies').select('id,name').order('name', { ascending: true });
+        if (res.error) throw res.error;
+        safeHTML(select,
+            '<option value="">كل الشركات</option>' +
+            (res.data || []).map(function (c) {
+                return '<option value="' + RW_Audit_escape(c.id) + '">' + RW_Audit_escape(c.name || c.id) + '</option>';
+            }).join('')
+        );
+    } catch (e) {
+        console.warn('RW_Audit_loadCompanies', e);
+    }
+}
+
 function RW_Audit_renderTab() {
     var container = byId('rw-page-container');
     if (!container) return;
+
     safeText(byId('rw-header-title'), 'سجل التدقيق');
-    safeText(byId('rw-header-subtitle'), 'جميع الأحداث والتغييرات في النظام');
+    safeText(byId('rw-header-subtitle'), 'مركز رقابي موحد — من يملك حق التغيير، ماذا حدث، وأين ومتى ولماذا');
 
-    var html = '<div class="p-4">';
-    html += '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">';
-    html += '<div class="flex flex-wrap gap-2">';
-    html += '<input type="text" id="audit-search" placeholder="بحث بالبريد أو الجدول..." class="p-2 border rounded-lg text-sm w-64" oninput="RW_Audit_filterTable()">';
-    html += '<select id="audit-filter-action" class="p-2 border rounded-lg text-sm" onchange="RW_Audit_filterTable()"><option value="">كل الإجراءات</option><option value="create">إنشاء</option><option value="update">تعديل</option><option value="delete">حذف</option><option value="login">دخول</option><option value="logout">خروج</option></select>';
-    html += '<input type="date" id="audit-filter-from" class="p-2 border rounded-lg text-sm" onchange="RW_Audit_filterTable()">';
-    html += '<input type="date" id="audit-filter-to" class="p-2 border rounded-lg text-sm" onchange="RW_Audit_filterTable()">';
-    html += '<button onclick="RW_Audit_filterTable()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold">تطبيق</button>';
-    html += '</div></div>';
-    html += '<div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh" id="audit-table-container">';
-    html += '<div class="text-center py-10 text-gray-400">جاري تحميل سجل التدقيق...</div>';
-    html += '</div>';
-    html += '<div id="audit-pagination-controls" class="mt-3 flex justify-center gap-2"></div>';
-    html += '</div>';
-
-    safeHTML(container, html);
-    RW_Audit_loadData();
-}
-
-// متغيرات داخلية للتبويب
-var RW_AUDIT_PAGE = 1;
-var RW_AUDIT_PAGE_SIZE = 50;
-var RW_AUDIT_TOTAL = 0;
-var RW_AUDIT_DATA = [];
-
-async function RW_Audit_loadData() {
-    var container = byId('audit-table-container');
-    if (!container) return;
-    safeHTML(container, '<div class="text-center py-10 text-gray-400"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
-
-    try {
-        var from = (RW_AUDIT_PAGE - 1) * RW_AUDIT_PAGE_SIZE;
-        var to = from + RW_AUDIT_PAGE_SIZE - 1;
-
-        var query = supabase
-            .from('audit_log')
-            .select('*', { count: 'exact' })
-            .order('created_at', { ascending: false })
-            .range(from, to);
-
-        // تطبيق الفلاتر
-        var searchVal = (byId('audit-search') ? byId('audit-search').value : '');
-        if (searchVal) {
-            query = query.or('user_email.ilike.%' + searchVal + '%,table_name.ilike.%' + searchVal + '%');
-        }
-        var actionVal = byId('audit-filter-action') ? byId('audit-filter-action').value : '';
-        if (actionVal) {
-            query = query.eq('action', actionVal);
-        }
-        var fromDate = byId('audit-filter-from') ? byId('audit-filter-from').value : '';
-        var toDate = byId('audit-filter-to') ? byId('audit-filter-to').value : '';
-        if (fromDate) {
-            query = query.gte('created_at', fromDate);
-        }
-        if (toDate) {
-            query = query.lte('created_at', toDate + 'T23:59:59');
-        }
-
-        var res = await query;
-        if (res.error) {
-            safeHTML(container, '<div class="text-center py-10 text-red-500">فشل تحميل البيانات</div>');
-            return;
-        }
-
-        RW_AUDIT_DATA = res.data || [];
-        RW_AUDIT_TOTAL = res.count || 0;
-        RW_Audit_renderTable(RW_AUDIT_DATA);
-    } catch (e) {
-        console.error('Audit load error:', e);
-        safeHTML(container, '<div class="text-center py-10 text-red-500">فشل الاتصال</div>');
-    }
-}
-
-function RW_Audit_renderTable(data) {
-    var container = byId('audit-table-container');
-    if (!container) return;
-
-    if (!data || data.length === 0) {
-        safeHTML(container, '<div class="text-center py-10 text-gray-400">لا توجد سجلات</div>');
+    if (!RW_Audit_isOwner()) {
+        safeHTML(container,
+            '<div class="rw-card" style="max-width:760px;margin:50px auto;padding:70px 24px;text-align:center">' +
+                '<div style="font-size:64px;margin-bottom:20px">🔒</div>' +
+                '<h2 style="font-weight:900;margin-bottom:10px">غير مصرح</h2>' +
+                '<p style="color:#64748b;font-weight:700">سجل التدقيق الإداري متاح للمالك فقط.</p>' +
+            '</div>'
+        );
         return;
     }
 
-    var table = document.createElement('table');
-    table.className = 'w-full text-sm';
+    RW_AUDIT_STATE.page = 1;
+    RW_AUDIT_STATE.selectedId = null;
 
-    var thead = document.createElement('thead');
-    thead.className = 'bg-gray-50 sticky top-0';
-    var headRow = document.createElement('tr');
+    safeHTML(container,
+        '<div id="rw-audit-page" style="display:flex;flex-direction:column;gap:22px">' +
+            '<section class="rw-card" style="padding:24px">' +
+                '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap">' +
+                    '<div>' +
+                        '<div style="font-size:22px;font-weight:900;color:#111827">مركز التدقيق الجنائي</div>' +
+                        '<div style="font-size:13px;color:#64748b;font-weight:700;margin-top:5px">السجل السلطوي لتغييرات البيانات وأحداث المصادقة، مع فصل واضح بين الحدث الموثق والتاريخي.</div>' +
+                    '</div>' +
+                    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+                        '<button type="button" id="rw-audit-refresh" class="rw-btn-secondary"><i class="fa-solid fa-rotate"></i> تحديث</button>' +
+                        '<button type="button" id="rw-audit-export" class="rw-btn-primary"><i class="fa-solid fa-file-export"></i> تصدير CSV</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div id="rw-audit-kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:18px"></div>' +
+            '</section>' +
+            '<section class="rw-card" style="padding:20px">' +
+                '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px">' +
+                    '<input id="rw-audit-search" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px" placeholder="بحث: مستخدم / جدول / سجل / عملية / قيمة...">' +
+                    '<select id="rw-audit-action" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px">' +
+                        '<option value="">كل العمليات</option>' +
+                        '<option value="create">إنشاء</option>' +
+                        '<option value="update">تعديل</option>' +
+                        '<option value="delete">حذف</option>' +
+                        '<option value="login">دخول</option>' +
+                        '<option value="logout">خروج</option>' +
+                        '<option value="failed_login">دخول فاشل</option>' +
+                    '</select>' +
+                    '<input id="rw-audit-table" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px" placeholder="اسم الجدول / الكيان">' +
+                    '<input id="rw-audit-actor" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px" placeholder="المنفذ / البريد">' +
+                    '<input id="rw-audit-record" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px" placeholder="معرّف السجل"><select id="rw-audit-company" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px"><option value="">كل الشركات</option></select>' +
+                    '<input id="rw-audit-from" type="date" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px">' +
+                    '<input id="rw-audit-to" type="date" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px">' +
+                    '<select id="rw-audit-page-size" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px">' +
+                        '<option value="50">50 / صفحة</option>' +
+                        '<option value="100">100 / صفحة</option>' +
+                        '<option value="200">200 / صفحة</option>' +
+                    '</select>' +
+                '</div>' +
+                '<div style="display:flex;justify-content:flex-end;margin-top:12px">' +
+                    '<button type="button" id="rw-audit-clear" class="rw-btn-secondary">مسح الفلاتر</button>' +
+                '</div>' +
+            '</section>' +
+            '<section class="rw-card" style="overflow:hidden">' +
+                '<div style="padding:20px 20px 10px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">' +
+                    '<div style="font-size:17px;font-weight:900">الحركة المدققة</div>' +
+                    '<div id="rw-audit-result-meta" style="font-size:12px;color:#64748b;font-weight:800"></div>' +
+                '</div>' +
+                '<div style="overflow:auto"><table style="width:100%;border-collapse:separate;border-spacing:0;min-width:1180px">' +
+                    '<thead><tr style="background:#f8fafc">' +
+                        '<th style="padding:14px;text-align:right;font-size:12px">التاريخ</th>' +
+                        '<th style="padding:14px;text-align:right;font-size:12px">المنفذ</th>' +
+                        '<th style="padding:14px;text-align:right;font-size:12px">العملية</th>' +
+                        '<th style="padding:14px;text-align:right;font-size:12px">المصدر</th>' +
+                        '<th style="padding:14px;text-align:right;font-size:12px">الثقة</th>' +
+                        '<th style="padding:14px;text-align:right;font-size:12px">الشركة</th>' +
+                        '<th style="padding:14px;text-align:right;font-size:12px">الكيان</th>' +
+                        '<th style="padding:14px;text-align:right;font-size:12px">السجل</th>' +
+                        '<th style="padding:14px;text-align:right;font-size:12px">الحقول المتغيرة</th>' +
+                        '<th style="padding:14px;text-align:center;font-size:12px">التفاصيل</th>' +
+                    '</tr></thead>' +
+                    '<tbody id="rw-audit-tbody"></tbody>' +
+                '</table></div>' +
+                '<div id="rw-audit-pagination" style="padding:18px"></div>' +
+            '</section>' +
+            '<section id="rw-audit-detail-card" class="rw-card" style="padding:24px">' +
+                '<div style="padding:36px;text-align:center;color:#94a3b8;font-weight:800">اختر سجلًا لعرض التفاصيل الكاملة.</div>' +
+            '</section>' +
+        '</div>'
+    );
 
-    var headers = ['التاريخ', 'المستخدم', 'الإجراء', 'الجدول', 'رقم السجل', 'تفاصيل'];
-    for (var h = 0; h < headers.length; h++) {
-        var th = document.createElement('th');
-        th.className = 'p-2' + (h === 5 ? ' text-center' : '');
-        th.textContent = headers[h];
-        headRow.appendChild(th);
-    }
-    thead.appendChild(headRow);
-    table.appendChild(thead);
+    var refresh = byId('rw-audit-refresh');
+    if (refresh) refresh.onclick = function () { RW_Audit_loadData(); };
+    var exportBtn = byId('rw-audit-export');
+    if (exportBtn) exportBtn.onclick = function () { RW_Audit_exportCsv(); };
+    var clear = byId('rw-audit-clear');
+    if (clear) clear.onclick = function () { RW_Audit_clearFilters(); };
+    var pageSize = byId('rw-audit-page-size');
+    if (pageSize) pageSize.onchange = function () {
+        RW_AUDIT_STATE.pageSize = Number(pageSize.value) || 50;
+        RW_AUDIT_STATE.page = 1;
+        RW_Audit_loadData();
+    };
 
-    var tbody = document.createElement('tbody');
-
-    for (var i = 0; i < data.length; i++) {
-        var log = data[i] || {};
-        var tr = document.createElement('tr');
-        tr.className = 'border-t hover:bg-gray-50';
-
-        var dateCell = document.createElement('td');
-        dateCell.className = 'p-2 text-xs';
-        dateCell.textContent = log.created_at ? new Date(log.created_at).toLocaleString('ar-EG') : '';
-
-        var userCell = document.createElement('td');
-        userCell.className = 'p-2';
-        userCell.textContent = log.user_email || '';
-
-        var actionCell = document.createElement('td');
-        actionCell.className = 'p-2';
-        var actionLabel = log.action === 'create' ? 'إنشاء' :
-            log.action === 'update' ? 'تعديل' :
-            log.action === 'delete' ? 'حذف' :
-            log.action === 'login' ? 'دخول' :
-            log.action === 'logout' ? 'خروج' :
-            String(log.action || '');
-        actionCell.textContent = actionLabel;
-
-        var tableCell = document.createElement('td');
-        tableCell.className = 'p-2';
-        tableCell.textContent = log.table_name || '-';
-
-        var recordCell = document.createElement('td');
-        recordCell.className = 'p-2 text-xs';
-        var recordId = String(log.record_id || '');
-        recordCell.textContent = recordId ? recordId.substring(0, 8) + '...' : '-';
-
-        var detailCell = document.createElement('td');
-        detailCell.className = 'p-2 text-center';
-        var detailButton = document.createElement('button');
-        detailButton.className = 'text-blue-600';
-        detailButton.type = 'button';
-        detailButton.title = 'عرض التفاصيل';
-        detailButton.innerHTML = '<i class="fa-solid fa-eye" aria-hidden="true"></i>';
-        detailButton.addEventListener('click', (function(id) {
-            return function(e) {
-                e.stopPropagation();
-                RW_Audit_showDetails(id);
+    ['rw-audit-search', 'rw-audit-action', 'rw-audit-table', 'rw-audit-actor', 'rw-audit-record', 'rw-audit-company', 'rw-audit-from', 'rw-audit-to']
+        .forEach(function (id) {
+            var el = byId(id);
+            if (!el) return;
+            el.onkeydown = function (e) {
+                if (e.key === 'Enter') {
+                    RW_AUDIT_STATE.page = 1;
+                    RW_Audit_loadData();
+                }
             };
-        })(log.id));
-        detailCell.appendChild(detailButton);
+            if (el.tagName === 'SELECT' || el.type === 'date') {
+                el.onchange = function () {
+                    RW_AUDIT_STATE.page = 1;
+                    RW_Audit_loadData();
+                };
+            }
+        });
 
-        tr.appendChild(dateCell);
-        tr.appendChild(userCell);
-        tr.appendChild(actionCell);
-        tr.appendChild(tableCell);
-        tr.appendChild(recordCell);
-        tr.appendChild(detailCell);
-        tbody.appendChild(tr);
+    RW_Audit_loadCompanies().then(function () {
+        RW_Audit_loadData();
+    });
+}
+
+function RW_Audit_buildParams(page, pageSize) {
+    return {
+        p_search: RW_Audit_filterValue('rw-audit-search') || null,
+        p_action: RW_Audit_filterValue('rw-audit-action') || null,
+        p_table_name: RW_Audit_filterValue('rw-audit-table') || null,
+        p_actor_email: RW_Audit_filterValue('rw-audit-actor') || null,
+        p_record_id: RW_Audit_filterValue('rw-audit-record') || null,
+        p_company_id: RW_Audit_filterValue('rw-audit-company') || null,
+        p_from: RW_Audit_dateValue(RW_Audit_filterValue('rw-audit-from'), false),
+        p_to: RW_Audit_dateValue(RW_Audit_filterValue('rw-audit-to'), true),
+        p_page: page || RW_AUDIT_STATE.page,
+        p_page_size: pageSize || RW_AUDIT_STATE.pageSize
+    };
+}
+
+async function RW_Audit_loadData() {
+    if (!RW_Audit_isOwner()) return;
+    if (RW_AUDIT_STATE.loading) return;
+    RW_AUDIT_STATE.loading = true;
+
+    var refresh = byId('rw-audit-refresh');
+    if (refresh) refresh.disabled = true;
+
+    try {
+        var res = await supabase.rpc('audit_log_query', RW_Audit_buildParams());
+        if (res.error) throw res.error;
+
+        var data = res.data || {};
+        if (data.success !== true) throw new Error(data.msg || 'فشل تحميل سجل التدقيق');
+
+        RW_AUDIT_STATE.total = Number(data.total || 0);
+        RW_AUDIT_STATE.rows = Array.isArray(data.rows) ? data.rows : [];
+        RW_AUDIT_STATE.page = Number(data.page || RW_AUDIT_STATE.page || 1);
+        RW_AUDIT_STATE.pageSize = Number(data.page_size || RW_AUDIT_STATE.pageSize || 50);
+
+        RW_Audit_renderKpis(data.summary || {}, data.trust_summary || {});
+        RW_Audit_renderTable(RW_AUDIT_STATE.rows);
+        RW_Audit_renderPagination();
+
+        var meta = byId('rw-audit-result-meta');
+        if (meta) {
+            var first = RW_AUDIT_STATE.total ? ((RW_AUDIT_STATE.page - 1) * RW_AUDIT_STATE.pageSize + 1) : 0;
+            var last = Math.min(RW_AUDIT_STATE.total, RW_AUDIT_STATE.page * RW_AUDIT_STATE.pageSize);
+            meta.textContent = first + '–' + last + ' من ' + RW_AUDIT_STATE.total;
+        }
+
+        if (RW_AUDIT_STATE.selectedId) {
+            var found = RW_AUDIT_STATE.rows.some(function (r) { return r.id === RW_AUDIT_STATE.selectedId; });
+            if (found) RW_Audit_showDetails(RW_AUDIT_STATE.selectedId);
+        }
+    } catch (e) {
+        console.error('RW_Audit_loadData', e);
+        safeHTML(byId('rw-audit-tbody'),
+            '<tr><td colspan="10" style="padding:40px;text-align:center;color:#b91c1c;font-weight:900">تعذر تحميل سجل التدقيق: ' +
+            RW_Audit_escape(e.message || e) + '</td></tr>'
+        );
+    } finally {
+        RW_AUDIT_STATE.loading = false;
+        if (refresh) refresh.disabled = false;
+    }
+}
+
+function RW_Audit_renderKpis(summary, trust) {
+    var host = byId('rw-audit-kpis');
+    if (!host) return;
+
+    var cards = [
+        ['إجمالي النتائج', RW_AUDIT_STATE.total, 'fa-list-check'],
+        ['إنشاء', Number(summary.create || 0), 'fa-plus'],
+        ['تعديل', Number(summary.update || 0), 'fa-pen'],
+        ['حذف', Number(summary.delete || 0), 'fa-trash'],
+        ['موثق', Number(trust.verified || 0), 'fa-user-check'],
+        ['نظام / تاريخي', Number(trust.system || 0) + Number(trust.legacy || 0), 'fa-database']
+    ];
+
+    safeHTML(host, cards.map(function (c) {
+        return '<div style="padding:15px 16px;border:1px solid #e5e7eb;border-radius:18px;background:#fff">' +
+            '<div style="font-size:11px;color:#64748b;font-weight:800;margin-bottom:7px"><i class="fa-solid ' + c[2] + ' ml-1"></i>' + c[0] + '</div>' +
+            '<div style="font-size:23px;font-weight:900;color:#111827">' + Number(c[1] || 0).toLocaleString('ar-EG') + '</div>' +
+            '</div>';
+    }).join(''));
+}
+
+function RW_Audit_renderTable(rows) {
+    var body = byId('rw-audit-tbody');
+    if (!body) return;
+
+    if (!rows.length) {
+        safeHTML(body, '<tr><td colspan="10" style="padding:50px;text-align:center;color:#94a3b8;font-weight:800">لا توجد نتائج وفق الفلاتر الحالية.</td></tr>');
+        return;
     }
 
-    table.appendChild(tbody);
+    safeHTML(body, rows.map(function (r) {
+        var fields = Array.isArray(r.changed_fields) ? r.changed_fields : [];
+        var selected = RW_AUDIT_STATE.selectedId === r.id;
 
-    safeHTML(container, '');
-    container.appendChild(table);
-    RW_Audit_renderPagination();
+        return '<tr style="border-top:1px solid #eef2f7;background:' + (selected ? '#f8fbff' : '#fff') + '">' +
+            '<td style="padding:14px;font-size:12px;font-weight:700;white-space:nowrap">' + RW_Audit_formatDate(r.occurred_at) + '</td>' +
+            '<td style="padding:14px;font-size:13px;font-weight:800">' + RW_Audit_escape(r.actor_email || 'غير محدد') + '</td>' +
+            '<td style="padding:14px"><span class="rw-status" style="' +
+                (r.action === 'delete' ? 'background:#fef2f2;color:#b91c1c;' :
+                    r.action === 'update' ? 'background:#eff6ff;color:#1d4ed8;' :
+                        'background:#ecfdf5;color:#047857;') + '">' +
+                RW_Audit_escape(RW_Audit_actionLabel(r.action)) + '</span></td>' +
+            '<td style="padding:14px;font-size:12px;font-weight:800">' + RW_Audit_escape(RW_Audit_sourceLabel(r.source_type)) + '</td>' +
+            '<td style="padding:14px"><span class="rw-status" style="' + RW_Audit_statusTone(r.actor_trust) + '">' +
+                RW_Audit_escape(RW_Audit_trustLabel(r.actor_trust)) + '</span></td>' +
+            '<td style="padding:14px;font-size:12px;font-weight:800">' +
+                RW_Audit_escape(r.company_name || r.company_id || 'غير محدد') + '</td>' +
+            '<td style="padding:14px;font-size:12px;font-weight:800">' + RW_Audit_escape(r.table_name || 'غير محدد') + '</td>' +
+            '<td style="padding:14px;font-size:11px;color:#64748b;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' +
+                RW_Audit_escape(r.record_id || '') + '">' + RW_Audit_escape(r.record_id || '—') + '</td>' +
+            '<td style="padding:14px;font-size:12px;font-weight:800">' + Number(fields.length).toLocaleString('ar-EG') + '</td>' +
+            '<td style="padding:14px;text-align:center">' +
+                '<button type="button" class="rw-btn-secondary rw-audit-open-detail" data-id="' + RW_Audit_escape(r.id) + '">' +
+                    '<i class="fa-solid fa-eye"></i> عرض</button></td>' +
+            '</tr>';
+    }).join(''));
+
+    Array.prototype.forEach.call(document.querySelectorAll('.rw-audit-open-detail'), function (btn) {
+        btn.onclick = function () {
+            RW_Audit_showDetails(btn.getAttribute('data-id'));
+        };
+    });
 }
 
 function RW_Audit_renderPagination() {
-    var pc = byId('audit-pagination-controls');
-    if (!pc) return;
-    var totalPages = Math.ceil(RW_AUDIT_TOTAL / RW_AUDIT_PAGE_SIZE);
-    if (totalPages <= 1) {
-        safeHTML(pc, '');
-        return;
-    }
-    var html = '<span class="text-sm text-gray-500 ml-4">صفحة ' + RW_AUDIT_PAGE + ' من ' + totalPages + ' (إجمالي ' + RW_AUDIT_TOTAL + ' سجل)</span>';
-    if (RW_AUDIT_PAGE > 1) {
-        html += '<button onclick="RW_Audit_goPage(' + (RW_AUDIT_PAGE - 1) + ')" class="px-3 py-1 border rounded-lg text-sm font-bold">السابق</button>';
-    }
-    if (RW_AUDIT_PAGE < totalPages) {
-        html += '<button onclick="RW_Audit_goPage(' + (RW_AUDIT_PAGE + 1) + ')" class="px-3 py-1 border rounded-lg text-sm font-bold">التالي</button>';
-    }
-    safeHTML(pc, html);
+    var host = byId('rw-audit-pagination');
+    if (!host) return;
+
+    var totalPages = Math.max(1, Math.ceil(RW_AUDIT_STATE.total / RW_AUDIT_STATE.pageSize));
+    var current = RW_AUDIT_STATE.page;
+    var pages = [];
+    var start = Math.max(1, current - 2);
+    var end = Math.min(totalPages, current + 2);
+
+    for (var i = start; i <= end; i++) pages.push(i);
+
+    safeHTML(host,
+        '<div style="display:flex;justify-content:center;gap:7px;flex-wrap:wrap;align-items:center">' +
+            '<button type="button" class="rw-btn-secondary" ' + (current <= 1 ? 'disabled' : '') + ' id="rw-audit-prev">السابق</button>' +
+            pages.map(function (p) {
+                return '<button type="button" class="rw-btn-secondary rw-audit-page-btn" style="min-width:40px;' +
+                    (p === current ? 'background:#2563eb;color:#fff;border-color:#2563eb;' : '') +
+                    '" data-page="' + p + '">' + p + '</button>';
+            }).join('') +
+            '<button type="button" class="rw-btn-secondary" ' + (current >= totalPages ? 'disabled' : '') + ' id="rw-audit-next">التالي</button>' +
+            '<span style="font-size:12px;color:#64748b;font-weight:800;margin-right:8px">صفحة ' + current + ' من ' + totalPages + '</span>' +
+        '</div>'
+    );
+
+    var prev = byId('rw-audit-prev');
+    if (prev) prev.onclick = function () { RW_Audit_goPage(current - 1); };
+
+    var next = byId('rw-audit-next');
+    if (next) next.onclick = function () { RW_Audit_goPage(current + 1); };
+
+    Array.prototype.forEach.call(host.querySelectorAll('[data-page]'), function (btn) {
+        btn.onclick = function () {
+            RW_Audit_goPage(Number(btn.getAttribute('data-page')));
+        };
+    });
 }
 
 function RW_Audit_goPage(page) {
-    RW_AUDIT_PAGE = page;
+    var totalPages = Math.max(1, Math.ceil(RW_AUDIT_STATE.total / RW_AUDIT_STATE.pageSize));
+    if (page < 1 || page > totalPages) return;
+    RW_AUDIT_STATE.page = page;
     RW_Audit_loadData();
 }
 
-function RW_Audit_filterTable() {
-    RW_AUDIT_PAGE = 1;
-    RW_Audit_loadData();
-}
-
-function RW_Audit_showDetails(logId) {
-    var log = null;
-    for (var i = 0; i < RW_AUDIT_DATA.length; i++) {
-        if (RW_AUDIT_DATA[i].id === logId) {
-            log = RW_AUDIT_DATA[i];
-            break;
-        }
-    }
-
-    if (!log) return;
-
-    function text(value, fallback) {
-        return value === null || value === undefined || value === '' ? (fallback || '') : String(value);
-    }
-
-    var wrapper = document.createElement('div');
-    wrapper.className = 'text-right text-sm';
-
-    var pUser = document.createElement('p');
-    var bUser = document.createElement('b');
-    bUser.textContent = 'المستخدم: ';
-    pUser.appendChild(bUser);
-    pUser.appendChild(document.createTextNode(text(log.user_email)));
-
-    var pAction = document.createElement('p');
-    var bAction = document.createElement('b');
-    bAction.textContent = 'الإجراء: ';
-    pAction.appendChild(bAction);
-    pAction.appendChild(document.createTextNode(text(log.action)));
-
-    var pTable = document.createElement('p');
-    var bTable = document.createElement('b');
-    bTable.textContent = 'الجدول: ';
-    pTable.appendChild(bTable);
-    pTable.appendChild(document.createTextNode(text(log.table_name, '-')));
-
-    var pRecord = document.createElement('p');
-    var bRecord = document.createElement('b');
-    bRecord.textContent = 'رقم السجل: ';
-    pRecord.appendChild(bRecord);
-    pRecord.appendChild(document.createTextNode(text(log.record_id, '-')));
-
-    var pDate = document.createElement('p');
-    var bDate = document.createElement('b');
-    bDate.textContent = 'التاريخ: ';
-    pDate.appendChild(bDate);
-    pDate.appendChild(document.createTextNode(log.created_at ? new Date(log.created_at).toLocaleString('ar-EG') : ''));
-
-    var oldTitle = document.createElement('b');
-    oldTitle.textContent = 'البيانات القديمة:';
-    var oldPre = document.createElement('pre');
-    oldPre.className = 'bg-gray-100 p-2 rounded-lg mt-1 text-xs overflow-auto max-h-32';
-    oldPre.textContent = log.old_data ? JSON.stringify(log.old_data, null, 2) : 'لا يوجد';
-    var oldWrap = document.createElement('div');
-    oldWrap.className = 'mt-4';
-    oldWrap.appendChild(oldTitle);
-    oldWrap.appendChild(oldPre);
-
-    var newTitle = document.createElement('b');
-    newTitle.textContent = 'البيانات الجديدة:';
-    var newPre = document.createElement('pre');
-    newPre.className = 'bg-gray-100 p-2 rounded-lg mt-1 text-xs overflow-auto max-h-32';
-    newPre.textContent = log.new_data ? JSON.stringify(log.new_data, null, 2) : 'لا يوجد';
-    var newWrap = document.createElement('div');
-    newWrap.className = 'mt-2';
-    newWrap.appendChild(newTitle);
-    newWrap.appendChild(newPre);
-
-    wrapper.appendChild(pUser);
-    wrapper.appendChild(pAction);
-    wrapper.appendChild(pTable);
-    wrapper.appendChild(pRecord);
-    wrapper.appendChild(pDate);
-    wrapper.appendChild(oldWrap);
-    wrapper.appendChild(newWrap);
-
-    Swal.fire({
-        title: 'تفاصيل سجل التدقيق',
-        html: wrapper.outerHTML,
-        width: '800px',
-        showCloseButton: true,
-        showConfirmButton: false
+function RW_Audit_clearFilters() {
+    ['rw-audit-search', 'rw-audit-action', 'rw-audit-table', 'rw-audit-actor', 'rw-audit-record', 'rw-audit-company', 'rw-audit-from', 'rw-audit-to'].forEach(function (id) {
+        var el = byId(id);
+        if (el) el.value = '';
     });
+
+    RW_AUDIT_STATE.page = 1;
+    RW_Audit_loadData();
 }
+
+async function RW_Audit_showDetails(auditId) {
+    if (!RW_Audit_isOwner() || !auditId) return;
+
+    var host = byId('rw-audit-detail-card');
+    if (!host) return;
+
+    RW_AUDIT_STATE.selectedId = auditId;
+    RW_Audit_renderTable(RW_AUDIT_STATE.rows);
+
+    safeHTML(host,
+        '<div style="padding:40px;text-align:center;color:#64748b;font-weight:800">' +
+            '<i class="fa-solid fa-spinner fa-spin"></i> جاري تحميل التفاصيل...</div>'
+    );
+
+    try {
+        var res = await supabase.rpc('audit_log_detail', { p_audit_id: auditId });
+        if (res.error) throw res.error;
+
+        var data = res.data || {};
+        if (data.success !== true || !data.row) {
+            throw new Error(data.msg || 'تعذر قراءة سجل التدقيق');
+        }
+
+        var r = data.row;
+        var fields = Array.isArray(r.changed_fields) ? r.changed_fields : [];
+        var oldData = r.old_data || null;
+        var newData = r.new_data || null;
+        var diffFields = [];
+        var keys = {};
+
+        if (oldData && typeof oldData === 'object') {
+            Object.keys(oldData).forEach(function (k) { keys[k] = true; });
+        }
+        if (newData && typeof newData === 'object') {
+            Object.keys(newData).forEach(function (k) { keys[k] = true; });
+        }
+
+        Object.keys(keys).sort().forEach(function (k) {
+            var ov = oldData && Object.prototype.hasOwnProperty.call(oldData, k) ? oldData[k] : undefined;
+            var nv = newData && Object.prototype.hasOwnProperty.call(newData, k) ? newData[k] : undefined;
+
+            if (JSON.stringify(ov) !== JSON.stringify(nv)) {
+                diffFields.push([k, ov, nv]);
+            }
+        });
+
+        var changedRows = diffFields.map(function (x) {
+            var oldText = x[1] === undefined ? '—' : JSON.stringify(x[1], null, 2);
+            var newText = x[2] === undefined ? '—' : JSON.stringify(x[2], null, 2);
+
+            return '<tr>' +
+                '<td style="padding:12px;font-weight:900;vertical-align:top">' + RW_Audit_escape(x[0]) + '</td>' +
+                '<td style="padding:12px;white-space:pre-wrap;word-break:break-word;color:#b91c1c">' + RW_Audit_escape(oldText) + '</td>' +
+                '<td style="padding:12px;white-space:pre-wrap;word-break:break-word;color:#047857">' + RW_Audit_escape(newText) + '</td>' +
+            '</tr>';
+        }).join('');
+
+        var cards = [
+            ['التاريخ', RW_Audit_formatDate(r.occurred_at)],
+            ['المنفذ', r.actor_email || 'غير محدد'],
+            ['العملية', RW_Audit_actionLabel(r.action)],
+            ['المصدر', RW_Audit_sourceLabel(r.source_type)],
+            ['الشركة', r.company_name || r.company_id || 'غير محدد'],
+            ['الكيان', r.table_name || 'غير محدد'],
+            ['السجل', r.record_id || '—'],
+            ['Operation ID', r.operation_id || '—']
+        ];
+
+        safeHTML(host,
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:15px;flex-wrap:wrap;margin-bottom:20px">' +
+                '<div><div style="font-size:19px;font-weight:900">تفاصيل السجل</div>' +
+                '<div style="font-size:12px;color:#64748b;font-weight:700;margin-top:4px">التفاصيل داخل الصفحة، ومصدرها Read Model التدقيقي في Production.</div></div>' +
+                '<span class="rw-status" style="' + RW_Audit_statusTone(r.actor_trust) + '">' +
+                    RW_Audit_escape(RW_Audit_trustLabel(r.actor_trust)) + '</span>' +
+            '</div>' +
+
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:18px">' +
+                cards.map(function (x) {
+                    return '<div style="padding:14px;border:1px solid #e5e7eb;border-radius:16px;background:#f8fafc">' +
+                        '<div style="font-size:10px;color:#64748b;font-weight:800;margin-bottom:5px">' + RW_Audit_escape(x[0]) + '</div>' +
+                        '<div style="font-size:13px;font-weight:900;word-break:break-word">' + RW_Audit_escape(x[1]) + '</div>' +
+                    '</div>';
+                }).join('') +
+            '</div>' +
+
+            '<div style="margin-bottom:18px;padding:14px;border:1px solid #e5e7eb;border-radius:16px;background:#fff">' +
+                '<div style="font-size:13px;font-weight:900;margin-bottom:8px">الحقول التي تغيّرت (' +
+                    Number(fields.length || diffFields.length) + ')</div>' +
+                '<div style="display:flex;gap:7px;flex-wrap:wrap">' +
+                    (fields.length ?
+                        fields.map(function (f) {
+                            return '<span class="rw-status" style="background:#eff6ff;color:#1d4ed8">' +
+                                RW_Audit_escape(f) + '</span>';
+                        }).join('') :
+                        '<span style="color:#94a3b8;font-weight:800">لا توجد قائمة حقول مسجلة لهذا السجل.</span>') +
+                '</div>' +
+            '</div>' +
+
+            '<div style="overflow:auto;border:1px solid #e5e7eb;border-radius:16px">' +
+                '<table style="width:100%;border-collapse:collapse;min-width:760px">' +
+                    '<thead><tr style="background:#f8fafc">' +
+                        '<th style="padding:12px;text-align:right">الحقل</th>' +
+                        '<th style="padding:12px;text-align:right">قبل</th>' +
+                        '<th style="padding:12px;text-align:right">بعد</th>' +
+                    '</tr></thead>' +
+                    '<tbody>' +
+                        (changedRows ||
+                            '<tr><td colspan="3" style="padding:30px;text-align:center;color:#94a3b8;font-weight:800">لا يوجد فرق حقلي قابل للعرض.</td></tr>') +
+                    '</tbody>' +
+                '</table>' +
+            '</div>' +
+
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:18px">' +
+                '<div style="padding:14px;border:1px solid #e5e7eb;border-radius:16px">' +
+                    '<div style="font-size:10px;color:#64748b;font-weight:800;margin-bottom:6px">IP</div>' +
+                    '<div style="font-size:13px;font-weight:800;word-break:break-word">' + RW_Audit_escape(r.ip_address || 'غير مسجل') + '</div>' +
+                '</div>' +
+                '<div style="padding:14px;border:1px solid #e5e7eb;border-radius:16px">' +
+                    '<div style="font-size:10px;color:#64748b;font-weight:800;margin-bottom:6px">User Agent</div>' +
+                    '<div style="font-size:12px;font-weight:700;word-break:break-word;color:#475569">' + RW_Audit_escape(r.user_agent || 'غير مسجل') + '</div>' +
+                '</div>' +
+            '</div>' +
+
+            '<div style="margin-top:18px;color:#94a3b8;font-size:11px;font-weight:800">' +
+                'القيم الحساسة (مثل token/password/secret) تُحجب في Read Model.' +
+            '</div>'
+        );
+    } catch (e) {
+        console.error('RW_Audit_showDetails', e);
+        safeHTML(host,
+            '<div style="padding:36px;text-align:center;color:#b91c1c;font-weight:900">تعذر تحميل التفاصيل: ' +
+            RW_Audit_escape(e.message || e) + '</div>'
+        );
+    }
+}
+
+async function RW_Audit_exportCsv() {
+    if (!RW_Audit_isOwner()) return;
+
+    try {
+        showLoader('جاري تجهيز التصدير...');
+
+        var res = await supabase.rpc('audit_log_query', RW_Audit_buildParams(1, 5000));
+        if (res.error) throw res.error;
+
+        var data = res.data || {};
+        if (data.success !== true) throw new Error(data.msg || 'فشل تجهيز التصدير');
+
+        var rows = Array.isArray(data.rows) ? data.rows : [];
+        var csvRows = [[
+            'occurred_at',
+            'actor_email',
+            'action',
+            'source_type',
+            'actor_trust',
+            'company',
+            'table_name',
+            'record_id',
+            'operation_id',
+            'changed_fields'
+        ]];
+
+        rows.forEach(function (r) {
+            csvRows.push([
+                r.occurred_at || '',
+                r.actor_email || '',
+                r.action || '',
+                r.source_type || '',
+                r.actor_trust || '',
+                r.company_name || r.company_id || '',
+                r.table_name || '',
+                r.record_id || '',
+                r.operation_id || '',
+                Array.isArray(r.changed_fields) ? r.changed_fields.join('|') : ''
+            ]);
+        });
+
+        var csv = csvRows.map(function (row) {
+            return row.map(function (v) {
+                return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+            }).join(',');
+        }).join('\r\n');
+
+        var blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+
+        a.href = url;
+        a.download = 'rawaea-audit-log-' + new Date().toISOString().slice(0, 10) + '.csv';
+
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error('RW_Audit_exportCsv', e);
+        showToast(e.message || 'فشل التصدير', 'error');
+    } finally {
+        hideLoader();
+    }
+}
+
 window.togglePasswordVisibility = function(inputId, button) {
     try {
         var input = document.getElementById(inputId);
