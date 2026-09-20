@@ -43,13 +43,7 @@ jobs:
           if(s.includes('register-sw.js')) throw new Error('DUPLICATE_REGISTER_SW_PRESENT');
           console.log('VOUCHERS_ASSET_PATHS=PASS');
           "
-          python3 - <<'PY'
-          from pathlib import Path
-          s=Path('companies/company-1/warehouse/vouchers.html').read_text(encoding='utf-8')
-          js=s[s.find('<script>', s.find('<body'))+8:s.rfind('</script>')]
-          compile(js,'vouchers-inline-js','exec')
-          print('INLINE_JS_STATIC=PASS')
-          PY
+          node -e "const fs=require('fs'); const s=fs.readFileSync('companies/company-1/warehouse/vouchers.html','utf8'); const a=s.indexOf('<script>',s.indexOf('<body>')); const b=s.lastIndexOf('</script>'); if(a<0||b<=a) throw new Error('INLINE_SCRIPT_NOT_FOUND'); const js=s.slice(a+8,b); try{new Function(js)}catch(e){throw new Error('INLINE_JS_SYNTAX:'+e.message)} console.log('INLINE_JS_STATIC=PASS')"
 
       - name: Install browser
         shell: bash
