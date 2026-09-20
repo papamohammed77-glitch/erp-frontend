@@ -28344,30 +28344,23 @@ var RW_FleetManagement = (function() {
   }
 
   async function loadVehicles() {
-    var d = await query('vehicles', {search: state.search, limit: 100, offset: 0});
-    state.cache.vehicles = d.rows || [];
-    var rows = state.cache.vehicles;
-    var html = '<div class="rw-card" style="padding:18px">' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:15px">' +
-      '<input id="fleet-vehicle-search" value="' + esc(state.search) + '" onkeydown="if(event.key===\'Enter\'){RW_FleetManagement.setSearch(this.value)}" placeholder="كود المركبة / اللوحة / الموديل" class="rw-input" style="height:48px;max-width:420px;padding-right:15px">' +
-      '</div><div style="overflow:auto"><table class="w-full"><thead><tr>' +
-      ['المركبة','اللوحة','النوع','الحالة','السائق','آخر عداد','آخر صيانة','العقد'].map(function(x){return '<th class="p-3 text-right">'+x+'</th>';}).join('') +
+    var d=await query('vehicles',{search:state.search,limit:100,offset:0});state.cache.vehicles=d.rows||[];var rows=state.cache.vehicles;
+    var html='<div class="rw-card" style="padding:18px"><div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:15px"><input id="fleet-vehicle-search" value="'+esc(state.search)+'" onkeydown="if(event.key===\'Enter\'){RW_FleetManagement.setSearch(this.value)}" placeholder="كود المركبة / اللوحة / الموديل" class="rw-input" style="height:48px;max-width:420px;padding-right:15px"></div><div style="overflow:auto"><table class="w-full"><thead><tr>'+
+      ['المركبة','اللوحة','السعة طن','حجم الصندوق م³','الكفاءة','الحالة/المسار','الملكية','السائق'].map(function(x){return '<th class="p-3 text-right">'+x+'</th>';}).join('')+
       '</tr></thead><tbody>';
-    if (!rows.length) html += '<tr><td colspan="8" class="text-center p-8 text-slate-400">لا توجد مركبات مسجلة</td></tr>';
+    if(!rows.length) html+='<tr><td colspan="8" class="text-center p-8 text-slate-400">لا توجد مركبات مسجلة</td></tr>';
     rows.forEach(function(v){
-      html += '<tr style="border-top:1px solid #eef2f7;cursor:pointer" onclick="RW_FleetManagement.openVehicleDetail(\''+v.id+'\')">' +
-        '<td class="p-3"><strong>'+esc(v.vehicle_code)+'</strong><div class="text-xs text-slate-400">'+esc(v.model)+'</div></td>' +
-        '<td class="p-3">'+esc(v.license_plate)+'</td><td class="p-3">'+esc(v.vehicle_type)+'</td>' +
-        '<td class="p-3"><span style="padding:5px 9px;border-radius:999px;background:#ecfdf5;color:#047857;font-size:11px;font-weight:900">'+esc(v.status)+'</span></td>' +
-        '<td class="p-3">'+esc(v.fleet_driver_id || v.driver_id || '—')+'</td>' +
-        '<td class="p-3">'+money(v.last_odometer_km)+' كم</td><td class="p-3">'+date(v.last_maintenance_date)+'</td><td class="p-3">'+date(v.active_contract_end)+'</td>' +
-        '</tr>';
+      html+='<tr style="border-top:1px solid #eef2f7;cursor:pointer" onclick="RW_FleetManagement.openVehicleDetail(\''+v.id+'\')">'+
+        '<td class="p-3"><strong>'+esc(v.vehicle_code)+'</strong><div class="text-xs text-slate-400">'+esc(v.model||'')+'</div></td><td class="p-3">'+esc(v.license_plate)+'</td>'+
+        '<td class="p-3">'+(v.max_weight_kg==null?'—':money(Number(v.max_weight_kg)/1000))+'</td><td class="p-3">'+(v.max_volume_m3==null?'—':money(v.max_volume_m3))+'</td>'+
+        '<td class="p-3">'+(v.expected_km_per_liter==null?'—':money(v.expected_km_per_liter)+' كم/ل')+'</td>'+
+        '<td class="p-3"><strong>'+esc(v.operational_condition||'—')+'</strong><div class="text-xs text-slate-400">'+esc(v.route_capability||'—')+'</div></td>'+
+        '<td class="p-3">'+esc(v.ownership_type||'—')+'</td><td class="p-3">'+esc(v.fleet_driver_id||v.driver_id||'—')+'</td></tr>';
     });
-    html += '</tbody></table></div></div>';
-    set(shell('المركبات', html));
+    html+='</tbody></table></div></div>';set(shell('المركبات',html));
   }
 
-  async function loadDrivers() {
+async function loadDrivers() {
     var d = await query('drivers', {search: state.search, limit: 100, offset: 0});
     state.cache.drivers = d.rows || [];
     var html = '<div class="rw-card" style="padding:18px"><div style="overflow:auto"><table class="w-full"><thead><tr>' +
@@ -28384,21 +28377,41 @@ var RW_FleetManagement = (function() {
   }
 
   async function loadTrips() {
-    var d = await query('trips', {limit:100,offset:0});
-    var rows = d.rows || [];
-    var html = '<div class="rw-card" style="padding:18px"><div style="overflow:auto"><table class="w-full"><thead><tr>' +
-      ['الرانشيت','التاريخ','المركبة','العداد بداية/نهاية','المسافة','الوقود','لتر/100كم','قيمة المبيعات'].map(function(x){return '<th class="p-3 text-right">'+x+'</th>';}).join('') +
+    var d=await query('trips',{limit:100,offset:0}),rows=d.rows||[];
+    var html='<div class="rw-card" style="padding:18px"><div style="overflow:auto"><table class="w-full"><thead><tr>'+
+      ['الرانشيت','التاريخ','المركبة','العداد بداية/نهاية','المسافة','الوقود','لتر/100كم','قيمة المبيعات','إدارة'].map(function(x){return '<th class="p-3 text-right">'+x+'</th>';}).join('')+
       '</tr></thead><tbody>';
-    if (!rows.length) html += '<tr><td colspan="8" class="text-center p-8 text-slate-400">لا توجد رحلات مؤرخة مرتبطة بمركبات</td></tr>';
+    if(!rows.length) html+='<tr><td colspan="9" class="text-center p-8 text-slate-400">لا توجد رحلات مؤرخة مرتبطة بمركبات</td></tr>';
     rows.forEach(function(r){
-      html += '<tr style="border-top:1px solid #eef2f7"><td class="p-3">'+esc(r.runsheet_code)+'</td><td class="p-3">'+date(r.run_date)+'</td><td class="p-3">'+esc(r.vehicle_id||'—')+'</td>' +
-        '<td class="p-3">'+money(r.meter_start)+' / '+money(r.meter_end)+'</td><td class="p-3">'+money(r.distance_km||0)+' كم</td><td class="p-3">'+money(r.fuel_liters||0)+' لتر</td><td class="p-3">'+(r.liters_per_100km==null?'—':money(r.liters_per_100km))+'</td><td class="p-3">'+money(r.sales_value||0)+'</td></tr>';
+      html+='<tr style="border-top:1px solid #eef2f7"><td class="p-3">'+esc(r.runsheet_code)+'</td><td class="p-3">'+date(r.run_date)+'</td><td class="p-3">'+esc(r.vehicle_code||r.vehicle_id||'—')+'</td>'+
+        '<td class="p-3">'+money(r.meter_start)+' / '+money(r.meter_end)+'</td><td class="p-3">'+money(r.distance_km||0)+' كم</td><td class="p-3">'+money(r.fuel_liters||0)+' لتر</td><td class="p-3">'+(r.liters_per_100km==null?'—':money(r.liters_per_100km))+'</td><td class="p-3">'+money(r.sales_value||0)+'</td>'+
+        '<td class="p-3"><button onclick="event.stopPropagation();RW_FleetManagement.openRunsheetAssignmentForm(\''+r.runsheet_code+'\')" class="px-3 py-2 rounded-xl bg-slate-900 text-white font-bold">إسناد</button></td></tr>';
     });
-    html += '</tbody></table></div></div>';
-    set(shell('الرحلات والعداد', html));
+    html+='</tbody></table></div></div>';set(shell('الرحلات والعداد',html));
   }
 
-  async function loadAlerts() {
+  async function openRunsheetAssignmentForm(runsheetCode){
+    if(!runsheetCode) return;
+    var p=await query('vehicle_planning',{runsheet_code:runsheetCode}),candidates=p.candidates||[];
+    if(!candidates.length) throw new Error('لا توجد مركبات مسجلة للتخطيط');
+    var dr=state.cache.drivers||[];if(!dr.length){var x=await query('drivers',{limit:100,offset:0});dr=x.rows||[];}
+    var vopts=candidates.map(function(v){return [v.id,(v.vehicle_code||'')+' — '+(v.model||'')+' | '+(v.planning_status||'')+' | وزن '+(v.weight_utilization_pct==null?'—':money(v.weight_utilization_pct)+'%')+' | حجم '+(v.volume_utilization_pct==null?'—':money(v.volume_utilization_pct)+'%')+(v.planning_warning?' | '+v.planning_warning:'')];});
+    var dopts=dr.filter(function(x){return x.user_id;}).map(function(x){return [x.user_id,x.driver_code+' — '+x.full_name+' | '+(x.employment_type||'')];});
+    await modal('إسناد الرانشيت '+runsheetCode,
+      '<div style="text-align:right"><div style="padding:12px 14px;background:#f8fafc;border-radius:14px;margin-bottom:12px;font-weight:900">الحمل الوزني: '+money(p.load?.weight_kg||0)+' كجم — الحجم: '+money(p.load?.volume_m3||0)+' م³</div>'+
+      selectInput('fa-vehicle','المركبة',p.runsheet?.vehicle_id||'',vopts)+selectInput('fa-driver','السائق التشغيلي',p.runsheet?.driver_id||'',dopts)+
+      '<div style="margin-top:10px;font-size:12px;color:#64748b">يُمنع الإسناد عند تجاوز السعة الوزنية أو حجم الصندوق. البيانات الناقصة تظهر كـ INCOMPLETE_DATA.</div></div>',
+      async function(){
+        if(!val('fa-vehicle')) throw new Error('المركبة مطلوبة');
+        var chosen=candidates.find(function(x){return String(x.id)===String(val('fa-vehicle'));});
+        if(chosen&&chosen.planning_status==='BLOCKED') throw new Error('المركبة المختارة غير مناسبة للحمولة الحالية');
+        var chosenDriver=dr.find(function(x){return String(x.user_id)===String(val('fa-driver'));})||{};
+        await command('RUNSHEET_ASSIGN',{runsheet_id:p.runsheet.id,vehicle_id:val('fa-vehicle'),driver_user_id:val('fa-driver')||null,fleet_driver_id:chosenDriver.id||null});
+        await refresh();showToast('تم إسناد الرانشيت للمركبة والسائق','success');
+      });
+  }
+
+async function loadAlerts() {
     var d = await query('alerts', {});
     function block(title, rows, key) {
       var h = '<div class="rw-card" style="padding:18px"><div style="font-weight:900;font-size:17px">'+title+'</div><div style="margin-top:12px">';
@@ -28499,6 +28512,7 @@ var RW_FleetManagement = (function() {
   }
 
   function val(id){ var x=byId(id); return x ? String(x.value||'').trim() : ''; }
+  function selectInput(id,label,value,options){var h='<div><label class="font-bold text-sm text-slate-700">'+label+'</label><select id="'+id+'" class="rw-input" style="height:46px;padding-right:14px;margin-top:6px">';(options||[]).forEach(function(o){h+='<option value="'+esc(o[0])+'"'+(String(o[0])===String(value||'')?' selected':'')+'>'+esc(o[1])+'</option>';});return h+'</select></div>'; }
 
   async function modal(title, html, onSave, saveText) {
     if (!window.Swal) return showToast('واجهة النوافذ المنبثقة غير متاحة','error');
@@ -28514,27 +28528,42 @@ var RW_FleetManagement = (function() {
     await modal('إضافة مركبة',
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:right">'+
       input('fv-code','كود المركبة','')+input('fv-model','الموديل','')+input('fv-plate','رقم اللوحة','')+
-      input('fv-type','نوع المركبة','Delivery')+input('fv-mode','نمط التشغيل','Mixed')+input('fv-owner','الملكية','Owned')+
-      input('fv-year','سنة الصنع','','number')+input('fv-vin','VIN / Chassis','')+input('fv-fuel','نوع الوقود','Diesel')+
-      '<label style="display:flex;align-items:center;gap:8px;font-weight:800;padding-top:28px"><input id="fv-mobile" type="checkbox" checked> تفعيل مخزون المركبة</label></div>',
+      input('fv-type','نوع المركبة','Delivery')+input('fv-mode','نمط التشغيل','Mixed')+
+      selectInput('fv-owner','الملكية','Owned',[['Owned','مملوكة للشركة'],['RentedPerTrip','مستأجرة بالنقلة'],['RentedMonthly','مستأجرة بالشهر'],['Other','أخرى']])+
+      input('fv-weight-ton','السعة الوزنية (طن)','5','number')+
+      input('fv-l','طول صندوق المركبة (م)','','number')+input('fv-w','عرض صندوق المركبة (م)','','number')+input('fv-h','ارتفاع صندوق المركبة (م)','','number')+
+      selectInput('fv-condition','حالة وكفاءة المركبة','Good',[['Excellent','ممتازة'],['Good','جيدة'],['Fair','متوسطة'],['Poor','ضعيفة']])+
+      selectInput('fv-route','قدرة المسار','Any',[['LocalOnly','محلية / قريبة فقط'],['Regional','إقليمية / متوسطة'],['LongHaul','بعيدة / مسافات طويلة'],['Any','مناسبة لكل المسارات']])+
+      input('fv-eff','الكفاءة المتوقعة (كم/لتر)','','number')+input('fv-year','سنة الصنع','','number')+input('fv-vin','VIN / Chassis','')+input('fv-fuel','نوع الوقود','Diesel')+
+      '<div style="grid-column:1/3;padding:12px 14px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;font-size:12px;font-weight:800;color:#475569">حجم الصندوق = الطول × العرض × الارتفاع، ويُحفظ تلقائيًا كم³ لاستخدامه في تخطيط الحمولة.</div>'+
+      '<label style="display:flex;align-items:center;gap:8px;font-weight:800;padding-top:12px"><input id="fv-mobile" type="checkbox" checked> تفعيل مخزون المركبة</label></div>',
       async function(){
+        var tons=Number(val('fv-weight-ton')),l=Number(val('fv-l')),w=Number(val('fv-w')),h=Number(val('fv-h'));
         if(!val('fv-code')||!val('fv-model')||!val('fv-plate')) throw new Error('الكود والموديل واللوحة مطلوبة');
-        await command('VEHICLE_CREATE',{vehicle_code:val('fv-code'),model:val('fv-model'),license_plate:val('fv-plate'),vehicle_type:val('fv-type')||'Delivery',operation_mode:val('fv-mode')||'Mixed',ownership_type:val('fv-owner')||'Owned',model_year:val('fv-year')||null,vin:val('fv-vin')||null,fuel_type:val('fv-fuel')||null,mobile_stock_enabled:byId('fv-mobile').checked,status:'Active'});
-        await refresh(); showToast('تم إنشاء المركبة وربطها بالهيكل التشغيلي','success');
+        if(!(tons>0)) throw new Error('السعة الوزنية يجب أن تكون أكبر من صفر');
+        if(!(l>0&&w>0&&h>0)) throw new Error('أبعاد صندوق المركبة الثلاثة مطلوبة');
+        await command('VEHICLE_CREATE',{vehicle_code:val('fv-code'),model:val('fv-model'),license_plate:val('fv-plate'),vehicle_type:val('fv-type')||'Delivery',operation_mode:val('fv-mode')||'Mixed',ownership_type:val('fv-owner')||'Owned',max_weight_kg:tons*1000,max_volume_m3:l*w*h,cargo_length_m:l,cargo_width_m:w,cargo_height_m:h,operational_condition:val('fv-condition')||'Good',route_capability:val('fv-route')||'Any',expected_km_per_liter:val('fv-eff')||null,model_year:val('fv-year')||null,vin:val('fv-vin')||null,fuel_type:val('fv-fuel')||null,mobile_stock_enabled:byId('fv-mobile').checked,status:'Active'});
+        await refresh(); showToast('تم إنشاء المركبة ببيانات التخطيط والحمولة','success');
       });
   }
 
-  async function openDriverForm(){
+async function openDriverForm(){
     await modal('إضافة سائق',
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:right">'+input('fd-code','كود السائق','')+input('fd-name','الاسم بالكامل','')+input('fd-phone','الهاتف','')+input('fd-email','email')+input('fd-emp','نوع التعاقد','Employee')+input('fd-hire','تاريخ التعيين','','date')+'</div>',
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;text-align:right">'+
+      input('fd-code','كود السائق','')+input('fd-name','الاسم بالكامل','')+input('fd-phone','الهاتف','')+input('fd-email','البريد الإلكتروني','')+
+      selectInput('fd-license-type','نوع الرخصة','ProfessionalSecond',[['Private','خاصة'],['ProfessionalFirst','مهنية أولى'],['ProfessionalSecond','مهنية ثانية'],['ProfessionalThird','مهنية ثالثة']])+
+      input('fd-license-no','رقم الرخصة','')+input('fd-license-issue','تاريخ إصدار الرخصة','','date')+input('fd-license-expiry','تاريخ انتهاء الرخصة','','date')+
+      selectInput('fd-emp','نوع التعاقد','Employee',[['Employee','موظف'],['PerTrip','بالنقلة'],['Monthly','بالشهر'],['Contractor','متعاقد'],['Outsourced','تعهد / شركة خارجية'],['Other','أخرى']])+
+      input('fd-hire','تاريخ التعيين / بدء التعاقد','','date')+'</div>',
       async function(){
         if(!val('fd-code')||!val('fd-name')) throw new Error('كود السائق والاسم مطلوبان');
-        await command('DRIVER_CREATE',{driver_code:val('fd-code'),full_name:val('fd-name'),phone:val('fd-phone')||null,email:val('fd-email')||null,employment_type:val('fd-emp')||'Employee',hire_date:val('fd-hire')||null,status:'Active'});
-        await refresh(); showToast('تم إنشاء ملف السائق','success');
+        if(!val('fd-license-type')) throw new Error('نوع الرخصة مطلوب');
+        await command('DRIVER_CREATE',{driver_code:val('fd-code'),full_name:val('fd-name'),phone:val('fd-phone')||null,email:val('fd-email')||null,employment_type:val('fd-emp')||'Employee',license_type:val('fd-license-type'),license_number:val('fd-license-no')||null,license_issue_date:val('fd-license-issue')||null,license_expiry_date:val('fd-license-expiry')||null,hire_date:val('fd-hire')||null,status:'Active'});
+        await refresh(); showToast('تم إنشاء ملف السائق وربط بيانات الرخصة والتعاقد','success');
       });
   }
 
-  async function openOdometerForm(){
+async function openOdometerForm(){
     if(!state.selectedVehicleId) return;
     await modal('تسجيل قراءة العداد',input('fo-odo','قراءة العداد (كم)','','number')+input('fo-ref','مرجع القراءة',''),
       async function(){var q=Number(val('fo-odo'));if(!Number.isFinite(q)||q<0)throw new Error('قراءة غير صالحة');await command('ODOMETER_RECORD',{vehicle_id:state.selectedVehicleId,meter_reading:q,source_type:'Manual',reference:val('fo-ref')||null});await openVehicleDetail(state.selectedVehicleId);showToast('تم تسجيل العداد','success');});
@@ -28639,6 +28668,7 @@ var RW_FleetManagement = (function() {
     openExpenseForm: openExpenseForm,
     openDriverDocumentForm: openDriverDocumentForm,
     openPerformanceForm: openPerformanceForm,
+    openRunsheetAssignmentForm: openRunsheetAssignmentForm,
     navigateExisting: navigateExisting
   };
   window.RW_FleetManagement = api;
