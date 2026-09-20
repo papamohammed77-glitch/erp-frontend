@@ -1,0 +1,151 @@
+name: RAWAEA — Warehouse Vouchers Browser E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'companies/company-1/warehouse/vouchers.html'
+      - 'companies/company-1/core.js'
+      - 'companies/company-1/sw.js'
+      - '.github/workflows/warehouse_vouchers_browser_e2e_20260920.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout current source of truth
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate vouchers source syntax and canonical asset paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "
+          const fs=require('fs');
+          const s=fs.readFileSync('companies/company-1/warehouse/vouchers.html','utf8');
+          if(!s.includes('<script src="../core.js"></script>')) throw new Error('CANONICAL_CORE_PATH_MISSING');
+          if(s.includes('<script src="core.js"></script>')) throw new Error('WRONG_CORE_PATH_PRESENT');
+          if(!s.includes("RW_SW.register('../sw.js')")) throw new Error('CANONICAL_SW_PATH_MISSING');
+          if(s.includes("RW_SW.register('sw.js')")) throw new Error('WRONG_SW_PATH_PRESENT');
+          if(s.includes('register-sw.js')) throw new Error('DUPLICATE_REGISTER_SW_PRESENT');
+          console.log('VOUCHERS_ASSET_PATHS=PASS');
+          "
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('companies/company-1/warehouse/vouchers.html').read_text(encoding='utf-8')
+          js=s[s.find('<script>', s.find('<body'))+8:s.rfind('</script>')]
+          compile(js,'vouchers-inline-js','exec')
+          print('INLINE_JS_STATIC=PASS')
+          PY
+
+      - name: Install browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium
+
+      - name: Start local source server
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rawaea-vouchers-http.log 2>&1 &
+          echo $! >/tmp/rawaea-vouchers-http.pid
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:4173/companies/company-1/warehouse/vouchers.html >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/rawaea-vouchers-http.log
+          exit 1
+
+      - name: Execute browser smoke E2E for standalone vouchers
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch({headless:true});
+            const context = await browser.newContext();
+            const page = await context.newPage();
+
+            const consoleErrors = [];
+            const pageErrors = [];
+            const requests = [];
+            const responses = [];
+
+            page.on('console', m => {
+              if (m.type() === 'error') consoleErrors.push(m.text());
+            });
+            page.on('pageerror', e => pageErrors.push(String(e.message || e)));
+            page.on('request', r => requests.push(r.url()));
+            page.on('response', r => responses.push({url:r.url(),status:r.status()}));
+
+            const target='http://127.0.0.1:4173/companies/company-1/warehouse/vouchers.html';
+            const response = await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000});
+            await page.waitForLoadState('networkidle',{timeout:30000}).catch(()=>{});
+
+            const title = await page.title();
+            const source = await page.content();
+
+            const asset = url => responses.find(x => x.url === url);
+            const core = asset('http://127.0.0.1:4173/companies/company-1/core.js');
+            const sw = asset('http://127.0.0.1:4173/companies/company-1/sw.js');
+            const wrongSw = responses.filter(x => x.url.includes('/companies/company-1/warehouse/sw.js'));
+
+            const loginEmail = await page.locator('#loginEmail').count();
+            const loginPassword = await page.locator('#loginPass').count();
+            const loginButton = await page.locator('button[onclick*="doLogin"]').count();
+
+            console.log('TARGET=' + target);
+            console.log('HTTP=' + (response ? response.status() : 'NO_RESPONSE'));
+            console.log('TITLE=' + title);
+            console.log('CORE_STATUS=' + (core ? core.status : 'MISSING'));
+            console.log('SW_STATUS=' + (sw ? sw.status : 'MISSING'));
+            console.log('WRONG_SW_REQUESTS=' + wrongSw.length);
+            console.log('LOGIN_EMAIL_INPUT=' + loginEmail);
+            console.log('LOGIN_PASSWORD_INPUT=' + loginPassword);
+            console.log('LOGIN_BUTTON=' + loginButton);
+            console.log('CONSOLE_ERRORS=' + JSON.stringify(consoleErrors));
+            console.log('PAGE_ERRORS=' + JSON.stringify(pageErrors));
+            console.log('REQUEST_COUNT=' + requests.length);
+
+            if (!response || !response.ok()) throw new Error('VOUCHERS_HTTP_LOAD_FAILED');
+            if (!core || core.status !== 200) throw new Error('CORE_HTTP_LOAD_FAILED');
+            if (!sw || sw.status !== 200) throw new Error('SW_HTTP_LOAD_FAILED');
+            if (wrongSw.length) throw new Error('WRONG_WAREHOUSE_SW_REQUEST_DETECTED');
+            if (loginEmail < 1 || loginPassword < 1 || loginButton < 1) throw new Error('LOGIN_UI_MISSING');
+            if (consoleErrors.length) throw new Error('VOUCHERS_CONSOLE_ERRORS_PRESENT');
+            if (pageErrors.length) throw new Error('VOUCHERS_PAGEERROR_PRESENT');
+            if (!source.includes("RW_SW.register('../sw.js')")) throw new Error('SW_REGISTRATION_SOURCE_MISSING');
+
+            console.log('VOUCHERS_BROWSER_BOOT_E2E=PASS');
+            await browser.close();
+          })().catch(async e => {
+            console.error('VOUCHERS_BROWSER_E2E_FAILURE=' + e.message);
+            process.exit(1);
+          });
+          NODE
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rawaea-vouchers-browser-e2e
+          path: /tmp/rawaea-vouchers-http.log
+          if-no-files-found: ignore
