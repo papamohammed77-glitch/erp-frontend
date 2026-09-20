@@ -32,13 +32,340 @@ prefetchStock:function(silent){var s=this,bids=this.refs.branches.map(function(b
 tab:function(t){this.tabName=t;document.querySelectorAll('.tab-btn').forEach(function(x){x.classList.remove('active');x.classList.add('text-slate-400')});var b=RW_UI.byId('tab-'+t);if(b){b.classList.add('active');b.classList.remove('text-slate-400')}if(t==='account'){this.account();return}this.loadList(t)},toggleMenu:function(){RW_UI.byId('typeMenu').classList.toggle('hidden')},choose:function(t){this.type=t;this.mode=(t==='Scrap'||t==='Adjustment')?'engine':'voucher';this.toggleMenu();this.newWorkspace()},
 actionFor:function(v){if(!v)return'';if(v.status==='Draft')return'draft';if(v.status==='Sent')return(v.type==='Transfer'||v.type==='DirectReturn')?'receive':'complete';if(v.status==='Received')return'complete';return''},
 loadList:function(scope){var s=this;RW_UI.showSkeleton('mainContent',3,'card');var q=supabase.from('stock_vouchers').select('*').eq('company_id',s.company).eq('source','Manual').order('voucher_date',{ascending:false}).order('created_at',{ascending:false}).limit(150);q=scope==='pending'?q.in('status',['Draft','Sent','Received']):q.in('status',['Completed','Cancelled']);q.then(function(r){if(r.error)throw r.error;s.vouchers=r.data||[];s.markSync();s.renderList(scope)}).catch(function(e){RW_UI.showError(e.message||'فشل تحميل الأذونات')})},
-renderList:function(scope){var s=this,h='<div class="h-full overflow-y-auto p-4 overscroll-contain"><div class="max-w-[1150px] mx-auto"><div class="flex justify-between items-center mb-4"><div><b class="text-lg">'+(scope==='pending'?'📄 الأذونات المعلقة':'✅ الأذونات المكتملة')+'</b><p class="text-xs text-slate-400 mt-1">'+this.vouchers.length+' سجل · <span id="syncAt">آخر مزامنة: —</span></p></div><button onclick="App.toggleMenu()" class="gold-chip px-4 py-2.5 rounded-2xl font-black text-sm">+ نوع جديد</button></div><input id="listSearch" oninput="App.filterList()" placeholder="🔍 بحث برقم الإذن أو المرجع أو النوع" class="w-full p-3.5 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm mb-4"><div id="listCards">'+this.cards(this.vouchers,scope)+'</div></div></div>';RW_UI.safeHTML(RW_UI.byId('mainContent'),h);this.markSync()},filterList:function(){var q=this.norm((RW_UI.byId('listSearch')||{}).value||''),r=this.vouchers.filter(function(v){return App.norm(v.voucher_code).includes(q)||App.norm(v.reference).includes(q)||App.norm(v.type).includes(q)});RW_UI.safeHTML(RW_UI.byId('listCards'),this.cards(r,this.tabName))},
+renderList:function(scope){
+    var s=this;
+
+    var typeOptions=[
+        '<option value="">كل الأنواع</option>',
+        '<option value="Transfer">تحويل مخزني</option>',
+        '<option value="DirectSale">صرف سيارة بيع مباشر</option>',
+        '<option value="DirectReturn">استلام مرتجع سيارة</option>',
+        '<option value="SupplierReturn">مرتجع لمورد</option>'
+    ].join('');
+
+    var h=
+        '<div class="h-full overflow-y-auto p-4 overscroll-contain">'+
+        '<div class="max-w-[1150px] mx-auto">'+
+
+        '<div class="flex justify-between items-center mb-4">'+
+        '<div>'+
+        '<b class="text-lg">'+
+        (scope==='pending'
+            ?'📄 الأذونات المعلقة'
+            :'✅ الأذونات المكتملة')+
+        '</b>'+
+        '<p class="text-xs text-slate-400 mt-1">'+
+        '<span id="listCount">'+this.vouchers.length+'</span>'+
+        ' سجل · <span id="syncAt">آخر مزامنة: —</span>'+
+        '</p>'+
+        '</div>'+
+        '<button onclick="App.toggleMenu()" class="gold-chip px-4 py-2.5 rounded-2xl font-black text-sm">'+
+        '+ نوع جديد</button>'+
+        '</div>'+
+
+        '<div class="card mb-4">'+
+        '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">'+
+        '<input id="listSearch" oninput="App.filterList()" placeholder="🔍 رقم الإذن أو المرجع أو النوع" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
+        '<select id="listType" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
+        typeOptions+
+        '</select>'+
+        '<input id="listFrom" type="date" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
+        '<input id="listTo" type="date" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
+        '<button type="button" onclick="App.loadList(App.tabName)" class="w-full p-3 bg-slate-800 text-white rounded-2xl font-black text-sm">'+
+        '↻ تحديث من Production'+
+        '</button>'+
+        '</div>'+
+        '</div>'+
+
+        '<div id="listCards">'+
+        this.cards(this.vouchers,scope)+
+        '</div>'+
+
+        '</div></div>';
+
+    RW_UI.safeHTML(RW_UI.byId('mainContent'),h);
+    this.markSync();
+},
 cards:function(rows,scope){var s=this;if(!rows.length)return'<div class="card text-center py-14"><div class="text-5xl mb-3">☕</div><b class="text-slate-400">لا توجد أذونات</b></div>';return rows.map(function(v){var c=v.status==='Draft'?'bg-amber-100 text-amber-700':v.status==='Sent'?'bg-blue-100 text-blue-700':v.status==='Received'?'bg-emerald-100 text-emerald-700':v.status==='Cancelled'?'bg-rose-100 text-rose-700':'bg-slate-100 text-slate-700',l=v.status==='Draft'?'مسودة':v.status==='Sent'?'مُرسل':v.status==='Received'?'مُستلم':v.status==='Completed'?'مكتمل':'ملغى',a='';if(scope==='pending'){var act=s.actionFor(v);if(act==='draft')a+='<button onclick="event.stopPropagation();App.send(\\''+s.esc(v.voucher_code)+'\\')" class="bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black">إرسال</button><button onclick="event.stopPropagation();App.cancel(\\''+s.esc(v.voucher_code)+'\\')" class="bg-rose-600 text-white px-3 py-2 rounded-xl text-xs font-black">إلغاء</button>';if(act==='receive')a+='<button onclick="event.stopPropagation();App.receive(\\''+s.esc(v.voucher_code)+'\\')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-black">استلام</button>';if(act==='complete')a+='<button onclick="event.stopPropagation();App.complete(\\''+s.esc(v.voucher_code)+'\\')" class="bg-violet-600 text-white px-3 py-2 rounded-xl text-xs font-black">إكمال</button>'}return'<div class="card mb-3"><div class="flex justify-between gap-3"><div class="cursor-pointer flex-1" onclick="App.details(\\''+s.esc(v.voucher_code)+'\\')"><div><b>'+s.esc(v.voucher_code)+'</b> <span class="px-2 py-1 rounded-full text-[10px] font-bold '+c+'">'+l+'</span></div><p class="text-xs text-slate-400 mt-1">'+s.esc(v.type)+' · '+s.esc(v.reference||'بدون مرجع')+' · '+s.esc(v.voucher_date||'')+'</p></div><div class="flex gap-2 flex-wrap justify-end">'+a+'</div></div></div>'}).join('')},
 loc:function(id,type){var a=type==='Branch'?this.refs.branches:type==='Vehicle'?this.refs.vehicles:this.refs.suppliers,x=(a||[]).find(function(z){return z.id===id});if(!x)return'غير معروف';return type==='Vehicle'?(x.vehicle_code||x.license_plate||x.model||'غير معروف'):type==='Supplier'?(x.name||x.supplier_code||'غير معروف'):(x.name||x.branch_code||'غير معروف')},
-details:function(code){var s=this;RW_UI.showLoader();supabase.from('stock_vouchers').select('*').eq('company_id',s.company).eq('voucher_code',code).maybeSingle().then(function(r){if(r.error||!r.data)throw new Error(r.error?.message||'الإذن غير موجود');var v=r.data;return Promise.all([supabase.from('stock_voucher_details').select('*').eq('voucher_id',v.id).order('item_code'),supabase.from('audit_log').select('action,table_name,record_id,user_email,created_at').eq('table_name','stock_vouchers').eq('record_id',v.id.toString()).order('created_at',{ascending:false}).limit(30)]).then(function(rr){RW_UI.hideLoader();var d=rr[0].data||[],aud=rr[1].data||[],aH=aud.length?aud.map(function(x){return'<div class="text-xs border-b py-2"><b>'+s.esc(x.action)+'</b> · '+s.esc(x.user_email||'system')+'<span class="text-slate-400"> · '+s.esc(x.created_at||'')+'</span></div>'}).join(''):'<div class="text-xs text-slate-400">لا توجد سجلات عرض متاحة لهذه الوثيقة</div>';var h='<div class="text-right"><div class="grid grid-cols-2 gap-2 text-xs mb-3"><div class="p-3 bg-slate-50 rounded-2xl">النوع<br><b>'+s.esc(v.type)+'</b></div><div class="p-3 bg-slate-50 rounded-2xl">الحالة<br><b>'+s.esc(v.status)+'</b></div><div class="p-3 bg-slate-50 rounded-2xl">المصدر<br><b>'+s.esc(s.loc(v.from_id,v.from_type))+'</b></div><div class="p-3 bg-slate-50 rounded-2xl">الوجهة<br><b>'+s.esc(s.loc(v.to_id,v.to_type))+'</b></div></div><div class="mb-3 text-xs text-slate-500">المرجع: '+s.esc(v.reference||'—')+'<br>ملاحظات: '+s.esc(v.notes||'—')+'</div><div class="border rounded-2xl overflow-auto"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-3">الصنف</th><th class="p-3">الكمية</th><th class="p-3">المستلم</th><th class="p-3">المتبقي</th></tr></thead><tbody>'+d.map(function(x){return'<tr class="border-t"><td class="p-3">'+s.esc(x.item_name||x.item_code)+'</td><td class="p-3 text-center">'+f(x.qty)+'</td><td class="p-3 text-center">'+f(x.received_qty)+'</td><td class="p-3 text-center">'+f(Math.max(0,Number(x.qty||0)-Number(x.received_qty||0)))+'</td></tr>'}).join('')+'</tbody></table></div><details class="mt-4"><summary class="cursor-pointer font-black text-sm">سجل التدقيق</summary><div class="mt-2">'+aH+'</div></details></div>';Swal.fire({title:'تفاصيل الإذن '+s.esc(code),html:h,width:860,showConfirmButton:false,showCloseButton:true,customClass:{popup:'!rounded-3xl'}})})}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message||'تعذر تحميل التفاصيل')})},
-callAction:function(name,code,successText){var s=this;if(this.busy[name+':'+code])return;this.busy[name+':'+code]=true;RW_UI.showLoader();RW_API.call(name,{voucher_code:code},function(j){RW_UI.hideLoader();delete s.busy[name+':'+code];if(j&&j.success){RW_UI.toast(j.duplicate?'تم التعرف على العملية السابقة':successText,'success');s.loadList('pending');s.prefetchStock(true)}else RW_UI.showError((j&&j.msg)||'فشل التنفيذ')})},send:function(code){this.callAction('send-stock-voucher',code,'تم إرسال الإذن')},cancel:function(code){this.callAction('cancel-stock-voucher',code,'تم إلغاء الإذن')},complete:function(code){this.callAction('complete-stock-voucher',code,'تم إكمال الإذن')},
+details:function(code){
+    var s=this;
+
+    RW_UI.showLoader();
+
+    supabase
+        .rpc(
+            'inventory_control',
+            {
+                p_operation:'VOUCHER_AUDIT',
+                p_payload:{
+                    voucher_code:code
+                }
+            }
+        )
+        .then(function(r){
+
+            RW_UI.hideLoader();
+
+            if(r.error){
+                throw new Error(
+                    r.error.message||
+                    'تعذر قراءة بيانات الإذن'
+                );
+            }
+
+            var data=r.data||{};
+            var v=data.voucher;
+
+            if(!v){
+                throw new Error('الإذن غير موجود');
+            }
+
+            var d=Array.isArray(data.details)
+                ?data.details
+                :[];
+
+            var aud=Array.isArray(data.audit)
+                ?data.audit
+                :[];
+
+            var movements=Array.isArray(data.movements)
+                ?data.movements
+                :[];
+
+            var aH=aud.length
+                ?aud.map(function(x){
+                    var op=x.operation_id
+                        ?'<br>Operation: '+s.esc(x.operation_id)
+                        :'';
+
+                    return(
+                        '<div class="text-xs border-b py-2">'+
+                        '<b>'+s.esc(x.action||'')+'</b>'+
+                        ' · '+
+                        s.esc(x.user_email||'system')+
+                        '<span class="text-slate-400">'+
+                        ' · '+
+                        s.esc(x.created_at||'')+
+                        '</span>'+
+                        op+
+                        '</div>'
+                    );
+                }).join('')
+                :
+                '<div class="text-xs text-slate-400">لا توجد سجلات تدقيق متاحة لهذه الوثيقة</div>';
+
+            var movementH=movements.length
+                ?movements.map(function(x){
+
+                    var from=x.source_branch_id
+                        ?s.loc(x.source_branch_id,'Branch')
+                        :'—';
+
+                    var to=x.target_branch_id
+                        ?s.loc(x.target_branch_id,'Branch')
+                        :'—';
+
+                    return(
+                        '<tr class="border-t">'+
+                        '<td class="p-2 text-xs">'+
+                        s.esc(x.item_name||x.item_code||'')+
+                        '<div class="text-[10px] text-slate-400">'+
+                        s.esc(x.item_code||'')+
+                        '</div>'+
+                        '</td>'+
+                        '<td class="p-2 text-center text-xs">'+
+                        s.esc(x.movement_type||'')+
+                        '</td>'+
+                        '<td class="p-2 text-center">'+
+                        f(x.qty)+
+                        '</td>'+
+                        '<td class="p-2 text-xs">'+
+                        s.esc(from)+
+                        ' → '+
+                        s.esc(to)+
+                        '</td>'+
+                        '<td class="p-2 text-xs">'+
+                        s.esc(x.user_email||'system')+
+                        '</td>'+
+                        '</tr>'
+                    );
+                }).join('')
+                :
+                '<tr><td colspan="5" class="p-4 text-center text-slate-400">لا توجد حركة فعلية مسجلة لهذا الإذن حتى الآن</td></tr>';
+
+            var h=
+                '<div class="text-right">'+
+
+                '<div class="grid grid-cols-2 gap-2 text-xs mb-3">'+
+                '<div class="p-3 bg-slate-50 rounded-2xl">النوع<br><b>'+s.esc(v.type)+'</b></div>'+
+                '<div class="p-3 bg-slate-50 rounded-2xl">الحالة<br><b>'+s.esc(v.status)+'</b></div>'+
+                '<div class="p-3 bg-slate-50 rounded-2xl">المصدر<br><b>'+s.esc(s.loc(v.from_id,v.from_type))+'</b></div>'+
+                '<div class="p-3 bg-slate-50 rounded-2xl">الوجهة<br><b>'+s.esc(s.loc(v.to_id,v.to_type))+'</b></div>'+
+                '<div class="p-3 bg-slate-50 rounded-2xl">أنشأ بواسطة<br><b>'+s.esc(v.created_by||'—')+'</b></div>'+
+                '<div class="p-3 bg-slate-50 rounded-2xl">أكمل بواسطة<br><b>'+s.esc(v.completed_by||'—')+'</b></div>'+
+                '</div>'+
+
+                '<div class="mb-3 text-xs text-slate-500">'+
+                'المرجع: '+s.esc(v.reference||'—')+
+                '<br>المصدر: '+s.esc(v.source||'—')+
+                '<br>تاريخ الإنشاء: '+s.esc(v.created_at||'—')+
+                '<br>الإرسال: '+s.esc(v.sent_date||'—')+
+                '<br>الاستلام: '+s.esc(v.received_date||'—')+
+                '<br>الإكمال: '+s.esc(v.completed_at||'—')+
+                '<br>ملاحظات: '+s.esc(v.notes||'—')+
+                '</div>'+
+
+                '<div class="border rounded-2xl overflow-auto">'+
+                '<table class="w-full text-sm">'+
+                '<thead class="bg-slate-100">'+
+                '<tr>'+
+                '<th class="p-3">الصنف</th>'+
+                '<th class="p-3">الكمية</th>'+
+                '<th class="p-3">المستلم</th>'+
+                '<th class="p-3">المتبقي</th>'+
+                '</tr>'+
+                '</thead>'+
+                '<tbody>'+
+                d.map(function(x){
+                    return(
+                        '<tr class="border-t">'+
+                        '<td class="p-3">'+
+                        s.esc(x.item_name||x.item_code)+
+                        '</td>'+
+                        '<td class="p-3 text-center">'+
+                        f(x.qty)+
+                        '</td>'+
+                        '<td class="p-3 text-center">'+
+                        f(x.received_qty)+
+                        '</td>'+
+                        '<td class="p-3 text-center">'+
+                        f(Math.max(
+                            0,
+                            Number(x.qty||0)-
+                            Number(x.received_qty||0)
+                        ))+
+                        '</td>'+
+                        '</tr>'
+                    );
+                }).join('')+
+                '</tbody>'+
+                '</table>'+
+                '</div>'+
+
+                '<div class="mt-4 border rounded-2xl overflow-auto">'+
+                '<div class="p-3 bg-slate-100 font-black text-sm">الحركات الفعلية المرتبطة</div>'+
+                '<table class="w-full text-sm">'+
+                '<thead class="bg-slate-50">'+
+                '<tr>'+
+                '<th class="p-2">الصنف</th>'+
+                '<th class="p-2">نوع الحركة</th>'+
+                '<th class="p-2">الكمية</th>'+
+                '<th class="p-2">المسار</th>'+
+                '<th class="p-2">المنفذ</th>'+
+                '</tr>'+
+                '</thead>'+
+                '<tbody>'+
+                movementH+
+                '</tbody>'+
+                '</table>'+
+                '</div>'+
+
+                '<details class="mt-4">'+
+                '<summary class="cursor-pointer font-black text-sm">سجل التدقيق</summary>'+
+                '<div class="mt-2">'+aH+'</div>'+
+                '</details>'+
+
+                '</div>';
+
+            Swal.fire({
+                title:'تفاصيل الإذن '+s.esc(code),
+                html:h,
+                width:940,
+                showConfirmButton:false,
+                showCloseButton:true,
+                customClass:{
+                    popup:'!rounded-3xl'
+                }
+            });
+        })
+        .catch(function(e){
+            RW_UI.hideLoader();
+            RW_UI.showError(
+                e.message||
+                'تعذر تحميل تفاصيل الإذن'
+            );
+        });
+},
+callAction:function(name,code,successText){
+    var s=this;
+    var busyKey=name+':'+code;
+
+    if(this.busy[busyKey])return;
+
+    this.busy[busyKey]=true;
+
+    RW_UI.showLoader();
+
+    RW_API.call(
+        name,
+        {voucher_code:code},
+        function(j){
+
+            RW_UI.hideLoader();
+
+            delete s.busy[busyKey];
+
+            if(j&&j.success){
+
+                RW_UI.toast(
+                    j.duplicate
+                        ?'تم التعرف على العملية السابقة'
+                        :successText,
+                    'success'
+                );
+
+                s.markSync();
+
+                s.loadList(s.tabName);
+
+                s.prefetchStock(true);
+
+            }else{
+
+                RW_UI.showError(
+                    (j&&j.msg)||
+                    'فشل التنفيذ'
+                );
+            }
+        }
+    );
+},
 receive:function(code){var s=this;if(this.busy['receive:'+code])return;RW_UI.showLoader();supabase.from('stock_vouchers').select('*,stock_voucher_details(*)').eq('company_id',s.company).eq('voucher_code',code).maybeSingle().then(function(r){RW_UI.hideLoader();if(r.error||!r.data)throw new Error('الإذن غير موجود');var v=r.data;if(v.type!=='Transfer'&&v.type!=='DirectReturn')throw new Error('هذا النوع ينتقل إلى الإكمال مباشرة بعد الإرسال');var d=v.stock_voucher_details||[],h='<div class="text-right space-y-2">';d.forEach(function(x,i){var rem=Math.max(0,Number(x.qty||0)-Number(x.received_qty||0));if(rem>0)h+='<div class="p-3 border rounded-2xl bg-slate-50 flex gap-3 items-center"><div class="flex-1"><b>'+s.esc(x.item_name||x.item_code)+'</b><div class="text-xs text-slate-400">المتبقي: '+f(rem)+'</div></div><input id="rq'+i+'" data-item-id="'+x.item_id+'" data-item-code="'+s.esc(x.item_code)+'" max="'+rem+'" min="0" value="'+rem+'" type="number" step="any" class="w-24 p-2 border rounded-xl text-center"></div>';});h+='</div>';return Swal.fire({title:'استلام '+s.esc(v.type),html:h,showCancelButton:true,confirmButtonText:'تنفيذ الاستلام',cancelButtonText:'إلغاء',preConfirm:function(){var out=[];d.forEach(function(x,i){var el=RW_UI.byId('rq'+i);if(!el)return;var q=Number(el.value||0),m=Number(el.max||0);if(q<0||q>m)throw new Error('كمية غير صالحة');if(q)out.push({itemId:x.item_id,itemCode:x.item_code,receivedQty:q})});if(!out.length){Swal.showValidationMessage('أدخل كمية استلام');return false}return out}})}).then(function(a){if(!a||!a.isConfirmed)return;var vfp=JSON.stringify(a.value.map(function(x){return[x.itemId,Number(x.receivedQty)]}).sort(function(x,y){return String(x[0]).localeCompare(String(y[0]))})),store='RW_VOUCHER_RECEIVE:'+s.company+':'+v.id,op=null;try{var old=localStorage.getItem(store);if(old){var rec=JSON.parse(old);if(rec&&rec.fingerprint===vfp&&rec.operation_id)op=rec.operation_id}}catch(e){}if(!op)op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'UI-RECEIVE:'+s.company+':'+v.id+':'+Date.now()+':'+Math.random().toString(36).slice(2);try{localStorage.setItem(store,JSON.stringify({operation_id:op,fingerprint:vfp,created_at:new Date().toISOString()}))}catch(e){}s.busy['receive:'+code]=true;RW_UI.showLoader('جاري تسجيل الاستلام...');RW_API.call('receive-stock-voucher',{voucher_code:code,receivedItems:a.value,operation_id:op},function(j){RW_UI.hideLoader();delete s.busy['receive:'+code];if(j&&j.success){try{localStorage.removeItem(store)}catch(e){}RW_UI.toast(j.duplicate?'تم التعرف على العملية المكررة':'تم الاستلام بنجاح','success');s.loadList('pending');s.prefetchStock(true)}else RW_UI.showError((j&&j.msg)||'فشل الاستلام — تم الاحتفاظ بهوية العملية لإعادة المحاولة بأمان')})}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message||'فشل فتح الاستلام')})},
-prepare:function(){var s=this;return Promise.all([supabase.from('items').select('id,item_code,barcode,name,search_label,category,unit,description,image_url,sales_price,cost_price,is_active').eq('is_active',true).order('item_code').limit(5000),s.prefetchStock(true)]).then(function(r){if(r[0].error)throw r[0].error;s.items=r[0].data||[]})},newWorkspace:function(){var s=this;this.cart=[];this.cat='الكل';RW_UI.showLoader('جاري تجهيز مساحة العمل...');Promise.resolve().then(function(){return s.prepare()}).then(function(){s.renderWorkspace();RW_UI.hideLoader()}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message||'تعذر تجهيز الكتالوج')})},
+prepare:function(){var s=this;return Promise.all([supabase.from('items').select('id,item_code,barcode,name,search_label,category,unit,description,image_url,sales_price,cost_price,is_active').eq('is_active',true).order('item_code').limit(5000),s.prefetchStock(true)]).then(function(r){if(r[0].error)throw r[0].error;s.items=r[0].data||[]})},
+newWorkspace:function(){
+    var s=this;
+    this.cart=[];
+    this.cat='الكل';
+    this.createOpId=null;
+    this.createFingerprint=null;
+    try{
+        if(s.company&&s.type){
+            sessionStorage.removeItem('RW_VOUCHER_CREATE:'+s.company+':'+s.type);
+        }
+    }catch(e){}
+    RW_UI.showLoader('جاري تجهيز مساحة العمل...');
+    Promise.resolve()
+        .then(function(){return s.prepare()})
+        .then(function(){
+            s.renderWorkspace();
+            RW_UI.hideLoader();
+        })
+        .catch(function(e){
+            RW_UI.hideLoader();
+            RW_UI.showError(e.message||'تعذر تجهيز الكتالوج');
+        });
+},
 allowedBranch:function(u,b){if(!u||!b)return false;if(String(u.default_branch_id||'')===String(b.id))return true;var a=u.allowed_branch_ids;if(Array.isArray(a))a=a.map(String);else if(typeof a==='string'&&a.trim()){var raw=a.trim();try{var parsed=JSON.parse(raw);a=Array.isArray(parsed)?parsed.map(String):raw.split(/[,|]/).map(function(x){return x.trim()}).filter(Boolean)}catch(e){a=raw.split(/[,|]/).map(function(x){return x.trim()}).filter(Boolean)}}else return false;return a.indexOf(String(b.id))>=0||a.indexOf(String(b.branch_code||''))>=0},
 vehicleBranch:function(v){if(!v)return null;var code='VAN-'+String(v.vehicle_code||'').trim().toUpperCase();return(this.refs.branches||[]).find(function(b){return String(b.branch_code||'').trim().toUpperCase()===code})||null},
 pickArr:function(key){var s=this,bid=(RW_UI.byId('wsFrom')||{}).value||'',b=(s.refs.branches||[]).find(function(x){return x.id===bid});if(key==='wsFrom'){if(s.type==='DirectReturn')return(s.refs.vehicles||[]).filter(function(v){var rep=(s.refs.reps||[]).find(function(r){return r.id===v.driver_id});return v.status==='Active'&&s.vehicleBranch(v)&&(!rep||s.allowedBranch(rep,s.vehicleBranch(v)))});return s.refs.branches||[]}if(key==='wsRep')return(s.refs.reps||[]).filter(function(r){return !b||s.allowedBranch(r,b)});if(key==='wsTo'&&s.type==='DirectSale'){var rid=(RW_UI.byId('wsRep')||{}).value||'';return(s.refs.vehicles||[]).filter(function(v){var vb=s.vehicleBranch(v),rep=(s.refs.reps||[]).find(function(r){return r.id===v.driver_id});return v.status==='Active'&&rid&&v.driver_id===rid&&!!vb&&(!rep||s.allowedBranch(rep,b))})}if(key==='wsTo'&&s.type==='DirectReturn'){var vid=(RW_UI.byId('wsFrom')||{}).value||'',vv=(s.refs.vehicles||[]).find(function(x){return x.id===vid}),rp=vv&&(s.refs.reps||[]).find(function(x){return x.id===vv.driver_id});return(s.refs.branches||[]).filter(function(x){return !rp||s.allowedBranch(rp,x)})}if(key==='wsTo'&&s.type==='SupplierReturn'){var m=(s.refs.supplierBranchMap||{})[bid];if(m&&Object.keys(m).length)return(s.refs.suppliers||[]).filter(function(x){return!!m[x.id]});return s.refs.suppliers||[]}return s.refs.branches||[]},
@@ -52,7 +379,290 @@ add:function(code){var s=this,x=this.items.find(function(i){return i.item_code==
 summary:function(){var t='',fr=RW_UI.byId('wsFrom'),re=RW_UI.byId('wsRep'),to=RW_UI.byId('wsTo');if(fr&&fr.value)t+=(this.type==='DirectReturn'?'المركبة: ':'المصدر: ')+this.loc(fr.value,this.type==='DirectReturn'?'Vehicle':'Branch');if(re&&re.value){var r=this.refs.reps.find(function(x){return x.id===re.value});if(r)t+=(t?' · ':'')+'المندوب: '+(r.name||r.email)}if(to&&to.value)t+=(t?' · ':'')+(this.type==='DirectSale'?'المركبة: ':this.type==='SupplierReturn'?'المورد: ':'الوجهة: ')+this.loc(to.value,this.type==='DirectSale'||this.type==='DirectReturn'?'Vehicle':this.type==='SupplierReturn'?'Supplier':'Branch');RW_UI.safeText(RW_UI.byId('routeSummary'),t||'حدد عناصر المسار');RW_UI.safeText(RW_UI.byId('stockHint'),this.sourceBranch()?'المتاح محسوب من المصدر المحدد':'اختر المصدر لمعرفة المتاح')},
 search:function(q){var s=this;this.renderProducts();clearTimeout(this.timer);this.timer=setTimeout(function(){var z=s.norm(q),box=RW_UI.byId('wsResults');if(!z){box.classList.add('hidden');return}s.results=s.items.filter(function(x){return s.norm(x.item_code).includes(z)||s.norm(x.barcode).includes(z)||s.norm(x.name).includes(z)||s.norm(x.search_label).includes(z)}).slice(0,12);box.innerHTML=s.results.length?s.results.map(function(x,i){return'<div class="result-row '+(i===0?'active':'')+'" onclick="App.add(\\''+s.esc(x.item_code)+'\\');App.focusSearch()"><div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">'+(x.image_url?'<img src="'+s.esc(x.image_url)+'" class="w-full h-full object-cover">':'📦')+'</div><div class="flex-1 min-w-0"><b class="text-xs truncate block">'+s.esc(x.name||x.item_code)+'</b><span class="text-[10px] text-slate-400">'+s.esc(x.item_code)+' · '+s.esc(x.barcode||'')+'</span></div><span class="text-[10px] text-emerald-600 font-black">إضافة</span></div>'}).join(''):'<div class="p-4 text-center text-slate-400">لا توجد نتائج</div>';box.classList.remove('hidden')},120)},focusSearch:function(){var x=RW_UI.byId('wsSearch');if(x){x.focus();x.select()}},searchKey:function(e){if(e.key==='Enter'){e.preventDefault();if(this.results[this.focus])this.add(this.results[this.focus].item_code);this.focusSearch()}else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!this.results.length)return;this.focus=Math.max(0,Math.min(this.results.length-1,this.focus+(e.key==='ArrowDown'?1:-1)));document.querySelectorAll('#wsResults .result-row').forEach(function(x,i){x.classList.toggle('active',i===App.focus)})}},updateSource:function(){this.summary();this.renderProducts()},
 itemDetails:function(id){var s=this,x=this.items.find(function(i){return i.id===id});if(!x)return;var av=this.avail(id),ci=this.cart.find(function(c){return c.id===id}),q=ci?ci.qty:0;var h='<div class="text-right"><div class="flex gap-4 items-start"><div class="w-28 h-28 rounded-3xl bg-slate-800 overflow-hidden flex items-center justify-center">'+(x.image_url?'<img src="'+s.esc(x.image_url)+'" class="w-full h-full object-cover">':'<i class="fa-solid fa-box text-4xl text-slate-500"></i>')+'</div><div class="flex-1"><h3 class="text-lg font-black">'+s.esc(x.name||x.item_code)+'</h3><p class="text-xs text-slate-400">الكود: '+s.esc(x.item_code)+'</p><p class="text-xs text-slate-400">الباركود: '+s.esc(x.barcode||'—')+'</p><p class="text-xs text-slate-400">الوحدة: '+s.esc(x.unit||'حبة')+'</p><p class="text-xs text-slate-400">التصنيف: '+s.esc(x.category||'أخرى')+'</p></div></div><div class="grid grid-cols-2 gap-2 mt-4"><div class="p-3 bg-slate-50 rounded-2xl"><span class="text-[10px] text-slate-400">المتاح</span><b class="block mt-1">'+(av===null?'اختر المصدر':f(av))+'</b></div><div class="p-3 bg-slate-50 rounded-2xl"><span class="text-[10px] text-slate-400">في السلة</span><b class="block mt-1">'+f(q)+'</b></div></div><div class="flex justify-between items-center mt-4"><button onclick="App.add(\\''+s.esc(x.item_code)+'\\');Swal.close()" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-black">إضافة للسلة</button><span class="text-xs text-slate-500">'+s.esc(x.description||'')+'</span></div></div>';Swal.fire({html:h,width:620,showConfirmButton:false,showCloseButton:true,customClass:{popup:'!rounded-3xl'}})},
-submit:function(){var s=this;if(!this.cart.length){RW_UI.toast('أضف صنفاً واحداً على الأقل','warning');return}var ref=(RW_UI.byId('wsRef')||{}).value.trim(),notes=(RW_UI.byId('wsNotes')||{}).value.trim(),fr=(RW_UI.byId('wsFrom')||{}).value||'',to=(RW_UI.byId('wsTo')||{}).value||'',rep=(RW_UI.byId('wsRep')||{}).value||'';if(!ref){RW_UI.toast('المرجع إجباري','warning');return}if(!fr){RW_UI.toast('المصدر مطلوب','warning');return}if(this.mode==='engine'){if(!notes){RW_UI.toast('السبب إجباري','warning');return}var mode=this.type==='Scrap'?'deduct':((RW_UI.byId('wsMode')||{}).value||'replace');RW_UI.showLoader('جاري تنفيذ الحركة...');RW_API.call('bulk-stock-adjustment',{branch_id:fr,adjustment_type:mode,voucher_code:ref,reason:notes,items:this.cart.map(function(x){return{item_id:x.id,item_code:x.code,qty:x.qty}})},function(j){RW_UI.hideLoader();if(j&&j.success){RW_UI.toast('تم تنفيذ الحركة','success');s.back()}else RW_UI.showError((j&&j.msg)||'فشل تنفيذ الحركة')});return}if(!to){RW_UI.toast('الوجهة مطلوبة','warning');return}if(this.type==='DirectSale'){var r=(this.refs.reps||[]).find(function(x){return x.id===rep}),v=(this.refs.vehicles||[]).find(function(x){return x.id===to}),b=(this.refs.branches||[]).find(function(x){return x.id===fr});if(!r||!v||v.driver_id!==r.id||!b||!s.allowedBranch(r,b)||!s.vehicleBranch(v)){RW_UI.toast('الفرع والمندوب والمركبة غير متسقين','error');return}}if(this.type==='DirectReturn'){var vv=(this.refs.vehicles||[]).find(function(x){return x.id===fr}),bb=(this.refs.branches||[]).find(function(x){return x.id===to}),rr=vv&&(this.refs.reps||[]).find(function(x){return x.id===vv.driver_id});if(!vv||!bb||!rr||!s.allowedBranch(rr,bb)||!s.vehicleBranch(vv)){RW_UI.toast('المركبة والمندوب وفرع المرتجع غير متسقين','error');return}}if(this.type==='SupplierReturn'){var sb=(this.refs.branches||[]).find(function(x){return x.id===fr}),sp=(this.refs.suppliers||[]).find(function(x){return x.id===to}),map=(s.refs.supplierBranchMap||{})[fr];if(!sb||!sp||!map||!map[sp.id]){RW_UI.toast('لا يوجد ربط موثق بين المورد والفرع','error');return}}var ft=this.type==='DirectReturn'?'Vehicle':'Branch',tt=this.type==='DirectSale'?'Vehicle':this.type==='SupplierReturn'?'Supplier':'Branch';RW_UI.showLoader('جاري حفظ المسودة...');RW_API.call('create-stock-voucher',{type:this.type,reference:ref,fromType:ft,fromId:fr,toType:tt,toId:to,notes:notes,items:this.cart.map(function(x){return{itemCode:x.code,qty:x.qty,notes:''}})},function(j){RW_UI.hideLoader();if(j&&j.success){RW_UI.toast('تم إنشاء '+(j.voucher_code||j.voucherId||'الإذن'),'success');s.back()}else RW_UI.showError((j&&j.msg)||'فشل إنشاء الإذن')})},
+submit:function(){
+    var s=this;
+
+    if(!this.cart.length){
+        RW_UI.toast('أضف صنفاً واحداً على الأقل','warning');
+        return;
+    }
+
+    var ref=(RW_UI.byId('wsRef')||{}).value.trim();
+    var notes=(RW_UI.byId('wsNotes')||{}).value.trim();
+    var fr=(RW_UI.byId('wsFrom')||{}).value||'';
+    var to=(RW_UI.byId('wsTo')||{}).value||'';
+    var rep=(RW_UI.byId('wsRep')||{}).value||'';
+
+    if(!ref){
+        RW_UI.toast('المرجع إجباري','warning');
+        return;
+    }
+
+    if(!fr){
+        RW_UI.toast('المصدر مطلوب','warning');
+        return;
+    }
+
+    if(this.mode==='engine'){
+        if(!notes){
+            RW_UI.toast('السبب إجباري','warning');
+            return;
+        }
+
+        var mode=this.type==='Scrap'
+            ?'deduct'
+            :((RW_UI.byId('wsMode')||{}).value||'replace');
+
+        RW_UI.showLoader('جاري تنفيذ الحركة...');
+
+        RW_API.call(
+            'bulk-stock-adjustment',
+            {
+                branch_id:fr,
+                adjustment_type:mode,
+                voucher_code:ref,
+                reason:notes,
+                items:this.cart.map(function(x){
+                    return{
+                        item_id:x.id,
+                        item_code:x.code,
+                        qty:x.qty
+                    };
+                })
+            },
+            function(j){
+                RW_UI.hideLoader();
+
+                if(j&&j.success){
+                    RW_UI.toast(
+                        j.duplicate
+                            ?'تم التعرف على العملية السابقة'
+                            :'تم تنفيذ الحركة',
+                        'success'
+                    );
+                    s.back();
+                }else{
+                    RW_UI.showError(
+                        (j&&j.msg)||'فشل تنفيذ الحركة'
+                    );
+                }
+            }
+        );
+
+        return;
+    }
+
+    if(!to){
+        RW_UI.toast('الوجهة مطلوبة','warning');
+        return;
+    }
+
+    if(this.type==='DirectSale'){
+        var r=(this.refs.reps||[]).find(function(x){
+            return x.id===rep;
+        });
+        var v=(this.refs.vehicles||[]).find(function(x){
+            return x.id===to;
+        });
+        var b=(this.refs.branches||[]).find(function(x){
+            return x.id===fr;
+        });
+
+        if(
+            !r||
+            !v||
+            v.driver_id!==r.id||
+            !b||
+            !s.allowedBranch(r,b)||
+            !s.vehicleBranch(v)
+        ){
+            RW_UI.toast(
+                'الفرع والمندوب والمركبة غير متسقين',
+                'error'
+            );
+            return;
+        }
+    }
+
+    if(this.type==='DirectReturn'){
+        var vv=(this.refs.vehicles||[]).find(function(x){
+            return x.id===fr;
+        });
+        var bb=(this.refs.branches||[]).find(function(x){
+            return x.id===to;
+        });
+        var rr=vv&&(this.refs.reps||[]).find(function(x){
+            return x.id===vv.driver_id;
+        });
+
+        if(
+            !vv||
+            !bb||
+            !rr||
+            !s.allowedBranch(rr,bb)||
+            !s.vehicleBranch(vv)
+        ){
+            RW_UI.toast(
+                'المركبة والمندوب وفرع المرتجع غير متسقين',
+                'error'
+            );
+            return;
+        }
+    }
+
+    if(this.type==='SupplierReturn'){
+        var sb=(this.refs.branches||[]).find(function(x){
+            return x.id===fr;
+        });
+        var sp=(this.refs.suppliers||[]).find(function(x){
+            return x.id===to;
+        });
+        var map=(s.refs.supplierBranchMap||{})[fr];
+
+        if(
+            !sb||
+            !sp||
+            !map||
+            !map[sp.id]
+        ){
+            RW_UI.toast(
+                'لا يوجد ربط موثق بين المورد والفرع',
+                'error'
+            );
+            return;
+        }
+    }
+
+    var ft=this.type==='DirectReturn'
+        ?'Vehicle'
+        :'Branch';
+
+    var tt=this.type==='DirectSale'
+        ?'Vehicle'
+        :this.type==='SupplierReturn'
+            ?'Supplier'
+            :'Branch';
+
+    var normalizedItems=this.cart
+        .map(function(x){
+            return{
+                itemCode:x.code,
+                itemName:x.name||x.code,
+                unit:x.unit||'حبة',
+                qty:Number(x.qty)||0,
+                unitPrice:Number(x.unitPrice||x.unit_price||0)||0,
+                notes:x.notes||''
+            };
+        })
+        .sort(function(a,b){
+            return String(a.itemCode).localeCompare(
+                String(b.itemCode)
+            );
+        });
+
+    var fingerprint=JSON.stringify({
+        type:this.type,
+        reference:ref,
+        from_id:fr,
+        to_id:to,
+        rep_id:rep||null,
+        notes:notes,
+        items:normalizedItems
+    });
+
+    var storageKey='RW_VOUCHER_CREATE:'+s.company+':'+s.type;
+    var operationId=null;
+
+    try{
+        var cached=sessionStorage.getItem(storageKey);
+
+        if(cached){
+            var previous=JSON.parse(cached);
+
+            if(
+                previous &&
+                previous.fingerprint===fingerprint &&
+                previous.operation_id
+            ){
+                operationId=previous.operation_id;
+            }
+        }
+    }catch(e){}
+
+    if(!operationId){
+        operationId=
+            window.crypto &&
+            crypto.randomUUID
+            ?crypto.randomUUID()
+            :'UI-CREATE:'+s.company+':'+
+             this.type+':'+
+             Date.now()+':'+
+             Math.random().toString(36).slice(2);
+
+        try{
+            sessionStorage.setItem(
+                storageKey,
+                JSON.stringify({
+                    operation_id:operationId,
+                    fingerprint:fingerprint,
+                    created_at:new Date().toISOString()
+                })
+            );
+        }catch(e){}
+    }
+
+    s.createOpId=operationId;
+    s.createFingerprint=fingerprint;
+
+    RW_UI.showLoader('جاري حفظ المسودة...');
+
+    RW_API.call(
+        'create-stock-voucher',
+        {
+            type:this.type,
+            reference:ref,
+            fromType:ft,
+            fromId:fr,
+            toType:tt,
+            toId:to,
+            rep_id:rep||null,
+            operation_id:operationId,
+            notes:notes,
+            items:normalizedItems
+        },
+        function(j){
+            RW_UI.hideLoader();
+
+            if(j&&j.success){
+                try{
+                    sessionStorage.removeItem(storageKey);
+                }catch(e){}
+
+                s.createOpId=null;
+                s.createFingerprint=null;
+
+                RW_UI.toast(
+                    j.duplicate
+                        ?'تم استرجاع نتيجة عملية الحفظ السابقة'
+                        :'تم إنشاء '+(
+                            j.voucher_code||
+                            j.voucherId||
+                            'الإذن'
+                        ),
+                    'success'
+                );
+
+                s.back();
+                return;
+            }
+
+            RW_UI.showError(
+                (j&&j.msg)||
+                'فشل إنشاء الإذن — تم الاحتفاظ بهوية العملية لإعادة المحاولة بأمان'
+            );
+        }
+    );
+},
 openDrawer:function(){RW_UI.byId('drawer').classList.add('open')},closeDrawer:function(){RW_UI.byId('drawer').classList.remove('open')},back:function(){this.mode=null;this.cart=[];this.tab(this.tabName);var l=RW_UI.byId('typeLabel');if(l)l.textContent='إذن جديد'},account:function(){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="h-full overflow-y-auto p-4"><div class="card max-w-xl mx-auto text-center mt-8"><div class="w-20 h-20 gold-chip rounded-3xl mx-auto flex items-center justify-center text-3xl font-black">'+this.esc((this.user.name||this.user.email||'?').charAt(0))+'</div><h2 class="font-black text-xl mt-3">'+this.esc(this.user.name||this.user.email)+'</h2><p class="text-sm text-slate-400">صلاحية: أذونات مخزنية</p><p class="text-xs text-slate-400 mt-2">'+(this.lastSyncAt?'آخر مزامنة '+this.lastSyncAt.toLocaleString('ar-EG'):'المزامنة الحية قيد التهيئة')+'</p><button onclick="App.logout()" class="w-full mt-6 border-2 border-red-100 text-red-500 py-3 rounded-2xl font-bold">تسجيل الخروج</button></div></div>')},
 openScanner:function(){var s=this;if(!this.mode){RW_UI.toast('افتح مساحة العمل أولاً','warning');return}var html='<div class="text-right"><video id="rwScanVideo" autoplay muted playsinline class="w-full rounded-3xl bg-black" style="min-height:250px;object-fit:cover"></video><div id="rwScanMsg" class="text-xs text-slate-400 mt-2">جارٍ تشغيل الكاميرا...</div></div>';Swal.fire({title:'ماسح المخزن',html:html,width:430,showConfirmButton:false,showCloseButton:true,customClass:{popup:'!rounded-3xl'},didOpen:function(){var v=document.getElementById('rwScanVideo'),msg=document.getElementById('rwScanMsg');if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){msg.textContent='المتصفح لا يدعم الكاميرا';return}navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false}).then(function(st){s._scanStream=st;v.srcObject=st;var bd='BarcodeDetector' in window?new BarcodeDetector():null;var loop=function(){if(!s._scanStream)return;if(bd){bd.detect(v).then(function(c){if(c&&c[0]){var code=(c[0].rawValue||'').trim();if(code)s.handleScan(code)}}).catch(function(){})}requestAnimationFrame(loop)};msg.textContent='✓ وجّه الكاميرا إلى الباركود';loop()}).catch(function(e){msg.textContent='تعذر تشغيل الكاميرا: '+(e.message||'صلاحية الكاميرا مطلوبة')})},willClose:function(){if(s._scanStream){try{s._scanStream.getTracks().forEach(function(t){t.stop()})}catch(e){}}s._scanStream=null}})},
 handleScan:function(code){var s=this,scanCode=s.norm(code),scanNow=Date.now();if(!scanCode)return;if(s.scanLastCode===scanCode&&scanNow-s.scanLastAt<1200)return;s.scanLastCode=scanCode;s.scanLastAt=scanNow;var x=this.items.find(function(i){return s.norm(i.barcode)===scanCode||s.norm(i.item_code)===scanCode});if(x){s.add(x.item_code);RW_UI.toast('تمت إضافة '+(x.name||x.item_code),'success');return}supabase.from('items').select('id,item_code,barcode,name,search_label,category,unit,description,image_url,sales_price,cost_price,is_active').eq('is_active',true).or('barcode.eq.'+code+',item_code.eq.'+code).limit(1).then(function(r){if(r.error||!r.data||!r.data[0]){RW_UI.toast('الصنف غير موجود: '+code,'warning');return}s.add(r.data[0].item_code)})},
