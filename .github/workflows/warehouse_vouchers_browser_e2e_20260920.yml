@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node -e "
+          node <<'NODE'
           const fs=require('fs');
           const s=fs.readFileSync('companies/company-1/warehouse/vouchers.html','utf8');
           if(!s.includes('<script src="../core.js"></script>')) throw new Error('CANONICAL_CORE_PATH_MISSING');
@@ -41,9 +41,12 @@ jobs:
           if(!s.includes("RW_SW.register('../sw.js')")) throw new Error('CANONICAL_SW_PATH_MISSING');
           if(s.includes("RW_SW.register('sw.js')")) throw new Error('WRONG_SW_PATH_PRESENT');
           if(s.includes('register-sw.js')) throw new Error('DUPLICATE_REGISTER_SW_PRESENT');
-          console.log('VOUCHERS_ASSET_PATHS=PASS');
-          "
-          node -e "const fs=require('fs'); const s=fs.readFileSync('companies/company-1/warehouse/vouchers.html','utf8'); const a=s.indexOf('<script>',s.indexOf('<body>')); const b=s.lastIndexOf('</script>'); if(a<0||b<=a) throw new Error('INLINE_SCRIPT_NOT_FOUND'); const js=s.slice(a+8,b); try{new Function(js)}catch(e){throw new Error('INLINE_JS_SYNTAX:'+e.message)} console.log('INLINE_JS_STATIC=PASS')"
+          const a=s.indexOf('<script>',s.indexOf('<body>'));
+          const b=s.lastIndexOf('</script>');
+          if(a<0||b<=a) throw new Error('INLINE_SCRIPT_NOT_FOUND');
+          try { new Function(s.slice(a+8,b)); } catch(e) { throw new Error('INLINE_JS_SYNTAX:'+e.message); }
+          console.log('VOUCHERS_SOURCE_GATES=PASS');
+          NODE
 
       - name: Install browser
         shell: bash
