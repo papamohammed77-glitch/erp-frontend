@@ -22068,16 +22068,18 @@ async function renderDetailedReports() {
             '</div>';
     }
 
-    function reportTitle(key) {
-        var map = {
-            inventory_gl_reconciliation: '1. مطابقة المخازن والدفتر العام',
-            grni: '2. البضائع المستلمة غير المفوترة — GRNI',
-            material_ledger: '3. كشف حركة الصنف والتكلفة — Material Ledger',
-            traceability: '4. التتبع الرجعي/الأمامي — Traceability',
-            production_variance: '5. أوامر الإنتاج والانحرافات — Production Variance'
-        };
-        return map[key] || key;
-    }
+	function reportTitle(key) {
+	    var map = {
+	        inventory_gl_reconciliation: '1. مطابقة المخازن والدفتر العام',
+	        grni: '2. البضائع المستلمة غير المفوترة — GRNI',
+	        material_ledger: '3. كشف حركة الصنف والتكلفة — Material Ledger',
+	        traceability: '4. التتبع الرجعي/الأمامي — Traceability',
+	        production_variance: '5. أوامر الإنتاج والانحرافات — Production Variance',
+	        inventory_abc: '6. ABC للأصناف حسب قيمة المبيعات',
+	        logistics_performance: '7. أداء الرحلات والتوصيل واللوجستيات'
+	    };
+	    return map[key] || key;
+	}
 
     async function loadCatalog() {
         var results = await Promise.all([
@@ -22161,20 +22163,22 @@ async function renderDetailedReports() {
         h += '<div class="bg-gradient-to-l from-slate-950 via-slate-900 to-indigo-950 text-white rounded-3xl shadow-xl p-6">' +
             '<div class="flex flex-wrap justify-between items-start gap-4">' +
             '<div><div class="text-xs uppercase tracking-widest text-indigo-200 font-black">SOVEREIGN CONTROL REPORTS</div>' +
-            '<h2 class="text-2xl md:text-3xl font-black mt-2">مركز التقارير السيادية الرقابية الخمسة</h2>' +
+            '<h2 class="text-2xl md:text-3xl font-black mt-2">مركز التقارير السيادية الرقابية </h2>' +
             '<p class="text-sm text-slate-300 mt-2 leading-7">Production Read Model واحد مصادق عليه، مع فصل صريح بين الحركة المادية والحالة المالية، وبدون إنشاء Edge Function جديدة.</p></div>' +
             '<div class="px-4 py-3 rounded-2xl bg-white/10 border border-white/10 text-xs font-black">Company: ' + esc(state.companyId) + '</div>' +
             '</div></div>';
 
         h += '<div class="flex flex-wrap gap-2" id="rw-sovereign-tabs">';
 
-        [
-            ['inventory_gl_reconciliation', 'المخزون ↔ GL'],
-            ['grni', 'GRNI'],
-            ['material_ledger', 'Material Ledger'],
-            ['traceability', 'Traceability'],
-            ['production_variance', 'Production Variance']
-        ].forEach(function (x) {
+			[
+			    ['inventory_gl_reconciliation', 'المخزون ↔ GL'],
+			    ['grni', 'GRNI'],
+			    ['material_ledger', 'Material Ledger'],
+			    ['traceability', 'Traceability'],
+			    ['production_variance', 'Production Variance'],
+			    ['inventory_abc', 'ABC الأصناف'],
+			    ['logistics_performance', 'أداء الرحلات']
+			].forEach(function (x) {
             h += '<button type="button" data-report-key="' + x[0] + '"' +
                 ' class="rw-sov-tab px-4 py-3 rounded-xl font-black text-sm border ' +
                 (state.activeKey === x[0]
@@ -22269,180 +22273,236 @@ async function renderDetailedReports() {
             '</div>';
     }
 
-    function renderResult(result) {
-        var out = byId('rw-sovereign-results');
-        if (!out) return;
+function renderResult(result) {
+    var out = byId('rw-sovereign-results');
+    if (!out) return;
 
-        state.lastResult = result || null;
-        state.lastRows = (result && result.rows) || [];
-        state.lastReport = state.activeKey;
+    state.lastResult = result || null;
+    state.lastRows = (result && result.rows) || [];
+    state.lastReport = state.activeKey;
 
-        var s = result && result.summary ? result.summary : {};
-        var m = result && result.meta ? result.meta : {};
+    var s = result && result.summary ? result.summary : {};
+    var m = result && result.meta ? result.meta : {};
 
-        var h = '<div class="space-y-5">';
+    var h = '<div class="space-y-5">';
 
-        if (state.activeKey === 'inventory_gl_reconciliation') {
-            h += '<div class="grid grid-cols-2 md:grid-cols-5 gap-3">' +
-                buildSummaryCard('رصيد الكمية', money(s.qty_on_hand)) +
-                buildSummaryCard('كمية بلا تكلفة', money(s.uncosted_qty), num(s.uncosted_qty) > 0 ? 'bg-amber-50 border-amber-200 text-amber-900' : '') +
-                buildSummaryCard('قيمة المخزون حسب التكلفة الحالية', money(s.physical_value_current_cost)) +
-                buildSummaryCard('رصيد GL', money(s.gl_balance_to_date)) +
-                buildSummaryCard('الفرق', money(s.difference), Math.abs(num(s.difference)) > 0.005 ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800') +
-                '</div>';
-        }
-
-        if (state.activeKey === 'grni') {
-            h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
-                buildSummaryCard('قيمة المستلم', money(s.total_received_value)) +
-                buildSummaryCard('قيمة الفواتير', money(s.total_invoiced_value)) +
-                buildSummaryCard('GRNI التشغيلي', money(s.total_grni_value), num(s.total_grni_value) > 0 ? 'bg-red-50 border-red-200 text-red-800' : '') +
-                buildSummaryCard('حساب GRNI صريح', s.control_account_configured ? 'مُعرّف' : 'غير مُعرّف', s.control_account_configured ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-900') +
-                '</div>';
-        }
-
-        if (state.activeKey === 'material_ledger') {
-            h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
-                buildSummaryCard('حركات مادية', money(s.physical_recorded_rows)) +
-                buildSummaryCard('مرتبطة ماليًا', money(s.financial_linked_rows), 'bg-emerald-50 border-emerald-200 text-emerald-800') +
-                buildSummaryCard('غير مرتبطة ماليًا', money(s.financial_unlinked_rows), num(s.financial_unlinked_rows) > 0 ? 'bg-red-50 border-red-200 text-red-800' : '') +
-                buildSummaryCard('إجمالي السجلات', money(s.row_count)) +
-                '</div>';
-        }
-
-        if (state.activeKey === 'traceability') {
-            h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
-                buildSummaryCard('عدد الأحداث', money(s.row_count)) +
-                buildSummaryCard('مستوى التتبع', statusLabel(s.traceability_level)) +
-                buildSummaryCard('Batch', s.batch_tracking_supported ? 'مدعوم' : 'غير متاح', s.batch_tracking_supported ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-900') +
-                buildSummaryCard('Serial/Lot', (s.serial_tracking_supported || s.lot_tracking_supported) ? 'مدعوم' : 'غير متاح', 'bg-amber-50 border-amber-200 text-amber-900') +
-                '</div>';
-        }
-
-        if (state.activeKey === 'production_variance') {
-            h += '<div class="bg-amber-50 border border-amber-200 rounded-3xl p-6">' +
-                '<div class="text-xs font-black text-amber-700">CONTRACT GATE</div>' +
-                '<h3 class="text-xl font-black text-amber-950 mt-2">لا توجد أرقام انحراف مصطنعة</h3>' +
-                '<p class="text-sm leading-7 text-amber-900 mt-3">' + esc(s.reason || '') + '</p>' +
-                '<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5">' +
-                buildSummaryCard('المخطط مقابل الفعلي', 'غير مدعوم', 'bg-white border-amber-200 text-amber-900') +
-                buildSummaryCard('انحراف التكلفة', 'غير مدعوم', 'bg-white border-amber-200 text-amber-900') +
-                buildSummaryCard('قرار التقرير', 'READINESS ONLY', 'bg-white border-amber-200 text-amber-900') +
-                '</div></div>';
-        }
-
-        if (m && m.note) {
-            h += '<div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-bold text-slate-600">' + esc(m.note) + '</div>';
-        }
-
-        if (state.activeKey === 'grni' && s.control_account_configured === false) {
-            h += '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm font-bold text-amber-900">Production الحالي لا يثبت حساب GRNI/WRX صريحًا؛ التقرير يعرض التعرض التشغيلي فقط ولا يخترع حسابًا ماليًا.</div>';
-        }
-
-        if (state.activeKey === 'traceability') {
-            h += '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm font-bold text-amber-900">التتبع الحالي Item/Document فقط. لا توجد Batch/Lot/Serial identity في Production الحالية، ولذلك لم يتم اختلاق رقم تشغيلة أو genealogy غير موجودة.</div>';
-        }
-
-        if (state.activeKey !== 'production_variance') {
-            h += renderTable();
-        }
-
-        h += '</div>';
-        safeHTML(out, h);
-        bindDrills(out);
+    if (state.activeKey === 'inventory_gl_reconciliation') {
+        h += '<div class="grid grid-cols-2 md:grid-cols-5 gap-3">' +
+            buildSummaryCard('رصيد الكمية', money(s.qty_on_hand)) +
+            buildSummaryCard('كمية بلا تكلفة', money(s.uncosted_qty), num(s.uncosted_qty) > 0 ? 'bg-amber-50 border-amber-200 text-amber-900' : '') +
+            buildSummaryCard('قيمة المخزون حسب التكلفة الحالية', money(s.physical_value_current_cost)) +
+            buildSummaryCard('رصيد GL', money(s.gl_balance_to_date)) +
+            buildSummaryCard('الفرق', money(s.difference), Math.abs(num(s.difference)) > 0.005 ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800') +
+            '</div>';
     }
 
-    function renderTable() {
-        var rows = state.lastRows || [];
+    if (state.activeKey === 'grni') {
+        h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
+            buildSummaryCard('قيمة المستلم', money(s.total_received_value)) +
+            buildSummaryCard('قيمة الفواتير', money(s.total_invoiced_value)) +
+            buildSummaryCard('GRNI التشغيلي', money(s.total_grni_value), num(s.total_grni_value) > 0 ? 'bg-red-50 border-red-200 text-red-800' : '') +
+            buildSummaryCard('حساب GRNI صريح', s.control_account_configured ? 'مُعرّف' : 'غير مُعرّف', s.control_account_configured ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-900') +
+            '</div>';
+    }
 
-        if (!rows.length) {
-            return '<div class="bg-white border rounded-3xl p-10 text-center text-slate-500 font-bold">لا توجد صفوف وفق Production والفلاتر الحالية.</div>';
-        }
+    if (state.activeKey === 'material_ledger') {
+        h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
+            buildSummaryCard('حركات مادية', money(s.physical_recorded_rows)) +
+            buildSummaryCard('مرتبطة ماليًا', money(s.financial_linked_rows), 'bg-emerald-50 border-emerald-200 text-emerald-800') +
+            buildSummaryCard('غير مرتبطة ماليًا', money(s.financial_unlinked_rows), num(s.financial_unlinked_rows) > 0 ? 'bg-red-50 border-red-200 text-red-800' : '') +
+            buildSummaryCard('إجمالي السجلات', money(s.row_count)) +
+            '</div>';
+    }
 
-        var h = '<div class="bg-white border rounded-3xl shadow-sm overflow-hidden"><div class="p-4 border-b flex flex-wrap justify-between gap-2"><div class="font-black">بيانات التقرير</div><div class="text-xs text-slate-500 font-bold">عدد الصفوف: ' + rows.length + '</div></div><div class="overflow-auto"><table class="w-full min-w-[1100px] text-sm"><thead class="bg-slate-950 text-white"><tr>';
+    if (state.activeKey === 'traceability') {
+        h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
+            buildSummaryCard('عدد الأحداث', money(s.row_count)) +
+            buildSummaryCard('مستوى التتبع', statusLabel(s.traceability_level)) +
+            buildSummaryCard('Batch', s.batch_tracking_supported ? 'مدعوم' : 'غير متاح', s.batch_tracking_supported ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-900') +
+            buildSummaryCard('Serial/Lot', (s.serial_tracking_supported || s.lot_tracking_supported) ? 'مدعوم' : 'غير متاح', 'bg-amber-50 border-amber-200 text-amber-900') +
+            '</div>';
+    }
 
-        var cols = [];
+    if (state.activeKey === 'production_variance') {
+        h += '<div class="bg-amber-50 border border-amber-200 rounded-3xl p-6">' +
+            '<div class="text-xs font-black text-amber-700">CONTRACT GATE</div>' +
+            '<h3 class="text-xl font-black text-amber-950 mt-2">لا توجد أرقام انحراف مصطنعة</h3>' +
+            '<p class="text-sm leading-7 text-amber-900 mt-3">' + esc(s.reason || '') + '</p>' +
+            '<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5">' +
+            buildSummaryCard('المخطط مقابل الفعلي', 'غير مدعوم', 'bg-white border-amber-200 text-amber-900') +
+            buildSummaryCard('انحراف التكلفة', 'غير مدعوم', 'bg-white border-amber-200 text-amber-900') +
+            buildSummaryCard('قرار التقرير', 'READINESS ONLY', 'bg-white border-amber-200 text-amber-900') +
+            '</div></div>';
+    }
 
-        if (state.activeKey === 'inventory_gl_reconciliation') {
-            cols = [
-                ['branch_name','الفرع'],['item_code','كود الصنف'],['item_name','الصنف'],
-                ['qty_on_hand','الكمية'],['allocated_qty','محجوز'],['available_qty','متاح'],
-                ['current_cost_price','التكلفة الحالية'],['physical_value_current_cost','قيمة المخزون']
-            ];
-        } else if (state.activeKey === 'grni') {
-            cols = [
-                ['po_code','أمر الشراء'],['supplier_name','المورد'],['item_code','الصنف'],
-                ['ordered_qty','المطلوب'],['received_qty','المستلم'],['invoiced_qty','المفوتر'],
-                ['uninvoiced_qty','غير مفوتر'],['received_value_at_po_price','قيمة الاستلام'],
-                ['invoiced_value','قيمة الفاتورة'],['grni_value','GRNI'],['days_outstanding','أيام'],['status','الحالة']
-            ];
-        } else if (state.activeKey === 'material_ledger') {
-            cols = [
-                ['movement_date','التاريخ'],['movement_type','الحركة'],['direction','الاتجاه'],
-                ['branch_name','الفرع'],['item_code','الصنف'],['qty','الكمية'],
-                ['before_qty','قبل'],['after_qty','بعد'],['current_cost_price','تكلفة حالية'],
-                ['movement_value_current_cost','قيمة الحركة'],['reference','المرجع'],
-                ['physical_status','المادي'],['financial_status','المالي'],['journal_entry_code','القيد']
-            ];
-        } else if (state.activeKey === 'traceability') {
-            cols = [
-                ['movement_date','التاريخ'],['movement_type','الحركة'],['item_code','الصنف'],
-                ['qty','الكمية'],['source_branch_id','المصدر'],['target_branch_id','الوجهة'],
-                ['reference','المرجع'],['voucher_id','المستند'],['chain_direction','الاتجاه'],
-                ['user_email','المنفذ']
-            ];
-        }
+    if (state.activeKey === 'inventory_abc') {
+        h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
+            buildSummaryCard('الأصناف', num(s.row_count)) +
+            buildSummaryCard('إجمالي المبيعات', money(s.total_sales_value)) +
+            buildSummaryCard('A', num(s.class_a_count), 'bg-emerald-50 border-emerald-200 text-emerald-900') +
+            buildSummaryCard('B / C', num(s.class_b_count) + ' / ' + num(s.class_c_count), 'bg-slate-50 border-slate-200 text-slate-800') +
+            '</div>';
+    }
 
+    if (state.activeKey === 'logistics_performance') {
+        h += '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' +
+            buildSummaryCard('الرحلات', num(s.runsheet_count)) +
+            buildSummaryCard('Delivery Fill %', s.delivery_fill_pct == null ? '—' : num(s.delivery_fill_pct) + '%') +
+            buildSummaryCard('متوسط الدورة', s.average_full_cycle_minutes == null ? '—' : num(s.average_full_cycle_minutes) + ' دقيقة') +
+            buildSummaryCard('Delivered Qty', money(s.delivered_qty)) +
+            '</div>' +
+            '<div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-bold text-slate-600">' +
+            'On-Time KPI: غير مدعوم في Production الحالية لعدم وجود Scheduled Delivery timestamp موثّق.' +
+            '</div>';
+    }
+
+    if (m && m.note) {
+        h += '<div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-bold text-slate-600">' + esc(m.note) + '</div>';
+    }
+
+    if (state.activeKey === 'grni' && s.control_account_configured === false) {
+        h += '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm font-bold text-amber-900">Production الحالي لا يثبت حساب GRNI/WRX صريحًا؛ التقرير يعرض التعرض التشغيلي فقط ولا يخترع حسابًا ماليًا.</div>';
+    }
+
+    if (state.activeKey === 'traceability') {
+        h += '<div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-sm font-bold text-amber-900">التتبع الحالي Item/Document فقط. لا توجد Batch/Lot/Serial identity في Production الحالية، ولذلك لم يتم اختلاق رقم تشغيلة أو genealogy غير موجودة.</div>';
+    }
+
+    if (state.activeKey !== 'production_variance') {
+        h += renderTable();
+    }
+
+    h += '</div>';
+    safeHTML(out, h);
+    bindDrills(out);
+}
+
+function renderTable() {
+    var rows = state.lastRows || [];
+
+    if (!rows.length) {
+        return '<div class="bg-white border rounded-3xl p-10 text-center text-slate-500 font-bold">لا توجد صفوف وفق Production والفلاتر الحالية.</div>';
+    }
+
+    var h = '<div class="bg-white border rounded-3xl shadow-sm overflow-hidden"><div class="p-4 border-b flex flex-wrap justify-between gap-2"><div class="font-black">بيانات التقرير</div><div class="text-xs text-slate-500 font-bold">عدد الصفوف: ' + rows.length + '</div></div><div class="overflow-auto"><table class="w-full min-w-[1200px] text-sm"><thead class="bg-slate-950 text-white"><tr>';
+
+    var cols = [];
+
+    if (state.activeKey === 'inventory_gl_reconciliation') {
+        cols = [
+            ['branch_name','الفرع'],['item_code','كود الصنف'],['item_name','الصنف'],
+            ['qty_on_hand','الكمية'],['allocated_qty','محجوز'],['available_qty','متاح'],
+            ['current_cost_price','التكلفة الحالية'],['physical_value_current_cost','قيمة المخزون']
+        ];
+    } else if (state.activeKey === 'grni') {
+        cols = [
+            ['po_code','أمر الشراء'],['supplier_name','المورد'],['item_code','الصنف'],
+            ['ordered_qty','المطلوب'],['received_qty','المستلم'],['invoiced_qty','المفوتر'],
+            ['uninvoiced_qty','غير مفوتر'],['received_value_at_po_price','قيمة الاستلام'],
+            ['invoiced_value','قيمة الفاتورة'],['grni_value','GRNI'],['days_outstanding','أيام'],['status','الحالة']
+        ];
+    } else if (state.activeKey === 'material_ledger') {
+        cols = [
+            ['movement_date','التاريخ'],['movement_type','الحركة'],['direction','الاتجاه'],
+            ['branch_name','الفرع'],['item_code','الصنف'],['qty','الكمية'],
+            ['before_qty','قبل'],['after_qty','بعد'],['current_cost_price','تكلفة حالية'],
+            ['movement_value_current_cost','قيمة الحركة'],['reference','المرجع'],
+            ['physical_status','المادي'],['financial_status','المالي'],['journal_entry_code','القيد']
+        ];
+    } else if (state.activeKey === 'traceability') {
+        cols = [
+            ['movement_date','التاريخ'],['movement_type','الحركة'],['item_code','الصنف'],
+            ['qty','الكمية'],['source_branch_id','المصدر'],['target_branch_id','الوجهة'],
+            ['reference','المرجع'],['voucher_id','المستند'],['chain_direction','الاتجاه'],
+            ['user_email','المنفذ']
+        ];
+    } else if (state.activeKey === 'inventory_abc') {
+        cols = [
+            ['item_code','كود الصنف'],['item_name','الصنف'],['net_qty','صافي الكمية'],
+            ['sales_value','قيمة المبيعات'],['sales_share_pct','حصة المبيعات %'],
+            ['cumulative_share_pct','التراكمي %'],['abc_class','ABC']
+        ];
+    } else if (state.activeKey === 'logistics_performance') {
+        cols = [
+            ['runsheet_code','الرانشيت'],['run_date','التاريخ'],['status','الحالة'],
+            ['driver_name','السائق'],['vehicle_code','المركبة'],['order_count','الطلبات'],
+            ['sales_value','المبيعات'],['ordered_qty','مطلوب'],['picked_qty','منتقى'],
+            ['loaded_qty','محمل'],['delivered_qty','مسلم'],['delivery_fill_pct','Fill %'],
+            ['refused_qty','مرفوض'],['returned_qty','مرتجع'],['full_cycle_minutes','دورة كاملة'],
+            ['settlement_status','التسوية']
+        ];
+    }
+
+    cols.forEach(function (c) {
+        h += '<th class="p-3 whitespace-nowrap">' + esc(c[1]) + '</th>';
+    });
+    h += '<th class="p-3">تنقيب</th></tr></thead><tbody>';
+
+    var moneyFields = [
+        'qty_on_hand','allocated_qty','available_qty','current_cost_price',
+        'physical_value_current_cost','ordered_qty','received_qty','invoiced_qty',
+        'uninvoiced_qty','received_value_at_po_price','invoiced_value','grni_value',
+        'qty','before_qty','after_qty','movement_value_current_cost','net_qty','sales_value',
+        'delivered_qty','picked_qty','loaded_qty','refused_qty','returned_qty'
+    ];
+
+    var pctFields = ['sales_share_pct','cumulative_share_pct','pick_completion_pct','load_completion_pct','delivery_fill_pct','refusal_pct','return_pct'];
+    var countFields = ['order_count','delivered_order_count'];
+    var durationFields = ['pick_minutes','load_minutes','delivery_minutes','full_cycle_minutes'];
+
+    rows.forEach(function (row) {
+        h += '<tr class="border-t hover:bg-slate-50">';
         cols.forEach(function (c) {
-            h += '<th class="p-3 whitespace-nowrap">' + esc(c[1]) + '</th>';
-        });
-        h += '<th class="p-3">تنقيب</th></tr></thead><tbody>';
+            var key = c[0];
+            var value = row[key];
 
-        rows.forEach(function (row) {
-            h += '<tr class="border-t hover:bg-slate-50">';
-
-            cols.forEach(function (c) {
-                var key = c[0];
-                var value = row[key];
-
-                if (key === 'status' || key === 'physical_status' || key === 'financial_status') {
-                    h += '<td class="p-3"><span class="px-2 py-1 rounded-full border text-xs font-black ' +
-                        statusClass(value) + '">' + esc(statusLabel(value)) + '</span></td>';
-                    return;
-                }
-
-                if ([
-                    'qty_on_hand','allocated_qty','available_qty','current_cost_price',
-                    'physical_value_current_cost','ordered_qty','received_qty','invoiced_qty',
-                    'uninvoiced_qty','received_value_at_po_price','invoiced_value','grni_value',
-                    'qty','before_qty','after_qty','movement_value_current_cost'
-                ].indexOf(key) !== -1) {
-                    h += '<td class="p-3 font-bold whitespace-nowrap">' + money(value) + '</td>';
-                    return;
-                }
-
-                h += '<td class="p-3 whitespace-nowrap">' + esc(value == null ? '—' : value) + '</td>';
-            });
-
-            var drillHtml = '—';
-            if (row.order_link && row.order_link.order_code) {
-                drillHtml = drillButton('order', row.order_link.order_code, 'فتح الأوردر');
-            } else if (row.journal_entry_id) {
-                drillHtml = drillButton('journal', row.journal_entry_id, 'فتح القيد');
-            } else if (row.voucher_id && /^IN-/.test(String(row.voucher_id))) {
-                drillHtml = drillButton('voucher', row.voucher_id, 'فتح الإذن');
-            } else if (row.reference || row.voucher_id) {
-                drillHtml = '<button type="button" class="text-slate-600 font-black hover:underline" data-copy-value="' +
-                    esc(row.reference || row.voucher_id) + '">نسخ المرجع</button>';
+            if (key === 'status' || key === 'physical_status' || key === 'financial_status' || key === 'settlement_status' || key === 'abc_class') {
+                h += '<td class="p-3"><span class="px-2 py-1 rounded-full border text-xs font-black ' +
+                    statusClass(value) + '">' + esc(statusLabel(value)) + '</span></td>';
+                return;
             }
 
-            h += '<td class="p-3">' + drillHtml + '</td></tr>';
+            if (pctFields.indexOf(key) !== -1) {
+                h += '<td class="p-3 font-bold whitespace-nowrap">' + (value == null ? '—' : esc(num(value) + '%')) + '</td>';
+                return;
+            }
+
+            if (durationFields.indexOf(key) !== -1) {
+                h += '<td class="p-3 font-bold whitespace-nowrap">' + (value == null ? '—' : esc(num(value) + ' دقيقة')) + '</td>';
+                return;
+            }
+
+            if (countFields.indexOf(key) !== -1) {
+                h += '<td class="p-3 font-bold whitespace-nowrap">' + (value == null ? '—' : esc(num(value))) + '</td>';
+                return;
+            }
+
+            if (moneyFields.indexOf(key) !== -1) {
+                h += '<td class="p-3 font-bold whitespace-nowrap">' + money(value) + '</td>';
+                return;
+            }
+
+            h += '<td class="p-3 whitespace-nowrap">' + esc(value == null ? '—' : value) + '</td>';
         });
 
-        h += '</tbody></table></div></div>';
-        return h;
-    }
+        var drillHtml = '—';
+        if (row.order_link && row.order_link.order_code) {
+            drillHtml = drillButton('order', row.order_link.order_code, 'فتح الأوردر');
+        } else if (row.journal_entry_id) {
+            drillHtml = drillButton('journal', row.journal_entry_id, 'فتح القيد');
+        } else if (row.voucher_id && /^IN-/.test(String(row.voucher_id))) {
+            drillHtml = drillButton('voucher', row.voucher_id, 'فتح الإذن');
+        } else if (row.reference || row.voucher_id) {
+            drillHtml = '<button type="button" class="text-slate-600 font-black hover:underline" data-copy-value="' +
+                esc(row.reference || row.voucher_id) + '">نسخ المرجع</button>';
+        }
 
+        h += '<td class="p-3">' + drillHtml + '</td></tr>';
+    });
+
+    h += '</tbody></table></div></div>';
+    return h;
+}
     function bindDrills(scope) {
         var root = scope || document;
 
