@@ -229,82 +229,74 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
     // ==================== فرع المندوب – VAN-{email} ====================
     loadVanBranch: function() {
         var self = this;
-        var db = RW_DB.getDB('VanSales');
-        var vanCode = 'VAN-' + (this.currentUser ? this.currentUser.email : '');
+        var email = self.currentUser ? String(self.currentUser.email || '').trim().toLowerCase() : '';
+        var cacheKey = 'RW_VAN_CANONICAL:' + email;
 
-        // ١. البحث عن الفرع في Dexie
-        db.branches.toArray().then(function(branches) {
-            var found = null;
-            for (var i = 0; i < branches.length; i++) {
-                if (branches[i].branch_code === vanCode) { found = branches[i]; break; }
-            }
+        if (!email) {
+            RW_UI.showError('هوية مندوب البيع غير محددة');
+            return;
+        }
 
-            if (found) {
-                // ✅ الفرع موجود محلياً
-                self.vanBranch = found;
-                self.vanBranchId = found.id;
-                self._afterVanBranchReady();
-            } else {
-                // ٢. البحث عن الفرع في Supabase مباشرة
-                supabase.from('branches').select('*').eq('branch_code', vanCode).maybeSingle().then(function(res) {
-                    if (res.data) {
-                        self.vanBranch = res.data;
-                        self.vanBranchId = res.data.id;
-                        // ✅ حفظ الفرع في Dexie للاستخدام المستقبلي
-                        db.branches.put(res.data);
+        if (!navigator.onLine) {
+            try {
+                var cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+                if (cached && cached.branch_id && cached.branch_code) {
+                    self.vanBranch = cached;
+                    self.vanBranchId = cached.branch_id;
+                    self._afterVanBranchReady();
+                    return;
+                }
+            } catch (e) {}
+
+            RW_UI.showError('لا يوجد اتصال ولا توجد هوية مخزن السيارة محفوظة');
+            return;
+        }
+
+        RW_UI.showLoader('جاري تحديد مخزن السيارة المعتمد...');
+
+        RW_API.call(
+            'setup-van-branch',
+            { driver_email: email },
+            function (json) {
+                if (json && json.success && json.branch_id) {
+                    self.vanBranchId = json.branch_id;
+                    self.vanBranch = {
+                        id: json.branch_id,
+                        branch_code: json.branch_code || '',
+                        name: json.branch_name || ('سيارة ' + (json.vehicle_code || '')),
+                        company_id: self.company || null,
+                        vehicle_id: json.vehicle_id || null,
+                        vehicle_code: json.vehicle_code || '',
+                        driver_id: json.driver_id || null
+                    };
+
+                    try {
+                        localStorage.setItem(cacheKey, JSON.stringify({
+                            branch_id: self.vanBranchId,
+                            branch_code: self.vanBranch.branch_code,
+                            name: self.vanBranch.name,
+                            vehicle_id: self.vanBranch.vehicle_id,
+                            vehicle_code: self.vanBranch.vehicle_code,
+                            driver_id: self.vanBranch.driver_id,
+                            updated_at: new Date().toISOString()
+                        }));
+                    } catch (e) {}
+
+                    var db = RW_DB.getDB('VanSales');
+                    db.branches.put(self.vanBranch).then(function () {
+                        RW_UI.hideLoader();
                         self._afterVanBranchReady();
-                    } else {
-                        // ٣. الفرع غير موجود – إنشاؤه تلقائياً
-                        self._createVanBranch(vanCode);
-                    }
-                }).catch(function() {
-                    self._createVanBranch(vanCode);
-                });
-            }
-        });
-    },
+                    }).catch(function () {
+                        RW_UI.hideLoader();
+                        self._afterVanBranchReady();
+                    });
+                    return;
+                }
 
-    _createVanBranch: function(vanCode) {
-        var self = this;
-        var userName = this.currentUser ? (this.currentUser.name || this.currentUser.email) : vanCode;
-
-        RW_UI.showLoader('جاري تهيئة فرع المندوب...');
-
-        // إنشاء الفرع في Supabase عبر REST مباشرة
-        supabase.from('branches').insert({
-            company_id: '00000000-0000-0000-0000-000000000001',
-            branch_code: vanCode,
-            name: 'سيارة ' + userName,
-            is_active: true
-        }).select('id, branch_code, name').single().then(function(res) {
-            if (res.data) {
-                self.vanBranch = res.data;
-                self.vanBranchId = res.data.id;
-                // حفظ في Dexie
-                var db = RW_DB.getDB('VanSales');
-                db.branches.put(res.data);
-
-                // ✅ تهيئة stock_branches للفرع الجديد – نسخ من MAIN
-                supabase.rpc('setup_van_stock', { p_van_branch_id: res.data.id }).then(function() {
-                    RW_UI.hideLoader();
-                    self._afterVanBranchReady();
-                }).catch(function() {
-                    RW_UI.hideLoader();
-                    self._afterVanBranchReady();
-                });
-            } else {
-                // فشل الإنشاء – استخدام MAIN كبديل
                 RW_UI.hideLoader();
-                self.vanBranch = { branch_code: 'MAIN', name: 'المخزن الرئيسي', id: null };
-                self.vanBranchId = null;
-                self._afterVanBranchReady();
+                RW_UI.showError((json && json.msg) || 'تعذر تحديد مخزن السيارة المعتمد');
             }
-        }).catch(function() {
-            RW_UI.hideLoader();
-            self.vanBranch = { branch_code: 'MAIN', name: 'المخزن الرئيسي', id: null };
-            self.vanBranchId = null;
-            self._afterVanBranchReady();
-        });
+        );
     },
 
     _afterVanBranchReady: function() {
@@ -1079,12 +1071,19 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
             var st = myStock[m];
             var nm = it ? it.name : (st.item_id || '---');
             var ic = it ? it.item_code : (st.item_id || '---');
-            var stockQty = Number(st.qty) || 0;
-            var soldQty = soldMap[ic] || 0;
-            var remaining = Math.max(0, stockQty - soldQty);
+
+            var currentQty = Math.max(0, Number(st.qty) || 0);
+            var soldQtyToday = soldMap[ic] || 0;
             var price = it ? (Number(it.sales_price) || 0) : 0;
-            totalValue += remaining * price;
-            var color = remaining > 10 ? 'text-green-600' : remaining > 0 ? 'text-amber-600' : 'text-red-600';
+
+            totalValue += currentQty * price;
+
+            var color = currentQty > 10
+                ? 'text-green-600'
+                : currentQty > 0
+                    ? 'text-amber-600'
+                    : 'text-red-600';
+
             var imgHtml = RW_ImageCache.getImageHTML(ic, 'w-12', 'h-12');
 
             rows += '<div class="card mb-2 slide-in">';
@@ -1092,14 +1091,19 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
             rows += '<div class="flex-shrink-0">' + imgHtml + '</div>';
             rows += '<div class="flex-1">';
             rows += '<p class="font-bold text-sm">' + nm + '</p>';
-            rows += '<p class="text-xs text-gray-400">الرصيد: <strong>' + stockQty + '</strong> | المباع: <strong class="text-red-500">' + soldQty + '</strong> | المتبقي: <strong class="' + color + '">' + remaining + '</strong></p>';
+            rows += '<p class="text-xs text-gray-400">' +
+                'الرصيد الحالي: <strong class="' + color + '">' + currentQty + '</strong>' +
+                ' | المباع اليوم: <strong class="text-red-500">' + soldQtyToday + '</strong>' +
+                '</p>';
             rows += '</div>';
-            rows += '<div class="text-left"><span class="font-bold text-sm">' + RW_UI.formatNumber(remaining * price) + ' ج.م</span></div>';
+            rows += '<div class="text-left"><span class="font-bold text-sm">' +
+                RW_UI.formatNumber(currentQty * price) +
+                ' ج.م</span></div>';
             rows += '</div></div>';
         }
 
         var html = '<div class="bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-2xl p-5 mb-4 text-center">';
-        html += '<p class="text-sm opacity-80">قيمة البضاعة المتبقية</p>';
+        html += '<p class="text-sm opacity-80">قيمة البضاعة الحالية</p>';
         html += '<p class="text-3xl font-black">' + RW_UI.formatNumber(totalValue) + ' ج.م</p>';
         html += '</div>';
         html += '<button onclick="App.openQuickInventory()" class="w-full bg-amber-600 text-white py-3 rounded-xl font-black text-sm mb-4 shadow-lg shadow-amber-200 active:scale-95 transition">🔍 جرد سريع للسيارة</button>';
@@ -1634,23 +1638,94 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
 
     // ==================== حفظ الفاتورة ====================
     submitQuickSale: function() {
-        if (this.eodLocked) { RW_UI.toast('تم إقفال الوردية. لا يمكن إنشاء فواتير جديدة.', 'warning'); return; }
-        var custCode = RW_UI.byId('quickCustSelect') ? RW_UI.byId('quickCustSelect').value : '';
-        if (!custCode) { RW_UI.toast('اختر عميلاً', 'warning'); return; }
-        if (!this.cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
+        if (this.eodLocked) {
+            RW_UI.toast('تم إقفال الوردية. لا يمكن إنشاء فواتير جديدة.', 'warning');
+            return;
+        }
+
+        var custCode = this.selCust && this.selCust.customer_code
+            ? this.selCust.customer_code
+            : '';
+
+        if (!custCode) {
+            RW_UI.toast('اختر عميلاً', 'warning');
+            return;
+        }
+
+        if (!this.vanBranchId || !this.vanBranch || !this.vanBranch.branch_code) {
+            RW_UI.toast('مخزن السيارة غير مهيأ أو غير معتمد', 'error');
+            return;
+        }
+
+        if (!this.cart.length) {
+            RW_UI.toast('السلة فارغة', 'warning');
+            return;
+        }
+
         var self = this;
         this.closeCartModal();
 
         var db = RW_DB.getDB('VanSales');
+
         db.customers.get(custCode).then(function(c) {
-            if (!c) { RW_UI.toast('العميل غير موجود', 'error'); return; }
+            if (!c) {
+                RW_UI.toast('العميل غير موجود', 'error');
+                return;
+            }
+
             var items = [], sub = 0;
+
             for (var i = 0; i < self.cart.length; i++) {
-                items.push({ code: self.cart[i].code, name: self.cart[i].name, price: self.cart[i].price, qty: self.cart[i].qty, unit: self.cart[i].unit });
-                sub += self.cart[i].price * self.cart[i].qty;
+                var line = self.cart[i];
+
+                items.push({
+                    code: line.code,
+                    name: line.name,
+                    price: line.price,
+                    qty: line.qty,
+                    unit: line.unit
+                });
+
+                sub += line.price * line.qty;
+            }
+
+            var fingerprint = JSON.stringify({
+                company_id: self.company || '',
+                customer_code: custCode,
+                branch_code: self.vanBranch.branch_code,
+                items: items.map(function(x) {
+                    return [x.code, Number(x.qty) || 0, Number(x.price) || 0];
+                }).sort(function(a,b) {
+                    return String(a[0]).localeCompare(String(b[0]));
+                })
+            });
+
+            var opStore = 'RW_VAN_SALE_OP:' + (self.company || '') + ':' + custCode;
+            var operationId = null;
+
+            try {
+                var saved = JSON.parse(localStorage.getItem(opStore) || 'null');
+                if (saved && saved.fingerprint === fingerprint && saved.operation_id) {
+                    operationId = saved.operation_id;
+                }
+            } catch (e) {}
+
+            if (!operationId) {
+                operationId = (window.crypto && crypto.randomUUID)
+                    ? crypto.randomUUID()
+                    : ('VAN-SALE-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+
+                try {
+                    localStorage.setItem(opStore, JSON.stringify({
+                        fingerprint: fingerprint,
+                        operation_id: operationId,
+                        created_at: new Date().toISOString()
+                    }));
+                } catch (e) {}
             }
 
             var hdr = {
+                operation_id: operationId,
                 customer_code: c.customer_code,
                 custName: c.name,
                 area: c.area || '',
@@ -1659,40 +1734,65 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
                 status: 'Invoiced',
                 paymentType: c.payment_type || 'نقدي',
                 taxAmount: 0,
-                taxRate: 0
+                taxRate: 0,
+                source: 'van-sales'
             };
 
             RW_UI.showLoader('جاري حفظ الفاتورة...');
 
-            // ✅ استخدام الفرع الصحيح للمندوب
-            var branchCode = self.vanBranch ? self.vanBranch.branch_code : 'MAIN';
-
             RW_API.call('save-sales-invoice', {
                 orderHeader: hdr,
                 itemsList: items,
-                branchCode: branchCode
+                branchCode: self.vanBranch.branch_code
             }, function(json) {
                 RW_UI.hideLoader();
-                if (json.success) {
+
+                if (json && json.success) {
+                    try {
+                        localStorage.removeItem(opStore);
+                    } catch (e) {}
+
                     Swal.fire({
                         icon: 'success',
                         title: '✅ تم الحفظ',
-                        html: '<div class="text-right"><p>الفاتورة: <strong>' + json.orderID + '</strong></p><p>العميل: <strong>' + c.name + '</strong></p><p>المبلغ: <strong>' + RW_UI.formatNumber(sub) + ' ج.م</strong></p></div>',
+                        html:
+                            '<div class="text-right">' +
+                            '<p>الفاتورة: <strong>' + (json.orderID || '') + '</strong></p>' +
+                            '<p>العميل: <strong>' + (c.name || '') + '</strong></p>' +
+                            '<p>المبلغ: <strong>' + RW_UI.formatNumber(sub) + ' ج.م</strong></p>' +
+                            '</div>',
                         confirmButtonText: 'حسناً',
-                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-orange-600' }
+                        customClass: {
+                            popup: '!rounded-3xl',
+                            confirmButton: '!rounded-xl !bg-orange-600'
+                        }
                     });
+
                     self.cart = [];
                     self.selCust = null;
                     self._updateFloatingCart();
                     self.loadMyCustomers();
-                    self.showView('home');
+
+                    self.syncDown().then(function() {
+                        self.showView('home');
+                    }).catch(function() {
+                        self.showView('home');
+                    });
+
                 } else {
-                    RW_UI.showError(json.msg || 'فشل الحفظ');
+                    RW_UI.showError(
+                        (json && json.msg) ||
+                        'فشل الحفظ — تم الاحتفاظ بهوية العملية لإعادة المحاولة بأمان'
+                    );
                 }
             });
+        }).catch(function(e) {
+            RW_UI.hideLoader();
+            RW_UI.showError(e.message || 'فشل تجهيز الفاتورة');
         });
     },
-        // ==================== السلة الشبحية – منتجات مقترحة من أنماط الشراء ====================
+
+    // ==================== السلة الشبحية – منتجات مقترحة من أنماط الشراء ====================
     loadGhostCart: function(customerCode) {
         var self = this;
         var ghostDiv = RW_UI.byId('ghostCartContainer');
