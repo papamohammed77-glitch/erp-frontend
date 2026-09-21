@@ -161,7 +161,7 @@ var App = {
         window.addEventListener('online', function() { App.updateConnectionStatus(); });
         window.addEventListener('offline', function() { App.updateConnectionStatus(); });
         this.renderBottomNav();
-        this.syncDown().then(function() { App.loadVanBranch(); });
+        this.syncDown().catch(function() { return null; }).then(function() { App.loadVanBranch(); });
     },
 
     doLogout: function() {
@@ -173,14 +173,85 @@ var App = {
     updateConnectionStatus: function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); },
 
     syncDown: function() {
+        var self = this;
         var db = RW_DB.getDB('VanSales');
-        return Promise.all([
-            supabase.from('customers').select('*').then(function(r) { return db.customers.clear().then(function() { return db.customers.bulkPut(r.data || []); }); }),
-            supabase.from('items').select('*').then(function(r) { return db.items.clear().then(function() { return db.items.bulkPut(r.data || []); }); }),
-            supabase.from('stock_branches').select('*').then(function(r) { return db.stock.clear().then(function() { return db.stock.bulkPut(r.data || []); }); }),
-            supabase.from('branches').select('*').then(function(r) { return db.branches.clear().then(function() { return db.branches.bulkPut(r.data || []); }); }),
-            supabase.from('app_settings').select('*').limit(1).single().then(function(r) { if (r.data) { App.delFee = Number(r.data.delivery_fee)||0; App.taxRate = Number(r.data.tax_rate)||0; App.minAmt = Number(r.data.min_invoice_amount)||0; } })
-        ]);
+
+        return supabase.auth.getSession().then(function(sessionResult) {
+            var session = sessionResult && sessionResult.data && sessionResult.data.session;
+            var authUser = session && session.user;
+
+            if (!authUser || !authUser.id) {
+                throw new Error('جلسة غير صالحة للمزامنة');
+            }
+
+            return supabase.from('users')
+                .select('company_id')
+                .eq('auth_id', authUser.id)
+                .maybeSingle();
+        }).then(function(userResult) {
+            if (userResult.error || !userResult.data || !userResult.data.company_id) {
+                throw new Error((userResult.error && userResult.error.message) || 'سياق الشركة غير محدد');
+            }
+
+            var companyId = userResult.data.company_id;
+
+            return supabase.from('branches')
+                .select('*')
+                .eq('company_id', companyId)
+                .then(function(branchResult) {
+                    if (branchResult.error) throw branchResult.error;
+
+                    var branches = branchResult.data || [];
+                    var branchIds = branches.map(function(b) { return b.id; });
+
+                    return Promise.all([
+                        supabase.from('customers').select('*').eq('company_id', companyId),
+                        supabase.from('items').select('*').eq('company_id', companyId),
+                        branchIds.length
+                            ? supabase.from('stock_branches').select('*').in('branch_id', branchIds)
+                            : Promise.resolve({ data: [], error: null }),
+                        Promise.resolve({ data: branches, error: null }),
+                        supabase.from('app_settings')
+                            .select('*')
+                            .eq('company_id', companyId)
+                            .order('created_at', { ascending: true })
+                            .order('id', { ascending: true })
+                            .limit(1)
+                            .maybeSingle()
+                    ]);
+                });
+        }).then(function(results) {
+            var customersResult = results[0];
+            var itemsResult = results[1];
+            var stockResult = results[2];
+            var branchesResult = results[3];
+            var settingsResult = results[4];
+
+            [customersResult, itemsResult, stockResult, branchesResult, settingsResult].forEach(function(result) {
+                if (result && result.error) throw result.error;
+            });
+
+            return Promise.all([
+                db.customers.clear().then(function() {
+                    return db.customers.bulkPut(customersResult.data || []);
+                }),
+                db.items.clear().then(function() {
+                    return db.items.bulkPut(itemsResult.data || []);
+                }),
+                db.stock.clear().then(function() {
+                    return db.stock.bulkPut(stockResult.data || []);
+                }),
+                db.branches.clear().then(function() {
+                    return db.branches.bulkPut(branchesResult.data || []);
+                })
+            ]).then(function() {
+                var settings = settingsResult.data || {};
+                self.delFee = Number(settings.delivery_fee) || 0;
+                self.taxRate = Number(settings.tax_rate) || 0;
+                self.minAmt = Number(settings.min_invoice_amount) || 0;
+                self.companyId = settings.company_id || (branchesResult.data && branchesResult.data[0] && branchesResult.data[0].company_id) || null;
+            });
+        });
     },
 
     syncData: function() {
@@ -1688,6 +1759,12 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
                 sub += line.price * line.qty;
             }
 
+            var email = self.currentUser ? String(self.currentUser.email || '').trim().toLowerCase() : '';
+            if (!email) {
+                RW_UI.toast('هوية مندوب البيع غير محددة', 'error');
+                return;
+            }
+
             var fingerprint = JSON.stringify({
                 driver_email: email,
                 customer_code: custCode,
@@ -2048,16 +2125,13 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
                     customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-600' }
                 });
 
-                // تحديث المخزون في Dexie بعد الجرد
-                var branchId = self.vanBranchId;
-                if (branchId) {
-                    var db = RW_DB.getDB('VanSales');
-                    for (var j = 0; j < items.length; j++) {
-                        db.stock.where('branch_id').equals(branchId).and(function(s) { return s.item_id === items[j].itemCode; }).modify({ qty: items[j].qty });
-                    }
-                }
-
-                self.showView('home');
+                // إعادة تحميل الحالة من Production بعد نجاح الجرد.
+                // لا نعتمد على تحديث محلي بالمقارنة بين item_id وitem_code.
+                self.syncDown()
+                    .catch(function() { return null; })
+                    .then(function() {
+                        self.showView('home');
+                    });
             } else {
                 RW_UI.showError(json.msg || 'فشل الحفظ');
             }
