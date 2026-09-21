@@ -13897,8 +13897,63 @@ async function _showReceivingDetails(opId) {
     var currentVoucherType = '';
     var currentVoucherConfig = {};
 
-function loadVoucherForm(type) { voucherCart = []; currentVoucherType = type; var configs = { 'Transfer': { title: 'تحويل مخزني', entityLabel: 'الفرع المحول إليه', showPrice: false, fromType: 'Branch', fromId: null, toType: 'Branch', toId: null, endpoint: 'save-voucher' }, 'DirectSale': { title: 'صرف سيارة بيع مباشر', entityLabel: 'المندوب / السيارة', showPrice: true, fromType: 'Branch', fromId: null, toType: 'Vehicle', toId: null, endpoint: 'save-voucher' }, 'DirectReturn': { title: 'استلام مرتجع سيارة', entityLabel: 'المندوب / السيارة', showPrice: true, fromType: 'Vehicle', fromId: null, toType: 'Branch', toId: null, endpoint: 'save-voucher' }, 'SupplierReturn':{ title: 'مرتجع لمورد', entityLabel: 'المورد', showPrice: true, fromType: 'Branch', fromId: null, toType: 'Supplier', toId: null, endpoint: 'save-voucher' } }; var cfg = configs[type]; if (!cfg) { showToast('نوع غير معروف', 'error'); return; } currentVoucherConfig = cfg; var c = byId('rw-page-container'); if (!c) return; safeText(byId('rw-header-title'), cfg.title); safeHTML(c, <div class="p-4"> <div class="bg-white rounded-2xl shadow-sm border p-4"> <div class="flex justify-between items-center mb-4"> <h2 class="text-xl font-bold"><i class="fa-solid fa-file-signature ml-2 text-indigo-600"></i>${cfg.title}</h2> <button onclick="RW_Warehouse.loadVouchers()" class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-xmark text-xl"></i></button> </div> <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4"> <div> <label class="block text-sm font-bold mb-1">${cfg.entityLabel}</label> <select id="voucherEntitySelect" class="border rounded-lg p-2 w-full"><option value="">-- اختر --</option></select> </div> <div> <label class="block text-sm font-bold mb-1">مرجع الإذن</label> <input id="voucherReference" class="border rounded-lg p-2 w-full" placeholder="مرجع الإذن..."> </div> <div> <label class="block text-sm font-bold mb-1">ملاحظات</label> <textarea id="voucherNotesLarge" rows="2" class="border rounded-lg p-2 w-full" placeholder="ملاحظات..."></textarea> </div> </div> <label class="block text-sm font-bold mb-1">بحث عن صنف</label> <div class="relative"> <input type="text" id="voucherItemSearch" oninput="RW_Warehouse._searchVoucherItem(this.value)" autocomplete="off" placeholder="ابحث بالاسم أو الباركود..." class="border rounded-lg p-2 w-full"> <div id="voucherSearchResults" class="absolute z-50 left-0 right-0 mt-1 bg-white shadow-xl rounded-xl max-h-60 overflow-y-auto hidden border"></div> </div> <div class="mb-4 overflow-y-auto" style="max-height:300px;" id="voucherItemsTable"> <div class="text-center py-8 text-gray-400">أضف أصنافاً</div> </div> <div class="p-3 bg-gray-50 rounded-lg flex justify-between items-center mb-4"> <span class="font-bold">عدد الأصناف: <span id="voucherTotalItems">0</span></span> </div> <div class="flex justify-end gap-3"> <button onclick="RW_Warehouse._clearVoucherCart()" class="px-4 py-2 bg-gray-500 text-white rounded-lg font-bold">مسح الكل</button> <button onclick="RW_Warehouse._saveAndSendVoucher()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold">حفظ وإرسال (Sent)</button> </div> </div> <div id="rw-voucher-history-panel" class="mt-6"></div> </div>); _loadVoucherEntityOptions(type); _renderVoucherCart(); _renderVoucherHistory(type); }
-
+function loadVoucherForm(type) {
+    voucherCart = [];
+    currentVoucherType = type;
+    var configs = {
+        'Transfer':      { title: 'تحويل مخزني', entityLabel: 'الفرع المحول إليه', showPrice: false, fromType: 'Branch', fromId: null, toType: 'Branch', toId: null, endpoint: 'save-voucher' },
+        'DirectSale':    { title: 'صرف سيارة بيع مباشر', entityLabel: 'المندوب / السيارة', showPrice: true, fromType: 'Branch', fromId: null, toType: 'Vehicle', toId: null, endpoint: 'save-voucher' },
+        'DirectReturn':  { title: 'استلام مرتجع سيارة', entityLabel: 'المندوب / السيارة', showPrice: true, fromType: 'Vehicle', fromId: null, toType: 'Branch', toId: null, endpoint: 'save-voucher' },
+        'SupplierReturn':{ title: 'مرتجع لمورد', entityLabel: 'المورد', showPrice: true, fromType: 'Branch', fromId: null, toType: 'Supplier', toId: null, endpoint: 'save-voucher' }
+    };
+    var cfg = configs[type];
+    if (!cfg) { showToast('نوع غير معروف', 'error'); return; }
+    currentVoucherConfig = cfg;
+    var c = byId('rw-page-container');
+    if (!c) return;
+    safeText(byId('rw-header-title'), cfg.title);
+    safeHTML(c, <div class="p-4">
+        <div class="bg-white rounded-2xl shadow-sm border p-4">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold"><i class="fa-solid fa-file-signature ml-2 text-indigo-600"></i>\${cfg.title}</h2>
+                <button onclick="RW_Warehouse.loadVouchers()" class="text-gray-500 hover:text-gray-700"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-bold mb-1">\${cfg.entityLabel}</label>
+                    <select id="voucherEntitySelect" class="border rounded-lg p-2 w-full"><option value="">-- اختر --</option></select>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1">مرجع الإذن</label>
+                    <input id="voucherReference" class="border rounded-lg p-2 w-full" placeholder="مرجع الإذن...">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1">ملاحظات</label>
+                    <textarea id="voucherNotesLarge" rows="2" class="border rounded-lg p-2 w-full" placeholder="ملاحظات..."></textarea>
+                </div>
+            </div>
+            <label class="block text-sm font-bold mb-1">بحث عن صنف</label>
+            <div class="relative">
+                <input type="text" id="voucherItemSearch" oninput="RW_Warehouse._searchVoucherItem(this.value)" autocomplete="off" placeholder="ابحث بالاسم أو الباركود..." class="border rounded-lg p-2 w-full">
+                <div id="voucherSearchResults" class="absolute z-50 left-0 right-0 mt-1 bg-white shadow-xl rounded-xl max-h-60 overflow-y-auto hidden border"></div>
+            </div>
+            <div class="mb-4 overflow-y-auto" style="max-height:300px;" id="voucherItemsTable">
+                <div class="text-center py-8 text-gray-400">أضف أصنافاً</div>
+            </div>
+            <div class="p-3 bg-gray-50 rounded-lg flex justify-between items-center mb-4">
+                <span class="font-bold">عدد الأصناف: <span id="voucherTotalItems">0</span></span>
+            </div>
+            <div class="flex justify-end gap-3">
+                <button onclick="RW_Warehouse._clearVoucherCart()" class="px-4 py-2 bg-gray-500 text-white rounded-lg font-bold">مسح الكل</button>
+                <button onclick="RW_Warehouse._saveAndSendVoucher()" class="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold">حفظ وإرسال (Sent)</button>
+            </div>
+        </div>
+        <div id="rw-voucher-history-panel" class="mt-6"></div>
+    </div>\`);
+    _loadVoucherEntityOptions(type);
+    _renderVoucherCart();
+    _renderVoucherHistory(type);
+}
 async function _renderVoucherHistory(type) {
     var root = byId('rw-voucher-history-panel');
     if (!root) return;
