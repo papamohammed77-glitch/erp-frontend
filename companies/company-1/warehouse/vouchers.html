@@ -451,6 +451,30 @@ callAction:function(name,code,successText){
         }
     );
 },
+
+send:function(code){
+    this.callAction(
+        'send-stock-voucher',
+        code,
+        'تم إرسال الإذن'
+    );
+},
+
+cancel:function(code){
+    this.callAction(
+        'cancel-stock-voucher',
+        code,
+        'تم إلغاء الإذن'
+    );
+},
+
+complete:function(code){
+    this.callAction(
+        'complete-stock-voucher',
+        code,
+        'تم إكمال الإذن'
+    );
+},
 receive:function(code){var s=this;if(this.busy['receive:'+code])return;RW_UI.showLoader();supabase.from('stock_vouchers').select('*,stock_voucher_details(*)').eq('company_id',s.company).eq('voucher_code',code).maybeSingle().then(function(r){RW_UI.hideLoader();if(r.error||!r.data)throw new Error('الإذن غير موجود');var v=r.data;if(v.type!=='Transfer'&&v.type!=='DirectReturn')throw new Error('هذا النوع ينتقل إلى الإكمال مباشرة بعد الإرسال');var d=v.stock_voucher_details||[],h='<div class="text-right space-y-2">';d.forEach(function(x,i){var rem=Math.max(0,Number(x.qty||0)-Number(x.received_qty||0));if(rem>0)h+='<div class="p-3 border rounded-2xl bg-slate-50 flex gap-3 items-center"><div class="flex-1"><b>'+s.esc(x.item_name||x.item_code)+'</b><div class="text-xs text-slate-400">المتبقي: '+f(rem)+'</div></div><input id="rq'+i+'" data-item-id="'+x.item_id+'" data-item-code="'+s.esc(x.item_code)+'" max="'+rem+'" min="0" value="'+rem+'" type="number" step="any" class="w-24 p-2 border rounded-xl text-center"></div>';});h+='</div>';return Swal.fire({title:'استلام '+s.esc(v.type),html:h,showCancelButton:true,confirmButtonText:'تنفيذ الاستلام',cancelButtonText:'إلغاء',preConfirm:function(){var out=[];d.forEach(function(x,i){var el=RW_UI.byId('rq'+i);if(!el)return;var q=Number(el.value||0),m=Number(el.max||0);if(q<0||q>m)throw new Error('كمية غير صالحة');if(q)out.push({itemId:x.item_id,itemCode:x.item_code,receivedQty:q})});if(!out.length){Swal.showValidationMessage('أدخل كمية استلام');return false}return out}})}).then(function(a){if(!a||!a.isConfirmed)return;var vfp=JSON.stringify(a.value.map(function(x){return[x.itemId,Number(x.receivedQty)]}).sort(function(x,y){return String(x[0]).localeCompare(String(y[0]))})),store='RW_VOUCHER_RECEIVE:'+s.company+':'+v.id,op=null;try{var old=localStorage.getItem(store);if(old){var rec=JSON.parse(old);if(rec&&rec.fingerprint===vfp&&rec.operation_id)op=rec.operation_id}}catch(e){}if(!op)op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'UI-RECEIVE:'+s.company+':'+v.id+':'+Date.now()+':'+Math.random().toString(36).slice(2);try{localStorage.setItem(store,JSON.stringify({operation_id:op,fingerprint:vfp,created_at:new Date().toISOString()}))}catch(e){}s.busy['receive:'+code]=true;RW_UI.showLoader('جاري تسجيل الاستلام...');RW_API.call('receive-stock-voucher',{voucher_code:code,receivedItems:a.value,operation_id:op},function(j){RW_UI.hideLoader();delete s.busy['receive:'+code];if(j&&j.success){try{localStorage.removeItem(store)}catch(e){}RW_UI.toast(j.duplicate?'تم التعرف على العملية المكررة':'تم الاستلام بنجاح','success');s.loadList('pending');s.prefetchStock(true)}else RW_UI.showError((j&&j.msg)||'فشل الاستلام — تم الاحتفاظ بهوية العملية لإعادة المحاولة بأمان')})}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message||'فشل فتح الاستلام')})},
 prepare:function(){var s=this;return Promise.all([supabase.from('items').select('id,item_code,barcode,name,search_label,category,unit,description,image_url,sales_price,cost_price,is_active').eq('is_active',true).order('item_code').limit(5000),s.prefetchStock(true)]).then(function(r){if(r[0].error)throw r[0].error;s.items=r[0].data||[]})},
 newWorkspace:function(){
