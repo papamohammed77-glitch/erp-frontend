@@ -213,7 +213,14 @@ filterList:function(){
             fromText,
             toText,
             v.created_by,
-            v.notes
+            v.notes,
+            (function(){
+                if(!v.custodian_user_id) return '';
+                var rep=(s.refs.reps||[]).find(function(r){
+                    return r.id===v.custodian_user_id;
+                });
+                return rep ? (rep.name||rep.email||'') : '';
+            })()
         ].map(function(x){
             return s.norm(x);
         });
@@ -262,6 +269,8 @@ filterList:function(){
         box,
         this.cards(rows,this.tabName)
     );
+
+},
 },cards:function(rows,scope){
 
     var s=this;
@@ -346,6 +355,21 @@ filterList:function(){
             v.to_type
         );
 
+        var custodianText='—';
+
+        if(
+            (v.type==='DirectSale'||v.type==='DirectReturn') &&
+            v.custodian_user_id
+        ){
+            var rep=(s.refs.reps||[]).find(function(r){
+                return r.id===v.custodian_user_id;
+            });
+
+            if(rep){
+                custodianText=rep.name||rep.email||'—';
+            }
+        }
+
         return (
             '<div class="card mb-3 cursor-pointer" onclick="App.details(\''+
                 s.esc(v.voucher_code)+
@@ -398,6 +422,19 @@ filterList:function(){
                                 s.esc(toText)+
                             '</div>'+
 
+                            (
+                                (v.type==='DirectSale'||v.type==='DirectReturn')
+                                ?
+                                '<div class="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-100">'+
+                                    '<span class="block text-[9px] text-amber-600 font-bold">المستلم والمسؤول عن العهدة</span>'+
+                                    '<b class="block text-xs mt-1 text-amber-900">'+
+                                        s.esc(custodianText)+
+                                    '</b>'+
+                                '</div>'
+                                :
+                                ''
+                            )+
+
                         '</div>'+
 
                         '<div class="flex gap-2 flex-wrap justify-end items-start">'+
@@ -414,6 +451,7 @@ filterList:function(){
     }).join('');
 },
 loc:function(id,type){var a=type==='Branch'?this.refs.branches:type==='Vehicle'?this.refs.vehicles:this.refs.suppliers,x=(a||[]).find(function(z){return z.id===id});if(!x)return'غير معروف';return type==='Vehicle'?(x.vehicle_code||x.license_plate||x.model||'غير معروف'):type==='Supplier'?(x.name||x.supplier_code||'غير معروف'):(x.name||x.branch_code||'غير معروف')},
+
 details:function(code){
     var s=this;
 
@@ -442,6 +480,29 @@ details:function(code){
 
             var data=r.data||{};
             var v=data.voucher;
+
+            var custodianText='—';
+            var vehicleText='—';
+
+            if(
+                v &&
+                (v.type==='DirectSale'||v.type==='DirectReturn')
+            ){
+                if(v.custodian_user_id){
+                    var rep=(s.refs.reps||[]).find(function(r){
+                        return r.id===v.custodian_user_id;
+                    });
+
+                    if(rep){
+                        custodianText=rep.name||rep.email||'—';
+                    }
+                }
+
+                vehicleText=
+                    v.type==='DirectSale'
+                        ?s.loc(v.to_id,'Vehicle')
+                        :s.loc(v.from_id,'Vehicle');
+            }
 
             if(!v){
                 throw new Error('الإذن غير موجود');
@@ -528,6 +589,12 @@ details:function(code){
                 '<div class="p-3 bg-slate-50 rounded-2xl">الحالة<br><b>'+s.esc(v.status)+'</b></div>'+
                 '<div class="p-3 bg-slate-50 rounded-2xl">المصدر<br><b>'+s.esc(s.loc(v.from_id,v.from_type))+'</b></div>'+
                 '<div class="p-3 bg-slate-50 rounded-2xl">الوجهة<br><b>'+s.esc(s.loc(v.to_id,v.to_type))+'</b></div>'+
+                ((v.type==='DirectSale'||v.type==='DirectReturn')
+                    ?
+                    '<div class="p-3 bg-amber-50 border border-amber-100 rounded-2xl">المستلم والمسؤول عن العهدة<br><b>'+s.esc(custodianText)+'</b></div>'+
+                    '<div class="p-3 bg-slate-50 rounded-2xl">المركبة / وعاء النقل<br><b>'+s.esc(vehicleText)+'</b></div>'
+                    :
+                    '')+
                 '<div class="p-3 bg-slate-50 rounded-2xl">أنشأ بواسطة<br><b>'+s.esc(v.created_by||'—')+'</b></div>'+
                 '<div class="p-3 bg-slate-50 rounded-2xl">أكمل بواسطة<br><b>'+s.esc(v.completed_by||'—')+'</b></div>'+
                 '</div>'+
@@ -637,7 +704,6 @@ callAction:function(name,code,successText){
         name,
         {voucher_code:code},
         function(j){
-
             RW_UI.hideLoader();
 
             delete s.busy[busyKey];
