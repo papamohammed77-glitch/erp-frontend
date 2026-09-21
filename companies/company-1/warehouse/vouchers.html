@@ -24,7 +24,73 @@ showRecovery:function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.
 doLogin:function(){var s=this,e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.toast('أدخل بيانات الدخول','warning');return}RW_UI.showLoader();RW_Auth.doLogin(e,p,function(u,er){RW_UI.hideLoader();if(er){RW_UI.toast(er,'error');return}s.init()})},
 init:function(){var s=this;RW_Auth.init(function(u,er){if(!u){if(er&&er!=='NO_SESSION')RW_UI.toast(er,'error');return}s.user=u;supabase.auth.getUser().then(function(r){if(r.error)throw r.error;return supabase.from('users').select('company_id,role,status,default_branch_id,allowed_branch_ids,permissions').eq('auth_id',r.data.user.id).maybeSingle()}).then(function(r){if(r.error||!r.data||!r.data.company_id)throw new Error('سياق الشركة غير محدد');if(r.data.status&&r.data.status!=='Active')throw new Error('المستخدم غير نشط');s.company=r.data.company_id;s.user.default_branch_id=r.data.default_branch_id||null;s.user.allowed_branch_ids=r.data.allowed_branch_ids;s.user.permissions=r.data.permissions||s.user.permissions||[];return s.loadRefs()}).then(function(){if(!s.user.isOwner&&s.user.activeWarehouseRole!=='أذونات')throw new Error('غير مصرح – هذه الوحدة مخصصة لصلاحية الأذونات');RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('recoveryScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');s.updateConnection();s.subscribeRealtime();s.tab('pending');s.prefetchStock()}).catch(function(e){RW_UI.showError(e.message||'تعذر التهيئة')})})},
 logout:function(){this.unsubscribeRealtime();RW_Auth.doLogout(function(){location.reload()})},
-loadRefs:function(){var s=this;return Promise.all([supabase.from('branches').select('id,branch_code,name').eq('company_id',s.company).eq('is_active',true).order('name'),supabase.from('vehicles').select('id,vehicle_code,license_plate,model,driver_id,status').eq('company_id',s.company).eq('status','Active').order('vehicle_code'),supabase.from('suppliers').select('id,supplier_code,name,phone,is_active').eq('company_id',s.company).eq('is_active',true).order('name'),supabase.from('users').select('id,name,email,phone,role,status,default_branch_id,allowed_branch_ids').eq('company_id',s.company).eq('status','Active').eq('role','مندوب بيع مباشر').order('name'),supabase.from('purchase_orders').select('supplier_id,branch_id').eq('company_id',s.company).not('supplier_id','is',null)]).then(function(r){for(var i=0;i<r.length;i++)if(r[i].error)throw r[i].error;s.refs.branches=r[0].data||[];s.refs.vehicles=r[1].data||[];s.refs.suppliers=r[2].data||[];s.refs.reps=r[3].data||[];s.refs.supplierBranchMap={};(r[4].data||[]).forEach(function(x){if(x.supplier_id&&x.branch_id)(s.refs.supplierBranchMap[x.branch_id]||(s.refs.supplierBranchMap[x.branch_id]={}))[x.supplier_id]=1});return s.refs})},
+loadRefs:function(){
+    var s=this;
+
+    return Promise.all([
+        supabase
+            .from('branches')
+            .select('id,branch_code,name,company_id,is_active')
+            .eq('company_id',s.company)
+            .eq('is_active',true)
+            .order('name'),
+
+        supabase
+            .from('vehicles')
+            .select('id,vehicle_code,license_plate,model,driver_id,status,mobile_branch_id,mobile_stock_enabled')
+            .eq('company_id',s.company)
+            .eq('status','Active')
+            .order('vehicle_code'),
+
+        supabase
+            .from('suppliers')
+            .select('id,supplier_code,name,phone,is_active')
+            .eq('company_id',s.company)
+            .eq('is_active',true)
+            .order('name'),
+
+        supabase
+            .from('users')
+            .select('id,name,email,phone,role,status,default_branch_id,allowed_branch_ids')
+            .eq('company_id',s.company)
+            .eq('status','Active')
+            .eq('role','مندوب بيع مباشر')
+            .order('name'),
+
+        supabase
+            .from('purchase_orders')
+            .select('supplier_id,branch_id')
+            .eq('company_id',s.company)
+            .not('supplier_id','is',null)
+    ])
+    .then(function(r){
+
+        for(var i=0;i<r.length;i++){
+            if(r[i].error){
+                throw r[i].error;
+            }
+        }
+
+        s.refs.branches=r[0].data||[];
+        s.refs.vehicles=r[1].data||[];
+        s.refs.suppliers=r[2].data||[];
+        s.refs.reps=r[3].data||[];
+
+        s.refs.supplierBranchMap={};
+
+        (r[4].data||[]).forEach(function(x){
+
+            if(x.supplier_id&&x.branch_id){
+
+                (s.refs.supplierBranchMap[x.branch_id]||
+                    (s.refs.supplierBranchMap[x.branch_id]={})
+                )[x.supplier_id]=1;
+            }
+        });
+
+        return s.refs;
+    });
+},
 updateConnection:function(live){var d=RW_UI.byId('connDot'),l=RW_UI.byId('connLabel');if(navigator.onLine){d.className='w-2.5 h-2.5 rounded-full '+(live===false?'bg-amber-400':'bg-emerald-400');l.textContent=live===false?'متصل · مزامنة عادية':'متزامن حي'}else{d.className='w-2.5 h-2.5 rounded-full bg-rose-400';l.textContent='غير متصل'}},
 subscribeRealtime:function(){var s=this;if(!supabase||!supabase.channel)return;this.unsubscribeRealtime();var branchIds=(this.refs.branches||[]).map(function(b){return b.id});var ch=supabase.channel('rw-vouchers-live-'+s.company).on('postgres_changes',{event:'*',schema:'public',table:'stock_vouchers',filter:'company_id=eq.'+s.company},function(){s.debouncedRefresh()}).on('postgres_changes',{event:'*',schema:'public',table:'stock_voucher_details'},function(){s.debouncedRefresh()}).on('postgres_changes',{event:'*',schema:'public',table:'stock_branches',filter:branchIds.length?'branch_id=in.('+branchIds.join(',')+')':undefined},function(){s.debouncedRefreshStock()}).subscribe(function(status){s.updateConnection(status==='SUBSCRIBED');if(status==='SUBSCRIBED')s.markSync()});this.realtime=ch},
 unsubscribeRealtime:function(){if(this.realtime&&supabase){try{supabase.removeChannel(this.realtime)}catch(e){}this.realtime=null}},markSync:function(){this.lastSyncAt=new Date();var x=document.getElementById('syncAt');if(x)x.textContent='آخر مزامنة: '+this.lastSyncAt.toLocaleTimeString('ar-EG')},debouncedRefresh:function(){var s=this;clearTimeout(this._refreshTimer);this._refreshTimer=setTimeout(function(){s.loadList(s.tabName)},250)},debouncedRefreshStock:function(){var s=this;clearTimeout(this._stockTimer);this._stockTimer=setTimeout(function(){s.prefetchStock(true)},180)},
@@ -196,7 +262,158 @@ filterList:function(){
         box,
         this.cards(rows,this.tabName)
     );
-},cards:function(rows,scope){var s=this;if(!rows.length)return'<div class="card text-center py-14"><div class="text-5xl mb-3">☕</div><b class="text-slate-400">لا توجد أذونات</b></div>';return rows.map(function(v){var c=v.status==='Draft'?'bg-amber-100 text-amber-700':v.status==='Sent'?'bg-blue-100 text-blue-700':v.status==='Received'?'bg-emerald-100 text-emerald-700':v.status==='Cancelled'?'bg-rose-100 text-rose-700':'bg-slate-100 text-slate-700',l=v.status==='Draft'?'مسودة':v.status==='Sent'?'مُرسل':v.status==='Received'?'مُستلم':v.status==='Completed'?'مكتمل':'ملغى',a='';if(scope==='pending'){var act=s.actionFor(v);if(act==='draft')a+='<button onclick="event.stopPropagation();App.send(\''+s.esc(v.voucher_code)+'\')" class="bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black">إرسال</button><button onclick="event.stopPropagation();App.cancel(\''+s.esc(v.voucher_code)+'\')" class="bg-rose-600 text-white px-3 py-2 rounded-xl text-xs font-black">إلغاء</button>';if(act==='receive')a+='<button onclick="event.stopPropagation();App.receive(\''+s.esc(v.voucher_code)+'\')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-black">استلام</button>';if(act==='complete')a+='<button onclick="event.stopPropagation();App.complete(\''+s.esc(v.voucher_code)+'\')" class="bg-violet-600 text-white px-3 py-2 rounded-xl text-xs font-black">إكمال</button>'}return'<div class="card mb-3"><div class="flex justify-between gap-3"><div class="cursor-pointer flex-1" onclick="App.details(\''+s.esc(v.voucher_code)+'\')"><div><b>'+s.esc(v.voucher_code)+'</b> <span class="px-2 py-1 rounded-full text-[10px] font-bold '+c+'">'+l+'</span></div><p class="text-xs text-slate-400 mt-1">'+s.esc(v.type)+' · '+s.esc(v.reference||'بدون مرجع')+' · '+s.esc(v.voucher_date||'')+'</p></div><div class="flex gap-2 flex-wrap justify-end">'+a+'</div></div></div>'}).join('')},
+},cards:function(rows,scope){
+
+    var s=this;
+
+    if(!rows.length){
+
+        return (
+            '<div class="card text-center py-14">'+
+                '<div class="text-5xl mb-3">☕</div>'+
+                '<b class="text-slate-400">لا توجد أذونات</b>'+
+            '</div>'
+        );
+    }
+
+    return rows.map(function(v){
+
+        var c =
+            v.status==='Draft'
+                ?'bg-amber-100 text-amber-700'
+                :v.status==='Sent'
+                    ?'bg-blue-100 text-blue-700'
+                    :v.status==='Received'
+                        ?'bg-emerald-100 text-emerald-700'
+                        :v.status==='Cancelled'
+                            ?'bg-rose-100 text-rose-700'
+                            :'bg-slate-100 text-slate-700';
+
+        var l =
+            v.status==='Draft'
+                ?'مسودة'
+                :v.status==='Sent'
+                    ?'مُرسل'
+                    :v.status==='Received'
+                        ?'مُستلم'
+                        :v.status==='Completed'
+                            ?'مكتمل'
+                            :'ملغى';
+
+        var a='';
+
+        if(scope==='pending'){
+
+            var act=s.actionFor(v);
+
+            if(act==='draft'){
+
+                a+=
+                    '<button onclick="event.stopPropagation();App.send(\''+
+                    s.esc(v.voucher_code)+
+                    '\')" class="bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black">إرسال</button>';
+
+                a+=
+                    '<button onclick="event.stopPropagation();App.cancel(\''+
+                    s.esc(v.voucher_code)+
+                    '\')" class="bg-rose-600 text-white px-3 py-2 rounded-xl text-xs font-black">إلغاء</button>';
+            }
+
+            if(act==='receive'){
+
+                a+=
+                    '<button onclick="event.stopPropagation();App.receive(\''+
+                    s.esc(v.voucher_code)+
+                    '\')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-black">استلام</button>';
+            }
+
+            if(act==='complete'){
+
+                a+=
+                    '<button onclick="event.stopPropagation();App.complete(\''+
+                    s.esc(v.voucher_code)+
+                    '\')" class="bg-violet-600 text-white px-3 py-2 rounded-xl text-xs font-black">إكمال</button>';
+            }
+        }
+
+        var fromText=s.loc(
+            v.from_id,
+            v.from_type
+        );
+
+        var toText=s.loc(
+            v.to_id,
+            v.to_type
+        );
+
+        return (
+            '<div class="card mb-3 cursor-pointer" onclick="App.details(\''+
+                s.esc(v.voucher_code)+
+            '\')">'+
+
+                '<div class="flex flex-col gap-3">'+
+
+                    '<div class="flex justify-between gap-3">'+
+
+                        '<div class="flex-1 min-w-0">'+
+
+                            '<div class="flex items-center gap-2 flex-wrap">'+
+                                '<span class="text-[10px] text-slate-400 font-bold">رقم الإذن</span>'+
+                                '<b class="text-base">'+
+                                    s.esc(v.voucher_code)+
+                                '</b>'+
+                                '<span class="px-2 py-1 rounded-full text-[10px] font-bold '+c+'">'+
+                                    l+
+                                '</span>'+
+                            '</div>'+
+
+                            '<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">'+
+
+                                '<div class="p-2.5 rounded-xl bg-slate-50">'+
+                                    '<span class="block text-[9px] text-slate-400 font-bold">المرجع</span>'+
+                                    '<b class="block text-xs mt-1">'+
+                                        s.esc(v.reference||'—')+
+                                    '</b>'+
+                                '</div>'+
+
+                                '<div class="p-2.5 rounded-xl bg-slate-50">'+
+                                    '<span class="block text-[9px] text-slate-400 font-bold">التاريخ</span>'+
+                                    '<b class="block text-xs mt-1">'+
+                                        s.esc(v.voucher_date||'—')+
+                                    '</b>'+
+                                '</div>'+
+
+                                '<div class="p-2.5 rounded-xl bg-slate-50">'+
+                                    '<span class="block text-[9px] text-slate-400 font-bold">النوع</span>'+
+                                    '<b class="block text-xs mt-1">'+
+                                        s.esc(v.type||'—')+
+                                    '</b>'+
+                                '</div>'+
+
+                            '</div>'+
+
+                            '<div class="mt-2 text-[10px] text-slate-500">'+
+                                s.esc(fromText)+
+                                ' → '+
+                                s.esc(toText)+
+                            '</div>'+
+
+                        '</div>'+
+
+                        '<div class="flex gap-2 flex-wrap justify-end items-start">'+
+                            a+
+                        '</div>'+
+
+                    '</div>'+
+
+                '</div>'+
+
+            '</div>'
+        );
+
+    }).join('');
+},
+rows.map(function(v){var c=v.status==='Draft'?'bg-amber-100 text-amber-700':v.status==='Sent'?'bg-blue-100 text-blue-700':v.status==='Received'?'bg-emerald-100 text-emerald-700':v.status==='Cancelled'?'bg-rose-100 text-rose-700':'bg-slate-100 text-slate-700',l=v.status==='Draft'?'مسودة':v.status==='Sent'?'مُرسل':v.status==='Received'?'مُستلم':v.status==='Completed'?'مكتمل':'ملغى',a='';if(scope==='pending'){var act=s.actionFor(v);if(act==='draft')a+='<button onclick="event.stopPropagation();App.send(\''+s.esc(v.voucher_code)+'\')" class="bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black">إرسال</button><button onclick="event.stopPropagation();App.cancel(\''+s.esc(v.voucher_code)+'\')" class="bg-rose-600 text-white px-3 py-2 rounded-xl text-xs font-black">إلغاء</button>';if(act==='receive')a+='<button onclick="event.stopPropagation();App.receive(\''+s.esc(v.voucher_code)+'\')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-black">استلام</button>';if(act==='complete')a+='<button onclick="event.stopPropagation();App.complete(\''+s.esc(v.voucher_code)+'\')" class="bg-violet-600 text-white px-3 py-2 rounded-xl text-xs font-black">إكمال</button>'}return'<div class="card mb-3"><div class="flex justify-between gap-3"><div class="cursor-pointer flex-1" onclick="App.details(\''+s.esc(v.voucher_code)+'\')"><div><b>'+s.esc(v.voucher_code)+'</b> <span class="px-2 py-1 rounded-full text-[10px] font-bold '+c+'">'+l+'</span></div><p class="text-xs text-slate-400 mt-1">'+s.esc(v.type)+' · '+s.esc(v.reference||'بدون مرجع')+' · '+s.esc(v.voucher_date||'')+'</p></div><div class="flex gap-2 flex-wrap justify-end">'+a+'</div></div></div>'}).join('')},
 loc:function(id,type){var a=type==='Branch'?this.refs.branches:type==='Vehicle'?this.refs.vehicles:this.refs.suppliers,x=(a||[]).find(function(z){return z.id===id});if(!x)return'غير معروف';return type==='Vehicle'?(x.vehicle_code||x.license_plate||x.model||'غير معروف'):type==='Supplier'?(x.name||x.supplier_code||'غير معروف'):(x.name||x.branch_code||'غير معروف')},
 details:function(code){
     var s=this;
@@ -501,8 +718,172 @@ newWorkspace:function(){
         });
 },
 allowedBranch:function(u,b){if(!u||!b)return false;if(String(u.default_branch_id||'')===String(b.id))return true;var a=u.allowed_branch_ids;if(a===null||typeof a==='undefined')return true;if(Array.isArray(a))a=a.map(String);else if(typeof a==='string'&&a.trim()){var raw=a.trim(),parsed=null;try{parsed=JSON.parse(raw)}catch(e){parsed=null}if(Array.isArray(parsed))a=parsed.map(String);else if(typeof parsed==='string')a=[parsed.trim()];else a=raw.split(/[,|]/).map(function(x){return x.trim().replace(/^"|"$/g,'')}).filter(Boolean)}else return false;a=a.map(function(x){return String(x).trim().replace(/^"|"$/g,'')});if(a.indexOf('*')>=0)return true;return a.indexOf(String(b.id))>=0||a.indexOf(String(b.branch_code||''))>=0},
-vehicleBranch:function(v){if(!v)return null;var code='VAN-'+String(v.vehicle_code||'').trim().toUpperCase();return(this.refs.branches||[]).find(function(b){return String(b.branch_code||'').trim().toUpperCase()===code})||null},
-pickArr:function(key){var s=this,bid=(RW_UI.byId('wsFrom')||{}).value||'',b=(s.refs.branches||[]).find(function(x){return x.id===bid}),userBranches=(s.refs.branches||[]).filter(function(x){return s.allowedBranch(s.user,x)});if(key==='wsFrom'){if(s.type==='DirectReturn')return(s.refs.vehicles||[]).filter(function(v){var vb=s.vehicleBranch(v),rep=(s.refs.reps||[]).find(function(r){return r.id===v.driver_id});return v.status==='Active'&&vb&&s.allowedBranch(s.user,vb)&&(!rep||s.allowedBranch(rep,vb))});return userBranches}if(key==='wsRep')return(s.refs.reps||[]).filter(function(r){return !!b&&s.allowedBranch(s.user,b)&&s.allowedBranch(r,b)});if(key==='wsTo'&&s.type==='Transfer')return userBranches;if(key==='wsTo'&&s.type==='DirectSale'){var rid=(RW_UI.byId('wsRep')||{}).value||'';return(s.refs.vehicles||[]).filter(function(v){var vb=s.vehicleBranch(v),rep=(s.refs.reps||[]).find(function(r){return r.id===v.driver_id});return v.status==='Active'&&rid&&v.driver_id===rid&&!!vb&&s.allowedBranch(s.user,b)&&(!rep||s.allowedBranch(rep,b))&&s.allowedBranch(s.user,vb)})}if(key==='wsTo'&&s.type==='DirectReturn'){var vid=(RW_UI.byId('wsFrom')||{}).value||'',vv=(s.refs.vehicles||[]).find(function(x){return x.id===vid}),rp=vv&&(s.refs.reps||[]).find(function(x){return x.id===vv.driver_id});return userBranches.filter(function(x){return !rp||s.allowedBranch(rp,x)})}if(key==='wsTo'&&s.type==='SupplierReturn'){var m=(s.refs.supplierBranchMap||{})[bid];if(m&&Object.keys(m).length)return(s.refs.suppliers||[]).filter(function(x){return!!m[x.id]});return s.refs.suppliers||[]}return userBranches},
+vehicleBranch:function(v){
+    if(!v){
+        return null;
+    }
+
+    if(v.mobile_stock_enabled===false){
+        return null;
+    }
+
+    if(v.mobile_branch_id){
+
+        var direct=(this.refs.branches||[]).find(function(b){
+
+            return (
+                String(b.id)===String(v.mobile_branch_id) &&
+                String(b.company_id||'')===String(this.company||'') &&
+                b.is_active!==false
+            );
+
+        },this);
+
+        if(direct){
+            return direct;
+        }
+    }
+
+    var code=
+        'VAN-' +
+        String(v.vehicle_code||'')
+            .trim()
+            .toUpperCase();
+
+    return (this.refs.branches||[]).find(function(b){
+
+        return (
+            b.is_active!==false &&
+            String(b.company_id||'')===String(this.company||'') &&
+            String(b.branch_code||'')
+                .trim()
+                .toUpperCase()===code
+        );
+
+    },this)||null;
+},
+pickArr:function(key){
+
+    var s=this;
+
+    var bid=(RW_UI.byId('wsFrom')||{}).value||'';
+
+    var b=(s.refs.branches||[]).find(function(x){
+        return x.id===bid;
+    });
+
+    var userBranches=
+        (s.refs.branches||[]).filter(function(x){
+            return s.allowedBranch(s.user,x);
+        });
+
+    if(key==='wsFrom'){
+
+        if(s.type==='DirectReturn'){
+
+            return (s.refs.vehicles||[]).filter(function(v){
+
+                var vb=s.vehicleBranch(v);
+
+                var rep=
+                    (s.refs.reps||[]).find(function(r){
+                        return r.id===v.driver_id;
+                    });
+
+                return (
+                    v.status==='Active' &&
+                    !!vb &&
+                    v.mobile_stock_enabled!==false &&
+                    !!rep
+                );
+            });
+        }
+
+        return userBranches;
+    }
+
+    if(key==='wsRep'){
+
+        return (s.refs.reps||[]).filter(function(r){
+
+            return (
+                !!b &&
+                s.allowedBranch(s.user,b) &&
+                s.allowedBranch(r,b)
+            );
+        });
+    }
+
+    if(key==='wsTo'&&s.type==='Transfer'){
+        return userBranches;
+    }
+
+    if(key==='wsTo'&&s.type==='DirectSale'){
+
+        var rid=(RW_UI.byId('wsRep')||{}).value||'';
+
+        return (s.refs.vehicles||[]).filter(function(v){
+
+            var vb=s.vehicleBranch(v);
+
+            var rep=
+                (s.refs.reps||[]).find(function(r){
+                    return r.id===v.driver_id;
+                });
+
+            return (
+                v.status==='Active' &&
+                rid &&
+                v.driver_id===rid &&
+                !!vb &&
+                v.mobile_stock_enabled!==false &&
+                !!b &&
+                s.allowedBranch(s.user,b) &&
+                (!rep||s.allowedBranch(rep,b))
+            );
+        });
+    }
+
+    if(key==='wsTo'&&s.type==='DirectReturn'){
+
+        var vid=(RW_UI.byId('wsFrom')||{}).value||'';
+
+        var vv=
+            (s.refs.vehicles||[]).find(function(x){
+                return x.id===vid;
+            });
+
+        var rp=
+            vv &&
+            (s.refs.reps||[]).find(function(x){
+                return x.id===vv.driver_id;
+            });
+
+        return userBranches.filter(function(x){
+
+            return (
+                !!x &&
+                (!rp||s.allowedBranch(rp,x))
+            );
+        });
+    }
+
+    if(key==='wsTo'&&s.type==='SupplierReturn'){
+
+        var m=(s.refs.supplierBranchMap||{})[bid];
+
+        if(m&&Object.keys(m).length){
+
+            return (s.refs.suppliers||[]).filter(function(x){
+                return !!m[x.id];
+            });
+        }
+
+        return s.refs.suppliers||[];
+    }
+
+    return userBranches;
+},
 pickShow:function(key){this.pickSearch(key,(RW_UI.byId(key+'Search')||{}).value||'')},pickSearch:function(key,q){var s=this,arr=this.pickArr(key)||[],z=this.norm(q),box=RW_UI.byId(key+'Menu');if(!box)return;var type=key==='wsRep'?'rep':(s.type==='DirectSale'&&key==='wsTo')?'vehicle':(s.type==='DirectReturn'&&key==='wsFrom')?'vehicle':key==='wsTo'&&s.type==='SupplierReturn'?'supplier':'branch';var rows=arr.map(function(x){var a=type==='rep'?(x.name||x.email||''):type==='vehicle'?(x.vehicle_code||x.license_plate||x.model||''):(x.name||x.supplier_code||x.branch_code||'');var b=type==='rep'?(x.email||x.phone||''):type==='vehicle'?(x.license_plate||x.vehicle_code||''):(x.supplier_code||x.phone||x.branch_code||'');var sc=!z?1:(s.norm(a)===z||s.norm(b)===z?150:s.norm(a).indexOf(z)===0||s.norm(b).indexOf(z)===0?115:s.norm(a).indexOf(z)>=0||s.norm(b).indexOf(z)>=0?70:0);return{x:x,score:sc}}).filter(function(o){return o.score>0}).sort(function(a,b){return b.score-a.score}).slice(0,15);box.innerHTML=rows.length?rows.map(function(o){var x=o.x,label=type==='rep'?(x.name||x.email):type==='vehicle'?(x.vehicle_code||x.license_plate||x.model):(x.name||x.supplier_code||x.branch_code);return'<div class="smart-row" onclick="App.pickSelect(\''+s.esc(key)+'\',\''+s.esc(x.id)+'\')"><div><b class="text-xs text-white">'+s.esc(label)+'</b><div class="smart-code">'+s.esc(type==='rep'?(x.email||''):type==='vehicle'?(x.license_plate||x.vehicle_code||''):(x.supplier_code||x.branch_code||''))+'</div></div><span class="text-[9px] text-emerald-400">اختيار</span></div>'}).join(''):'<div class="smart-empty">لا توجد نتائج مرتبطة بالسياق المحدد</div>';box.classList.remove('hidden')},
 pickSelect:function(key,id){var s=this,arr=this.pickArr(key)||[],x=arr.find(function(z){return z.id===id});if(!x)return;if(key==='wsFrom'&&s.type==='DirectReturn'){var vb=s.vehicleBranch(x);if(!vb){RW_UI.toast('المركبة لا تملك مخزنًا متنقلًا صالحًا','error');return}RW_UI.byId('wsFrom').value=x.id;RW_UI.byId('wsFromSearch').value=x.vehicle_code||x.license_plate;RW_UI.byId('wsFromMenu').classList.add('hidden');var r=s.refs.reps.find(function(rp){return rp.id===x.driver_id});RW_UI.byId('wsRep').value=r?r.id:'';RW_UI.byId('wsRepSearch').value=r?(r.name||r.email):'';RW_UI.byId('wsRepSearch').setAttribute('readonly','readonly');s.summary();s.renderProducts();return}RW_UI.byId(key).value=x.id;RW_UI.byId(key+'Search').value=x.name||x.vehicle_code||x.supplier_code||x.branch_code;RW_UI.byId(key+'Menu').classList.add('hidden');if(key==='wsFrom'&&s.type==='DirectSale'){RW_UI.byId('wsRep').value='';RW_UI.byId('wsRepSearch').value='';RW_UI.byId('wsTo').value='';RW_UI.byId('wsToSearch').value=''}if(key==='wsRep'&&s.type==='DirectSale'){RW_UI.byId('wsTo').value='';RW_UI.byId('wsToSearch').value=''}s.updateSource()},
 routeHtml:function(){var s=this,t=this.type;function p(k,label,readonly){return'<div class="smart-field"><input type="hidden" id="'+k+'" value=""><input id="'+k+'Search" class="smart-input" autocomplete="off" '+(readonly?'readonly ':'')+'placeholder="'+s.esc(label)+'" onfocus="App.pickShow(\''+k+'\')" oninput="App.pickSearch(\''+k+'\',this.value)"><div id="'+k+'Menu" class="smart-menu hidden"></div></div>'}if(t==='Scrap'||t==='Adjustment')return'<div class="grid grid-cols-1">'+p('wsFrom','الفرع المصدر')+'</div>';if(t==='DirectSale')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsRep','مندوب البيع المباشر')+p('wsTo','المركبة — مرتبطة بالمندوب')+'</div>';if(t==='DirectReturn')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','المركبة المصدر')+p('wsRep','مندوب البيع المباشر',true)+p('wsTo','الفرع الوجهة')+'</div>';if(t==='SupplierReturn')return'<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsTo','المورد المرتبط بالفرع')+'</div>';return'<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsTo','الفرع الوجهة')+'</div>'},
