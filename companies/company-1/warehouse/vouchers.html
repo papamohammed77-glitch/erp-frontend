@@ -851,7 +851,6 @@ vehicleBranch:function(v){
     },this)||null;
 },
 pickArr:function(key){
-
     var s=this;
 
     var bid=(RW_UI.byId('wsFrom')||{}).value||'';
@@ -921,13 +920,13 @@ pickArr:function(key){
 
             return (
                 v.status==='Active' &&
-                rid &&
-                v.driver_id===rid &&
                 !!vb &&
                 v.mobile_stock_enabled!==false &&
+                !!rep &&
                 !!b &&
                 s.allowedBranch(s.user,b) &&
-                (!rep||s.allowedBranch(rep,b))
+                s.allowedBranch(rep,b) &&
+                (!rid||v.driver_id===rid)
             );
         });
     }
@@ -967,13 +966,153 @@ pickArr:function(key){
             });
         }
 
-        return s.refs.suppliers||[];
+        return [];
     }
 
     return userBranches;
 },
 pickShow:function(key){this.pickSearch(key,(RW_UI.byId(key+'Search')||{}).value||'')},pickSearch:function(key,q){var s=this,arr=this.pickArr(key)||[],z=this.norm(q),box=RW_UI.byId(key+'Menu');if(!box)return;var type=key==='wsRep'?'rep':(s.type==='DirectSale'&&key==='wsTo')?'vehicle':(s.type==='DirectReturn'&&key==='wsFrom')?'vehicle':key==='wsTo'&&s.type==='SupplierReturn'?'supplier':'branch';var rows=arr.map(function(x){var a=type==='rep'?(x.name||x.email||''):type==='vehicle'?(x.vehicle_code||x.license_plate||x.model||''):(x.name||x.supplier_code||x.branch_code||'');var b=type==='rep'?(x.email||x.phone||''):type==='vehicle'?(x.license_plate||x.vehicle_code||''):(x.supplier_code||x.phone||x.branch_code||'');var sc=!z?1:(s.norm(a)===z||s.norm(b)===z?150:s.norm(a).indexOf(z)===0||s.norm(b).indexOf(z)===0?115:s.norm(a).indexOf(z)>=0||s.norm(b).indexOf(z)>=0?70:0);return{x:x,score:sc}}).filter(function(o){return o.score>0}).sort(function(a,b){return b.score-a.score}).slice(0,15);box.innerHTML=rows.length?rows.map(function(o){var x=o.x,label=type==='rep'?(x.name||x.email):type==='vehicle'?(x.vehicle_code||x.license_plate||x.model):(x.name||x.supplier_code||x.branch_code);return'<div class="smart-row" onclick="App.pickSelect(\''+s.esc(key)+'\',\''+s.esc(x.id)+'\')"><div><b class="text-xs text-white">'+s.esc(label)+'</b><div class="smart-code">'+s.esc(type==='rep'?(x.email||''):type==='vehicle'?(x.license_plate||x.vehicle_code||''):(x.supplier_code||x.branch_code||''))+'</div></div><span class="text-[9px] text-emerald-400">اختيار</span></div>'}).join(''):'<div class="smart-empty">لا توجد نتائج مرتبطة بالسياق المحدد</div>';box.classList.remove('hidden')},
-pickSelect:function(key,id){var s=this,arr=this.pickArr(key)||[],x=arr.find(function(z){return z.id===id});if(!x)return;if(key==='wsFrom'&&s.type==='DirectReturn'){var vb=s.vehicleBranch(x);if(!vb){RW_UI.toast('المركبة لا تملك مخزنًا متنقلًا صالحًا','error');return}RW_UI.byId('wsFrom').value=x.id;RW_UI.byId('wsFromSearch').value=x.vehicle_code||x.license_plate;RW_UI.byId('wsFromMenu').classList.add('hidden');var r=s.refs.reps.find(function(rp){return rp.id===x.driver_id});RW_UI.byId('wsRep').value=r?r.id:'';RW_UI.byId('wsRepSearch').value=r?(r.name||r.email):'';RW_UI.byId('wsRepSearch').setAttribute('readonly','readonly');s.summary();s.renderProducts();return}RW_UI.byId(key).value=x.id;RW_UI.byId(key+'Search').value=x.name||x.vehicle_code||x.supplier_code||x.branch_code;RW_UI.byId(key+'Menu').classList.add('hidden');if(key==='wsFrom'&&s.type==='DirectSale'){RW_UI.byId('wsRep').value='';RW_UI.byId('wsRepSearch').value='';RW_UI.byId('wsTo').value='';RW_UI.byId('wsToSearch').value=''}if(key==='wsRep'&&s.type==='DirectSale'){RW_UI.byId('wsTo').value='';RW_UI.byId('wsToSearch').value=''}s.updateSource()},
+pickSelect:function(key,id){
+    var s=this,
+        arr=this.pickArr(key)||[],
+        x=arr.find(function(z){
+            return z.id===id;
+        });
+
+    if(!x){
+        return;
+    }
+
+    if(key==='wsFrom'&&s.type==='DirectReturn'){
+
+        var vb=s.vehicleBranch(x);
+
+        if(!vb){
+            RW_UI.toast(
+                'المركبة لا تملك مخزنًا متنقلًا صالحًا',
+                'error'
+            );
+            return;
+        }
+
+        RW_UI.byId('wsFrom').value=x.id;
+        RW_UI.byId('wsFromSearch').value=x.vehicle_code||x.license_plate;
+        RW_UI.byId('wsFromMenu').classList.add('hidden');
+
+        var r=s.refs.reps.find(function(rp){
+            return rp.id===x.driver_id;
+        });
+
+        RW_UI.byId('wsRep').value=r?r.id:'';
+        RW_UI.byId('wsRepSearch').value=r?(r.name||r.email):'';
+
+        if(r){
+            RW_UI.byId('wsRepSearch').setAttribute(
+                'readonly',
+                'readonly'
+            );
+        }else{
+            RW_UI.byId('wsRepSearch').removeAttribute(
+                'readonly'
+            );
+        }
+
+        s.summary();
+        s.renderProducts();
+
+        return;
+    }
+
+    RW_UI.byId(key).value=x.id;
+
+    if(key==='wsRep'){
+
+        RW_UI.byId(key+'Search').value=x.name||x.email;
+
+    }else if(key==='wsTo'&&s.type==='DirectSale'){
+
+        RW_UI.byId(key+'Search').value=
+            x.vehicle_code||
+            x.license_plate||
+            x.model||
+            '';
+
+        var vehicleRep=
+            (s.refs.reps||[]).find(function(rp){
+                return rp.id===x.driver_id;
+            });
+
+        var sourceBranch=
+            (s.refs.branches||[]).find(function(bb){
+                return bb.id===(RW_UI.byId('wsFrom')||{}).value;
+            });
+
+        if(
+            !vehicleRep||
+            !sourceBranch||
+            !s.allowedBranch(vehicleRep,sourceBranch)
+        ){
+
+            RW_UI.toast(
+                'المركبة لا تملك مندوب بيع مباشر صالحًا لهذا الفرع',
+                'error'
+            );
+
+            RW_UI.byId(key).value='';
+            RW_UI.byId(key+'Search').value='';
+
+            return;
+        }
+
+        RW_UI.byId('wsRep').value=vehicleRep.id;
+        RW_UI.byId('wsRepSearch').value=
+            vehicleRep.name||
+            vehicleRep.email||
+            '';
+
+        RW_UI.byId('wsRepSearch').setAttribute(
+            'readonly',
+            'readonly'
+        );
+
+    }else if(key==='wsTo'&&s.type==='SupplierReturn'){
+
+        RW_UI.byId(key+'Search').value=
+            x.name||
+            x.supplier_code||
+            '';
+
+    }else{
+
+        RW_UI.byId(key+'Search').value=
+            x.name||
+            x.vehicle_code||
+            x.supplier_code||
+            x.branch_code||
+            '';
+    }
+
+    RW_UI.byId(key+'Menu').classList.add('hidden');
+
+    if(key==='wsFrom'&&s.type==='DirectSale'){
+
+        RW_UI.byId('wsRep').value='';
+        RW_UI.byId('wsRepSearch').value='';
+        RW_UI.byId('wsRepSearch').removeAttribute('readonly');
+
+        RW_UI.byId('wsTo').value='';
+        RW_UI.byId('wsToSearch').value='';
+    }
+
+    if(key==='wsRep'&&s.type==='DirectSale'){
+
+        RW_UI.byId('wsTo').value='';
+        RW_UI.byId('wsToSearch').value='';
+        RW_UI.byId('wsRepSearch').removeAttribute('readonly');
+    }
+
+    s.updateSource();
+},
 routeHtml:function(){var s=this,t=this.type;function p(k,label,readonly){return'<div class="smart-field"><input type="hidden" id="'+k+'" value=""><input id="'+k+'Search" class="smart-input" autocomplete="off" '+(readonly?'readonly ':'')+'placeholder="'+s.esc(label)+'" onfocus="App.pickShow(\''+k+'\')" oninput="App.pickSearch(\''+k+'\',this.value)"><div id="'+k+'Menu" class="smart-menu hidden"></div></div>'}if(t==='Scrap'||t==='Adjustment')return'<div class="grid grid-cols-1">'+p('wsFrom','الفرع المصدر')+'</div>';if(t==='DirectSale')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsRep','مندوب البيع المباشر')+p('wsTo','المركبة — مرتبطة بالمندوب')+'</div>';if(t==='DirectReturn')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','المركبة المصدر')+p('wsRep','مندوب البيع المباشر',true)+p('wsTo','الفرع الوجهة')+'</div>';if(t==='SupplierReturn')return'<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsTo','المورد المرتبط بالفرع')+'</div>';return'<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsTo','الفرع الوجهة')+'</div>'},
 renderWorkspace:function(){var s=this,label=this.type==='Transfer'?'تحويل داخلي':this.type==='DirectSale'?'صرف مباشر':this.type==='DirectReturn'?'مرتجع مباشر':this.type==='SupplierReturn'?'مرتجع مورد':this.type==='Scrap'?'إتلاف / إعدام':'تسوية جرد',route=this.type==='Transfer'?'فرع → فرع':this.type==='DirectSale'?'فرع → مركبة':this.type==='DirectReturn'?'مركبة → فرع':this.type==='SupplierReturn'?'فرع → مورد':this.type==='Scrap'?'فرع → إتلاف':'فرع → تسوية',engine=this.mode==='engine',h='<div class="ws"><div class="workspace-head p-3 sm:p-4 border-b border-slate-800"><div class="flex items-center justify-between gap-2"><div class="flex items-center gap-2"><button type="button" onclick="App.back()" class="w-10 h-10 rounded-xl bg-white/10"><i class="fa-solid fa-arrow-right"></i></button><div><b class="text-lg">'+label+'</b><div class="text-[11px] text-slate-500">'+route+' · إدارة دورة الإذن بالكامل</div></div></div><button type="button" onclick="App.clearCart()" class="text-xs text-slate-400">مسح السلة</button></div><div class="mt-3">'+s.routeHtml()+'</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2"><input id="wsRef" class="smart-input" placeholder="المرجع الإجباري"><input id="wsNotes" class="smart-input" placeholder="'+(engine?'السبب الإجباري':'ملاحظات (اختياري)')+'"></div>'+(engine&&this.type==='Adjustment'?'<select id="wsMode" class="smart-input mt-2"><option value="replace">تسوية إلى الرصيد الفعلي</option><option value="add">زيادة</option><option value="deduct">نقص</option></select>':'')+'<div class="relative mt-3"><input id="wsSearch" autocomplete="off" oninput="App.search(this.value)" onkeydown="App.searchKey(event)" class="dark-input w-full rounded-2xl px-4 py-3.5 text-sm font-bold pr-12 pl-14" placeholder="🔍 امسح الباركود أو ابحث باسم/كود الصنف... (F2)"><button id="wsScanBtn" type="button" onclick="App.openScanner()" class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-blue-600 text-white"><i class="fa-solid fa-camera"></i></button><i class="fa-solid fa-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-slate-500"></i><div id="wsResults" class="hidden result-pop"></div></div><div id="wsCats" class="flex gap-2 overflow-x-auto mt-3"></div></div><div class="ws-grid"><section class="catalog"><div class="flex items-center justify-between p-3 text-xs text-slate-500"><span>الكتالوج <b id="count"></b></span><span id="stockHint">اختر المصدر لمعرفة المتاح</span></div><div id="products" class="flex-1 min-h-0 overflow-y-auto p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2"></div></section><aside class="cart"><div class="p-3 border-b border-slate-700 bg-slate-900"><div class="flex justify-between"><b>🛒 السلة</b><span id="badge" class="bg-blue-600 px-2 py-1 rounded-full text-[10px]">0</span></div><div id="routeSummary" class="text-[11px] text-slate-500 mt-2"></div></div><div id="cartBox" class="flex-1 min-h-0 overflow-y-auto p-2 space-y-2"></div><div class="p-3 border-t border-slate-700 bg-slate-800"><div class="flex justify-between text-xs text-slate-400"><span>عدد الأصناف</span><b id="cartLines" class="text-white">0</b></div><div class="flex justify-between text-base font-black border-t border-slate-700 pt-2 mt-2"><span>إجمالي الكمية</span><b id="cartQty" class="text-blue-400">0</b></div><button onclick="App.submit()" class="w-full bg-emerald-600 text-white py-3.5 rounded-2xl font-black mt-3">✓ '+(engine?'تنفيذ الحركة':'حفظ المسودة')+'</button></div></aside></div><div class="mobile-bar bg-slate-950 border-t border-slate-700 p-2 gap-2"><button onclick="App.openDrawer()" class="flex-1 bg-slate-800 text-white py-3 rounded-2xl font-black">🛒 السلة <span id="mcount">0</span></button><button onclick="App.submit()" class="flex-1 bg-emerald-600 text-white py-3 rounded-2xl font-black">✓ حفظ</button></div><div id="drawer" class="mobile-drawer"><div class="mobile-inner"><div class="p-3 border-b border-slate-700 flex justify-between"><b>🛒 السلة</b><button onclick="App.closeDrawer()" class="w-9 h-9 bg-slate-800 rounded-xl">✕</button></div><div id="drawerBox" class="flex-1 overflow-y-auto p-2 space-y-2"></div><div class="p-3 border-t border-slate-700"><button onclick="App.closeDrawer();App.submit()" class="w-full bg-emerald-600 text-white py-3 rounded-2xl font-black">حفظ</button></div></div></div></div>';RW_UI.safeHTML(RW_UI.byId('mainContent'),h);this.renderCats();this.renderProducts();this.renderCart();this.summary()},
 renderCats:function(){var s=this,m={'الكل':1};this.items.forEach(function(x){if(x.category)m[x.category]=1});var root=RW_UI.byId('wsCats');if(!root)return;RW_UI.safeHTML(root,Object.keys(m).slice(0,40).map(function(c){return'<button type="button" data-rw-cat="'+s.esc(c)+'" class="px-3 py-1.5 rounded-full text-[11px] font-black '+(s.cat===c?'bg-blue-600 text-white':'bg-slate-800 text-slate-400')+'">'+s.esc(c)+'</button>'}).join(''));if(!root._rwCatBound){root.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-rw-cat]');if(b)s.catSet(b.getAttribute('data-rw-cat'))});root._rwCatBound=true}},catSet:function(c){this.cat=c;this.renderCats();this.renderProducts()},sourceBranch:function(){var id=(RW_UI.byId('wsFrom')||{}).value||'';if(this.type==='DirectReturn'){var v=(this.refs.vehicles||[]).find(function(x){return x.id===id});return this.vehicleBranch(v)}return(this.refs.branches||[]).find(function(x){return x.id===id})||null},avail:function(id){var b=this.sourceBranch();return b?Number(this.stock[b.id+':'+id]||0):null},
