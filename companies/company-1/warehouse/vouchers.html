@@ -891,16 +891,22 @@ pickArr:function(key){
     }
 
     if(key==='wsRep'){
-
-        return (s.refs.reps||[]).filter(function(r){
-
-            return (
-                !!b &&
-                s.allowedBranch(s.user,b) &&
-                s.allowedBranch(r,b)
-            );
-        });
-    }
+    
+            var candidateBranches = b
+                ? [b]
+                : userBranches;
+    
+            return (s.refs.reps||[]).filter(function(r){
+    
+                return candidateBranches.some(function(branch){
+    
+                    return (
+                        !!branch &&
+                        s.allowedBranch(r,branch)
+                    );
+                });
+            });
+        }
 
     if(key==='wsTo'&&s.type==='Transfer'){
         return userBranches;
@@ -1096,14 +1102,30 @@ pickSelect:function(key,id){
     RW_UI.byId(key+'Menu').classList.add('hidden');
 
     if(key==='wsFrom'&&s.type==='DirectSale'){
-
-        RW_UI.byId('wsRep').value='';
-        RW_UI.byId('wsRepSearch').value='';
-        RW_UI.byId('wsRepSearch').removeAttribute('readonly');
-
-        RW_UI.byId('wsTo').value='';
-        RW_UI.byId('wsToSearch').value='';
-    }
+    
+            var selectedRepId=
+                (RW_UI.byId('wsRep')||{}).value||'';
+    
+            var selectedRep=
+                (s.refs.reps||[]).find(function(rp){
+                    return rp.id===selectedRepId;
+                });
+    
+            var keepRep=
+                !!selectedRep &&
+                s.allowedBranch(selectedRep,x);
+    
+            if(!keepRep){
+    
+                RW_UI.byId('wsRep').value='';
+                RW_UI.byId('wsRepSearch').value='';
+            }
+    
+            RW_UI.byId('wsRepSearch').removeAttribute('readonly');
+    
+            RW_UI.byId('wsTo').value='';
+            RW_UI.byId('wsToSearch').value='';
+        }
 
     if(key==='wsRep'&&s.type==='DirectSale'){
 
@@ -1640,7 +1662,78 @@ supabase
     });
 },
 
-handleKeys:function(e){if(!this.mode)return;if(e.key==='F2'){e.preventDefault();this.focusSearch()}if(e.key==='Escape'){var p=RW_UI.byId('wsResults');if(p&&!p.classList.contains('hidden'))p.classList.add('hidden');else if(RW_UI.byId('drawer')&&RW_UI.byId('drawer').classList.contains('open'))this.closeDrawer();else this.back()}}
+handleKeys:function(e){
+
+    if(!this.mode){
+        return;
+    }
+
+    var target=e&&e.target;
+
+    var tag=
+        target&&target.tagName
+            ?String(target.tagName).toLowerCase()
+            :'';
+
+    var isFormField=
+        tag==='input'||
+        tag==='textarea'||
+        tag==='select';
+
+    if(
+        e.key==='F2'&&
+        !isFormField
+    ){
+        e.preventDefault();
+        this.focusSearch();
+        return;
+    }
+
+    if(e.key!=='Escape'){
+        return;
+    }
+
+    var p=RW_UI.byId('wsResults');
+
+    if(
+        p&&
+        !p.classList.contains('hidden')
+    ){
+        p.classList.add('hidden');
+        e.preventDefault();
+        return;
+    }
+
+    var smart=
+        document.querySelector(
+            '.smart-menu:not(.hidden)'
+        );
+
+    if(smart){
+        smart.classList.add('hidden');
+        e.preventDefault();
+        return;
+    }
+
+    var drawer=RW_UI.byId('drawer');
+
+    if(
+        drawer&&
+        drawer.classList.contains('open')
+    ){
+        this.closeDrawer();
+        e.preventDefault();
+        return;
+    }
+
+    if(isFormField){
+        e.preventDefault();
+        return;
+    }
+
+    this.back();
+},
 };
-document.addEventListener('keydown',function(e){App.handleKeys(e)});document.addEventListener('change',function(e){if(e.target&&e.target.id==='wsFrom')App.updateSource();if(e.target&&e.target.id==='wsTo')App.summary();if(e.target&&e.target.id==='wsMode')App.updateSource()});document.addEventListener('click',function(e){if(!e.target.closest('.smart-field'))document.querySelectorAll('.smart-menu').forEach(function(x){x.classList.add('hidden')})});window.addEventListener('online',function(){App.updateConnection();if(App.company){App.debouncedRefresh();App.debouncedRefreshStock()}});window.addEventListener('offline',function(){App.updateConnection()});window.addEventListener('focus',function(){if(App.company){App.debouncedRefresh();App.debouncedRefreshStock()}});document.addEventListener('visibilitychange',function(){if(!document.hidden&&App.company){App.debouncedRefresh();App.debouncedRefreshStock()}});if(supabase&&supabase.auth&&supabase.auth.onAuthStateChange){supabase.auth.onAuthStateChange(function(event){if(event==='PASSWORD_RECOVERY'&&App.showRecovery)App.showRecovery()})}document.addEventListener('DOMContentLoaded',function(){if(location.hash&&/type=recovery|access_token=.*type=recovery/i.test(location.hash)){App.showRecovery()}else App.init()});
+document.addEventListener('keydown',function(e){App.handleKeys(e)});document.addEventListener('change',function(e){if(e.target&&e.target.id==='wsFrom')App.updateSource();if(e.target&&e.target.id==='wsTo')App.summary();if(e.target&&e.target.id==='wsMode')App.updateSource()});document.addEventListener('click',function(e){if(!e.target.closest('.smart-field'))document.querySelectorAll('.smart-menu').forEach(function(x){x.classList.add('hidden')})});window.addEventListener('online',function(){App.updateConnection();if(App.company){App.debouncedRefresh();App.debouncedRefreshStock()}});window.addEventListener('offline',function(){App.updateConnection()});window.addEventListener('focus',function(){if(App.company){App.debouncedRefresh();App.debouncedRefreshStock()}});document.addEventListener('visibilitychange',function(){if(!document.hidden&&App.company){App.debouncedRefresh();App.debouncedRefreshStock()}});if(supabase&&supabase.auth&&supabase.auth.onAuthStateChange){supabase.auth.onAuthStateChange(function(event){if(event==='PASSWORD_RECOVERY'&&App.showRecovery)App.showRecovery()})}
+RW_SW.register('../sw.js');document.addEventListener('DOMContentLoaded',function(){if(location.hash&&/type=recovery|access_token=.*type=recovery/i.test(location.hash)){App.showRecovery()}else App.init()});
 </script></body></html>
