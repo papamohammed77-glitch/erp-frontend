@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-22 08:45 UTC -->
+<!-- 2026-09-22 11:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -794,26 +794,109 @@ prepare:function(){var s=this;
 },
 newWorkspace:function(){
     var s=this;
+
     this.topPanelCollapsed=false;
     this.cart=[];
     this.cat='الكل';
     this.createOpId=null;
     this.createFingerprint=null;
-    try{
-        if(s.company&&s.type){
-            
-        }
-    }catch(e){}
+
     RW_UI.showLoader('جاري تجهيز مساحة العمل...');
+
     Promise.resolve()
-        .then(function(){return s.prepare()})
         .then(function(){
+            return s.prepare();
+        })
+        .then(function(){
+
             s.renderWorkspace();
+
+            /*
+             * DirectSale requires a source branch before the
+             * vehicle picker can safely resolve its candidates.
+             *
+             * Use the user's explicit default branch when it is
+             * valid and authorized. When no default branch exists
+             * and the user has exactly one authorized active branch,
+             * use that branch as the deterministic source context.
+             *
+             * Do NOT auto-select when multiple authorized branches
+             * exist. In that case the operator must select explicitly.
+             */
+            if(s.type==='DirectSale'){
+
+                var allowedBranches=
+                    (s.refs.branches||[])
+                    .filter(function(branch){
+                        return s.allowedBranch(
+                            s.user,
+                            branch
+                        );
+                    });
+
+                var selectedBranch=null;
+
+                var defaultBranchId=
+                    s.user &&
+                    s.user.default_branch_id
+                        ?String(s.user.default_branch_id)
+                        :'';
+
+                if(defaultBranchId){
+
+                    selectedBranch=
+                        allowedBranches.find(function(branch){
+                            return String(branch.id)===defaultBranchId;
+                        })||null;
+                }
+
+                if(
+                    !selectedBranch &&
+                    allowedBranches.length===1
+                ){
+                    selectedBranch=
+                        allowedBranches[0];
+                }
+
+                if(selectedBranch){
+
+                    var from=
+                        RW_UI.byId('wsFrom');
+
+                    var fromSearch=
+                        RW_UI.byId('wsFromSearch');
+
+                    if(from){
+                        from.value=
+                            selectedBranch.id;
+                    }
+
+                    if(fromSearch){
+                        fromSearch.value=
+                            selectedBranch.name||
+                            selectedBranch.branch_code||
+                            '';
+                    }
+                }
+            }
+
+            /*
+             * Recalculate the workspace after Source Branch
+             * initialization so product availability and
+             * Vehicle candidates use the same current context.
+             */
+            s.updateSource();
+
             RW_UI.hideLoader();
         })
         .catch(function(e){
+
             RW_UI.hideLoader();
-            RW_UI.showError(e.message||'تعذر تجهيز الكتالوج');
+
+            RW_UI.showError(
+                e.message||
+                'تعذر تجهيز الكتالوج'
+            );
         });
 },
 allowedBranch:function(u,b){if(!u||!b)return false;if(String(u.default_branch_id||'')===String(b.id))return true;var a=u.allowed_branch_ids;if(a===null||typeof a==='undefined')return true;if(Array.isArray(a))a=a.map(String);else if(typeof a==='string'&&a.trim()){var raw=a.trim(),parsed=null;try{parsed=JSON.parse(raw)}catch(e){parsed=null}if(Array.isArray(parsed))a=parsed.map(String);else if(typeof parsed==='string')a=[parsed.trim()];else a=raw.split(/[,|]/).map(function(x){return x.trim().replace(/^"|"$/g,'')}).filter(Boolean)}else return false;a=a.map(function(x){return String(x).trim().replace(/^"|"$/g,'')});if(a.indexOf('*')>=0)return true;return a.indexOf(String(b.id))>=0||a.indexOf(String(b.branch_code||''))>=0},
