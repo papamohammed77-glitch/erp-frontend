@@ -6,8 +6,26 @@ function RW_checkPendingReload() {
     if (window._rwPendingReload) window.location.reload();
 }
 
+function RW_getCanonicalSWRegistration() {
+    var currentScript = document.currentScript;
+    var coordinatorUrl;
+
+    if (currentScript && currentScript.src) {
+        coordinatorUrl = new URL(currentScript.src, window.location.href);
+    } else {
+        coordinatorUrl = new URL('/companies/company-1/register-sw.js', window.location.origin);
+    }
+
+    return {
+        swUrl: new URL('sw.js', coordinatorUrl).pathname,
+        scope: new URL('./', coordinatorUrl).pathname
+    };
+}
+
 if (location.pathname.indexOf('/vouchers.html') === -1 && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js', {scope:'./'}).then(function(registration) {
+    var rwSW = RW_getCanonicalSWRegistration();
+
+    navigator.serviceWorker.register(rwSW.swUrl, {scope:rwSW.scope}).then(function(registration) {
         var update = function() {
             registration.update().catch(function(err) { console.warn('[RW] SW update check failed:', err); });
         };
