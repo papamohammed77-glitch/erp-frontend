@@ -294,6 +294,14 @@ renderList:function(scope){
         '<input id="listSearch" oninput="App.filterList()" placeholder="🔍 رقم الإذن أو المرجع أو النوع" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
         '<select id="listType" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
         typeOptions+
+'<select id="listStatus" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
+'<option value="">كل الحالات</option>'+
+'<option value="Draft">مسودة</option>'+
+'<option value="Sent">مُرسل</option>'+
+'<option value="Received">مُستلم</option>'+
+'<option value="Completed">مكتمل</option>'+
+'<option value="Cancelled">ملغى</option>'+
+'</select>'+
         '</select>'+
         '<input id="listFrom" type="date" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
         '<input id="listTo" type="date" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
@@ -334,6 +342,9 @@ filterList:function(){
 
     var type=
         (RW_UI.byId('listType')||{}).value||'';
+
+    var status=
+        (RW_UI.byId('listStatus')||{}).value||'';
 
     var from=
         (RW_UI.byId('listFrom')||{}).value||'';
@@ -376,6 +387,18 @@ filterList:function(){
             v.to_type
         );
 
+        var custodian='';
+
+        if(v.custodian_user_id){
+            var rep=(s.refs.reps||[]).find(function(r){
+                return r.id===v.custodian_user_id;
+            });
+
+            custodian=rep
+                ?(rep.name||rep.email||'')
+                :'';
+        }
+
         var haystack=[
             v.voucher_code,
             v.reference,
@@ -386,14 +409,9 @@ filterList:function(){
             fromText,
             toText,
             v.created_by,
+            v.completed_by,
             v.notes,
-            (function(){
-                if(!v.custodian_user_id) return '';
-                var rep=(s.refs.reps||[]).find(function(r){
-                    return r.id===v.custodian_user_id;
-                });
-                return rep ? (rep.name||rep.email||'') : '';
-            })()
+            custodian
         ].map(function(x){
             return s.norm(x);
         });
@@ -407,6 +425,10 @@ filterList:function(){
         var typeMatch=
             !type||
             v.type===type;
+
+        var statusMatch=
+            !status||
+            v.status===status;
 
         var date=
             String(v.voucher_date||'').slice(0,10);
@@ -422,6 +444,7 @@ filterList:function(){
         return(
             textMatch&&
             typeMatch&&
+            statusMatch&&
             fromMatch&&
             toMatch
         );
@@ -432,17 +455,10 @@ filterList:function(){
         String(rows.length)
     );
 
-    var box=RW_UI.byId('listCards');
-
-    if(!box){
-        return;
-    }
-
     RW_UI.safeHTML(
-        box,
+        RW_UI.byId('listCards'),
         this.cards(rows,this.tabName)
     );
-
 },
 cards:function(rows,scope){
     var s=this;
@@ -801,14 +817,190 @@ cards:function(rows,scope){
     }).join('');
 },
 loc:function(id,type){var a=type==='Branch'?this.refs.branches:type==='Vehicle'?this.refs.vehicles:this.refs.suppliers,x=(a||[]).find(function(z){return z.id===id});if(!x)return'غير معروف';return type==='Vehicle'?(x.vehicle_code||x.license_plate||x.model||'غير معروف'):type==='Supplier'?(x.name||x.supplier_code||'غير معروف'):(x.name||x.branch_code||'غير معروف')},
+voucherAuditCache:null,
 
+secondsText:function(sec){
+    if(sec===null||sec===undefined||!Number.isFinite(Number(sec))) return '—';
+
+    var n=Math.max(0,Math.round(Number(sec))),
+        d=Math.floor(n/86400);
+
+    n-=d*86400;
+
+    var h=Math.floor(n/3600);
+    n-=h*3600;
+
+    var m=Math.floor(n/60),
+        s=n%60,
+        parts=[];
+
+    if(d) parts.push(d+' يوم');
+    if(h||d) parts.push(h+' س');
+    if(m||h||d) parts.push(m+' د');
+    if(!m&&!h&&!d) parts.push(s+' ث');
+
+    return parts.join(' ');
+},
+
+csvCell:function(value){
+    var v=value===null||value===undefined?'':String(value);
+    return '"'+v.replace(/"/g,'""')+'"';
+},
+
+downloadCsv:function(filename,rows){
+    if(!Array.isArray(rows)||!rows.length){
+        RW_UI.toast('لا توجد بيانات للتصدير','warning');
+        return;
+    }
+
+    var csv=''+rows.map(function(row){
+        return row.map(function(v){
+            return App.csvCell(v);
+        }).join(',');
+    }).join('\r\n');
+
+    var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+
+    a.href=url;
+    a.download=filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(function(){
+        URL.revokeObjectURL(url);
+    },1000);
+},
+
+printVoucher:function(){
+    var node=document.querySelector('.swal2-html-container');
+
+    if(!node){
+        RW_UI.toast('لا توجد وثيقة مفتوحة للطباعة','warning');
+        return;
+    }
+
+    var w=window.open('','_blank','noopener,noreferrer,width=1200,height=900');
+
+    if(!w){
+        RW_UI.toast('تعذر فتح نافذة الطباعة','error');
+        return;
+    }
+
+    w.document.open();
+
+    w.document.write(
+        '<!doctype html>'+
+        '<html lang="ar" dir="rtl">'+
+        '<head>'+
+        '<meta charset="utf-8">'+
+        '<title>إذن مخزني</title>'+
+        '<style>'+
+        'body{font-family:Arial,Tahoma,sans-serif;margin:24px;color:#111827}'+
+        'table{width:100%;border-collapse:collapse;margin-top:12px}'+
+        'th,td{border:1px solid #cbd5e1;padding:8px;font-size:12px}'+
+        'th{background:#f1f5f9}'+
+        '.no-print{display:none!important}'+
+        '.card{break-inside:avoid}'+
+        '@media print{body{margin:10mm}}'+
+        '</style>'+
+        '</head>'+
+        '<body>'+
+        node.innerHTML+
+        '</body>'+
+        '</html>'
+    );
+
+    w.document.close();
+
+    setTimeout(function(){
+        w.focus();
+        w.print();
+    },250);
+},
+
+exportVoucher:function(){
+    var cache=this.voucherAuditCache;
+
+    if(!cache||!cache.data||!cache.data.voucher){
+        RW_UI.toast('افتح تفاصيل الإذن أولًا','warning');
+        return;
+    }
+
+    var data=cache.data,
+        stock=cache.stock||{},
+        v=data.voucher||{},
+        rows=[
+            ['إذن مخزني','قيمة'],
+            ['رقم الإذن',v.voucher_code||''],
+            ['النوع',v.type||''],
+            ['الحالة',v.status||''],
+            ['المرجع',v.reference||''],
+            ['أنشأ بواسطة',v.created_by||''],
+            ['أكمل بواسطة',v.completed_by||''],
+            ['تاريخ الإنشاء',v.created_at||''],
+            ['الإرسال',v.sent_date||''],
+            ['الاستلام',v.received_date||''],
+            ['الإكمال',v.completed_at||''],
+            [],
+            ['الأصناف',''],
+            ['الصنف','الكمية','المستلم','المتبقي','الوحدة']
+        ];
+
+    (data.details||[]).forEach(function(x){
+        rows.push([
+            x.item_name||x.item_code||'',
+            Number(x.qty||0),
+            Number(x.received_qty||0),
+            Math.max(0,Number(x.qty||0)-Number(x.received_qty||0)),
+            x.unit||''
+        ]);
+    });
+
+    rows.push([]);
+    rows.push(['الحركات الفعلية','','','','']);
+    rows.push([
+        'الصنف','الحركة','الكمية',
+        'المصدر قبل/بعد',
+        'الوجهة قبل/بعد'
+    ]);
+
+    (stock.movements||data.movements||[]).forEach(function(x){
+        rows.push([
+            x.item_name||x.item_code||'',
+            x.movement_type||'',
+            Number(x.qty||0),
+            (x.source_stock_before===null||x.source_stock_before===undefined
+                ?'—'
+                :Number(x.source_stock_before))+
+                ' → '+
+            (x.source_stock_after===null||x.source_stock_after===undefined
+                ?'—'
+                :Number(x.source_stock_after)),
+            (x.target_stock_before===null||x.target_stock_before===undefined
+                ?'—'
+                :Number(x.target_stock_before))+
+                ' → '+
+            (x.target_stock_after===null||x.target_stock_after===undefined
+                ?'—'
+                :Number(x.target_stock_after))
+        ]);
+    });
+
+    this.downloadCsv(
+        (v.voucher_code||'voucher')+'_RAWAEA.csv',
+        rows
+    );
+},
 details:function(code){
     var s=this;
 
     RW_UI.showLoader();
 
-    supabase
-        .rpc(
+    Promise.all([
+        supabase.rpc(
             'inventory_control',
             {
                 p_operation:'VOUCHER_AUDIT',
@@ -816,229 +1008,381 @@ details:function(code){
                     voucher_code:code
                 }
             }
+        ),
+        supabase.rpc(
+            'inventory_voucher_stock_context',
+            {
+                p_voucher_code:code
+            }
         )
-        .then(function(r){
+    ])
+    .then(function(results){
 
-            RW_UI.hideLoader();
+        RW_UI.hideLoader();
 
-            if(r.error){
-                throw new Error(
-                    r.error.message||
-                    'تعذر قراءة بيانات الإذن'
+        var auditResult=results[0],
+            stockResult=results[1];
+
+        if(auditResult.error){
+            throw new Error(
+                auditResult.error.message||
+                'تعذر قراءة بيانات الإذن'
+            );
+        }
+
+        if(stockResult.error){
+            throw new Error(
+                stockResult.error.message||
+                'تعذر قراءة سياق أرصدة الحركة'
+            );
+        }
+
+        var data=auditResult.data||{},
+            stock=stockResult.data||{},
+            v=data.voucher;
+
+        if(!v){
+            throw new Error('الإذن غير موجود');
+        }
+
+        s.voucherAuditCache={
+            data:data,
+            stock:stock
+        };
+
+        var d=Array.isArray(data.details)
+            ?data.details
+            :[];
+
+        var aud=Array.isArray(data.audit)
+            ?data.audit
+            :[];
+
+        var movements=Array.isArray(stock.movements)
+            ?stock.movements
+            :(Array.isArray(data.movements)?data.movements:[]);
+
+        var financial=data.financial||{},
+            kpi=data.kpi||{};
+
+        var custodianText='—';
+        var vehicleText='—';
+
+        if(
+            v.type==='DirectSale'||
+            v.type==='DirectReturn'
+        ){
+            if(v.custodian_user_id){
+                var rep=(s.refs.reps||[]).find(function(r){
+                    return r.id===v.custodian_user_id;
+                });
+
+                if(rep){
+                    custodianText=rep.name||rep.email||'—';
+                }
+            }
+
+            vehicleText=
+                v.type==='DirectSale'
+                    ?s.loc(v.to_id,'Vehicle')
+                    :s.loc(v.from_id,'Vehicle');
+        }
+
+        function financialRows(entries,label){
+            if(!Array.isArray(entries)||!entries.length){
+                return(
+                    '<div class="p-3 rounded-xl bg-slate-50 text-xs text-slate-400">'+
+                    s.esc(label)+': لا يوجد أثر مالي من هذا النوع'+
+                    '</div>'
                 );
             }
 
-            var data=r.data||{};
-            var v=data.voucher;
+            return entries.map(function(x){
+                return(
+                    '<div class="p-3 rounded-xl border border-slate-100 bg-white mb-2">'+
+                    '<div class="font-black text-sm">'+
+                    s.esc(x.description||x.reference||label)+
+                    '</div>'+
+                    '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-xs">'+
+                    '<div>مدين<br><b>'+f(x.debit)+'</b></div>'+
+                    '<div>دائن<br><b>'+f(x.credit)+'</b></div>'+
+                    '<div>الرصيد<br><b>'+f(x.balance)+'</b></div>'+
+                    '<div>المرجع<br><b>'+s.esc(x.reference||'—')+'</b></div>'+
+                    '</div>'+
+                    '</div>'
+                );
+            }).join('');
+        }
 
-            var custodianText='—';
-            var vehicleText='—';
+        var journalH='';
 
-            if(
-                v &&
-                (v.type==='DirectSale'||v.type==='DirectReturn')
-            ){
-                if(v.custodian_user_id){
-                    var rep=(s.refs.reps||[]).find(function(r){
-                        return r.id===v.custodian_user_id;
-                    });
+        if(Array.isArray(financial.journal_entries)&&financial.journal_entries.length){
 
-                    if(rep){
-                        custodianText=rep.name||rep.email||'—';
-                    }
-                }
+            journalH=financial.journal_entries.map(function(je){
 
-                vehicleText=
-                    v.type==='DirectSale'
-                        ?s.loc(v.to_id,'Vehicle')
-                        :s.loc(v.from_id,'Vehicle');
-            }
+                var lines=Array.isArray(je.lines)?je.lines:[];
 
-            if(!v){
-                throw new Error('الإذن غير موجود');
-            }
+                return(
+                    '<div class="p-3 rounded-2xl border border-slate-100 bg-white mb-2">'+
+                    '<div class="flex justify-between gap-2 flex-wrap">'+
+                    '<b>'+s.esc(je.entry_code||je.reference||'Journal')+'</b>'+
+                    '<span class="text-xs text-slate-500">'+s.esc(je.status||'')+'</span>'+
+                    '</div>'+
+                    '<div class="text-xs text-slate-500 mt-1">'+
+                    s.esc(je.description||'')+
+                    '</div>'+
+                    '<div class="overflow-auto mt-2">'+
+                    '<table class="w-full text-xs">'+
+                    '<thead class="bg-slate-50">'+
+                    '<tr>'+
+                    '<th class="p-2">الحساب</th>'+
+                    '<th class="p-2">مدين</th>'+
+                    '<th class="p-2">دائن</th>'+
+                    '<th class="p-2">ملاحظات</th>'+
+                    '</tr>'+
+                    '</thead>'+
+                    '<tbody>'+
+                    lines.map(function(l){
+                        return(
+                            '<tr class="border-t">'+
+                            '<td class="p-2">'+s.esc(l.account_name||'')+'</td>'+
+                            '<td class="p-2 text-center">'+f(l.debit)+'</td>'+
+                            '<td class="p-2 text-center">'+f(l.credit)+'</td>'+
+                            '<td class="p-2">'+s.esc(l.notes||'')+'</td>'+
+                            '</tr>'
+                        );
+                    }).join('')+
+                    '</tbody>'+
+                    '</table>'+
+                    '</div>'+
+                    '</div>'
+                );
+            }).join('');
 
-            var d=Array.isArray(data.details)
-                ?data.details
-                :[];
-
-            var aud=Array.isArray(data.audit)
-                ?data.audit
-                :[];
-
-            var movements=Array.isArray(data.movements)
-                ?data.movements
-                :[];
-
-            var aH=aud.length
-                ?aud.map(function(x){
-                    var op=x.operation_id
-                        ?'<br>Operation: '+s.esc(x.operation_id)
-                        :'';
-
-                    return(
-                        '<div class="text-xs border-b py-2">'+
-                        '<b>'+s.esc(x.action||'')+'</b>'+
-                        ' · '+
-                        s.esc(x.user_email||'system')+
-                        '<span class="text-slate-400">'+
-                        ' · '+
-                        s.esc(x.created_at||'')+
-                        '</span>'+
-                        op+
-                        '</div>'
-                    );
-                }).join('')
-                :
-                '<div class="text-xs text-slate-400">لا توجد سجلات تدقيق متاحة لهذه الوثيقة</div>';
-
-            var movementH=movements.length
-                ?movements.map(function(x){
-
-                    var from=x.source_branch_id
-                        ?s.loc(x.source_branch_id,'Branch')
-                        :'—';
-
-                    var to=x.target_branch_id
-                        ?s.loc(x.target_branch_id,'Branch')
-                        :'—';
-
-                    return(
-                        '<tr class="border-t">'+
-                        '<td class="p-2 text-xs">'+
-                        s.esc(x.item_name||x.item_code||'')+
-                        '<div class="text-[10px] text-slate-400">'+
-                        s.esc(x.item_code||'')+
-                        '</div>'+
-                        '</td>'+
-                        '<td class="p-2 text-center text-xs">'+
-                        s.esc(x.movement_type||'')+
-                        '</td>'+
-                        '<td class="p-2 text-center">'+
-                        f(x.qty)+
-                        '</td>'+
-                        '<td class="p-2 text-xs">'+
-                        s.esc(from)+
-                        ' → '+
-                        s.esc(to)+
-                        '</td>'+
-                        '<td class="p-2 text-xs">'+
-                        s.esc(x.user_email||'system')+
-                        '</td>'+
-                        '</tr>'
-                    );
-                }).join('')
-                :
-                '<tr><td colspan="5" class="p-4 text-center text-slate-400">لا توجد حركة فعلية مسجلة لهذا الإذن حتى الآن</td></tr>';
-
-            var h=
-                '<div class="text-right">'+
-
-                '<div class="grid grid-cols-2 gap-2 text-xs mb-3">'+
-                '<div class="p-3 bg-slate-50 rounded-2xl">النوع<br><b>'+s.esc(v.type)+'</b></div>'+
-                '<div class="p-3 bg-slate-50 rounded-2xl">الحالة<br><b>'+s.esc(v.status)+'</b></div>'+
-                '<div class="p-3 bg-slate-50 rounded-2xl">المصدر<br><b>'+s.esc(s.loc(v.from_id,v.from_type))+'</b></div>'+
-                '<div class="p-3 bg-slate-50 rounded-2xl">الوجهة<br><b>'+s.esc(s.loc(v.to_id,v.to_type))+'</b></div>'+
-                ((v.type==='DirectSale'||v.type==='DirectReturn')
-                    ?
-                    '<div class="p-3 bg-amber-50 border border-amber-100 rounded-2xl">المستلم والمسؤول عن العهدة<br><b>'+s.esc(custodianText)+'</b></div>'+
-                    '<div class="p-3 bg-slate-50 rounded-2xl">المركبة / وعاء النقل<br><b>'+s.esc(vehicleText)+'</b></div>'
-                    :
-                    '')+
-                '<div class="p-3 bg-slate-50 rounded-2xl">أنشأ بواسطة<br><b>'+s.esc(v.created_by||'—')+'</b></div>'+
-                '<div class="p-3 bg-slate-50 rounded-2xl">أكمل بواسطة<br><b>'+s.esc(v.completed_by||'—')+'</b></div>'+
-                '</div>'+
-
-                '<div class="mb-3 text-xs text-slate-500">'+
-                'المرجع: '+s.esc(v.reference||'—')+
-                '<br>المصدر: '+s.esc(v.source||'—')+
-                '<br>تاريخ الإنشاء: '+s.esc(v.created_at||'—')+
-                '<br>الإرسال: '+s.esc(v.sent_date||'—')+
-                '<br>الاستلام: '+s.esc(v.received_date||'—')+
-                '<br>الإكمال: '+s.esc(v.completed_at||'—')+
-                '<br>ملاحظات: '+s.esc(v.notes||'—')+
-                '</div>'+
-
-                '<div class="border rounded-2xl overflow-auto">'+
-                '<table class="w-full text-sm">'+
-                '<thead class="bg-slate-100">'+
-                '<tr>'+
-                '<th class="p-3">الصنف</th>'+
-                '<th class="p-3">الكمية</th>'+
-                '<th class="p-3">المستلم</th>'+
-                '<th class="p-3">المتبقي</th>'+
-                '</tr>'+
-                '</thead>'+
-                '<tbody>'+
-                d.map(function(x){
-                    return(
-                        '<tr class="border-t">'+
-                        '<td class="p-3">'+
-                        s.esc(x.item_name||x.item_code)+
-                        '</td>'+
-                        '<td class="p-3 text-center">'+
-                        f(x.qty)+
-                        '</td>'+
-                        '<td class="p-3 text-center">'+
-                        f(x.received_qty)+
-                        '</td>'+
-                        '<td class="p-3 text-center">'+
-                        f(Math.max(
-                            0,
-                            Number(x.qty||0)-
-                            Number(x.received_qty||0)
-                        ))+
-                        '</td>'+
-                        '</tr>'
-                    );
-                }).join('')+
-                '</tbody>'+
-                '</table>'+
-                '</div>'+
-
-                '<div class="mt-4 border rounded-2xl overflow-auto">'+
-                '<div class="p-3 bg-slate-100 font-black text-sm">الحركات الفعلية المرتبطة</div>'+
-                '<table class="w-full text-sm">'+
-                '<thead class="bg-slate-50">'+
-                '<tr>'+
-                '<th class="p-2">الصنف</th>'+
-                '<th class="p-2">نوع الحركة</th>'+
-                '<th class="p-2">الكمية</th>'+
-                '<th class="p-2">المسار</th>'+
-                '<th class="p-2">المنفذ</th>'+
-                '</tr>'+
-                '</thead>'+
-                '<tbody>'+
-                movementH+
-                '</tbody>'+
-                '</table>'+
-                '</div>'+
-
-                '<details class="mt-4">'+
-                '<summary class="cursor-pointer font-black text-sm">سجل التدقيق</summary>'+
-                '<div class="mt-2">'+aH+'</div>'+
-                '</details>'+
-
+        }else{
+            journalH=
+                '<div class="p-3 rounded-xl bg-slate-50 text-xs text-slate-400">'+
+                'لا يوجد قيد محاسبي لهذا النوع من الإذن'+
                 '</div>';
+        }
 
-            Swal.fire({
-                title:'تفاصيل الإذن '+s.esc(code),
-                html:h,
-                width:940,
-                showConfirmButton:false,
-                showCloseButton:true,
-                customClass:{
-                    popup:'!rounded-3xl'
-                }
-            });
-        })
-        .catch(function(e){
-            RW_UI.hideLoader();
-            RW_UI.showError(
-                e.message||
-                'تعذر تحميل تفاصيل الإذن'
-            );
+        var movementH=movements.length
+            ?movements.map(function(x){
+
+                var from=x.source_branch_id
+                    ?s.loc(x.source_branch_id,'Branch')
+                    :'—';
+
+                var to=x.target_branch_id
+                    ?s.loc(x.target_branch_id,'Branch')
+                    :'—';
+
+                return(
+                    '<tr class="border-t">'+
+                    '<td class="p-2 text-xs">'+
+                    s.esc(x.item_name||x.item_code||'')+
+                    '<div class="text-[10px] text-slate-400">'+
+                    s.esc(x.item_code||'')+
+                    '</div>'+
+                    '</td>'+
+                    '<td class="p-2 text-center text-xs">'+
+                    s.esc(x.movement_type||'')+
+                    '</td>'+
+                    '<td class="p-2 text-center">'+
+                    f(x.qty)+
+                    '</td>'+
+                    '<td class="p-2 text-xs">'+
+                    s.esc(from)+
+                    '<br>'+
+                    '<b>'+
+                    (x.source_stock_before===null||x.source_stock_before===undefined
+                        ?'—'
+                        :f(x.source_stock_before))+
+                    ' → '+
+                    (x.source_stock_after===null||x.source_stock_after===undefined
+                        ?'—'
+                        :f(x.source_stock_after))+
+                    '</b>'+
+                    '</td>'+
+                    '<td class="p-2 text-xs">'+
+                    s.esc(to)+
+                    '<br>'+
+                    '<b>'+
+                    (x.target_stock_before===null||x.target_stock_before===undefined
+                        ?'—'
+                        :f(x.target_stock_before))+
+                    ' → '+
+                    (x.target_stock_after===null||x.target_stock_after===undefined
+                        ?'—'
+                        :f(x.target_stock_after))+
+                    '</b>'+
+                    '</td>'+
+                    '<td class="p-2 text-xs">'+
+                    s.esc(x.user_email||'system')+
+                    '</td>'+
+                    '</tr>'
+                );
+            }).join('')
+            :
+            '<tr><td colspan="6" class="p-4 text-center text-slate-400">'+
+            'لا توجد حركة فعلية مسجلة لهذا الإذن حتى الآن'+
+            '</td></tr>';
+
+        var auditH=aud.length
+            ?aud.map(function(x){
+                return(
+                    '<div class="text-xs border-b py-2">'+
+                    '<b>'+s.esc(x.action||'')+'</b>'+
+                    ' · '+s.esc(x.user_email||'system')+
+                    '<span class="text-slate-400"> · '+s.esc(x.created_at||'')+'</span>'+
+                    (
+                        x.operation_id
+                            ?'<br><span class="text-[10px] text-slate-400">Operation: '+
+                              s.esc(x.operation_id)+'</span>'
+                            :''
+                    )+
+                    '</div>'
+                );
+            }).join('')
+            :
+            '<div class="text-xs text-slate-400">لا توجد سجلات تدقيق</div>';
+
+        var h=
+            '<div class="text-right">'+
+
+            '<div class="flex flex-wrap justify-end gap-2 mb-3 no-print">'+
+            '<button type="button" onclick="App.printVoucher()" class="px-3 py-2 rounded-xl bg-slate-800 text-white text-xs font-black">🖨 طباعة</button>'+
+            '<button type="button" onclick="App.exportVoucher()" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black">⇩ تصدير CSV</button>'+
+            '</div>'+
+
+            '<div class="grid grid-cols-2 gap-2 text-xs mb-3">'+
+            '<div class="p-3 bg-slate-50 rounded-2xl">النوع<br><b>'+s.esc(v.type)+'</b></div>'+
+            '<div class="p-3 bg-slate-50 rounded-2xl">الحالة<br><b>'+s.esc(v.status)+'</b></div>'+
+            '<div class="p-3 bg-slate-50 rounded-2xl">المصدر<br><b>'+s.esc(s.loc(v.from_id,v.from_type))+'</b></div>'+
+            '<div class="p-3 bg-slate-50 rounded-2xl">الوجهة<br><b>'+s.esc(s.loc(v.to_id,v.to_type))+'</b></div>'+
+            (
+                v.type==='DirectSale'||v.type==='DirectReturn'
+                    ?
+                    '<div class="p-3 bg-amber-50 border border-amber-100 rounded-2xl">العهدة<br><b>'+s.esc(custodianText)+'</b></div>'+
+                    '<div class="p-3 bg-slate-50 rounded-2xl">المركبة<br><b>'+s.esc(vehicleText)+'</b></div>'
+                    :
+                    ''
+            )+
+            '<div class="p-3 bg-slate-50 rounded-2xl">أنشأ بواسطة<br><b>'+s.esc(v.created_by||'—')+'</b></div>'+
+            '<div class="p-3 bg-slate-50 rounded-2xl">أكمل بواسطة<br><b>'+s.esc(v.completed_by||'—')+'</b></div>'+
+            '</div>'+
+
+            '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">'+
+            '<div class="p-3 rounded-2xl bg-indigo-50 border border-indigo-100 text-xs">إنشاء → إرسال<br><b>'+s.secondsText(kpi.created_to_sent_seconds)+'</b></div>'+
+            '<div class="p-3 rounded-2xl bg-blue-50 border border-blue-100 text-xs">إرسال → استلام<br><b>'+s.secondsText(kpi.sent_to_received_seconds)+'</b></div>'+
+            '<div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-xs">استلام → إكمال<br><b>'+s.secondsText(kpi.received_to_completed_seconds)+'</b></div>'+
+            '<div class="p-3 rounded-2xl bg-violet-50 border border-violet-100 text-xs">'+
+            (kpi.current_age_seconds!==null&&kpi.current_age_seconds!==undefined
+                ?'العمر الحالي'
+                :'كامل الدورة')+
+            '<br><b>'+s.secondsText(
+                kpi.current_age_seconds!==null&&kpi.current_age_seconds!==undefined
+                    ?kpi.current_age_seconds
+                    :kpi.created_to_completed_seconds
+            )+'</b></div>'+
+            '</div>'+
+
+            '<div class="mb-3 text-xs text-slate-500">'+
+            'المرجع: '+s.esc(v.reference||'—')+
+            '<br>الإنشاء: '+s.esc(v.created_at||'—')+
+            '<br>الإرسال: '+s.esc(v.sent_date||'—')+
+            '<br>الاستلام: '+s.esc(v.received_date||'—')+
+            '<br>الإكمال: '+s.esc(v.completed_at||'—')+
+            '<br>ملاحظات: '+s.esc(v.notes||'—')+
+            '</div>'+
+
+            '<div class="border rounded-2xl overflow-auto">'+
+            '<table class="w-full text-sm">'+
+            '<thead class="bg-slate-100">'+
+            '<tr>'+
+            '<th class="p-3">الصنف</th>'+
+            '<th class="p-3">الكمية</th>'+
+            '<th class="p-3">المستلم</th>'+
+            '<th class="p-3">المتبقي</th>'+
+            '</tr>'+
+            '</thead>'+
+            '<tbody>'+
+            d.map(function(x){
+                return(
+                    '<tr class="border-t">'+
+                    '<td class="p-3">'+s.esc(x.item_name||x.item_code)+'</td>'+
+                    '<td class="p-3 text-center">'+f(x.qty)+'</td>'+
+                    '<td class="p-3 text-center">'+f(x.received_qty)+'</td>'+
+                    '<td class="p-3 text-center">'+
+                    f(Math.max(0,Number(x.qty||0)-Number(x.received_qty||0)))+
+                    '</td>'+
+                    '</tr>'
+                );
+            }).join('')+
+            '</tbody>'+
+            '</table>'+
+            '</div>'+
+
+            '<div class="mt-4 border rounded-2xl overflow-auto">'+
+            '<div class="p-3 bg-slate-100 font-black text-sm">الحركات الفعلية + الرصيد قبل/بعد</div>'+
+            '<table class="w-full text-sm">'+
+            '<thead class="bg-slate-50">'+
+            '<tr>'+
+            '<th class="p-2">الصنف</th>'+
+            '<th class="p-2">الحركة</th>'+
+            '<th class="p-2">الكمية</th>'+
+            '<th class="p-2">المصدر قبل/بعد</th>'+
+            '<th class="p-2">الوجهة قبل/بعد</th>'+
+            '<th class="p-2">المنفذ</th>'+
+            '</tr>'+
+            '</thead>'+
+            '<tbody>'+
+            movementH+
+            '</tbody>'+
+            '</table>'+
+            '</div>'+
+
+            '<div class="mt-4 border rounded-2xl p-3 bg-slate-50">'+
+            '<div class="font-black text-sm mb-2">الأثر المالي والمحاسبي</div>'+
+            journalH+
+            '<div class="mt-3">'+
+            financialRows(financial.driver_ledger||[],'دفتر المندوب / العهدة')+
+            '</div>'+
+            '<div class="mt-3">'+
+            financialRows(financial.supplier_ledger||[],'دفتر المورد')+
+            '</div>'+
+            '</div>'+
+
+            '<details class="mt-4">'+
+            '<summary class="cursor-pointer font-black text-sm">سجل التدقيق</summary>'+
+            '<div class="mt-2">'+auditH+'</div>'+
+            '</details>'+
+
+            '<div class="mt-3 text-[10px] text-slate-400">'+
+            'Stock context: '+
+            s.esc(stock.basis||'current_stock_reconciled_against_all_inventory_log_events')+
+            '</div>'+
+
+            '</div>';
+
+        Swal.fire({
+            title:'تفاصيل الإذن '+s.esc(code),
+            html:h,
+            width:1040,
+            showConfirmButton:false,
+            showCloseButton:true,
+            customClass:{
+                popup:'!rounded-3xl'
+            }
         });
+    })
+    .catch(function(e){
+        RW_UI.hideLoader();
+        RW_UI.showError(
+            e.message||
+            'تعذر تحميل تفاصيل الإذن'
+        );
+    });
 },
 callAction:function(name,code,successText){
     var s=this;
