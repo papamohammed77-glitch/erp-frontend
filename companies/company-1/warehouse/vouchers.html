@@ -294,20 +294,22 @@ renderList:function(scope){
         '<input id="listSearch" oninput="App.filterList()" placeholder="🔍 رقم الإذن أو المرجع أو النوع" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
         '<select id="listType" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
         typeOptions+
-'<select id="listStatus" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
-'<option value="">كل الحالات</option>'+
-'<option value="Draft">مسودة</option>'+
-'<option value="Sent">مُرسل</option>'+
-'<option value="Received">مُستلم</option>'+
-'<option value="Completed">مكتمل</option>'+
-'<option value="Cancelled">ملغى</option>'+
-'</select>'+
+        '<select id="listStatus" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
+        '<option value="">كل الحالات</option>'+
+        '<option value="Draft">مسودة</option>'+
+        '<option value="Sent">مُرسل</option>'+
+        '<option value="Received">مُستلم</option>'+
+        '<option value="Completed">مكتمل</option>'+
+        '<option value="Cancelled">ملغى</option>'+
+        '</select>'+
         '</select>'+
         '<input id="listFrom" type="date" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
         '<input id="listTo" type="date" onchange="App.filterList()" class="w-full p-3 bg-white rounded-2xl border-2 border-slate-100 outline-none font-semibold text-sm">'+
-        '<button type="button" onclick="App.loadList(App.tabName)" class="w-full p-3 bg-slate-800 text-white rounded-2xl font-black text-sm">'+
-        '↻ تحديث  '+
-        '</button>'+
+      '<div class="grid grid-cols-3 gap-2">'+
+        '<button type="button" onclick="App.List()" class="w-full p-3 bg-emerald-600 text-white rounded-2xl font-black text-sm">⇩ تصدير</button>'+
+        '<button type="button" onclick="window.print()" class="w-full p-3 bg-slate-700 text-white rounded-2xl font-black text-sm">🖨 طباعة</button>'+
+        '<button type="button" onclick="App.loadList(App.tabName)" class="w-full p-3 bg-slate-800 text-white rounded-2xl font-black text-sm">↻ تحديث</button>'+
+        '</div>'+
         '</div>'+
         '</div>'+
 
@@ -992,6 +994,69 @@ exportVoucher:function(){
     this.downloadCsv(
         (v.voucher_code||'voucher')+'_RAWAEA.csv',
         rows
+    );
+},
+exportVoucherList:function(){
+    var s=this,
+        q=s.norm((RW_UI.byId('listSearch')||{}).value||''),
+        type=(RW_UI.byId('listType')||{}).value||'',
+        status=(RW_UI.byId('listStatus')||{}).value||'',
+        from=(RW_UI.byId('listFrom')||{}).value||'',
+        to=(RW_UI.byId('listTo')||{}).value||'';
+
+    var rows=this.vouchers.filter(function(v){
+
+        var fromText=s.loc(v.from_id,v.from_type),
+            toText=s.loc(v.to_id,v.to_type);
+
+        var haystack=[
+            v.voucher_code,
+            v.reference,
+            v.type,
+            v.status,
+            fromText,
+            toText,
+            v.created_by,
+            v.completed_by,
+            v.notes
+        ].map(function(x){
+            return s.norm(x);
+        });
+
+        return(
+            (!q||haystack.some(function(x){return x.includes(q);} ))&&
+            (!type||v.type===type)&&
+            (!status||v.status===status)&&
+            (!from||String(v.voucher_date||'').slice(0,10)>=from)&&
+            (!to||String(v.voucher_date||'').slice(0,10)<=to)
+        );
+    });
+
+    var out=[
+        ['رقم الإذن','النوع','الحالة','المرجع','من','إلى','الإنشاء','الإرسال','الاستلام','الإكمال','منشأ بواسطة','أكمل بواسطة']
+    ];
+
+    rows.forEach(function(v){
+        out.push([
+            v.voucher_code||'',
+            v.type||'',
+            v.status||'',
+            v.reference||'',
+            s.loc(v.from_id,v.from_type),
+            s.loc(v.to_id,v.to_type),
+            v.created_at||'',
+            v.sent_date||'',
+            v.received_date||'',
+            v.completed_at||'',
+            v.created_by||'',
+            v.completed_by||''
+        ]);
+    });
+
+    this.downloadCsv(
+        'RAWAEA-Vouchers-'+
+        new Date().toISOString().slice(0,10)+'.csv',
+        out
     );
 },
 details:function(code){
