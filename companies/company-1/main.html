@@ -7080,16 +7080,152 @@ var RW_Branches = (function() {
                     const name = byId('branch-name').value.trim();
                     if (!name) { showToast('اسم الفرع مطلوب', 'error'); return; }
                     const payload = { name, location: byId('branch-location').value.trim(), manager: byId('branch-manager').value.trim(), phone: byId('branch-phone').value.trim(), is_active: byId('branch-status').value === 'active' };
-                    showLoader('جاري الحفظ...');
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const token = session?.access_token;
-                    try {
-                        const res = await fetch(`${RW_SUPABASE_URL}/functions/v1/save-branch`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ branch: payload, isEdit, branch_code: b?.branch_code }) });
-                        const json = await res.json();
-                        hideLoader();
-                        if (json.success) { showToast(isEdit ? 'تم التعديل' : 'تمت الإضافة', 'success'); Swal.close(); data = await RW_Data.loadBranches(); renderTable(data); }
-                        else { showToast(json.error || 'فشل الحفظ', 'error'); }
-                    } catch(e) { hideLoader(); showToast('فشل الاتصال بـ Edge Function', 'error'); console.error(e); }
+showLoader('جاري الحفظ...');
+try {
+    let sessionRes = await supabase.auth.getSession();
+    let session = sessionRes && sessionRes.data
+        ? sessionRes.data.session
+        : null;
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expiresAt = session && session.expires_at
+        ? Number(session.expires_at)
+        : 0;
+
+    if (
+        !session ||
+        !session.access_token ||
+        (expiresAt && expiresAt <= nowSec + 60)
+    ) {
+        const refreshRes = await supabase.auth.refreshSession();
+
+        if (refreshRes.error) {
+            throw refreshRes.error;
+        }
+
+        session = refreshRes && refreshRes.data
+            ? refreshRes.data.session
+            : null;
+    }
+
+    if (!session || !session.access_token) {
+        hideLoader();
+        showToast(
+            'انتهت جلسة الدخول، يرجى تسجيل الدخول مرة أخرى',
+            'error'
+        );
+        return;
+    }
+
+    const doSaveRequest = async function(accessToken) {
+        const response = await fetch(
+            RW_SUPABASE_URL + '/functions/v1/save-branch',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + accessToken
+                },
+                body: JSON.stringify({
+                    branch: payload,
+                    isEdit,
+                    branch_code: b?.branch_code
+                })
+            }
+        );
+
+        const body = await response.json().catch(function() {
+            return {};
+        });
+
+        return {
+            response: response,
+            body: body
+        };
+    };
+
+    let result = await doSaveRequest(session.access_token);
+    let json = result.body;
+
+    const authMessage = String(
+        json?.error ||
+        json?.msg ||
+        ''
+    ).trim();
+
+    const authFailure =
+        !result.response.ok &&
+        (
+            authMessage === 'جلسة غير صالحة' ||
+            authMessage === 'غير مصرح'
+        );
+
+    if (authFailure) {
+        const refreshRes = await supabase.auth.refreshSession();
+
+        if (
+            refreshRes.error ||
+            !refreshRes.data ||
+            !refreshRes.data.session ||
+            !refreshRes.data.session.access_token
+        ) {
+            hideLoader();
+            showToast(
+                'انتهت جلسة الدخول، يرجى تسجيل الدخول مرة أخرى',
+                'error'
+            );
+            return;
+        }
+
+        session = refreshRes.data.session;
+
+        result = await doSaveRequest(session.access_token);
+        json = result.body;
+    }
+
+    hideLoader();
+
+    if (json && json.success) {
+        showToast(
+            isEdit ? 'تم التعديل' : 'تمت الإضافة',
+            'success'
+        );
+
+        Swal.close();
+
+        data = await RW_Data.loadBranches();
+        renderTable(data);
+    } else {
+        showToast(
+            (json && (json.error || json.msg)) ||
+            'فشل الحفظ',
+            'error'
+        );
+    }
+} catch(e) {
+    hideLoader();
+
+    const message = String(
+        e?.message || ''
+    ).trim();
+
+    if (
+        message === 'Auth session missing!' ||
+        message === 'Invalid Refresh Token: Refresh Token Not Found'
+    ) {
+        showToast(
+            'انتهت جلسة الدخول، يرجى تسجيل الدخول مرة أخرى',
+            'error'
+        );
+    } else {
+        showToast(
+            message || 'فشل الاتصال بـ Edge Function',
+            'error'
+        );
+    }
+
+    console.error(e);
+}
                 });
                 if (isEdit) byId('btn-delete-branch')?.addEventListener('click', async () => {
                     const confirm = await Swal.fire({ title: 'تأكيد الحذف', text: 'حذف هذا الفرع؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'حذف', cancelButtonText: 'إلغاء' });
