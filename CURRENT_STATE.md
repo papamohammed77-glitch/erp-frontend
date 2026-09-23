@@ -1,3 +1,47 @@
+# LATEST AUTHORITATIVE CHECKPOINT — 2026-09-23 18:05 UTC
+
+## Current Mother Source
+- HEAD: `3eedbc60a940f8d4fffadb9d152bd362c3f8be04`
+- Parent: `9429006baa94eb92ffd5f215e2b085288681b94f`
+- `companies/company-1/main.html` blob: `6ea44f1a26ce6069855842dc9010a21acc726ad9`
+- Latest HEAD commit `3eedbc...` changes only `_forensic_current_main_extract.md`.
+
+## Current Syntax Incident
+The `main:6805 Unexpected token 'var'` defect is reproduced from current source and from GitHub Actions.
+Root cause: commit `9429006...` deleted the two `function openModal(code) {` declarations in `RW_Customers` and `RW_Suppliers`, leaving their bodies and closing braces intact.
+
+## Surgical Owner Fix — main.html
+Restore only these two declarations:
+1. Immediately before `const c = code ? data.find(x => x.customer_code === code) : null;` in `RW_Customers`:
+```javascript
+    function openModal(code) {
+        const c = code ? data.find(x => x.customer_code === code) : null;
+```
+2. Immediately before `const s = code ? data.find(x => x.supplier_code === code) : null;` in `RW_Suppliers`:
+```javascript
+    function openModal(code) {
+        const s = code ? data.find(x => x.supplier_code === code) : null;
+```
+
+Do not replace full functions and do not touch `_handleSave`.
+
+## Verification
+- Current-source Node parse: FAIL before patch.
+- In-memory two-line repair: PASS.
+- GitHub Actions run `35876538098`, syntax job `107233790170`: FAIL at exact line 6805 with same error.
+- No assistant write has been made to `main.html`.
+
+## Deployment/E2E
+- Existing CI syntax gate is present and correctly detected the regression.
+- Publish/served artifact identity: OPEN.
+- Authenticated browser E2E: OPEN.
+- Tailwind CDN message is a separate non-blocking production warning; not part of this syntax closure.
+
+## Continuity
+Do not reopen Report320 Branch/Fleet closures or closed inventory contracts without new CURRENT evidence.
+
+---
+
 # RAWAEA ERP — CURRENT STATE
 
 > هذا الملف هو Living Execution State وليس مصدرًا أعمى للحالة الحالية. يجب دائمًا مطابقة محتواه مع CURRENT GIT + CURRENT SOURCE + CURRENT PRODUCTION + CURRENT DATABASE + CURRENT DEPLOYMENT EVIDENCE.
