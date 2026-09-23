@@ -1810,87 +1810,152 @@ vehicleBranch:function(v){
 },
 pickArr:function(key){
     var s=this,
-        bid=(RW_UI.byId('wsFrom')||{}).value||'',
-        b=(s.refs.branches||[]).find(function(x){
-            return x.id===bid;
+        allBranches=(s.refs.branches||[]).filter(function(x){
+            return (
+                String(x.company_id||'')===String(s.company||'') &&
+                x.is_active!==false
+            );
         }),
-        allBranches=s.refs.branches||[],
         userBranches=allBranches.filter(function(x){
             return s.allowedBranch(s.user,x);
+        }),
+        bid=(RW_UI.byId('wsFrom')||{}).value||'',
+        b=allBranches.find(function(x){
+            return String(x.id)===String(bid);
         });
 
     if(key==='wsFrom'){
-        if(s.type==='DirectReturn'){
-            return (s.refs.vehicles||[]).filter(function(v){
-                var vb=s.vehicleBranch(v),
-                    rep=(s.refs.reps||[]).find(function(r){
-                        return r.id===v.driver_id;
-                    });
 
-                return v.status==='Active' &&
-                       !!vb &&
-                       (
-                           !rep ||
-                           (s.refs.branches||[]).some(function(branch){
-                               return s.allowedBranch(s.user,branch) &&
-                                      s.allowedBranch(rep,branch);
-                           })
-                       );
+        if(s.type==='DirectReturn'){
+
+            /*
+             * Warehouse vouchers operator:
+             * all active, properly initialized mobile vehicles.
+             *
+             * Direct-sales representative:
+             * only the vehicles owned by the active representative.
+             */
+            if(
+                s.user &&
+                s.user.role==='مندوب بيع مباشر'
+            ){
+                return (s.refs.vehicles||[]).filter(function(v){
+                    return (
+                        v.status==='Active' &&
+                        v.mobile_stock_enabled!==false &&
+                        v.driver_id===s.user.id &&
+                        !!s.vehicleBranch(v)
+                    );
+                });
+            }
+
+            return (s.refs.vehicles||[]).filter(function(v){
+                return (
+                    v.status==='Active' &&
+                    v.mobile_stock_enabled!==false &&
+                    !!s.vehicleBranch(v)
+                );
             });
         }
 
-        return allBranches;
+        /*
+         * Transfer is intentionally open to all active
+         * company branches under the approved warehouse
+         * vouchers authorization contract.
+         *
+         * Other branch-based operations remain user scoped.
+         */
+        if(s.type==='Transfer'){
+            return allBranches;
+        }
+
+        return userBranches;
     }
 
     if(key==='wsRep'){
+
         return (s.refs.reps||[]).filter(function(r){
-            return !!b &&
-                   s.allowedBranch(s.user,b) &&
-                   s.allowedBranch(r,b);
+
+            if(!b){
+                return false;
+            }
+
+            return (
+                s.allowedBranch(s.user,b) &&
+                s.allowedBranch(r,b)
+            );
         });
     }
 
-    if(key==='wsTo'&&s.type==='Transfer'){
+    if(
+        key==='wsTo' &&
+        s.type==='Transfer'
+    ){
         return allBranches;
     }
 
-    if(key==='wsTo'&&s.type==='DirectSale'){
+    if(
+        key==='wsTo' &&
+        s.type==='DirectSale'
+    ){
+
         var rid=(RW_UI.byId('wsRep')||{}).value||'';
 
+        /*
+         * Source branch is mandatory.
+         * Representative is optional at picker time.
+         *
+         * When Rep is already selected:
+         *   restrict vehicles to that Rep.
+         *
+         * When Rep is not selected:
+         *   show all valid vehicles for the selected branch context.
+         *
+         * pickSelect() remains the final identity/authorization gate
+         * and auto-binds the vehicle's representative.
+         */
         return (s.refs.vehicles||[]).filter(function(v){
+
             var vb=s.vehicleBranch(v),
                 rep=(s.refs.reps||[]).find(function(r){
                     return r.id===v.driver_id;
                 });
 
-            return v.status==='Active' &&
-                   !!vb &&
-                   !!b &&
-                   rid &&
-                   v.driver_id===rid &&
-                   s.allowedBranch(s.user,b) &&
-                   (!rep||s.allowedBranch(rep,b));
+            return (
+                v.status==='Active' &&
+                v.mobile_stock_enabled!==false &&
+                !!vb &&
+                !!b &&
+                s.allowedBranch(s.user,b) &&
+                !!rep &&
+                s.allowedBranch(rep,b) &&
+                (
+                    !rid ||
+                    String(v.driver_id)===String(rid)
+                )
+            );
         });
     }
 
-    if(key==='wsTo'&&s.type==='DirectReturn'){
-        var vid=(RW_UI.byId('wsFrom')||{}).value||'',
-            vv=(s.refs.vehicles||[]).find(function(x){
-                return x.id===vid;
-            }),
-            rp=vv&&(s.refs.reps||[]).find(function(x){
-                return x.id===vv.driver_id;
-            });
+    if(
+        key==='wsTo' &&
+        s.type==='DirectReturn'
+    ){
 
-        return userBranches.filter(function(x){
-            return !rp||s.allowedBranch(rp,x);
-        });
+        return userBranches;
     }
 
-    if(key==='wsTo'&&s.type==='SupplierReturn'){
+    if(
+        key==='wsTo' &&
+        s.type==='SupplierReturn'
+    ){
+
         var m=(s.refs.supplierBranchMap||{})[bid];
 
-        if(m&&Object.keys(m).length){
+        if(
+            m &&
+            Object.keys(m).length
+        ){
             return (s.refs.suppliers||[]).filter(function(x){
                 return !!m[x.id];
             });
@@ -1917,21 +1982,23 @@ pickSearch:function(key,q){
         return;
     }
 
-    var type=key==='wsRep'
-        ?'rep'
-        :(s.type==='DirectSale'&&key==='wsTo')
-            ?'vehicle'
-            :(s.type==='DirectReturn'&&key==='wsFrom')
+    var type=
+        key==='wsRep'
+            ?'rep'
+            :(s.type==='DirectSale' && key==='wsTo')
                 ?'vehicle'
-                :(key==='wsTo'&&s.type==='SupplierReturn')
-                    ?'supplier'
-                    :'branch';
+                :(s.type==='DirectReturn' && key==='wsFrom')
+                    ?'vehicle'
+                    :(key==='wsTo' && s.type==='SupplierReturn')
+                        ?'supplier'
+                        :'branch';
 
     function fieldScore(value){
+
         var n=s.norm(value);
 
-        if(!n||!z){
-            return n?5:0;
+        if(!n || !z){
+            return n ? 5 : 0;
         }
 
         if(n===z){
@@ -1969,49 +2036,57 @@ pickSearch:function(key,q){
 
     var rows=arr
         .map(function(x){
-            var vb=type==='vehicle'
-                ?s.vehicleBranch(x)
-                :null;
 
-            var fields=type==='rep'
-                ?[
-                    x.name,
-                    x.email,
-                    x.phone,
-                    x.role,
-                    x.default_branch_id
-                ]
-                :type==='vehicle'
+            var vb=
+                type==='vehicle'
+                    ?s.vehicleBranch(x)
+                    :null;
+
+            var fields=
+                type==='rep'
                     ?[
-                        x.vehicle_code,
-                        x.license_plate,
-                        x.model,
-                        vb&&vb.name,
-                        vb&&vb.branch_code
+                        x.name,
+                        x.email,
+                        x.phone,
+                        x.role,
+                        x.default_branch_id
                     ]
-                    :type==='supplier'
+                    :type==='vehicle'
                         ?[
-                            x.name,
-                            x.supplier_code,
-                            x.phone
+                            x.vehicle_code,
+                            x.license_plate,
+                            x.model,
+                            vb && vb.name,
+                            vb && vb.branch_code
                         ]
-                        :[
-                            x.name,
-                            x.branch_code,
-                            x.location,
-                            x.manager,
-                            x.phone
-                        ];
+                        :type==='supplier'
+                            ?[
+                                x.name,
+                                x.supplier_code,
+                                x.phone
+                            ]
+                            :[
+                                x.name,
+                                x.branch_code,
+                                x.location,
+                                x.manager,
+                                x.phone
+                            ];
 
             var score=0;
 
             fields.forEach(function(value){
+
                 score=Math.max(
                     score,
                     fieldScore(value)
                 );
             });
 
+            /*
+             * Branches are already scoped by pickArr().
+             * Keep this flag as a defensive final gate.
+             */
             var allowed=
                 type!=='branch' ||
                 s.allowedBranch(s.user,x);
@@ -2023,72 +2098,99 @@ pickSearch:function(key,q){
             };
         })
         .filter(function(o){
-            return o.score>0||!z;
+
+            return (
+                o.score>0 ||
+                !z
+            );
+        })
+        /*
+         * IMPORTANT:
+         * Unauthorized branch rows must never occupy
+         * the first 15 search slots.
+         */
+        .filter(function(o){
+            return o.allowed;
         })
         .sort(function(a,b){
             return b.score-a.score;
         })
         .slice(0,15);
 
-    box.innerHTML=rows.length
-        ?rows.map(function(o){
-            var x=o.x,
-                label=type==='rep'
-                    ?(x.name||x.email)
-                    :type==='vehicle'
-                        ?(x.vehicle_code||x.license_plate||x.model)
-                        :type==='supplier'
-                            ?(x.name||x.supplier_code)
-                            :(x.name||x.branch_code),
+    box.innerHTML=
+        rows.length
+            ?rows.map(function(o){
 
-                code=type==='rep'
-                    ?(x.email||x.phone||'')
-                    :type==='vehicle'
-                        ?(x.license_plate||x.vehicle_code||'')
-                        :type==='supplier'
-                            ?(x.supplier_code||x.phone||'')
-                            :(x.branch_code||x.location||'');
+                var x=o.x,
 
-            var action=o.allowed
-                ?' onclick="App.pickSelect(&quot;'+
+                    label=
+                        type==='rep'
+                            ?(x.name||x.email)
+                            :type==='vehicle'
+                                ?(
+                                    x.vehicle_code||
+                                    x.license_plate||
+                                    x.model
+                                )
+                                :type==='supplier'
+                                    ?(
+                                        x.name||
+                                        x.supplier_code
+                                    )
+                                    :(
+                                        x.name||
+                                        x.branch_code
+                                    ),
+
+                    code=
+                        type==='rep'
+                            ?(
+                                x.email||
+                                x.phone||
+                                ''
+                            )
+                            :type==='vehicle'
+                                ?(
+                                    x.license_plate||
+                                    x.vehicle_code||
+                                    ''
+                                )
+                                :type==='supplier'
+                                    ?(
+                                        x.supplier_code||
+                                        x.phone||
+                                        ''
+                                    )
+                                    :(
+                                        x.branch_code||
+                                        x.location||
+                                        ''
+                                    );
+
+                return(
+                    '<div class="smart-row cursor-pointer"'+
+                    ' onclick="App.pickSelect(&quot;'+
                     s.esc(key)+
                     '&quot;,&quot;'+
                     s.esc(x.id)+
-                    '&quot;)"'
-                :' aria-disabled="true" title="هذا الفرع ظاهر للبحث لكنه خارج نطاق فروع المستخدم المسموح بها"';
+                    '&quot;)">'+
+                        '<div>'+
+                            '<b class="text-xs text-white">'+
+                                s.esc(label)+
+                            '</b>'+
+                            '<div class="smart-code">'+
+                                s.esc(code)+
+                            '</div>'+
+                        '</div>'+
+                        '<span class="text-[9px] text-emerald-400">'+
+                            'اختيار'+
+                        '</span>'+
+                    '</div>'
+                );
 
-            return(
-                '<div class="smart-row '+
-                (o.allowed
-                    ?'cursor-pointer'
-                    :'opacity-60 cursor-not-allowed')+
-                '"'+
-                action+
-                '>'+
-                '<div>'+
-                '<b class="text-xs text-white">'+
-                s.esc(label)+
-                '</b>'+
-                '<div class="smart-code">'+
-                s.esc(code)+
-                '</div>'+
-                '</div>'+
-                '<span class="text-[9px] '+
-                (o.allowed
-                    ?'text-emerald-400'
-                    :'text-amber-400')+
-                '">'+
-                (
-                    o.allowed
-                        ?'اختيار'
-                        :'غير مصرح'
-                )+
-                '</span>'+
-                '</div>'
-            );
-        }).join('')
-        :
-        '<div class="smart-empty">لا توجد نتائج مطابقة ضمن دليل الكيانات الحالي</div>';
+            }).join('')
+            :
+            '<div class="smart-empty">لا توجد نتائج مطابقة ضمن دليل الكيانات الحالي</div>';
 
     box.classList.remove('hidden');
 },
