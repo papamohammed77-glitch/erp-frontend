@@ -147,8 +147,114 @@ loadRefs:function(){
 },
 updateConnection:function(live){var d=RW_UI.byId('connDot'),l=RW_UI.byId('connLabel');if(navigator.onLine){d.className='w-2.5 h-2.5 rounded-full '+(live===false?'bg-amber-400':'bg-emerald-400');l.textContent=live===false?'متصل · مزامنة عادية':'متزامن حي'}else{d.className='w-2.5 h-2.5 rounded-full bg-rose-400';l.textContent='غير متصل'}},
 subscribeRealtime:function(){var s=this;if(!supabase||!supabase.channel)return;this.unsubscribeRealtime();var branchIds=(this.refs.branches||[]).map(function(b){return b.id});var ch=supabase.channel('rw-vouchers-live-'+s.company).on('postgres_changes',{event:'*',schema:'public',table:'stock_vouchers',filter:'company_id=eq.'+s.company},function(){s.debouncedRefresh()}).on('postgres_changes',{event:'*',schema:'public',table:'stock_voucher_details'},function(){s.debouncedRefresh()}).on('postgres_changes',{event:'*',schema:'public',table:'stock_branches',filter:branchIds.length?'branch_id=in.('+branchIds.join(',')+')':undefined},function(){s.debouncedRefreshStock()}).subscribe(function(status){s.updateConnection(status==='SUBSCRIBED');if(status==='SUBSCRIBED')s.markSync()});this.realtime=ch},
-unsubscribeRealtime:function(){if(this.realtime&&supabase){try{supabase.removeChannel(this.realtime)}catch(e){}this.realtime=null}},markSync:function(){this.lastSyncAt=new Date();var x=document.getElementById('syncAt');if(x)x.textContent='آخر مزامنة: '+this.lastSyncAt.toLocaleTimeString('ar-EG')},debouncedRefresh:function(){var s=this;clearTimeout(this._refreshTimer);this._refreshTimer=setTimeout(function(){s.loadList(s.tabName)},250)},debouncedRefreshStock:function(){var s=this;clearTimeout(this._stockTimer);this._stockTimer=setTimeout(function(){s.prefetchStock(true)},180)},
-prefetchStock:function(silent){var s=this,bids=this.refs.branches.map(function(b){return b.id});if(!bids.length){this.stock={};return Promise.resolve()};if(!silent)RW_UI.showLoader('جاري مزامنة أرصدة المخزون...');return supabase.from('stock_branches').select('branch_id,item_id,qty,allocated_qty').in('branch_id',bids).limit(20000).then(function(r){if(r.error)throw r.error;s.stock={};(r.data||[]).forEach(function(x){s.stock[x.branch_id+':'+x.item_id]=Math.max(0,Number(x.qty||0)-Number(x.allocated_qty||0))});s.markSync();if(!silent)RW_UI.hideLoader();if(s.mode==='voucher')s.renderProducts();return r.data}).catch(function(e){if(!silent)RW_UI.hideLoader();console.error('[VOUCHERS] stock sync failed',e);throw e})},
+unsubscribeRealtime:function(){if(this.realtime&&supabase){try{supabase.removeChannel(this.realtime)}catch(e){}this.realtime=null}},markSync:function(){this.lastSyncAt=new Date();var x=document.getElementById('syncAt');if(x)x.textContent='آخر مزامنة: '+this.lastSyncAt.toLocaleTimeString('ar-EG')},debouncedRefresh:function(){var s=this;clearTimeout(this._refreshTimer);this._refreshTimer=setTimeout(function(){s.loadList(s.tabName)},250)},
+debouncedRefreshStock:function(){
+    var s=this;
+
+    clearTimeout(
+        this._stockTimer
+    );
+
+    this._stockTimer=
+        setTimeout(function(){
+
+            s.prefetchStock(true)
+                .catch(function(){
+                    /* silent refresh */
+                });
+
+        },180);
+},
+prefetchStock:function(silent){
+    var s=this,
+        branch=this.sourceBranch(),
+        branchId=
+            branch&&branch.id
+                ?String(branch.id)
+                :'';
+
+    if(!branchId){
+        this.stock={};
+
+        if(!silent){
+            RW_UI.hideLoader();
+        }
+
+        if(this.mode==='voucher'){
+            this.renderProducts();
+        }
+
+        return Promise.resolve([]);
+    }
+
+    this._stockBranchId=branchId;
+
+    if(!silent){
+        RW_UI.showLoader(
+            'جاري مزامنة أرصدة المخزون...'
+        );
+    }
+
+    return supabase
+        .from('stock_branches')
+        .select(
+            'branch_id,item_id,qty,allocated_qty'
+        )
+        .eq('branch_id',branchId)
+        .limit(20000)
+        .then(function(r){
+
+            if(r.error){
+                throw r.error;
+            }
+
+            s.stock={};
+
+            (r.data||[]).forEach(function(x){
+
+                s.stock[
+                    x.branch_id+
+                    ':'+
+                    x.item_id
+                ]=
+                    Math.max(
+                        0,
+                        Number(x.qty||0)-
+                        Number(x.allocated_qty||0)
+                    );
+            });
+
+            s._stockBranchId=branchId;
+            s.markSync();
+
+            if(!silent){
+                RW_UI.hideLoader();
+            }
+
+            if(s.mode==='voucher'){
+                s.renderProducts();
+            }
+
+            return r.data||[];
+        })
+        .catch(function(e){
+
+            if(!silent){
+                RW_UI.hideLoader();
+            }
+
+            console.error(
+                '[VOUCHERS] stock sync failed',
+                e
+            );
+
+            if(silent){
+                return [];
+            }
+
+            throw e;
+        });
+},
 tab:function(t){this.tabName=t;document.querySelectorAll('.tab-btn').forEach(function(x){x.classList.remove('active');x.classList.add('text-slate-400')});var b=RW_UI.byId('tab-'+t);if(b){b.classList.add('active');b.classList.remove('text-slate-400')}if(t==='account'){this.account();return}this.loadList(t)},toggleMenu:function(){RW_UI.byId('typeMenu').classList.toggle('hidden')},
 toggleTopPanel:function(){
     var b=RW_UI.byId('wsTopToggle');
@@ -1765,91 +1871,186 @@ allowedBranch:function(u,b){
     );
 },
 vehicleBranch:function(v){
-    if(!v){
+
+    if(
+        !v ||
+        v.mobile_stock_enabled===false
+    ){
         return null;
     }
 
-    if(v.mobile_stock_enabled===false){
-        return null;
+    var branches=
+        this.refs &&
+        this.refs.branches
+            ?this.refs.branches
+            :[];
+
+    if(
+        !this._voucherBranchIndex ||
+        this._voucherBranchIndex.rows!==branches
+    ){
+
+        var byId=
+            Object.create(null);
+
+        var byCode=
+            Object.create(null);
+
+        branches.forEach(
+            function(b){
+
+                if(
+                    !b ||
+                    b.is_active===false ||
+                    String(
+                        b.company_id||''
+                    )!==String(
+                        this.company||''
+                    )
+                ){
+                    return;
+                }
+
+                byId[
+                    String(b.id)
+                ]=b;
+
+                var code=
+                    String(
+                        b.branch_code||''
+                    )
+                    .trim()
+                    .toUpperCase();
+
+                if(code){
+                    byCode[code]=b;
+                }
+
+            },
+            this
+        );
+
+        this._voucherBranchIndex={
+            rows:branches,
+            byId:byId,
+            byCode:byCode
+        };
     }
+
+    var index=
+        this._voucherBranchIndex;
 
     if(v.mobile_branch_id){
 
-        var direct=(this.refs.branches||[]).find(function(b){
+        var direct=
+            index.byId[
+                String(
+                    v.mobile_branch_id
+                )
+            ];
 
-            return (
-                String(b.id)===String(v.mobile_branch_id) &&
-                String(b.company_id||'')===String(this.company||'') &&
-                b.is_active!==false
-            );
-
-        },this);
-
-        if(direct){
+        if(
+            direct &&
+            String(
+                direct.company_id||''
+            )===String(
+                this.company||''
+            ) &&
+            direct.is_active!==false
+        ){
             return direct;
         }
     }
 
-    var code=
-        'VAN-' +
-        String(v.vehicle_code||'')
-            .trim()
-            .toUpperCase();
+    var fallbackCode=
+        'VAN-'+
+        String(
+            v.vehicle_code||''
+        )
+        .trim()
+        .toUpperCase();
 
-    return (this.refs.branches||[]).find(function(b){
-
-        return (
-            b.is_active!==false &&
-            String(b.company_id||'')===String(this.company||'') &&
-            String(b.branch_code||'')
-                .trim()
-                .toUpperCase()===code
-        );
-
-    },this)||null;
+    return (
+        index.byCode[fallbackCode]||
+        null
+    );
 },
 pickArr:function(key){
+
     var s=this,
-        allBranches=(s.refs.branches||[]).filter(function(x){
-            return (
-                String(x.company_id||'')===String(s.company||'') &&
-                x.is_active!==false
+
+        allBranches=
+            (s.refs.branches||[])
+            .filter(function(x){
+
+                return (
+                    String(
+                        x.company_id||''
+                    )===
+                    String(
+                        s.company||''
+                    ) &&
+                    x.is_active!==false
+                );
+            }),
+
+        userBranches=
+            allBranches.filter(
+                function(x){
+                    return s.allowedBranch(
+                        s.user,
+                        x
+                    );
+                }
+            ),
+
+        bid=
+            (RW_UI.byId('wsFrom')||{})
+            .value||
+            '',
+
+        b=
+            allBranches.find(
+                function(x){
+                    return (
+                        String(x.id)===
+                        String(bid)
+                    );
+                }
             );
-        }),
-        userBranches=allBranches.filter(function(x){
-            return s.allowedBranch(s.user,x);
-        }),
-        bid=(RW_UI.byId('wsFrom')||{}).value||'',
-        b=allBranches.find(function(x){
-            return String(x.id)===String(bid);
-        });
 
     if(key==='wsFrom'){
 
-        if(s.type==='DirectReturn'){
+        if(
+            s.type==='DirectReturn'
+        ){
 
-            /*
-             * Warehouse vouchers operator:
-             * all active, properly initialized mobile vehicles.
-             *
-             * Direct-sales representative:
-             * only the vehicles owned by the active representative.
-             */
             if(
                 s.user &&
-                s.user.role==='مندوب بيع مباشر'
+                s.user.role===
+                    'مندوب بيع مباشر'
             ){
-                return (s.refs.vehicles||[]).filter(function(v){
+
+                return (
+                    s.refs.vehicles||[]
+                )
+                .filter(function(v){
+
                     return (
                         v.status==='Active' &&
                         v.mobile_stock_enabled!==false &&
-                        v.driver_id===s.user.id &&
+                        v.driver_id===
+                            s.user.id &&
                         !!s.vehicleBranch(v)
                     );
                 });
             }
 
-            return (s.refs.vehicles||[]).filter(function(v){
+            return (
+                s.refs.vehicles||[]
+            )
+            .filter(function(v){
+
                 return (
                     v.status==='Active' &&
                     v.mobile_stock_enabled!==false &&
@@ -1858,14 +2059,9 @@ pickArr:function(key){
             });
         }
 
-        /*
-         * Transfer is intentionally open to all active
-         * company branches under the approved warehouse
-         * vouchers authorization contract.
-         *
-         * Other branch-based operations remain user scoped.
-         */
-        if(s.type==='Transfer'){
+        if(
+            s.type==='Transfer'
+        ){
             return allBranches;
         }
 
@@ -1874,15 +2070,24 @@ pickArr:function(key){
 
     if(key==='wsRep'){
 
-        return (s.refs.reps||[]).filter(function(r){
+        return (
+            s.refs.reps||[]
+        )
+        .filter(function(r){
 
             if(!b){
                 return false;
             }
 
             return (
-                s.allowedBranch(s.user,b) &&
-                s.allowedBranch(r,b)
+                s.allowedBranch(
+                    s.user,
+                    b
+                ) &&
+                s.allowedBranch(
+                    r,
+                    b
+                )
             );
         });
     }
@@ -1899,39 +2104,80 @@ pickArr:function(key){
         s.type==='DirectSale'
     ){
 
-        var rid=(RW_UI.byId('wsRep')||{}).value||'';
+        var rid=
+            (RW_UI.byId('wsRep')||{})
+            .value||
+            '';
 
-        /*
-         * Source branch is mandatory.
-         * Representative is optional at picker time.
-         *
-         * When Rep is already selected:
-         *   restrict vehicles to that Rep.
-         *
-         * When Rep is not selected:
-         *   show all valid vehicles for the selected branch context.
-         *
-         * pickSelect() remains the final identity/authorization gate
-         * and auto-binds the vehicle's representative.
-         */
-        return (s.refs.vehicles||[]).filter(function(v){
+        var repRows=
+            s.refs.reps||[];
 
-            var vb=s.vehicleBranch(v),
-                rep=(s.refs.reps||[]).find(function(r){
-                    return r.id===v.driver_id;
-                });
+        if(
+            !s._voucherRepIndex ||
+            s._voucherRepIndex.rows!==repRows
+        ){
+
+            var repById=
+                Object.create(null);
+
+            repRows.forEach(
+                function(r){
+
+                    if(
+                        r &&
+                        r.id
+                    ){
+                        repById[
+                            String(r.id)
+                        ]=r;
+                    }
+                }
+            );
+
+            s._voucherRepIndex={
+                rows:repRows,
+                byId:repById
+            };
+        }
+
+        var repIndex=
+            s._voucherRepIndex.byId;
+
+        return (
+            s.refs.vehicles||[]
+        )
+        .filter(function(v){
+
+            var vb=
+                s.vehicleBranch(v);
+
+            var rep=
+                repIndex[
+                    String(
+                        v.driver_id||''
+                    )
+                ]||
+                null;
 
             return (
                 v.status==='Active' &&
                 v.mobile_stock_enabled!==false &&
                 !!vb &&
                 !!b &&
-                s.allowedBranch(s.user,b) &&
+                s.allowedBranch(
+                    s.user,
+                    b
+                ) &&
                 !!rep &&
-                s.allowedBranch(rep,b) &&
+                s.allowedBranch(
+                    rep,
+                    b
+                ) &&
                 (
                     !rid ||
-                    String(v.driver_id)===String(rid)
+                    String(
+                        v.driver_id
+                    )===String(rid)
                 )
             );
         });
@@ -1941,7 +2187,6 @@ pickArr:function(key){
         key==='wsTo' &&
         s.type==='DirectReturn'
     ){
-
         return userBranches;
     }
 
@@ -1950,13 +2195,23 @@ pickArr:function(key){
         s.type==='SupplierReturn'
     ){
 
-        var m=(s.refs.supplierBranchMap||{})[bid];
+        var m=
+            (
+                s.refs
+                    .supplierBranchMap||
+                {}
+            )[bid];
 
         if(
             m &&
             Object.keys(m).length
         ){
-            return (s.refs.suppliers||[]).filter(function(x){
+
+            return (
+                s.refs.suppliers||[]
+            )
+            .filter(function(x){
+
                 return !!m[x.id];
             });
         }
@@ -1968,15 +2223,20 @@ pickArr:function(key){
 },
 pickShow:function(key){this.pickSearch(key,(RW_UI.byId(key+'Search')||{}).value||'')},
 pickSearch:function(key,q){
+
     var s=this,
         arr=this.pickArr(key)||[],
         z=this.norm(q),
         tokens=z
-            ?z.split(/\s+/).filter(function(x){
-                return !!x;
-            })
+            ?z.split(/s+/)
+                .filter(function(x){
+                    return !!x;
+                })
             :[],
-        box=RW_UI.byId(key+'Menu');
+        box=
+            RW_UI.byId(
+                key+'Menu'
+            );
 
     if(!box){
         return;
@@ -1985,20 +2245,68 @@ pickSearch:function(key,q){
     var type=
         key==='wsRep'
             ?'rep'
-            :(s.type==='DirectSale' && key==='wsTo')
+            :(s.type==='DirectSale' &&
+              key==='wsTo')
                 ?'vehicle'
-                :(s.type==='DirectReturn' && key==='wsFrom')
+                :(s.type==='DirectReturn' &&
+                  key==='wsFrom')
                     ?'vehicle'
-                    :(key==='wsTo' && s.type==='SupplierReturn')
+                    :(key==='wsTo' &&
+                      s.type===
+                        'SupplierReturn')
                         ?'supplier'
                         :'branch';
+
+    var repById=null;
+
+    if(type==='vehicle'){
+
+        var repRows=
+            s.refs.reps||[];
+
+        if(
+            !s._voucherRepIndex ||
+            s._voucherRepIndex.rows!==repRows
+        ){
+
+            var builtRepById=
+                Object.create(null);
+
+            repRows.forEach(
+                function(r){
+
+                    if(
+                        r &&
+                        r.id
+                    ){
+                        builtRepById[
+                            String(r.id)
+                        ]=r;
+                    }
+                }
+            );
+
+            s._voucherRepIndex={
+                rows:repRows,
+                byId:builtRepById
+            };
+        }
+
+        repById=
+            s._voucherRepIndex.byId;
+    }
 
     function fieldScore(value){
 
         var n=s.norm(value);
 
-        if(!n || !z){
-            return n ? 5 : 0;
+        if(
+            !n ||
+            !z
+        ){
+            return n
+                ?5
+                :0;
         }
 
         if(n===z){
@@ -2011,9 +2319,11 @@ pickSearch:function(key,q){
 
         if(
             tokens.length>1 &&
-            tokens.every(function(t){
-                return n.indexOf(t)>=0;
-            })
+            tokens.every(
+                function(t){
+                    return n.indexOf(t)>=0;
+                }
+            )
         ){
             return 100;
         }
@@ -2024,9 +2334,11 @@ pickSearch:function(key,q){
 
         if(
             tokens.length>1 &&
-            tokens.some(function(t){
-                return n.indexOf(t)>=0;
-            })
+            tokens.some(
+                function(t){
+                    return n.indexOf(t)>=0;
+                }
+            )
         ){
             return 40;
         }
@@ -2034,12 +2346,26 @@ pickSearch:function(key,q){
         return 0;
     }
 
-    var rows=arr
+    var rows=
+        arr
         .map(function(x){
 
             var vb=
                 type==='vehicle'
                     ?s.vehicleBranch(x)
+                    :null;
+
+            var vehicleRep=
+                type==='vehicle' &&
+                repById
+                    ?(
+                        repById[
+                            String(
+                                x.driver_id||''
+                            )
+                        ]||
+                        null
+                    )
                     :null;
 
             var fields=
@@ -2057,7 +2383,13 @@ pickSearch:function(key,q){
                             x.license_plate,
                             x.model,
                             vb && vb.name,
-                            vb && vb.branch_code
+                            vb && vb.branch_code,
+                            vehicleRep &&
+                                vehicleRep.name,
+                            vehicleRep &&
+                                vehicleRep.email,
+                            vehicleRep &&
+                                vehicleRep.phone
                         ]
                         :type==='supplier'
                             ?[
@@ -2075,21 +2407,22 @@ pickSearch:function(key,q){
 
             var score=0;
 
-            fields.forEach(function(value){
+            fields.forEach(
+                function(value){
 
-                score=Math.max(
-                    score,
-                    fieldScore(value)
-                );
-            });
+                    score=Math.max(
+                        score,
+                        fieldScore(value)
+                    );
+                }
+            );
 
-            /*
-             * Branches are already scoped by pickArr().
-             * Keep this flag as a defensive final gate.
-             */
             var allowed=
                 type!=='branch' ||
-                s.allowedBranch(s.user,x);
+                s.allowedBranch(
+                    s.user,
+                    x
+                );
 
             return{
                 x:x,
@@ -2104,34 +2437,83 @@ pickSearch:function(key,q){
                 !z
             );
         })
-        /*
-         * IMPORTANT:
-         * Unauthorized branch rows must never occupy
-         * the first 15 search slots.
-         */
         .filter(function(o){
+
             return o.allowed;
         })
         .sort(function(a,b){
+
             return b.score-a.score;
         })
         .slice(0,15);
 
     box.innerHTML=
         rows.length
-            ?rows.map(function(o){
+            ?rows.map(
+                function(o){
 
-                var x=o.x,
+                    var x=o.x,
 
-                    label=
-                        type==='rep'
-                            ?(x.name||x.email)
-                            :type==='vehicle'
+                        vehicleRep=
+                            type==='vehicle' &&
+                            repById
                                 ?(
-                                    x.vehicle_code||
-                                    x.license_plate||
-                                    x.model
+                                    repById[
+                                        String(
+                                            x.driver_id||''
+                                        )
+                                    ]||
+                                    null
                                 )
+                                :null,
+
+                        vehicleLabel=
+                            x.vehicle_code||
+                            x.license_plate||
+                            x.model||
+                            '',
+
+                        vehicleSub=
+                            x.license_plate||
+                            x.vehicle_code||
+                            '';
+
+                    if(
+                        type==='vehicle' &&
+                        vehicleRep &&
+                        (
+                            vehicleRep.name||
+                            vehicleRep.email
+                        )
+                    ){
+
+                        vehicleLabel +=
+                            ' — '+
+                            (
+                                vehicleRep.name||
+                                vehicleRep.email
+                            );
+                    }
+
+                    if(
+                        type==='vehicle' &&
+                        vehicleRep &&
+                        vehicleRep.phone
+                    ){
+
+                        vehicleSub +=
+                            ' · '+
+                            vehicleRep.phone;
+                    }
+
+                    var label=
+                        type==='rep'
+                            ?(
+                                x.name||
+                                x.email
+                            )
+                            :type==='vehicle'
+                                ?vehicleLabel
                                 :type==='supplier'
                                     ?(
                                         x.name||
@@ -2140,9 +2522,9 @@ pickSearch:function(key,q){
                                     :(
                                         x.name||
                                         x.branch_code
-                                    ),
+                                    );
 
-                    code=
+                    var code=
                         type==='rep'
                             ?(
                                 x.email||
@@ -2150,11 +2532,7 @@ pickSearch:function(key,q){
                                 ''
                             )
                             :type==='vehicle'
-                                ?(
-                                    x.license_plate||
-                                    x.vehicle_code||
-                                    ''
-                                )
+                                ?vehicleSub
                                 :type==='supplier'
                                     ?(
                                         x.supplier_code||
@@ -2167,28 +2545,28 @@ pickSearch:function(key,q){
                                         ''
                                     );
 
-                return(
-                    '<div class="smart-row cursor-pointer"'+
-                    ' onclick="App.pickSelect(&quot;'+
-                    s.esc(key)+
-                    '&quot;,&quot;'+
-                    s.esc(x.id)+
-                    '&quot;)">'+
-                        '<div>'+
-                            '<b class="text-xs text-white">'+
-                                s.esc(label)+
-                            '</b>'+
-                            '<div class="smart-code">'+
-                                s.esc(code)+
+                    return(
+                        '<div class="smart-row cursor-pointer"'+
+                        ' onclick="App.pickSelect(&quot;'+
+                        s.esc(key)+
+                        '&quot;,&quot;'+
+                        s.esc(x.id)+
+                        '&quot;)">'+
+                            '<div>'+
+                                '<b class="text-xs text-white">'+
+                                    s.esc(label)+
+                                '</b>'+
+                                '<div class="smart-code">'+
+                                    s.esc(code)+
+                                '</div>'+
                             '</div>'+
-                        '</div>'+
-                        '<span class="text-[9px] text-emerald-400">'+
-                            'اختيار'+
-                        '</span>'+
-                    '</div>'
-                );
-
-            }).join('')
+                            '<span class="text-[9px] text-emerald-400">'+
+                                'اختيار'+
+                            '</span>'+
+                        '</div>'
+                    );
+                }
+            ).join('')
             :
             '<div class="smart-empty">لا توجد نتائج مطابقة ضمن دليل الكيانات الحالي</div>';
 
@@ -2740,7 +3118,43 @@ add:function(code,requestedQty){
             :'<div class="text-center text-slate-500 py-16">السلة فارغة</div>'
     );
 },search:function(q){var s=this;this.renderProducts();clearTimeout(this.timer);this.timer=setTimeout(function(){var z=s.norm(q),box=RW_UI.byId('wsResults');if(!z){box.classList.add('hidden');return}s.results=s.items.filter(function(x){return s.norm(x.item_code).includes(z)||s.norm(x.barcode).includes(z)||s.norm(x.name).includes(z)||s.norm(x.search_label).includes(z)}).slice(0,12);box.innerHTML=s.results.length?s.results.map(function(x,i){return'<div class="result-row '+(i===0?'active':'')+'" onclick="App.add(\''+s.esc(x.item_code)+'\');App.focusSearch()"><div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">'+(x.image_url?'<img src="'+s.esc(x.image_url)+'" class="w-full h-full object-cover">':'📦')+'</div><div class="flex-1 min-w-0"><b class="text-xs truncate block">'+s.esc(x.name||x.item_code)+'</b><span class="text-[10px] text-slate-400">'+s.esc(x.item_code)+' · '+s.esc(x.barcode||'')+'</span></div><span class="text-[10px] text-emerald-600 font-black">إضافة</span></div>'}).join(''):'<div class="p-4 text-center text-slate-400">لا توجد نتائج</div>';box.classList.remove('hidden')},120)},focusSearch:function(){var x=RW_UI.byId('wsSearch');if(x){x.focus();x.select()}},searchKey:function(e){if(e.key==='Enter'){e.preventDefault();if(this.results[this.focus])this.add(this.results[this.focus].item_code);this.focusSearch()}else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!this.results.length)return;this.focus=Math.max(0,Math.min(this.results.length-1,this.focus+(e.key==='ArrowDown'?1:-1)));document.querySelectorAll('#wsResults .result-row').forEach(function(x,i){x.classList.toggle('active',i===App.focus)})}},summary:function(){var t='',fr=RW_UI.byId('wsFrom'),re=RW_UI.byId('wsRep'),to=RW_UI.byId('wsTo');if(fr&&fr.value)t+=(this.type==='DirectReturn'?'المركبة: ':'المصدر: ')+this.loc(fr.value,this.type==='DirectReturn'?'Vehicle':'Branch');if(re&&re.value){var r=this.refs.reps.find(function(x){return x.id===re.value});if(r)t+=(t?' · ':'')+'المندوب: '+(r.name||r.email)}if(to&&to.value)t+=(t?' · ':'')+(this.type==='DirectSale'?'المركبة: ':this.type==='SupplierReturn'?'المورد: ':'الوجهة: ')+this.loc(to.value,this.type==='DirectSale'||this.type==='DirectReturn'?'Vehicle':this.type==='SupplierReturn'?'Supplier':'Branch');RW_UI.safeText(RW_UI.byId('routeSummary'),t||'حدد عناصر المسار');RW_UI.safeText(RW_UI.byId('stockHint'),this.sourceBranch()?'المتاح محسوب من المصدر المحدد':'اختر المصدر لمعرفة المتاح')},
-updateSource:function(){this.summary();this.renderProducts()},
+updateSource:function(){
+    var s=this,
+        branch=this.sourceBranch(),
+        branchId=
+            branch&&branch.id
+                ?String(branch.id)
+                :'';
+
+    clearTimeout(this._sourceStockTimer);
+
+    if(
+        this._stockBranchId!==
+        branchId
+    ){
+        this._stockBranchId=
+            branchId;
+
+        this.stock={};
+    }
+
+    this.summary();
+    this.renderProducts();
+
+    if(!branchId){
+        return;
+    }
+
+    this._sourceStockTimer=
+        setTimeout(function(){
+
+            s.prefetchStock(true)
+                .catch(function(){
+                    /* prefetchStock records exact error */
+                });
+
+        },80);
+},
 itemDetails:function(id){
     var s=this,x=this.items.find(function(i){return i.id===id});
     if(!x)return;
