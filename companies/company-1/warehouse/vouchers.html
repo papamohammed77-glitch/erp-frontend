@@ -44,63 +44,98 @@ doLogin:function(){var s=this,e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.by
 init:function(){var s=this;RW_Auth.init(function(u,er){if(!u){if(er&&er!=='NO_SESSION')RW_UI.toast(er,'error');return}s.user=u;supabase.auth.getUser().then(function(r){if(r.error)throw r.error;return supabase.from('users').select('company_id,role,status,default_branch_id,allowed_branch_ids,permissions').eq('auth_id',r.data.user.id).maybeSingle()}).then(function(r){if(r.error||!r.data||!r.data.company_id)throw new Error('سياق الشركة غير محدد');if(r.data.status&&r.data.status!=='Active')throw new Error('المستخدم غير نشط');s.company=r.data.company_id;s.user.default_branch_id=r.data.default_branch_id||null;s.user.allowed_branch_ids=r.data.allowed_branch_ids;s.user.permissions=r.data.permissions||s.user.permissions||[];return s.loadRefs()}).then(function(){if(!s.user.isOwner&&s.user.activeWarehouseRole!=='أذونات')throw new Error('غير مصرح – هذه الوحدة مخصصة لصلاحية الأذونات');RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('recoveryScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');s.updateConnection();s.subscribeRealtime();s.tab('pending');s.prefetchStock()}).catch(function(e){RW_UI.showError(e.message||'تعذر التهيئة')})})},
 logout:function(){this.unsubscribeRealtime();RW_Auth.doLogout(function(){location.reload()})},
 loadRefs:function(){
-    var s=this;
+    var s=this,
+        pageSize=500;
 
-    return Promise.all([
-        supabase
-            .from('branches')
-            .select('id,branch_code,name,company_id,is_active')
-            .eq('company_id',s.company)
-            .eq('is_active',true)
-            .order('name'),
+    function readAll(makeQuery){
+        var rows=[],
+            offset=0;
 
-        supabase
-            .from('vehicles')
-            .select('id,vehicle_code,license_plate,model,driver_id,status,mobile_branch_id,mobile_stock_enabled')
-            .eq('company_id',s.company)
-            .eq('status','Active')
-            .order('vehicle_code'),
+        function readPage(){
+            return makeQuery()
+                .range(offset,offset+pageSize-1)
+                .then(function(r){
+                    if(r.error){
+                        throw r.error;
+                    }
 
-        supabase
-            .from('suppliers')
-            .select('id,supplier_code,name,phone,is_active')
-            .eq('company_id',s.company)
-            .eq('is_active',true)
-            .order('name'),
+                    var page=r.data||[];
 
-        supabase
-            .from('users')
-            .select('id,name,email,phone,role,status,default_branch_id,allowed_branch_ids')
-            .eq('company_id',s.company)
-            .eq('status','Active')
-            .eq('role','مندوب بيع مباشر')
-            .order('name'),
+                    rows=rows.concat(page);
 
-        supabase
-            .from('purchase_orders')
-            .select('supplier_id,branch_id')
-            .eq('company_id',s.company)
-            .not('supplier_id','is',null)
-    ])
-    .then(function(r){
+                    if(page.length<pageSize){
+                        return rows;
+                    }
 
-        for(var i=0;i<r.length;i++){
-            if(r[i].error){
-                throw r[i].error;
-            }
+                    offset+=pageSize;
+
+                    return readPage();
+                });
         }
 
-        s.refs.branches=r[0].data||[];
-        s.refs.vehicles=r[1].data||[];
-        s.refs.suppliers=r[2].data||[];
-        s.refs.reps=r[3].data||[];
+        return readPage();
+    }
 
+    return Promise.all([
+        readAll(function(){
+            return supabase
+                .from('branches')
+                .select('id,branch_code,name,company_id,is_active')
+                .eq('company_id',s.company)
+                .eq('is_active',true)
+                .order('name')
+                .order('id');
+        }),
+
+        readAll(function(){
+            return supabase
+                .from('vehicles')
+                .select('id,vehicle_code,license_plate,model,driver_id,status,mobile_branch_id,mobile_stock_enabled')
+                .eq('company_id',s.company)
+                .eq('status','Active')
+                .order('vehicle_code')
+                .order('id');
+        }),
+
+        readAll(function(){
+            return supabase
+                .from('suppliers')
+                .select('id,supplier_code,name,phone,is_active')
+                .eq('company_id',s.company)
+                .eq('is_active',true)
+                .order('name')
+                .order('id');
+        }),
+
+        readAll(function(){
+            return supabase
+                .from('users')
+                .select('id,name,email,phone,role,status,default_branch_id,allowed_branch_ids')
+                .eq('company_id',s.company)
+                .eq('status','Active')
+                .eq('role','مندوب بيع مباشر')
+                .order('name')
+                .order('id');
+        }),
+
+        readAll(function(){
+            return supabase
+                .from('purchase_orders')
+                .select('supplier_id,branch_id')
+                .eq('company_id',s.company)
+                .not('supplier_id','is',null)
+                .order('created_at')
+                .order('id');
+        })
+    ]).then(function(r){
+        s.refs.branches=r[0]||[];
+        s.refs.vehicles=r[1]||[];
+        s.refs.suppliers=r[2]||[];
+        s.refs.reps=r[3]||[];
         s.refs.supplierBranchMap={};
 
-        (r[4].data||[]).forEach(function(x){
-
+        (r[4]||[]).forEach(function(x){
             if(x.supplier_id&&x.branch_id){
-
                 (s.refs.supplierBranchMap[x.branch_id]||
                     (s.refs.supplierBranchMap[x.branch_id]={})
                 )[x.supplier_id]=1;
@@ -1720,24 +1755,27 @@ pickArr:function(key){
 
     if(key==='wsFrom'){
         if(s.type==='DirectReturn'){
-        return (s.refs.vehicles||[]).filter(function(v){
-            var vb=s.vehicleBranch(v),
-                rep=(s.refs.reps||[]).find(function(r){
-                    return r.id===v.driver_id;
-                });
-        
-                   return v.status==='Active' &&
-               !!vb &&
-               (
-                   !rep ||
-                   (s.refs.branches||[]).some(function(branch){
-                       return s.allowedBranch(s.user,branch) &&
-                              s.allowedBranch(rep,branch);
-                   })
-               );
-    });
-}
+            return (s.refs.vehicles||[]).filter(function(v){
+                var vb=s.vehicleBranch(v),
+                    rep=(s.refs.reps||[]).find(function(r){
+                        return r.id===v.driver_id;
+                    });
+
+                return v.status==='Active' &&
+                       !!vb &&
+                       (
+                           !rep ||
+                           (s.refs.branches||[]).some(function(branch){
+                               return s.allowedBranch(s.user,branch) &&
+                                      s.allowedBranch(rep,branch);
+                           })
+                       );
+            });
         }
+
+        return allBranches;
+    }
+
     if(key==='wsRep'){
         return (s.refs.reps||[]).filter(function(r){
             return !!b &&
@@ -1759,15 +1797,15 @@ pickArr:function(key){
                     return r.id===v.driver_id;
                 });
 
-                   return v.status==='Active' &&
-           !!vb &&
-           !!b &&
-           rid &&
-           v.driver_id===rid &&
-           s.allowedBranch(s.user,b) &&
-           (!rep||s.allowedBranch(rep,b));
-            });
-        }
+            return v.status==='Active' &&
+                   !!vb &&
+                   !!b &&
+                   rid &&
+                   v.driver_id===rid &&
+                   s.allowedBranch(s.user,b) &&
+                   (!rep||s.allowedBranch(rep,b));
+        });
+    }
 
     if(key==='wsTo'&&s.type==='DirectReturn'){
         var vid=(RW_UI.byId('wsFrom')||{}).value||'',
@@ -1795,16 +1833,23 @@ pickArr:function(key){
         return [];
     }
 
-    
+    return [];
 },
 pickShow:function(key){this.pickSearch(key,(RW_UI.byId(key+'Search')||{}).value||'')},
 pickSearch:function(key,q){
     var s=this,
         arr=this.pickArr(key)||[],
         z=this.norm(q),
+        tokens=z
+            ?z.split(/\s+/).filter(function(x){
+                return !!x;
+            })
+            :[],
         box=RW_UI.byId(key+'Menu');
 
-    if(!box)return;
+    if(!box){
+        return;
+    }
 
     var type=key==='wsRep'
         ?'rep'
@@ -1816,35 +1861,108 @@ pickSearch:function(key,q){
                     ?'supplier'
                     :'branch';
 
-    var rows=arr.map(function(x){
-        var a=type==='rep'
-                ?(x.name||x.email||'')
-                :type==='vehicle'
-                    ?(x.vehicle_code||x.license_plate||x.model||'')
-                    :(x.name||x.supplier_code||x.branch_code||''),
-            b=type==='rep'
-                ?(x.email||x.phone||'')
-                :type==='vehicle'
-                    ?(x.license_plate||x.vehicle_code||'')
-                    :(x.supplier_code||x.phone||x.branch_code||''),
-            na=s.norm(a),
-            nb=s.norm(b),
-            sc=!z?1:(na===z||nb===z?150:(na.indexOf(z)===0||nb.indexOf(z)===0?115:(na.indexOf(z)>=0||nb.indexOf(z)>=0?70:0))),
-            allowed=type!=='branch'||s.allowedBranch(s.user,x);
+    function fieldScore(value){
+        var n=s.norm(value);
 
-        return {
-            x:x,
-            score:sc,
-            allowed:allowed
-        };
-    })
-    .filter(function(o){
-        return o.score>0;
-    })
-    .sort(function(a,b){
-        return b.score-a.score;
-    })
-    .slice(0,15);
+        if(!n||!z){
+            return n?5:0;
+        }
+
+        if(n===z){
+            return 150;
+        }
+
+        if(n.indexOf(z)===0){
+            return 115;
+        }
+
+        if(
+            tokens.length>1 &&
+            tokens.every(function(t){
+                return n.indexOf(t)>=0;
+            })
+        ){
+            return 100;
+        }
+
+        if(n.indexOf(z)>=0){
+            return 70;
+        }
+
+        if(
+            tokens.length>1 &&
+            tokens.some(function(t){
+                return n.indexOf(t)>=0;
+            })
+        ){
+            return 40;
+        }
+
+        return 0;
+    }
+
+    var rows=arr
+        .map(function(x){
+            var vb=type==='vehicle'
+                ?s.vehicleBranch(x)
+                :null;
+
+            var fields=type==='rep'
+                ?[
+                    x.name,
+                    x.email,
+                    x.phone,
+                    x.role,
+                    x.default_branch_id
+                ]
+                :type==='vehicle'
+                    ?[
+                        x.vehicle_code,
+                        x.license_plate,
+                        x.model,
+                        vb&&vb.name,
+                        vb&&vb.branch_code
+                    ]
+                    :type==='supplier'
+                        ?[
+                            x.name,
+                            x.supplier_code,
+                            x.phone
+                        ]
+                        :[
+                            x.name,
+                            x.branch_code,
+                            x.location,
+                            x.manager,
+                            x.phone
+                        ];
+
+            var score=0;
+
+            fields.forEach(function(value){
+                score=Math.max(
+                    score,
+                    fieldScore(value)
+                );
+            });
+
+            var allowed=
+                type!=='branch' ||
+                s.allowedBranch(s.user,x);
+
+            return{
+                x:x,
+                score:score,
+                allowed:allowed
+            };
+        })
+        .filter(function(o){
+            return o.score>0||!z;
+        })
+        .sort(function(a,b){
+            return b.score-a.score;
+        })
+        .slice(0,15);
 
     box.innerHTML=rows.length
         ?rows.map(function(o){
@@ -1853,22 +1971,28 @@ pickSearch:function(key,q){
                     ?(x.name||x.email)
                     :type==='vehicle'
                         ?(x.vehicle_code||x.license_plate||x.model)
-                        :(x.name||x.supplier_code||x.branch_code),
+                        :type==='supplier'
+                            ?(x.name||x.supplier_code)
+                            :(x.name||x.branch_code),
+
                 code=type==='rep'
-                    ?(x.email||'')
+                    ?(x.email||x.phone||'')
                     :type==='vehicle'
                         ?(x.license_plate||x.vehicle_code||'')
-                        :(x.supplier_code||x.branch_code||'');
+                        :type==='supplier'
+                            ?(x.supplier_code||x.phone||'')
+                            :(x.branch_code||x.location||'');
 
             var action=o.allowed
-                ? ' onclick="App.pickSelect(&quot;'+
+                ?' onclick="App.pickSelect(&quot;'+
                     s.esc(key)+
                     '&quot;,&quot;'+
                     s.esc(x.id)+
                     '&quot;)"'
-                : ' aria-disabled="true" title="هذا الفرع ظاهر للبحث لكنه خارج نطاق تنفيذ المستخدم"';
+                :' aria-disabled="true" title="هذا الفرع ظاهر للبحث لكنه خارج نطاق فروع المستخدم المسموح بها"';
 
-            return '<div class="smart-row '+
+            return(
+                '<div class="smart-row '+
                 (o.allowed
                     ?'cursor-pointer'
                     :'opacity-60 cursor-not-allowed')+
@@ -1888,12 +2012,17 @@ pickSearch:function(key,q){
                     ?'text-emerald-400'
                     :'text-amber-400')+
                 '">'+
-                (o.allowed?'اختيار':'غير مصرح')+
+                (
+                    o.allowed
+                        ?'اختيار'
+                        :'غير مصرح'
+                )+
                 '</span>'+
-                '</div>';
+                '</div>'
+            );
         }).join('')
         :
-        '<div class="smart-empty">لا توجد نتائج ضمن دليل الفروع/الكيانات الحالي</div>';
+        '<div class="smart-empty">لا توجد نتائج مطابقة ضمن دليل الكيانات الحالي</div>';
 
     box.classList.remove('hidden');
 },
