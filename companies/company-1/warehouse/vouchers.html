@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-22 22:00 UTC -->
+<!-- 2026-09-23 10:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -1697,7 +1697,73 @@ newWorkspace:function(){
             );
         });
 },
-allowedBranch:function(u,b){if(!u||!b)return false;if(String(u.default_branch_id||'')===String(b.id))return true;var a=u.allowed_branch_ids;if(a===null||typeof a==='undefined')return true;if(Array.isArray(a))a=a.map(String);else if(typeof a==='string'&&a.trim()){var raw=a.trim(),parsed=null;try{parsed=JSON.parse(raw)}catch(e){parsed=null}if(Array.isArray(parsed))a=parsed.map(String);else if(typeof parsed==='string')a=[parsed.trim()];else a=raw.split(/[,|]/).map(function(x){return x.trim().replace(/^"|"$/g,'')}).filter(Boolean)}else return false;a=a.map(function(x){return String(x).trim().replace(/^"|"$/g,'')});if(a.indexOf('*')>=0)return true;return a.indexOf(String(b.id))>=0||a.indexOf(String(b.branch_code||''))>=0},
+allowedBranch:function(u,b){
+    if(!u||!b)return false;
+
+    if(
+        this.type==='Transfer' &&
+        u.role==='مخزني' &&
+        u.activeWarehouseRole==='أذونات' &&
+        String(b.company_id||'')===String(this.company||'')
+    ){
+        return true;
+    }
+
+    if(String(u.default_branch_id||'')===String(b.id)){
+        return true;
+    }
+
+    var a=u.allowed_branch_ids;
+
+    if(a===null||typeof a==='undefined'){
+        return true;
+    }
+
+    if(Array.isArray(a)){
+        a=a.map(String);
+    }else if(typeof a==='string'&&a.trim()){
+        var raw=a.trim(),
+            parsed=null;
+
+        try{
+            parsed=JSON.parse(raw);
+        }catch(e){
+            parsed=null;
+        }
+
+        if(Array.isArray(parsed)){
+            a=parsed.map(String);
+        }else if(typeof parsed==='string'){
+            a=[parsed.trim()];
+        }else{
+            a=raw
+                .split(/[,|]/)
+                .map(function(x){
+                    return x
+                        .trim()
+                        .replace(/^"|"$/g,'');
+                })
+                .filter(Boolean);
+        }
+    }else{
+        return false;
+    }
+
+    a=a.map(function(x){
+        return String(x)
+            .trim()
+            .replace(/^"|"$/g,'');
+    });
+
+    if(a.indexOf('*')>=0){
+        return true;
+    }
+
+    return (
+        a.indexOf(String(b.id))>=0 ||
+        a.indexOf(String(b.branch_code||''))>=0
+    );
+},
 vehicleBranch:function(v){
     if(!v){
         return null;
