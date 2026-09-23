@@ -1031,6 +1031,260 @@ downloadCsv:function(filename,rows){
     },1000);
 },
 
+printDraftVoucher:function(code){
+    var s=this,
+        w=window.open(
+            '',
+            '_blank',
+            'width=1200,height=900'
+        );
+
+    if(!w){
+        RW_UI.toast(
+            'تعذر فتح نافذة الطباعة',
+            'error'
+        );
+        return;
+    }
+
+    RW_UI.showLoader(
+        'جاري تجهيز المسودة للطباعة...'
+    );
+
+    supabase
+        .from('stock_vouchers')
+        .select(
+            'id,voucher_code,voucher_date,type,status,'+
+            'reference,from_type,from_id,to_type,to_id,'+
+            'notes,created_by,created_at'
+        )
+        .eq('company_id',s.company)
+        .eq('voucher_code',code)
+        .maybeSingle()
+        .then(function(r){
+
+            if(r.error){
+                throw r.error;
+            }
+
+            if(!r.data){
+                throw new Error(
+                    'الإذن غير موجود'
+                );
+            }
+
+            if(r.data.status!=='Draft'){
+                throw new Error(
+                    'المستند لم يعد مسودة'
+                );
+            }
+
+            var v=r.data;
+
+            return supabase
+                .from(
+                    'stock_voucher_details'
+                )
+                .select(
+                    'item_code,item_name,unit,qty,'+
+                    'unit_price,notes'
+                )
+                .eq(
+                    'voucher_id',
+                    v.id
+                )
+                .order(
+                    'created_at',
+                    {ascending:true}
+                )
+                .order(
+                    'id',
+                    {ascending:true}
+                )
+                .then(function(d){
+
+                    if(d.error){
+                        throw d.error;
+                    }
+
+                    return{
+                        v:v,
+                        details:d.data||[]
+                    };
+                });
+        })
+        .then(function(x){
+
+            var v=x.v,
+                rows=x.details,
+                esc=s.esc,
+                from=s.loc(
+                    v.from_id,
+                    v.from_type
+                ),
+                to=s.loc(
+                    v.to_id,
+                    v.to_type
+                );
+
+            var lines=
+                rows.map(
+                    function(d){
+
+                        return(
+                            '<tr>'+
+                                '<td>'+
+                                    esc(
+                                        d.item_code||''
+                                    )+
+                                '</td>'+
+                                '<td>'+
+                                    esc(
+                                        d.item_name||
+                                        d.item_code||
+                                        ''
+                                    )+
+                                '</td>'+
+                                '<td>'+
+                                    esc(
+                                        d.unit||'حبة'
+                                    )+
+                                '</td>'+
+                                '<td>'+
+                                    Number(
+                                        d.qty||0
+                                    )+
+                                '</td>'+
+                                '<td>'+
+                                    Number(
+                                        d.unit_price||0
+                                    )+
+                                '</td>'+
+                                '<td>'+
+                                    esc(
+                                        d.notes||''
+                                    )+
+                                '</td>'+
+                            '</tr>'
+                        );
+                    }
+                ).join('');
+
+            w.document.open();
+
+            w.document.write(
+                '<!doctype html>'+
+                '<html lang="ar" dir="rtl">'+
+                '<head>'+
+                    '<meta charset="utf-8">'+
+                    '<title>'+
+                        'مسودة إذن مخزني '+
+                        esc(v.voucher_code)+
+                    '</title>'+
+                    '<style>'+
+                        'body{font-family:Arial,Tahoma,sans-serif;margin:24px;color:#111827}'+
+                        'h1{font-size:22px;margin:0 0 8px}'+
+                        'h2{font-size:14px;margin:22px 0 8px}'+
+                        '.meta{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:14px 0}'+
+                        '.box{border:1px solid #cbd5e1;padding:8px;border-radius:8px}'+
+                        '.muted{color:#64748b;font-size:11px}'+
+                        'table{width:100%;border-collapse:collapse;margin-top:10px}'+
+                        'th,td{border:1px solid #cbd5e1;padding:8px;font-size:12px}'+
+                        'th{background:#f1f5f9}'+
+                        '.draft{padding:8px 12px;border:1px solid #f59e0b;background:#fffbeb;border-radius:8px;font-weight:700}'+
+                        '@media print{body{margin:10mm}}'+
+                    '</style>'+
+                '</head>'+
+                '<body>'+
+                    '<div class="draft">'+
+                        'مسودة — لا توجد حركة مخزنية حتى الإرسال'+
+                    '</div>'+
+                    '<h1>'+
+                        'إذن مخزني — '+
+                        esc(v.voucher_code)+
+                    '</h1>'+
+                    '<div class="meta">'+
+                        '<div class="box">'+
+                            '<span class="muted">النوع</span><br>'+
+                            esc(v.type||'')+
+                        '</div>'+
+                        '<div class="box">'+
+                            '<span class="muted">التاريخ</span><br>'+
+                            esc(v.voucher_date||'')+
+                        '</div>'+
+                        '<div class="box">'+
+                            '<span class="muted">المصدر</span><br>'+
+                            esc(from)+
+                        '</div>'+
+                        '<div class="box">'+
+                            '<span class="muted">الوجهة</span><br>'+
+                            esc(to)+
+                        '</div>'+
+                        '<div class="box">'+
+                            '<span class="muted">المرجع</span><br>'+
+                            esc(v.reference||'')+
+                        '</div>'+
+                        '<div class="box">'+
+                            '<span class="muted">أنشأ بواسطة</span><br>'+
+                            esc(v.created_by||'')+
+                        '</div>'+
+                    '</div>'+
+                    '<h2>الأصناف</h2>'+
+                    '<table>'+
+                        '<thead>'+
+                            '<tr>'+
+                                '<th>الكود</th>'+
+                                '<th>الصنف</th>'+
+                                '<th>الوحدة</th>'+
+                                '<th>الكمية</th>'+
+                                '<th>سعر الوحدة</th>'+
+                                '<th>ملاحظات</th>'+
+                            '</tr>'+
+                        '</thead>'+
+                        '<tbody>'+
+                            lines+
+                        '</tbody>'+
+                    '</table>'+
+                    '<h2>ملاحظات</h2>'+
+                    '<div class="box">'+
+                        esc(v.notes||'—')+
+                    '</div>'+
+                    '<div class="muted" style="margin-top:16px">'+
+                        'تم إنشاء نسخة الطباعة من الحالة الحالية للمسودة في النظام.'+
+                    '</div>'+
+                '</body>'+
+                '</html>'
+            );
+
+            w.document.close();
+
+            setTimeout(
+                function(){
+                    try{
+                        w.focus();
+                        w.print();
+                    }catch(e){}
+                },
+                250
+            );
+        })
+        .catch(function(e){
+
+            try{
+                w.close();
+            }catch(_e){}
+
+            RW_UI.showError(
+                e.message||
+                'فشل تجهيز المسودة للطباعة'
+            );
+        })
+        .finally(function(){
+
+            RW_UI.hideLoader();
+        });
+},
+         
 printVoucher:function(){
     var node=document.querySelector('.swal2-html-container');
 
