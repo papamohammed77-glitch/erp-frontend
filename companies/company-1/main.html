@@ -12102,13 +12102,13 @@ var RW_PurchaseGold = (function () {
     return new Date().toISOString().slice(0, 10);
   }
 
-  async function purchaseItemLookup(code) {
+   async function purchaseItemLookup(code) {
     code = String(code || '').trim();
     if (!code) throw new Error('كود الصنف مطلوب');
 
     var r = await supabase
       .from('items')
-      .select('id,item_code,name,unit')
+      .select('id,item_code,name,unit,barcode,search_label,cost_price')
       .eq('item_code', code)
       .maybeSingle();
 
@@ -12118,6 +12118,89 @@ var RW_PurchaseGold = (function () {
     return r.data;
   }
 
+  function purchaseSearchTokens(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[,|()]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 4);
+  }
+
+  function purchaseEscapeIlike(value) {
+    return String(value || '')
+      .replace(/\\/g, '\\\\')
+      .replace(/%/g, '\\%')
+      .replace(/_/g, '\\_');
+  }
+
+  async function purchaseSupplierSearch(query) {
+    var tokens = purchaseSearchTokens(query);
+    if (!tokens.length) return [];
+
+    var q = supabase
+      .from('suppliers')
+      .select('id,supplier_code,name,search_label,phone,contact_person,purchase_rep,payment_type,accounts_payable')
+      .eq('company_id', companyId())
+      .eq('is_active', true)
+      .limit(25);
+
+    for (var i = 0; i < tokens.length; i++) {
+      var term = purchaseEscapeIlike(tokens[i]);
+      q = q.or(
+        'supplier_code.ilike.%' + term +
+        '%,name.ilike.%' + term +
+        '%,search_label.ilike.%' + term +
+        '%,phone.ilike.%' + term +
+        '%,contact_person.ilike.%' + term +
+        '%,purchase_rep.ilike.%' + term
+      );
+    }
+
+    var r = await q.order('name', { ascending: true });
+    if (r.error) throw r.error;
+    return r.data || [];
+  }
+
+  async function purchaseItemSearch(query) {
+    var tokens = purchaseSearchTokens(query);
+    if (!tokens.length) return [];
+
+    var q = supabase
+      .from('items')
+      .select('id,item_code,name,unit,barcode,search_label,cost_price,is_active')
+      .eq('is_active', true)
+      .limit(40);
+
+    for (var i = 0; i < tokens.length; i++) {
+      var term = purchaseEscapeIlike(tokens[i]);
+      q = q.or(
+        'item_code.ilike.%' + term +
+        '%,name.ilike.%' + term +
+        '%,barcode.ilike.%' + term +
+        '%,search_label.ilike.%' + term
+      );
+    }
+
+    var r = await q.order('name', { ascending: true });
+    if (r.error) throw r.error;
+
+    var search = String(query || '').trim().toLowerCase();
+    return (r.data || []).sort(function (a, b) {
+      function score(x) {
+        var code = String(x.item_code || '').toLowerCase();
+        var barcode = String(x.barcode || '').toLowerCase();
+        var name = String(x.name || '').toLowerCase();
+        return (code === search ? 1000 : 0) +
+          (barcode === search ? 900 : 0) +
+          (code.indexOf(search) === 0 ? 500 : 0) +
+          (barcode.indexOf(search) === 0 ? 450 : 0) +
+          (name.indexOf(search) === 0 ? 300 : 0);
+      }
+      return score(b) - score(a);
+    }).slice(0, 25);
+  }
   function ensurePurchaseRealtime() {
     var c = companyId();
 
@@ -13120,7 +13203,12 @@ var RW_PurchaseGold = (function () {
         '<div><div class="text-lg font-black">إنشاء فاتورة شراء</div><div class="text-sm text-slate-500">اربط الفاتورة بأمر شراء متى أمكن، وحدد الفرع وبنود الفاتورة بدقة.</div></div></div></div>' +
 
         '<div class="grid grid-cols-1 md:grid-cols-3 gap-4">' +
-        '<label class="text-sm font-black">المورد<select id="pg-i-supplier" class="w-full border rounded-xl p-3 mt-1">' + so + '</select></label>' +
+        '<div class="relative"><label class="text-sm font-black">المورد' +
+		'<input id="pg-i-supplier-search" autocomplete="off" class="w-full border rounded-xl p-3 mt-1" placeholder="ابحث باسم المورد أو الكود أو الهاتف">' +
+		'</label>' +
+		'<input id="pg-i-supplier" type="hidden">' +
+		'<div id="pg-i-supplier-dropdown" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-64 overflow-auto rounded-xl border bg-white shadow-2xl"></div>' +
+		'</div>' +
         '<label class="text-sm font-black">الفرع<select id="pg-i-branch" class="w-full border rounded-xl p-3 mt-1">' + bo + '</select></label>' +
         '<label class="text-sm font-black">أمر الشراء<select id="pg-i-po" class="w-full border rounded-xl p-3 mt-1">' + poOptions + '</select></label>' +
         '</div>' +
@@ -13128,12 +13216,17 @@ var RW_PurchaseGold = (function () {
         '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
         '<label class="text-sm font-black">تاريخ الاستحقاق<input id="pg-i-date" type="date" class="w-full border rounded-xl p-3 mt-1"></label>' +
         '<label class="text-sm font-black">رقم فاتورة المورد<input id="pg-i-supplier-no" class="w-full border rounded-xl p-3 mt-1" placeholder="رقم المستند لدى المورد"></label>' +
+		'<label class="text-sm font-black">ملاحظات الفاتورة<textarea id="pg-i-notes" rows="2" class="w-full border rounded-xl p-3 mt-1" placeholder="ملاحظات أو شروط المورد"></textarea></label>' +
         '</div>' +
 
         '<div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">' +
         '<div class="font-black mb-3">بنود الفاتورة</div>' +
         '<div class="grid grid-cols-1 md:grid-cols-[1fr_120px_140px_auto] gap-3 items-end">' +
-        '<label class="text-sm font-bold">كود الصنف<input id="pg-i-code" class="w-full border rounded-xl p-3 mt-1" placeholder="1001"></label>' +
+        '<div class="relative"><label class="text-sm font-bold">كود الصنف' +
+		'<input id="pg-i-code" autocomplete="off" class="w-full border rounded-xl p-3 mt-1" placeholder="ابحث بالكود أو الاسم أو الباركود">' +
+		'</label>' +
+		'<div id="pg-i-item-dropdown" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-72 overflow-auto rounded-xl border bg-white shadow-2xl"></div>' +
+		'</div>' +
         '<label class="text-sm font-bold">الكمية<input id="pg-i-add-qty" type="number" min="0.01" step="0.01" class="w-full border rounded-xl p-3 mt-1" placeholder="10"></label>' +
         '<label class="text-sm font-bold">السعر<input id="pg-i-add-price" type="number" min="0" step="0.01" class="w-full border rounded-xl p-3 mt-1" placeholder="25"></label>' +
         '<button type="button" id="pg-i-add" class="px-5 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button>' +
@@ -13148,13 +13241,229 @@ var RW_PurchaseGold = (function () {
       didOpen: function () {
         byId('pg-i-date').value = purchaseToday();
         renderLines();
+        var selectedSupplier = null;
+        var selectedItem = null;
+        var supplierResults = [];
+        var itemResults = [];
+        var supplierSearchTimer = null;
+        var itemSearchTimer = null;
 
+        var supplierSearch = byId('pg-i-supplier-search');
+        var supplierDropdown = byId('pg-i-supplier-dropdown');
+        var itemSearch = byId('pg-i-code');
+        var itemDropdown = byId('pg-i-item-dropdown');
+
+        function hidePurchaseDropdown(dropdown) {
+          if (dropdown) dropdown.classList.add('hidden');
+        }
+
+        function setSupplierSelection(supplier) {
+          selectedSupplier = supplier || null;
+          if (!selectedSupplier) {
+            byId('pg-i-supplier').value = '';
+            supplierSearch.value = '';
+            hidePurchaseDropdown(supplierDropdown);
+            return;
+          }
+
+          byId('pg-i-supplier').value = selectedSupplier.id || '';
+          supplierSearch.value = selectedSupplier.name || selectedSupplier.supplier_code || '';
+          hidePurchaseDropdown(supplierDropdown);
+        }
+
+        function setItemSelection(item) {
+          selectedItem = item || null;
+          itemSearch.value = selectedItem ? selectedItem.item_code : '';
+          hidePurchaseDropdown(itemDropdown);
+        }
+
+        function renderSupplierSearchResults(rows) {
+          supplierResults = rows || [];
+
+          if (!supplierResults.length) {
+            safeHTML(
+              supplierDropdown,
+              '<div class="p-3 text-sm text-slate-500 text-center">لا يوجد مورد مطابق</div>'
+            );
+            supplierDropdown.classList.remove('hidden');
+            return;
+          }
+
+          var h = '';
+
+          for (var i = 0; i < supplierResults.length; i++) {
+            var s = supplierResults[i];
+
+            h +=
+              '<button type="button" data-pg-supplier-index="' + i + '" class="w-full text-right p-3 border-b hover:bg-emerald-50">' +
+              '<div class="font-black text-slate-900">' + esc(s.name || s.supplier_code || '') + '</div>' +
+              '<div class="text-xs text-slate-500 mt-1">' +
+                esc(s.supplier_code || '') +
+                (s.phone ? ' · ' + esc(s.phone) : '') +
+                (s.contact_person ? ' · ' + esc(s.contact_person) : '') +
+              '</div>' +
+              '</button>';
+          }
+
+          safeHTML(supplierDropdown, h);
+          supplierDropdown.classList.remove('hidden');
+        }
+
+        function renderItemSearchResults(rows) {
+          itemResults = rows || [];
+
+          if (!itemResults.length) {
+            safeHTML(
+              itemDropdown,
+              '<div class="p-3 text-sm text-slate-500 text-center">لا يوجد صنف مطابق</div>'
+            );
+            itemDropdown.classList.remove('hidden');
+            return;
+          }
+
+          var h = '';
+
+          for (var i = 0; i < itemResults.length; i++) {
+            var item = itemResults[i];
+
+            h +=
+              '<button type="button" data-pg-item-index="' + i + '" class="w-full text-right p-3 border-b hover:bg-blue-50">' +
+              '<div class="font-black text-slate-900">' + esc(item.name || item.item_code || '') + '</div>' +
+              '<div class="text-xs text-slate-500 mt-1">' +
+                'الكود: ' + esc(item.item_code || '') +
+                (item.barcode ? ' · باركود: ' + esc(item.barcode) : '') +
+                ' · الوحدة: ' + esc(item.unit || '') +
+              '</div>' +
+              '<div class="text-xs text-emerald-700 mt-1 font-bold">التكلفة الحالية: ' +
+                (Number(item.cost_price) || 0).toLocaleString() +
+              '</div>' +
+              '</button>';
+          }
+
+          safeHTML(itemDropdown, h);
+          itemDropdown.classList.remove('hidden');
+        }
+
+        if (supplierSearch) {
+          supplierSearch.addEventListener('input', function () {
+            selectedSupplier = null;
+            byId('pg-i-supplier').value = '';
+
+            var value = supplierSearch.value.trim();
+
+            clearTimeout(supplierSearchTimer);
+
+            if (!value) {
+              hidePurchaseDropdown(supplierDropdown);
+              return;
+            }
+
+            supplierSearchTimer = setTimeout(async function () {
+              try {
+                renderSupplierSearchResults(await purchaseSupplierSearch(value));
+              } catch (e) {
+                safeHTML(
+                  supplierDropdown,
+                  '<div class="p-3 text-sm text-red-600 text-center">' +
+                    esc(e.message || 'تعذر البحث عن المورد') +
+                  '</div>'
+                );
+                supplierDropdown.classList.remove('hidden');
+              }
+            }, 220);
+          });
+
+          supplierSearch.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && supplierResults.length) {
+              e.preventDefault();
+              setSupplierSelection(supplierResults[0]);
+            }
+          });
+        }
+
+        if (supplierDropdown) {
+          supplierDropdown.addEventListener('click', function (e) {
+            var button = e.target.closest('[data-pg-supplier-index]');
+            if (!button) return;
+
+            setSupplierSelection(
+              supplierResults[Number(button.getAttribute('data-pg-supplier-index'))]
+            );
+          });
+        }
+
+        if (itemSearch) {
+          itemSearch.addEventListener('input', function () {
+            selectedItem = null;
+
+            var value = itemSearch.value.trim();
+
+            clearTimeout(itemSearchTimer);
+
+            if (!value) {
+              hidePurchaseDropdown(itemDropdown);
+              return;
+            }
+
+            itemSearchTimer = setTimeout(async function () {
+              try {
+                renderItemSearchResults(await purchaseItemSearch(value));
+              } catch (e) {
+                safeHTML(
+                  itemDropdown,
+                  '<div class="p-3 text-sm text-red-600 text-center">' +
+                    esc(e.message || 'تعذر البحث عن الصنف') +
+                  '</div>'
+                );
+                itemDropdown.classList.remove('hidden');
+              }
+            }, 180);
+          });
+
+          itemSearch.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && itemResults.length) {
+              e.preventDefault();
+              setItemSelection(itemResults[0]);
+            }
+          });
+        }
+
+        if (itemDropdown) {
+          itemDropdown.addEventListener('click', function (e) {
+            var button = e.target.closest('[data-pg-item-index]');
+            if (!button) return;
+
+            setItemSelection(
+              itemResults[Number(button.getAttribute('data-pg-item-index'))]
+            );
+          });
+        }
         byId('pg-i-po').addEventListener('change', async function () {
           var selected = byId('pg-i-po').selectedOptions[0];
           var supplierId = selected ? selected.getAttribute('data-supplier') : '';
           var branchId = selected ? selected.getAttribute('data-branch') : '';
 
-          if (supplierId) byId('pg-i-supplier').value = supplierId;
+                    if (supplierId) {
+            var supplierRes = await supabase
+              .from('suppliers')
+              .select('id,supplier_code,name')
+              .eq('company_id', companyId())
+              .eq('id', supplierId)
+              .eq('is_active', true)
+              .maybeSingle();
+
+            if (supplierRes.error) {
+              Swal.showValidationMessage(supplierRes.error.message);
+              return;
+            }
+
+            if (!supplierRes.data) {
+              Swal.showValidationMessage('المورد المرتبط بأمر الشراء غير موجود أو غير نشط');
+              return;
+            }
+
+            setSupplierSelection(supplierRes.data);
+          }
           if (branchId) byId('pg-i-branch').value = branchId;
 
           var poId = byId('pg-i-po').value;
@@ -13201,8 +13510,15 @@ var RW_PurchaseGold = (function () {
             return;
           }
 
+          var btn = byId('pg-i-add');
+          btn.disabled = true;
+          btn.textContent = 'جارٍ التحقق...';
+
           try {
-            var item = await purchaseItemLookup(code);
+            var item = selectedItem && selectedItem.item_code === code
+              ? selectedItem
+              : await purchaseItemLookup(code);
+
             items.push({
               item_code: item.item_code,
               name: item.name,
@@ -13212,6 +13528,18 @@ var RW_PurchaseGold = (function () {
               discount_percent: 0,
               tax_rate: 0
             });
+
+            setItemSelection(null);
+            byId('pg-i-add-qty').value = '';
+            byId('pg-i-add-price').value = '';
+            renderLines();
+          } catch (e) {
+            Swal.showValidationMessage(e.message || 'تعذر التحقق من الصنف');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'إضافة بند';
+          }
+        });
             byId('pg-i-code').value = '';
             byId('pg-i-add-qty').value = '';
             byId('pg-i-add-price').value = '';
@@ -13264,8 +13592,6 @@ var RW_PurchaseGold = (function () {
 
     if (!r.isConfirmed) return;
 
-    // supplier_invoice_no is not part of the current CREATE_INVOICE RPC contract.
-    delete r.value.supplier_invoice_no;
 
     showLoader('جاري إنشاء الفاتورة...');
 
