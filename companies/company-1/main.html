@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-24 17:30 UTC -->
+<!-- 2026-09-24 22:00 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -29230,10 +29230,10 @@ async function loadAlerts() {
 
     var trOptions = transferOptions(tr);
 
-    var dsOptions = ds.map(function(x){
-      var ref = String(x.reference||'').trim();
-      return [x.id, (x.voucher_code||'—') + (ref ? ' · مرجع: '+ref : '') + ' · مندوب: ' + (x.direct_sales_rep_name||'—') + (x.current_vehicle_code ? ' · مركبة: '+x.current_vehicle_code : '')];
-    });
+	var dsOptions = [[ '', 'بدون مستند — ربط المركبة بمندوب البيع المباشر' ]].concat(ds.map(function(x){
+	  var ref = String(x.reference||'').trim();
+	  return [x.id, (x.voucher_code||'—') + (ref ? ' · مرجع: '+ref : '') + ' · مندوب: ' + (x.direct_sales_rep_name||'—') + (x.current_vehicle_code ? ' · مركبة: '+x.current_vehicle_code : '')];
+	}));
 
     var branchOptions = [[ '', 'كل الفروع' ]].concat(branches.map(function(x){
       return [x.id,(x.name||x.branch_code||'—') + (x.branch_code ? ' · '+x.branch_code : '')];
@@ -29287,7 +29287,7 @@ async function loadAlerts() {
           selectInput('fvo-ds','رقم مستند البيع المباشر','',dsOptions) +
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">' +
             '<div><label class="font-bold text-sm text-slate-700">رقم المستند</label><input id="fvo-ds-doc" class="rw-input" readonly style="height:46px;padding-right:14px;margin-top:6px;background:#f8fafc" value=""></div>' +
-            '<div><label class="font-bold text-sm text-slate-700">المرجع</label><input id="fvo-ds-ref" class="rw-input" readonly style="height:46px;padding-right:14px;margin-top:6px;background:#f8fafc" value=""></div>' +
+            '<div><label class="font-bold text-sm text-slate-700">المرجع</label><input id="fvo-ds-ref" class="rw-input" style="height:46px;padding-right:14px;margin-top:6px;background:#fff" placeholder="مرجع الربط (اختياري)" value=""></div>' +
           '</div>' +
           selectInput('fvo-ds-rep','مندوب البيع المباشر','',directOptions) +
         '</div>' +
@@ -29310,12 +29310,13 @@ async function loadAlerts() {
         payload.driver_user_id = val('fvo-tr-driver');
         if (!payload.voucher_id) throw new Error('اختر مستند التحويل');
         if (!payload.driver_user_id) throw new Error('اختر السائق');
-      } else if (type==='DIRECT_SALE') {
-        payload.voucher_id = val('fvo-ds');
-        payload.direct_sales_rep_id = val('fvo-ds-rep');
-        if (!payload.voucher_id) throw new Error('اختر مستند البيع المباشر');
-        if (!payload.direct_sales_rep_id) throw new Error('اختر مندوب البيع المباشر');
-      } else {
+	  } else if (type==='DIRECT_SALE') {
+	    payload.voucher_id = val('fvo-ds');
+	    payload.direct_sales_rep_id = val('fvo-ds-rep');
+	    payload.operation_type = payload.voucher_id ? 'DIRECT_SALE' : 'DIRECT_SALE_MASTER';
+	    payload.reference = val('fvo-ds-ref') || null;
+		if (!payload.direct_sales_rep_id) throw new Error('اختر مندوب البيع المباشر');
+	  } else {
         throw new Error('نوع العملية غير مدعوم');
       }
 
