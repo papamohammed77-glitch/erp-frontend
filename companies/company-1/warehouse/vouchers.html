@@ -146,7 +146,7 @@ loadRefs:function(){
     });
 },
 updateConnection:function(live){var d=RW_UI.byId('connDot'),l=RW_UI.byId('connLabel');if(navigator.onLine){d.className='w-2.5 h-2.5 rounded-full '+(live===false?'bg-amber-400':'bg-emerald-400');l.textContent=live===false?'متصل · مزامنة عادية':'متزامن حي'}else{d.className='w-2.5 h-2.5 rounded-full bg-rose-400';l.textContent='غير متصل'}},
-subscribeRealtime:function(){var s=this;if(!supabase||!supabase.channel)return;this.unsubscribeRealtime();var branchIds=(this.refs.branches||[]).map(function(b){return b.id});var ch=supabase.channel('rw-vouchers-live-'+s.company).on('postgres_changes',{event:'*',schema:'public',table:'stock_vouchers',filter:'company_id=eq.'+s.company},function(){s.debouncedRefresh()}).on('postgres_changes',{event:'*',schema:'public',table:'stock_voucher_details'},function(){s.debouncedRefresh()}).on('postgres_changes',{event:'*',schema:'public',table:'stock_branches',filter:branchIds.length?'branch_id=in.('+branchIds.join(',')+')':undefined},function(){s.debouncedRefreshStock()}).subscribe(function(status){s.updateConnection(status==='SUBSCRIBED');if(status==='SUBSCRIBED')s.markSync()});this.realtime=ch},
+subscribeRealtime:function(){var s=this;if(!supabase||!supabase.channel)return;this.unsubscribeRealtime();var ch=supabase.channel('rw-vouchers-live-'+s.company).on('postgres_changes',{event:'*',schema:'public',table:'stock_vouchers',filter:'company_id=eq.'+s.company},function(){s.debouncedRefresh()}).on('postgres_changes',{event:'*',schema:'public',table:'stock_voucher_details'},function(){s.debouncedRefresh()});var source=s.sourceBranch();if(source&&source.id){ch.on('postgres_changes',{event:'*',schema:'public',table:'stock_branches',filter:'branch_id=eq.'+String(source.id)},function(){s.debouncedRefreshStock()})}ch.subscribe(function(status){s.updateConnection(status==='SUBSCRIBED');if(status==='SUBSCRIBED')s.markSync()});this.realtime=ch},
 unsubscribeRealtime:function(){if(this.realtime&&supabase){try{supabase.removeChannel(this.realtime)}catch(e){}this.realtime=null}},markSync:function(){this.lastSyncAt=new Date();var x=document.getElementById('syncAt');if(x)x.textContent='آخر مزامنة: '+this.lastSyncAt.toLocaleTimeString('ar-EG')},debouncedRefresh:function(){var s=this;clearTimeout(this._refreshTimer);this._refreshTimer=setTimeout(function(){s.loadList(s.tabName)},250)},
 debouncedRefreshStock:function(){
     var s=this;
@@ -295,7 +295,17 @@ toggleTopPanel:function(){
         (collapsed?'توسيع الخيارات':'طي الخيارات')+
         '</span>';
 },
-choose:function(t){this.type=t;this.mode=(t==='Scrap'||t==='Adjustment')?'engine':'voucher';this.toggleMenu();this.newWorkspace()},
+choose:function(t){
+    this.editVoucherCode=null;
+    this.editOperationId=null;
+    this.editFingerprint=null;
+    this.createOpId=null;
+    this.createFingerprint=null;
+    this.type=t;
+    this.mode=(t==='Scrap'||t==='Adjustment')?'engine':'voucher';
+    this.toggleMenu();
+    this.newWorkspace();
+}
 actionFor:function(v){if(!v)return'';if(v.status==='Draft')return'draft';if(v.status==='Sent')return(v.type==='Transfer'||v.type==='DirectReturn')?'receive':'complete';if(v.status==='Received')return'complete';return''},
 loadList:function(scope){var s=this;RW_UI.showSkeleton('mainContent',3,'card');var q=supabase.from('stock_vouchers').select('*').eq('company_id',s.company).eq('source','Manual').order('voucher_date',{ascending:false}).order('created_at',{ascending:false}).limit(1000);q=scope==='pending'?q.in('status',['Draft','Sent','Received']):q.in('status',['Completed','Cancelled']);q.then(function(r){if(r.error)throw r.error;s.vouchers=r.data||[];s.markSync();s.renderList(scope)}).catch(function(e){RW_UI.showError(e.message||'فشل تحميل الأذونات')})},
 renderList:function(scope){
@@ -728,17 +738,25 @@ cards:function(rows,scope){
             var act=s.actionFor(v);
 
             if(act==='draft'){
-
+                a+=
+                    '<button onclick="event.stopPropagation();App.editVoucher(\''+
+                    s.esc(v.voucher_code)+
+                    '\')" class="bg-amber-500 text-white px-3 py-2 rounded-xl text-xs font-black">تعديل</button>';
+            
+                a+=
+                    '<button onclick="event.stopPropagation();App.deleteVoucher(\''+
+                    s.esc(v.voucher_code)+
+                    '\')" class="bg-rose-600 text-white px-3 py-2 rounded-xl text-xs font-black">حذف</button>';
+            
+                a+=
+                    '<button onclick="event.stopPropagation();App.printDraftVoucher(\''+
+                    s.esc(v.voucher_code)+
+                    '\')" class="bg-slate-700 text-white px-3 py-2 rounded-xl text-xs font-black">طباعة</button>';
+            
                 a+=
                     '<button onclick="event.stopPropagation();App.send(\''+
                     s.esc(v.voucher_code)+
                     '\')" class="bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black">إرسال</button>';
-
-                a+=
-                    '<button onclick="event.stopPropagation();App.cancel(\''+
-                    s.esc(v.voucher_code)+
-                    '\')" class="bg-rose-600 text-white px-3 py-2 rounded-xl text-xs font-black">إلغاء</button>';
-
             }
 
             if(act==='receive'){
@@ -1925,7 +1943,327 @@ complete:function(code){
         'تم إكمال الإذن'
     );
 },
-receive:function(code){var s=this;if(this.busy['receive:'+code])return;RW_UI.showLoader();supabase.from('stock_vouchers').select('*,stock_voucher_details(*)').eq('company_id',s.company).eq('voucher_code',code).maybeSingle().then(function(r){RW_UI.hideLoader();if(r.error||!r.data)throw new Error('الإذن غير موجود');var v=r.data;if(v.type!=='Transfer'&&v.type!=='DirectReturn')throw new Error('هذا النوع ينتقل إلى الإكمال مباشرة بعد الإرسال');var d=v.stock_voucher_details||[],h='<div class="text-right space-y-2">';d.forEach(function(x,i){var rem=Math.max(0,Number(x.qty||0)-Number(x.received_qty||0));if(rem>0)h+='<div class="p-3 border rounded-2xl bg-slate-50 flex gap-3 items-center"><div class="flex-1"><b>'+s.esc(x.item_name||x.item_code)+'</b><div class="text-xs text-slate-400">المتبقي: '+f(rem)+'</div></div><input id="rq'+i+'" data-item-id="'+x.item_id+'" data-item-code="'+s.esc(x.item_code)+'" max="'+rem+'" min="0" value="'+rem+'" type="number" step="any" class="w-24 p-2 border rounded-xl text-center"></div>';});h+='</div>';return Swal.fire({title:'استلام '+s.esc(v.type),html:h,showCancelButton:true,confirmButtonText:'تنفيذ الاستلام',cancelButtonText:'إلغاء',preConfirm:function(){var out=[];d.forEach(function(x,i){var el=RW_UI.byId('rq'+i);if(!el)return;var q=Number(el.value||0),m=Number(el.max||0);if(q<0||q>m)throw new Error('كمية غير صالحة');if(q)out.push({itemId:x.item_id,itemCode:x.item_code,receivedQty:q})});if(!out.length){Swal.showValidationMessage('أدخل كمية استلام');return false}return out}})}).then(function(a){if(!a||!a.isConfirmed)return;var vfp=JSON.stringify(a.value.map(function(x){return[x.itemId,Number(x.receivedQty)]}).sort(function(x,y){return String(x[0]).localeCompare(String(y[0]))})),store='RW_VOUCHER_RECEIVE:'+s.company+':'+v.id,op=null;try{var old=localStorage.getItem(store);if(old){var rec=JSON.parse(old);if(rec&&rec.fingerprint===vfp&&rec.operation_id)op=rec.operation_id}}catch(e){}if(!op)op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'UI-RECEIVE:'+s.company+':'+v.id+':'+Date.now()+':'+Math.random().toString(36).slice(2);try{localStorage.setItem(store,JSON.stringify({operation_id:op,fingerprint:vfp,created_at:new Date().toISOString()}))}catch(e){}s.busy['receive:'+code]=true;RW_UI.showLoader('جاري تسجيل الاستلام...');RW_API.call('receive-stock-voucher',{voucher_code:code,receivedItems:a.value,operation_id:op},function(j){RW_UI.hideLoader();delete s.busy['receive:'+code];if(j&&j.success){try{localStorage.removeItem(store)}catch(e){}RW_UI.toast(j.duplicate?'تم التعرف على العملية المكررة':'تم الاستلام بنجاح','success');s.loadList('pending');s.prefetchStock(true)}else RW_UI.showError((j&&j.msg)||'فشل الاستلام — تم الاحتفاظ بهوية العملية لإعادة المحاولة بأمان')})}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message||'فشل فتح الاستلام')})},
+receive:function(code){var s=this,voucherId=null;if(this.busy['receive:'+code])return;RW_UI.showLoader();supabase.from('stock_vouchers').select('*,stock_voucher_details(*)').eq('company_id',s.company).eq('voucher_code',code).maybeSingle().then(function(r){RW_UI.hideLoader();if(r.error||!r.data)throw new Error('الإذن غير موجود');var v=r.data;voucherId=v.id;if(v.type!=='Transfer'&&v.type!=='DirectReturn')throw new Error('هذا النوع ينتقل إلى الإكمال مباشرة بعد الإرسال');var d=v.stock_voucher_details||[],h='<div class="text-right space-y-2">';d.forEach(function(x,i){var rem=Math.max(0,Number(x.qty||0)-Number(x.received_qty||0));if(rem>0)h+='<div class="p-3 border rounded-2xl bg-slate-50 flex gap-3 items-center"><div class="flex-1"><b>'+s.esc(x.item_name||x.item_code)+'</b><div class="text-xs text-slate-400">المتبقي: '+f(rem)+'</div></div><input id="rq'+i+'" data-item-id="'+x.item_id+'" data-item-code="'+s.esc(x.item_code)+'" max="'+rem+'" min="0" value="'+rem+'" type="number" step="any" class="w-24 p-2 border rounded-xl text-center"></div>';});h+='</div>';return Swal.fire({title:'استلام '+s.esc(v.type),html:h,showCancelButton:true,confirmButtonText:'تنفيذ الاستلام',cancelButtonText:'إلغاء',preConfirm:function(){var out=[];d.forEach(function(x,i){var el=RW_UI.byId('rq'+i);if(!el)return;var q=Number(el.value||0),m=Number(el.max||0);if(q<0||q>m)throw new Error('كمية غير صالحة');if(q)out.push({itemId:x.item_id,itemCode:x.item_code,receivedQty:q})});if(!out.length){Swal.showValidationMessage('أدخل كمية استلام');return false}return out}})}).then(function(a){if(!a||!a.isConfirmed)return;var vfp=JSON.stringify(a.value.map(function(x){return[x.itemId,Number(x.receivedQty)]}).sort(function(x,y){return String(x[0]).localeCompare(String(y[0]))})),store='RW_VOUCHER_RECEIVE:'+s.company+':'+voucherId,op=null;try{var old=localStorage.getItem(store);if(old){var rec=JSON.parse(old);if(rec&&rec.fingerprint===vfp&&rec.operation_id)op=rec.operation_id}}catch(e){}if(!op)op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():'UI-RECEIVE:'+s.company+':'+voucherId+':'+Date.now()+':'+Math.random().toString(36).slice(2);try{localStorage.setItem(store,JSON.stringify({operation_id:op,fingerprint:vfp,created_at:new Date().toISOString()}))}catch(e){}s.busy['receive:'+code]=true;RW_UI.showLoader('جاري تسجيل الاستلام...');RW_API.call('receive-stock-voucher',{voucher_code:code,receivedItems:a.value,operation_id:op},function(j){RW_UI.hideLoader();delete s.busy['receive:'+code];if(j&&j.success){try{localStorage.removeItem(store)}catch(e){}RW_UI.toast(j.duplicate?'تم التعرف على العملية المكررة':'تم الاستلام بنجاح','success');s.loadList('pending');s.prefetchStock(true)}else RW_UI.showError((j&&j.msg)||'فشل الاستلام — تم الاحتفاظ بهوية العملية لإعادة المحاولة بأمان')})}).catch(function(e){RW_UI.hideLoader();RW_UI.showError(e.message||'فشل فتح الاستلام')})},
+editVoucher:function(code){
+    var s=this;
+
+    RW_UI.showLoader(
+        'جاري فتح المسودة...'
+    );
+
+    supabase
+        .from('stock_vouchers')
+        .select('*,stock_voucher_details(*)')
+        .eq('company_id',s.company)
+        .eq('voucher_code',code)
+        .maybeSingle()
+        .then(function(r){
+
+            if(r.error){
+                throw r.error;
+            }
+
+            if(!r.data){
+                throw new Error(
+                    'الإذن غير موجود'
+                );
+            }
+
+            var v=r.data;
+
+            if(v.status!=='Draft'){
+                throw new Error(
+                    'لا يمكن تعديل إذن بعد إرساله'
+                );
+            }
+
+            s.mode='edit';
+            s.editVoucherCode=v.voucher_code;
+            s.editOperationId=null;
+            s.editFingerprint=null;
+
+            s.type=v.type;
+            s.topPanelCollapsed=false;
+            s.cat='الكل';
+
+            s.cart=
+                (v.stock_voucher_details||[])
+                .map(function(x){
+                    return{
+                        id:x.item_id,
+                        code:x.item_code,
+                        name:x.item_name||x.item_code,
+                        unit:x.unit||'حبة',
+                        qty:Number(x.qty)||0,
+                        unitPrice:Number(
+                            x.unit_price||0
+                        )||0,
+                        notes:x.notes||''
+                    };
+                })
+                .filter(function(x){
+                    return(
+                        x.id &&
+                        x.code &&
+                        x.qty>0
+                    );
+                });
+
+            return s.prepare()
+                .then(function(){
+                    s.renderWorkspace();
+
+                    var from=
+                        RW_UI.byId('wsFrom');
+
+                    var fromSearch=
+                        RW_UI.byId('wsFromSearch');
+
+                    var to=
+                        RW_UI.byId('wsTo');
+
+                    var toSearch=
+                        RW_UI.byId('wsToSearch');
+
+                    var rep=
+                        RW_UI.byId('wsRep');
+
+                    var repSearch=
+                        RW_UI.byId('wsRepSearch');
+
+                    if(from){
+                        from.value=
+                            v.from_id||'';
+                    }
+
+                    if(to){
+                        to.value=
+                            v.to_id||'';
+                    }
+
+                    if(rep){
+                        rep.value=
+                            v.custodian_user_id||'';
+                    }
+
+                    if(s.type==='DirectReturn'){
+
+                        var vv=
+                            (s.refs.vehicles||[])
+                            .find(function(x){
+                                return x.id===v.from_id;
+                            });
+
+                        var rr=
+                            vv&&
+                            (s.refs.reps||[])
+                            .find(function(x){
+                                return x.id===vv.driver_id;
+                            });
+
+                        if(fromSearch){
+                            fromSearch.value=
+                                vv
+                                    ?(
+                                        vv.vehicle_code||
+                                        vv.license_plate||
+                                        vv.model||
+                                        ''
+                                    )
+                                    :'';
+                        }
+
+                        if(rep){
+                            rep.value=
+                                rr
+                                    ?rr.id
+                                    :'';
+                        }
+
+                        if(repSearch){
+                            repSearch.value=
+                                rr
+                                    ?(
+                                        rr.name||
+                                        rr.email||
+                                        ''
+                                    )
+                                    :'';
+                            repSearch.setAttribute(
+                                'readonly',
+                                'readonly'
+                            );
+                        }
+
+                    }else if(
+                        s.type==='DirectSale'
+                    ){
+
+                        var bb=
+                            (s.refs.branches||[])
+                            .find(function(x){
+                                return x.id===v.from_id;
+                            });
+
+                        var rv=
+                            (s.refs.vehicles||[])
+                            .find(function(x){
+                                return x.id===v.to_id;
+                            });
+
+                        var rp=
+                            (s.refs.reps||[])
+                            .find(function(x){
+                                return x.id===v.custodian_user_id;
+                            });
+
+                        if(fromSearch){
+                            fromSearch.value=
+                                bb
+                                    ?(
+                                        bb.name||
+                                        bb.branch_code||
+                                        ''
+                                    )
+                                    :'';
+                        }
+
+                        if(toSearch){
+                            toSearch.value=
+                                rv
+                                    ?(
+                                        rv.vehicle_code||
+                                        rv.license_plate||
+                                        rv.model||
+                                        ''
+                                    )
+                                    :'';
+                        }
+
+                        if(repSearch){
+                            repSearch.value=
+                                rp
+                                    ?(
+                                        rp.name||
+                                        rp.email||
+                                        ''
+                                    )
+                                    :'';
+                            repSearch.removeAttribute(
+                                'readonly'
+                            );
+                        }
+
+                    }else{
+
+                        if(fromSearch){
+                            fromSearch.value=
+                                s.loc(
+                                    v.from_id,
+                                    v.from_type
+                                );
+                        }
+
+                        if(toSearch){
+                            toSearch.value=
+                                s.loc(
+                                    v.to_id,
+                                    v.to_type
+                                );
+                        }
+
+                        if(repSearch){
+                            repSearch.value=
+                                '';
+                            repSearch.removeAttribute(
+                                'readonly'
+                            );
+                        }
+                    }
+
+                    var ref=
+                        RW_UI.byId('wsRef');
+
+                    var notes=
+                        RW_UI.byId('wsNotes');
+
+                    if(ref){
+                        ref.value=
+                            v.reference||'';
+                    }
+
+                    if(notes){
+                        notes.value=
+                            v.notes||'';
+                    }
+
+                    s.renderCart();
+                    s.summary();
+                    s.updateSource();
+                });
+        })
+        .then(function(){
+            RW_UI.hideLoader();
+        })
+        .catch(function(e){
+            RW_UI.hideLoader();
+            RW_UI.showError(
+                e.message||
+                'تعذر فتح المسودة للتعديل'
+            );
+        });
+},
+deleteVoucher:function(code){
+    var s=this;
+
+    Swal.fire({
+        title:'حذف المسودة نهائيًا؟',
+        text:'سيتم حذف الإذن المسودة وتفاصيله نهائيًا دون إنشاء سجل إلغاء.',
+        icon:'warning',
+        showCancelButton:true,
+        confirmButtonText:'حذف نهائي',
+        cancelButtonText:'رجوع',
+        confirmButtonColor:'#dc2626',
+        reverseButtons:true
+    }).then(function(a){
+
+        if(!a.isConfirmed){
+            return;
+        }
+
+        RW_UI.showLoader(
+            'جاري حذف المسودة...'
+        );
+
+        RW_API.call(
+            'create-stock-voucher',
+            {
+                action:'delete',
+                voucher_code:code
+            },
+            function(j){
+
+                RW_UI.hideLoader();
+
+                if(j&&j.success){
+
+                    RW_UI.toast(
+                        'تم حذف المسودة نهائيًا',
+                        'success'
+                    );
+
+                    s.loadList(s.tabName);
+                    return;
+                }
+
+                RW_UI.showError(
+                    (j&&j.msg)||
+                    'فشل حذف المسودة'
+                );
+            }
+        );
+    });
+}
 prepare:function(){var s=this;
     return Promise.all([
     supabase
@@ -2482,7 +2820,7 @@ pickSearch:function(key,q){
         arr=this.pickArr(key)||[],
         z=this.norm(q),
         tokens=z
-            ?z.split(/s+/)
+            ?z.split(/\s+/)
                 .filter(function(x){
                     return !!x;
                 })
@@ -3372,43 +3710,7 @@ add:function(code,requestedQty){
             :'<div class="text-center text-slate-500 py-16">السلة فارغة</div>'
     );
 },search:function(q){var s=this;this.renderProducts();clearTimeout(this.timer);this.timer=setTimeout(function(){var z=s.norm(q),box=RW_UI.byId('wsResults');if(!z){box.classList.add('hidden');return}s.results=s.items.filter(function(x){return s.norm(x.item_code).includes(z)||s.norm(x.barcode).includes(z)||s.norm(x.name).includes(z)||s.norm(x.search_label).includes(z)}).slice(0,12);box.innerHTML=s.results.length?s.results.map(function(x,i){return'<div class="result-row '+(i===0?'active':'')+'" onclick="App.add(\''+s.esc(x.item_code)+'\');App.focusSearch()"><div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">'+(x.image_url?'<img src="'+s.esc(x.image_url)+'" class="w-full h-full object-cover">':'📦')+'</div><div class="flex-1 min-w-0"><b class="text-xs truncate block">'+s.esc(x.name||x.item_code)+'</b><span class="text-[10px] text-slate-400">'+s.esc(x.item_code)+' · '+s.esc(x.barcode||'')+'</span></div><span class="text-[10px] text-emerald-600 font-black">إضافة</span></div>'}).join(''):'<div class="p-4 text-center text-slate-400">لا توجد نتائج</div>';box.classList.remove('hidden')},120)},focusSearch:function(){var x=RW_UI.byId('wsSearch');if(x){x.focus();x.select()}},searchKey:function(e){if(e.key==='Enter'){e.preventDefault();if(this.results[this.focus])this.add(this.results[this.focus].item_code);this.focusSearch()}else if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!this.results.length)return;this.focus=Math.max(0,Math.min(this.results.length-1,this.focus+(e.key==='ArrowDown'?1:-1)));document.querySelectorAll('#wsResults .result-row').forEach(function(x,i){x.classList.toggle('active',i===App.focus)})}},summary:function(){var t='',fr=RW_UI.byId('wsFrom'),re=RW_UI.byId('wsRep'),to=RW_UI.byId('wsTo');if(fr&&fr.value)t+=(this.type==='DirectReturn'?'المركبة: ':'المصدر: ')+this.loc(fr.value,this.type==='DirectReturn'?'Vehicle':'Branch');if(re&&re.value){var r=this.refs.reps.find(function(x){return x.id===re.value});if(r)t+=(t?' · ':'')+'المندوب: '+(r.name||r.email)}if(to&&to.value)t+=(t?' · ':'')+(this.type==='DirectSale'?'المركبة: ':this.type==='SupplierReturn'?'المورد: ':'الوجهة: ')+this.loc(to.value,this.type==='DirectSale'||this.type==='DirectReturn'?'Vehicle':this.type==='SupplierReturn'?'Supplier':'Branch');RW_UI.safeText(RW_UI.byId('routeSummary'),t||'حدد عناصر المسار');RW_UI.safeText(RW_UI.byId('stockHint'),this.sourceBranch()?'المتاح محسوب من المصدر المحدد':'اختر المصدر لمعرفة المتاح')},
-updateSource:function(){
-    var s=this,
-        branch=this.sourceBranch(),
-        branchId=
-            branch&&branch.id
-                ?String(branch.id)
-                :'';
-
-    clearTimeout(this._sourceStockTimer);
-
-    if(
-        this._stockBranchId!==
-        branchId
-    ){
-        this._stockBranchId=
-            branchId;
-
-        this.stock={};
-    }
-
-    this.summary();
-    this.renderProducts();
-
-    if(!branchId){
-        return;
-    }
-
-    this._sourceStockTimer=
-        setTimeout(function(){
-
-            s.prefetchStock(true)
-                .catch(function(){
-                    /* prefetchStock records exact error */
-                });
-
-        },80);
-},
+updateSource:function(){var s=this,branch=this.sourceBranch(),branchId=branch&&branch.id?String(branch.id):'';clearTimeout(this._sourceStockTimer);var branchChanged=this._stockBranchId!==branchId;if(branchChanged){this._stockBranchId=branchId;this.stock={};if(this.company&&supabase)this.subscribeRealtime()}this.summary();this.renderProducts();if(!branchId)return;this._sourceStockTimer=setTimeout(function(){s.prefetchStock(true).catch(function(){});},80)},
 itemDetails:function(id){
     var s=this,x=this.items.find(function(i){return i.id===id});
     if(!x)return;
@@ -3596,6 +3898,179 @@ submit:function(){
         }
     }
 
+    if(this.mode==='edit'){
+
+        var editFt=
+            this.type==='DirectReturn'
+                ?'Vehicle'
+                :'Branch';
+
+        var editTt=
+            this.type==='DirectSale'
+                ?'Vehicle'
+                :this.type==='SupplierReturn'
+                    ?'Supplier'
+                    :'Branch';
+
+        var editItems=
+            this.cart
+                .map(function(x){
+                    return{
+                        itemCode:x.code,
+                        itemName:x.name||x.code,
+                        unit:x.unit||'حبة',
+                        qty:Number(x.qty)||0,
+                        unitPrice:Number(
+                            x.unitPrice||
+                            x.unit_price||
+                            0
+                        )||0,
+                        notes:x.notes||''
+                    };
+                })
+                .sort(function(a,b){
+                    return String(
+                        a.itemCode
+                    ).localeCompare(
+                        String(b.itemCode)
+                    );
+                });
+
+        var editFingerprint=
+            JSON.stringify({
+                voucher_code:this.editVoucherCode,
+                type:this.type,
+                reference:ref,
+                from_id:fr,
+                to_id:to,
+                rep_id:rep||null,
+                notes:notes,
+                items:editItems
+            });
+
+        var editStorageKey=
+            'RW_VOUCHER_UPDATE:'+
+            s.company+':'+
+            this.editVoucherCode;
+
+        var editOperationId=null;
+
+        try{
+            var cachedEdit=
+                localStorage.getItem(
+                    editStorageKey
+                );
+
+            if(cachedEdit){
+                var previousEdit=
+                    JSON.parse(cachedEdit);
+
+                if(
+                    previousEdit &&
+                    previousEdit.fingerprint===
+                        editFingerprint &&
+                    previousEdit.operation_id
+                ){
+                    editOperationId=
+                        previousEdit.operation_id;
+                }
+            }
+        }catch(e){}
+
+        if(!editOperationId){
+
+            editOperationId=
+                window.crypto &&
+                crypto.randomUUID
+                    ?crypto.randomUUID()
+                    :'UI-UPDATE:'+
+                     s.company+':'+
+                     this.editVoucherCode+':'+
+                     Date.now()+':'+
+                     Math.random()
+                        .toString(36)
+                        .slice(2);
+
+            try{
+                localStorage.setItem(
+                    editStorageKey,
+                    JSON.stringify({
+                        operation_id:
+                            editOperationId,
+                        fingerprint:
+                            editFingerprint,
+                        created_at:
+                            new Date().toISOString()
+                    })
+                );
+            }catch(e){}
+        }
+
+        s.editOperationId=
+            editOperationId;
+
+        s.editFingerprint=
+            editFingerprint;
+
+        RW_UI.showLoader(
+            'جاري حفظ تعديل المسودة...'
+        );
+
+        RW_API.call(
+            'create-stock-voucher',
+            {
+                action:'update',
+                voucher_code:
+                    this.editVoucherCode,
+                operation_id:
+                    editOperationId,
+                type:this.type,
+                reference:ref,
+                fromType:editFt,
+                fromId:fr,
+                toType:editTt,
+                toId:to,
+                rep_id:rep||null,
+                notes:notes,
+                items:editItems
+            },
+            function(j){
+
+                RW_UI.hideLoader();
+
+                if(j&&j.success){
+
+                    try{
+                        localStorage.removeItem(
+                            editStorageKey
+                        );
+                    }catch(e){}
+
+                    s.editVoucherCode=null;
+                    s.editOperationId=null;
+                    s.editFingerprint=null;
+
+                    RW_UI.toast(
+                        j.duplicate
+                            ?'تم التعرف على تعديل المسودة السابق'
+                            :'تم تحديث المسودة بنجاح',
+                        'success'
+                    );
+
+                    s.back();
+                    return;
+                }
+
+                RW_UI.showError(
+                    (j&&j.msg)||
+                    'فشل تحديث المسودة — تم الاحتفاظ بهوية العملية لإعادة المحاولة بأمان'
+                );
+            }
+        );
+
+        return;
+    }
+
     var ft=this.type==='DirectReturn'
         ?'Vehicle'
         :'Branch';
@@ -3725,8 +4200,23 @@ submit:function(){
             );
         }
     );
-},
-openDrawer:function(){RW_UI.byId('drawer').classList.add('open')},closeDrawer:function(){RW_UI.byId('drawer').classList.remove('open')},back:function(){this.mode=null;this.cart=[];this.tab(this.tabName);var l=RW_UI.byId('typeLabel');if(l)l.textContent='إذن جديد'},account:function(){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="h-full overflow-y-auto p-4"><div class="card max-w-xl mx-auto text-center mt-8"><div class="w-20 h-20 gold-chip rounded-3xl mx-auto flex items-center justify-center text-3xl font-black">'+this.esc((this.user.name||this.user.email||'?').charAt(0))+'</div><h2 class="font-black text-xl mt-3">'+this.esc(this.user.name||this.user.email)+'</h2><p class="text-sm text-slate-400">صلاحية: أذونات مخزنية</p><p class="text-xs text-slate-400 mt-2">'+(this.lastSyncAt?'آخر مزامنة '+this.lastSyncAt.toLocaleString('ar-EG'):'المزامنة الحية قيد التهيئة')+'</p><button onclick="App.logout()" class="w-full mt-6 border-2 border-red-100 text-red-500 py-3 rounded-2xl font-bold">تسجيل الخروج</button></div></div>')},
+}
+openDrawer:function(){RW_UI.byId('drawer').classList.add('open')},closeDrawer:function(){RW_UI.byId('drawer').classList.remove('open')},
+back:function(){
+    this.mode=null;
+    this.cart=[];
+    this.editVoucherCode=null;
+    this.editOperationId=null;
+    this.editFingerprint=null;
+    this.createOpId=null;
+    this.createFingerprint=null;
+    this.tab(this.tabName);
+    var l=RW_UI.byId('typeLabel');
+    if(l){
+        l.textContent='إذن جديد';
+    }
+}
+account:function(){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="h-full overflow-y-auto p-4"><div class="card max-w-xl mx-auto text-center mt-8"><div class="w-20 h-20 gold-chip rounded-3xl mx-auto flex items-center justify-center text-3xl font-black">'+this.esc((this.user.name||this.user.email||'?').charAt(0))+'</div><h2 class="font-black text-xl mt-3">'+this.esc(this.user.name||this.user.email)+'</h2><p class="text-sm text-slate-400">صلاحية: أذونات مخزنية</p><p class="text-xs text-slate-400 mt-2">'+(this.lastSyncAt?'آخر مزامنة '+this.lastSyncAt.toLocaleString('ar-EG'):'المزامنة الحية قيد التهيئة')+'</p><button onclick="App.logout()" class="w-full mt-6 border-2 border-red-100 text-red-500 py-3 rounded-2xl font-bold">تسجيل الخروج</button></div></div>')},
 openScanner:function(){var s=this;if(!this.mode){RW_UI.toast('افتح مساحة العمل أولاً','warning');return}var html='<div class="text-right"><video id="rwScanVideo" autoplay muted playsinline class="w-full rounded-3xl bg-black" style="min-height:250px;object-fit:cover"></video><div id="rwScanMsg" class="text-xs text-slate-400 mt-2">جارٍ تشغيل الكاميرا...</div></div>';Swal.fire({title:'ماسح المخزن',html:html,width:430,showConfirmButton:false,showCloseButton:true,customClass:{popup:'!rounded-3xl'},didOpen:function(){var v=document.getElementById('rwScanVideo'),msg=document.getElementById('rwScanMsg');if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){msg.textContent='المتصفح لا يدعم الكاميرا';return}navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false}).then(function(st){s._scanStream=st;v.srcObject=st;var bd='BarcodeDetector' in window?new BarcodeDetector():null;var loop=function(){if(!s._scanStream)return;if(bd){bd.detect(v).then(function(c){if(c&&c[0]){var code=(c[0].rawValue||'').trim();if(code)s.handleScan(code)}}).catch(function(){})}requestAnimationFrame(loop)};msg.textContent='✓ وجّه الكاميرا إلى الباركود';loop()}).catch(function(e){msg.textContent='تعذر تشغيل الكاميرا: '+(e.message||'صلاحية الكاميرا مطلوبة')})},willClose:function(){if(s._scanStream){try{s._scanStream.getTracks().forEach(function(t){t.stop()})}catch(e){}}s._scanStream=null}})},
 handleScan:function(code){ var s=this; var scanCode=s.norm(code); var scanNow=Date.now();
 if(!scanCode){
