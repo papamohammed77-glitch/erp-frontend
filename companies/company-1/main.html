@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-24 14:00 UTC -->
+<!-- 2026-09-24 16:30 UTC -->
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
@@ -28870,7 +28870,7 @@ var RW_FleetManagement = (function() {
     return res.data;
   }
 
-  async function command(commandName, payload) {
+  async function command(commandName, payload, operationId) {
     if (!canManage()) throw new Error('ليس لديك صلاحية تنفيذ عمليات Fleet');
     var c = companyId();
     if (!c) throw new Error('سياق الشركة غير محدد');
@@ -28879,7 +28879,7 @@ var RW_FleetManagement = (function() {
       p_company_id: c,
       p_command: commandName,
       p_payload: payload || {},
-      p_operation_id: op(commandName),
+      p_operation_id: operationId || op(commandName),
       p_actor_user_id: null,
       p_actor_email: u.email || null
     });
@@ -29078,7 +29078,7 @@ async function loadAlerts() {
     var html='<div class="rw-card" style="padding:20px">'+
       '<div style="display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap"><div><div style="font-size:25px;font-weight:900">'+esc(v.vehicle_code)+'</div><div style="color:#64748b;font-weight:700">'+esc(v.model)+' • '+esc(v.license_plate)+'</div></div>'+
       '<div style="display:flex;gap:7px;flex-wrap:wrap">'+
-      (canManage()? '<button onclick="RW_FleetManagement.openOdometerForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">عداد</button><button onclick="RW_FleetManagement.openFuelForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">وقود</button><button onclick="RW_FleetManagement.openMaintenanceForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">صيانة</button><button onclick="RW_FleetManagement.openContractForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">عقد</button><button onclick="RW_FleetManagement.openVehicleDocumentForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">مستند</button><button onclick="RW_FleetManagement.openIncidentForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">حادث</button><button onclick="RW_FleetManagement.openExpenseForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">مصروف</button>' : '')+
+      (canManage()? '<button onclick="RW_FleetManagement.openOdometerForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">عداد</button><button onclick="RW_FleetManagement.openFuelForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">وقود</button><button onclick="RW_FleetManagement.openMaintenanceForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">صيانة</button><button onclick="RW_FleetManagement.openContractForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">عقد</button><button onclick="RW_FleetManagement.openVehicleDocumentForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">مستند</button><button onclick="RW_FleetManagement.openIncidentForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">حادث</button><button onclick="RW_FleetManagement.openExpenseForm()" class="px-3 py-2 rounded-xl bg-slate-100 font-bold">مصروف</button><button onclick="RW_FleetManagement.openVehicleOperationLinkForm()" class="px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold">ربط المركبة بالعملية</button>' : '')+
       '</div></div>'+
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:20px">'+
       card('الحالة',v.status||'—','fa-circle')+card('آخر عداد',money(v.last_odometer_km)+' كم','fa-gauge-high')+card('السائق',driver.full_name||v.fleet_driver_id||v.driver_id||'—','fa-user')+card('نوع الملكية',v.ownership_type||'—','fa-file-contract')+
@@ -29089,10 +29089,38 @@ async function loadAlerts() {
       listBlock('الصيانة',d.maintenance,'description','service_date')+
       listBlock('الوقود',d.fuel,'station_name','transaction_date')+
       listBlock('الحوادث',d.incidents,'incident_type','occurred_at')+
-      listBlock('الرحلات',d.runsheets,'runsheet_code','run_date')+
+      operationBlock('الرحلات',d.runsheets,'RUNSHEET')+operationBlock('تحويلات الفروع',d.transfer_operations,'BRANCH_TRANSFER')+operationBlock('البيع المباشر',d.direct_sales,'DIRECT_SALE')+
       '</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px"><button onclick="RW_FleetManagement.navigateExisting(\'vehicle-count\')" class="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold">جرد السيارة</button><button onclick="RW_FleetManagement.navigateExisting(\'runsheets\')" class="px-4 py-2 rounded-xl bg-slate-100 font-bold">الرانشيتات</button></div></div>';
     set(shell('تفاصيل المركبة',html));
+  }
+
+  function operationBlock(title, rows, type) {
+    var list = Array.isArray(rows) ? rows : [];
+    var h = '<div class="rw-card" style="padding:16px"><div style="font-weight:900;color:#0f172a;margin-bottom:12px">' + esc(title) + '</div>';
+    if (!list.length) {
+      return h + '<div style="font-size:12px;color:#94a3b8;font-weight:700">لا توجد عمليات مرتبطة</div></div>';
+    }
+    for (var i=0;i<Math.min(list.length,8);i++) {
+      var x=list[i]||{};
+      var label = type==='RUNSHEET' ? (x.runsheet_code||'—') : (x.voucher_code||'—');
+      var meta = '';
+      if(type==='RUNSHEET') {
+        meta = 'السائق: ' + (x.driver_name||'—') + ' · مندوب التوصيل: ' + (x.delivery_rep_name||'—') + ' · ' + (x.status||'—');
+      } else if(type==='BRANCH_TRANSFER') {
+        meta = 'السائق: ' + (x.driver_name||'—') + ' · ' + (x.from_branch_name||'—') + ' ← ' + (x.to_branch_name||'—') + ' · ' + (x.status||'—');
+      } else {
+        meta = 'مندوب البيع المباشر: ' + (x.direct_sales_rep_name||'—') + ' · ' + (x.status||'—');
+      }
+      h += '<div style="border:1px solid #e5e7eb;border-radius:16px;padding:11px 12px;margin-top:8px;background:#f8fafc">' +
+           '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">' +
+             '<div style="font-weight:900;color:#111827">' + esc(label) + '</div>' +
+             '<div style="font-size:11px;color:#64748b;font-weight:800">' + esc(date(x.operation_date||x.run_date)) + '</div>' +
+           '</div>' +
+           '<div style="font-size:11px;color:#64748b;font-weight:700;margin-top:6px;line-height:1.8">' + esc(meta) + '</div>' +
+         '</div>';
+    }
+    return h + '</div>';
   }
 
   function listBlock(title, rows, labelKey, dateKey) {
@@ -29135,6 +29163,99 @@ async function loadAlerts() {
     });
     return r;
   }
+  function toggleVehicleOperationLinkPanels() {
+    var type = val('fvo-type');
+    var panels = {
+      RUNSHEET: 'fvo-rs-panel',
+      BRANCH_TRANSFER: 'fvo-tr-panel',
+      DIRECT_SALE: 'fvo-ds-panel'
+    };
+    Object.keys(panels).forEach(function(k){
+      var el = byId(panels[k]);
+      if (el) el.style.display = k === type ? 'block' : 'none';
+    });
+  }
+
+  async function openVehicleOperationLinkForm() {
+    var id = state.selectedVehicleId;
+    if (!id) throw new Error('المركبة غير محددة');
+    if (!canManage()) throw new Error('ليس لديك صلاحية ربط العمليات بالمركبات');
+
+    var d = await query('vehicle_operation_candidates',{vehicle_id:id});
+    var rs = Array.isArray(d.runsheets) ? d.runsheets : [];
+    var tr = Array.isArray(d.transfers) ? d.transfers : [];
+    var ds = Array.isArray(d.direct_sales) ? d.direct_sales : [];
+    var drivers = Array.isArray(d.drivers) ? d.drivers : [];
+    var deliveryReps = Array.isArray(d.delivery_reps) ? d.delivery_reps : [];
+    var directReps = Array.isArray(d.direct_sales_reps) ? d.direct_sales_reps : [];
+    var vehicle = d.vehicle || {};
+    var bindOperationId = op('VEHICLE_OPERATION_BIND');
+
+    var rsOptions = rs.map(function(x){
+      return [x.id, (x.runsheet_code||'—') + ' · ' + (x.status||'—') + ' · سائق: ' + (x.driver_name||'—') + ' · توصيل: ' + (x.delivery_rep_name||'—')];
+    });
+    var trOptions = tr.map(function(x){
+      return [x.id, (x.voucher_code||'—') + ' · ' + (x.status||'—') + ' · ' + (x.current_vehicle_code ? 'مركبة حالية: '+x.current_vehicle_code : 'غير مربوطة') + ' · سائق: ' + (x.driver_name||'—')];
+    });
+    var dsOptions = ds.map(function(x){
+      return [x.id, (x.voucher_code||'—') + ' · ' + (x.status||'—') + ' · مندوب: ' + (x.direct_sales_rep_name||'—') + (x.current_vehicle_code ? ' · مركبة: '+x.current_vehicle_code : '')];
+    });
+    var driverOptions = drivers.map(function(x){ return [x.id,(x.name||x.email||'—')+' · '+(x.role||'')]; });
+    var deliveryOptions = deliveryReps.map(function(x){ return [x.id,(x.name||x.email||'—')+' · '+(x.role||'')]; });
+    var directOptions = directReps.map(function(x){ return [x.id,(x.name||x.email||'—')+' · '+(x.role||'')]; });
+
+    var html =
+      '<div style="text-align:right">' +
+        '<div style="padding:12px 14px;border-radius:16px;background:#eff6ff;color:#1e3a8a;font-size:12px;font-weight:800;margin-bottom:12px">المركبة: ' + esc(vehicle.vehicle_code||vehicle.license_plate||id) + ' — الربط يحدّث مصدر العملية نفسه ولا ينشئ سجلًا موازيًا.</div>' +
+        '<div><label class="font-bold text-sm text-slate-700">نوع العملية</label><select id="fvo-type" class="rw-input" style="height:46px;padding-right:14px;margin-top:6px" onchange="RW_FleetManagement.toggleVehicleOperationLinkPanels()"><option value="RUNSHEET">رانشيت</option><option value="BRANCH_TRANSFER">تحويل فرع</option><option value="DIRECT_SALE">بيع مباشر</option></select></div>' +
+        '<div id="fvo-rs-panel" style="display:block;margin-top:12px">' +
+          selectInput('fvo-rs','الرانشيت','',rsOptions) +
+          selectInput('fvo-rs-driver','السائق','',driverOptions) +
+          selectInput('fvo-rs-delivery','مندوب التوصيل','',deliveryOptions) +
+        '</div>' +
+        '<div id="fvo-tr-panel" style="display:none;margin-top:12px">' +
+          selectInput('fvo-tr','تحويل الفرع','',trOptions) +
+          selectInput('fvo-tr-driver','السائق','',driverOptions) +
+        '</div>' +
+        '<div id="fvo-ds-panel" style="display:none;margin-top:12px">' +
+          selectInput('fvo-ds','البيع المباشر','',dsOptions) +
+          selectInput('fvo-ds-rep','مندوب البيع المباشر','',directOptions) +
+        '</div>' +
+        '<div style="margin-top:12px;font-size:11px;color:#64748b;font-weight:700;line-height:1.9">الرانشيت يكتب vehicle_id/driver_id/deliverer_id في الرانشيت. تحويل الفرع يكتب vehicle_id/driver_id في الإذن. البيع المباشر يحافظ على to_type=Vehicle/to_id مع custodian_user_id الحالي.</div>' +
+      '</div>';
+
+    await modal('ربط المركبة بالعملية', html, async function() {
+      var type = val('fvo-type');
+      var payload = { operation_type:type, vehicle_id:id };
+
+      if (type==='RUNSHEET') {
+        payload.runsheet_id = val('fvo-rs');
+        payload.driver_user_id = val('fvo-rs-driver');
+        payload.delivery_rep_user_id = val('fvo-rs-delivery');
+        if (!payload.runsheet_id) throw new Error('اختر الرانشيت');
+        if (!payload.driver_user_id) throw new Error('اختر السائق');
+        if (!payload.delivery_rep_user_id) throw new Error('اختر مندوب التوصيل');
+      } else if (type==='BRANCH_TRANSFER') {
+        payload.voucher_id = val('fvo-tr');
+        payload.driver_user_id = val('fvo-tr-driver');
+        if (!payload.voucher_id) throw new Error('اختر تحويل الفرع');
+        if (!payload.driver_user_id) throw new Error('اختر السائق');
+      } else if (type==='DIRECT_SALE') {
+        payload.voucher_id = val('fvo-ds');
+        payload.direct_sales_rep_id = val('fvo-ds-rep');
+        if (!payload.voucher_id) throw new Error('اختر البيع المباشر');
+        if (!payload.direct_sales_rep_id) throw new Error('اختر مندوب البيع المباشر');
+      } else {
+        throw new Error('نوع العملية غير مدعوم');
+      }
+
+      return await command('VEHICLE_OPERATION_BIND',payload,bindOperationId);
+    },'ربط المركبة');
+
+    await openVehicleDetail(id);
+    showToast('تم ربط المركبة بالعملية بنجاح','success');
+  }
+	
 async function openVehicleEdit(id){
   if(!id) return;
   if(!canManage()) throw new Error('ليس لديك صلاحية تعديل المركبات');
@@ -29325,6 +29446,8 @@ async function openOdometerForm(){
     setSearch: setSearch,
     openVehicleDetail: openVehicleDetail,
 	openVehicleEdit: openVehicleEdit,
+    openVehicleOperationLinkForm: openVehicleOperationLinkForm,
+    toggleVehicleOperationLinkPanels: toggleVehicleOperationLinkPanels,
     openDriverDetail: openDriverDetail,
     openVehicleForm: openVehicleForm,
     openDriverForm: openDriverForm,
