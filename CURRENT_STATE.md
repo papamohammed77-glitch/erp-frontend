@@ -134,3 +134,88 @@ Required source changes:
 ## Continuity Rule
 
 No previous report, assistant summary, or historical fragment overrides current Git/Source/Production/Database evidence.
+
+
+---
+
+# LATEST AUTHORITATIVE CHECKPOINT — 2026-09-24 — MOTHER SUPPLIERS / RESPONSIBLE BUYER
+
+## Current primary-source truth
+- Repository HEAD: `47ff966a23e89b19666485ac239455ec9a06a79d`
+- Parent: `3bd5ab664608e7a7632ce978d7b50c3181508516`
+- `companies/company-1/main.html` blob: `2b14edfaaa2dc1c64af386a187b795aca9e239a9`
+- Source line count verified: 32,075
+- Assistant direct modification to `main.html`: NO
+
+## Reconciled history
+Commit `3bd5ab...` introduced the current Responsible Buyer smart-search UI.
+Commit `47ff966...` updated only forensic documentation.
+Older Report326 source blob `f4e707...` is historical.
+
+## Defect and root cause
+Target:
+`RW_Suppliers.openModal(code)` → `#supp-rep`, line **6938**
+
+The page has:
+`var supabase = RW_SUPABASE_CLIENT;`
+inside a private IIFE and also exposes:
+`window.RW_SUPABASE_CLIENT = client;`
+
+The smart search was embedded in an inline HTML event handler and called:
+`supabase.rpc(...)`
+
+The inline handler cannot close over the IIFE-local variable, so `supabase` resolves to the global UMD SDK namespace, producing:
+`Uncaught TypeError: supabase.rpc is not a function`
+
+## Exact owner fix
+Replace only the single existing `#supp-rep` element inside `RW_Suppliers.openModal(code)`.
+
+Change only:
+`supabase.rpc('get_supplier_purchase_reps', ...)`
+to:
+`window.RW_SUPABASE_CLIENT.rpc('get_supplier_purchase_reps', ...)`
+
+Complete replacement:
+`doc/Draft/Reprots/Report327_MOTHER_SUPPLIER_PURCHASE_REP_INLINE_SCOPE_FORENSIC_CLOSURE_20260924.md`
+
+## Production
+- `get_supplier_purchase_reps(text)`: canonical SECURITY DEFINER.
+- authenticated EXECUTE = true.
+- anon EXECUTE = false.
+- company-aware and permission-aware.
+- `save-supplier`: Version 5 ACTIVE, verify_jwt=true.
+- No new Edge Function.
+- No Production schema change.
+- No inventory/accounting workflow change.
+
+Current baseline:
+- suppliers = 2
+- inventory_log = 6
+- stock_branches = 48
+- supplier_ledger = 0
+- journal_entries = 8
+
+## Verification
+- `#supp-rep` occurrence in current source = 1.
+- In-memory corrected RPC receiver = 1.
+- Corrected inline handler parse = PASS.
+- Production baseline unchanged.
+- Existing same-day Supplier → Purchase → Stock → Ledger → Journal E2E remains valid and is not reopened.
+
+## Closure
+- Root cause = PROVEN.
+- Production backend/data contract = CLOSED / VERIFIED.
+- Mother source surgical patch = READY / OWNER ACTION.
+- Published artifact identity = OPEN.
+- Authenticated Browser E2E after Owner publish = OPEN.
+- Responsible Buyer smart-search UI = PARTIALLY CLOSED.
+
+## Exact next resumption
+1. Apply Report327 single `#supp-rep` replacement.
+2. Parse complete `main.html`.
+3. Owner commit/publish.
+4. Verify served artifact identity.
+5. Run authenticated Browser E2E: Suppliers → Add Supplier → Responsible Buyer search/select → save → reopen → clear → save.
+6. Verify Console/Network and `purchase_rep` persistence.
+7. Fresh Production snapshot.
+8. Update CURRENT_STATE.
