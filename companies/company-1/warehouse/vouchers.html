@@ -2934,37 +2934,22 @@ if(
         return userBranches;
     }
 
-    if(
-        key==='wsTo' &&
-        s.type==='SupplierReturn'
-    ){
+   if(
+    key==='wsTo' &&
+    s.type==='SupplierReturn'
+){
 
-        var m=
-            (
-                s.refs
-                    .supplierBranchMap||
-                {}
-            )[bid];
+    return (
+        s.refs.suppliers||[]
+    )
+    .filter(function(x){
 
-        if(
-            m &&
-            Object.keys(m).length
-        ){
-
-            return (
-                s.refs.suppliers||[]
-            )
-            .filter(function(x){
-
-                return !!m[x.id];
-            });
-        }
-
-        return [];
-    }
-
-    return [];
-},
+        return (
+            x &&
+            x.is_active!==false
+        );
+    });
+}
 pickShow:function(key){this.pickSearch(key,(RW_UI.byId(key+'Search')||{}).value||'')},
 pickSearch:function(key,q){
 
@@ -3504,7 +3489,7 @@ if(key==='wsRep'){
 
     s.updateSource();
 },
-routeHtml:function(){var s=this,t=this.type;function p(k,label,readonly){return'<div class="smart-field"><input type="hidden" id="'+k+'" value=""><input id="'+k+'Search" class="smart-input" autocomplete="off" '+(readonly?'readonly ':'')+'placeholder="'+s.esc(label)+'" onfocus="App.pickShow(\''+k+'\')" oninput="App.pickSearch(\''+k+'\',this.value)"><div id="'+k+'Menu" class="smart-menu hidden"></div></div>'}if(t==='Scrap'||t==='Adjustment')return'<div class="grid grid-cols-1">'+p('wsFrom','الفرع المصدر')+'</div>';if(t==='DirectSale')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsRep','مندوب البيع المباشر')+p('wsTo','المركبة — مرتبطة بالمندوب')+'</div>';if(t==='DirectReturn')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','المركبة المصدر')+p('wsRep','مندوب البيع المباشر',true)+p('wsTo','الفرع الوجهة')+'</div>';if(t==='SupplierReturn')return'<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsTo','المورد المرتبط بالفرع')+'</div>';return'<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsTo','الفرع الوجهة')+'</div>'},
+routeHtml:function(){var s=this,t=this.type;function p(k,label,readonly){return'<div class="smart-field"><input type="hidden" id="'+k+'" value=""><input id="'+k+'Search" class="smart-input" autocomplete="off" '+(readonly?'readonly ':'')+'placeholder="'+s.esc(label)+'" onfocus="App.pickShow(\''+k+'\')" oninput="App.pickSearch(\''+k+'\',this.value)"><div id="'+k+'Menu" class="smart-menu hidden"></div></div>'}if(t==='Scrap'||t==='Adjustment')return'<div class="grid grid-cols-1">'+p('wsFrom','الفرع المصدر')+'</div>';if(t==='DirectSale')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsRep','مندوب البيع المباشر')+p('wsTo','المركبة — مرتبطة بالمندوب')+'</div>';if(t==='DirectReturn')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','المركبة المصدر')+p('wsRep','مندوب البيع المباشر',true)+p('wsTo','الفرع الوجهة')+'</div>';if(t==='SupplierReturn')return'<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsTo','المورد')+'</div>';return'<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsTo','الفرع الوجهة')+'</div>'},
 renderWorkspace:function(){
     var s=this,
         label=this.type==='Transfer'
@@ -4082,28 +4067,27 @@ if(this.type==='DirectSale'){
         }
     }
 
-    if(this.type==='SupplierReturn'){
-        var sb=(this.refs.branches||[]).find(function(x){
-            return x.id===fr;
-        });
-        var sp=(this.refs.suppliers||[]).find(function(x){
-            return x.id===to;
-        });
-        var map=(s.refs.supplierBranchMap||{})[fr];
+if(this.type==='SupplierReturn'){
+    var sb=(this.refs.branches||[]).find(function(x){
+        return x.id===fr;
+    });
 
-        if(
-            !sb||
-            !sp||
-            !map||
-            !map[sp.id]
-        ){
-            RW_UI.toast(
-                'لا يوجد ربط موثق بين المورد والفرع',
-                'error'
-            );
-            return;
-        }
+    var sp=(this.refs.suppliers||[]).find(function(x){
+        return x.id===to;
+    });
+
+    if(
+        !sb||
+        !sp||
+        sp.is_active===false
+    ){
+        RW_UI.toast(
+            'اختر فرعًا صالحًا وموردًا نشطًا من نفس الشركة',
+            'error'
+        );
+        return;
     }
+}
 
     if(this.mode==='edit'){
 
