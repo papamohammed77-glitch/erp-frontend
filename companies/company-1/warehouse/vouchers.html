@@ -645,7 +645,56 @@ actionFor:function(v){
     return '';
 },
          
-loadList:function(scope){var s=this;RW_UI.showSkeleton('mainContent',3,'card');var q=supabase.from('stock_vouchers').select('*').eq('company_id',s.company).eq('source','Manual').order('voucher_date',{ascending:false}).order('created_at',{ascending:false}).limit(1000);q=scope==='pending'?q.in('status',['Draft','Sent','Received']):q.in('status',['Completed','Cancelled']);q.then(function(r){if(r.error)throw r.error;s.vouchers=r.data||[];s.markSync();s.renderList(scope)}).catch(function(e){RW_UI.showError(e.message||'فشل تحميل الأذونات')})},
+loadList:function(scope){
+    var s=this;
+
+    RW_UI.showSkeleton(
+        'mainContent',
+        3,
+        'card'
+    );
+
+    var workflowScope=
+        scope==='pending'
+            ?'pending'
+            :'completed';
+
+    supabase.rpc(
+        'inventory_voucher_report',
+        {
+            p_operation:'LIST',
+            p_payload:{
+                source:'Manual',
+                workflow_scope:workflowScope,
+                limit:1000,
+                offset:0
+            }
+        }
+    ).then(function(r){
+
+        if(r.error){
+            throw r.error;
+        }
+
+        var data=r.data||{};
+
+        s.vouchers=
+            Array.isArray(data.rows)
+                ?data.rows
+                :[];
+
+        s.markSync();
+        s.renderList(scope);
+
+    }).catch(function(e){
+
+        RW_UI.showError(
+            e.message||
+            'فشل تحميل الأذونات'
+        );
+
+    });
+},
 renderList:function(scope){
     var s=this;
 
@@ -1797,12 +1846,11 @@ details:function(code){
                 }
             }
         ),
-        supabase.rpc(
-            'inventory_voucher_stock_context',
-            {
-                p_voucher_code:code
-            }
-        )
+     Promise.resolve({
+    data:{
+        movements:[]
+    }
+})
     ])
     .then(function(results){
 
@@ -2102,116 +2150,63 @@ topActions+=
 
 var h=
     topActions+
-            '<div class="grid grid-cols-2 gap-2 text-xs mb-3">'+
-            '<div class="p-3 bg-slate-50 rounded-2xl">النوع<br><b>'+s.esc(v.type)+'</b></div>'+
-            '<div class="p-3 bg-slate-50 rounded-2xl">الحالة<br><b>'+s.esc(v.status)+'</b></div>'+
-            '<div class="p-3 bg-slate-50 rounded-2xl">المصدر<br><b>'+s.esc(s.loc(v.from_id,v.from_type))+'</b></div>'+
-            '<div class="p-3 bg-slate-50 rounded-2xl">الوجهة<br><b>'+s.esc(s.loc(v.to_id,v.to_type))+'</b></div>'+
-            (
-                v.type==='DirectSale'||v.type==='DirectReturn'
-                    ?
-                    '<div class="p-3 bg-amber-50 border border-amber-100 rounded-2xl">العهدة<br><b>'+s.esc(custodianText)+'</b></div>'+
-                    '<div class="p-3 bg-slate-50 rounded-2xl">المركبة<br><b>'+s.esc(vehicleText)+'</b></div>'
-                    :
-                    ''
-            )+
-            '<div class="p-3 bg-slate-50 rounded-2xl">أنشأ بواسطة<br><b>'+s.esc(v.created_by||'—')+'</b></div>'+
-            '<div class="p-3 bg-slate-50 rounded-2xl">أكمل بواسطة<br><b>'+s.esc(v.completed_by||'—')+'</b></div>'+
-            '</div>'+
+    '<div class="grid grid-cols-2 gap-2 text-xs mb-3">'+
+        '<div class="p-3 bg-slate-50 rounded-2xl">رقم الإذن<br><b>'+s.esc(v.voucher_code||code)+'</b></div>'+
+        '<div class="p-3 bg-slate-50 rounded-2xl">التاريخ<br><b>'+s.esc(v.voucher_date||'—')+'</b></div>'+
+        '<div class="p-3 bg-slate-50 rounded-2xl">النوع<br><b>'+s.esc(v.type||'—')+'</b></div>'+
+        '<div class="p-3 bg-slate-50 rounded-2xl">الحالة<br><b>'+s.esc(v.status||'—')+'</b></div>'+
+        '<div class="p-3 bg-slate-50 rounded-2xl">المصدر<br><b>'+s.esc(s.loc(v.from_id,v.from_type))+'</b></div>'+
+        '<div class="p-3 bg-slate-50 rounded-2xl">الوجهة<br><b>'+s.esc(s.loc(v.to_id,v.to_type))+'</b></div>'+
+        (
+            v.type==='DirectSale'||v.type==='DirectReturn'
+                ?
+                '<div class="p-3 bg-amber-50 border border-amber-100 rounded-2xl">العهدة<br><b>'+s.esc(custodianText)+'</b></div>'+
+                '<div class="p-3 bg-slate-50 rounded-2xl">المركبة<br><b>'+s.esc(vehicleText)+'</b></div>'
+                :
+                ''
+        )+
+        '<div class="p-3 bg-slate-50 rounded-2xl">المرجع<br><b>'+s.esc(v.reference||'—')+'</b></div>'+
+        '<div class="p-3 bg-slate-50 rounded-2xl">ملاحظات<br><b>'+s.esc(v.notes||'—')+'</b></div>'+
+    '</div>'+
 
-            '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">'+
-            '<div class="p-3 rounded-2xl bg-indigo-50 border border-indigo-100 text-xs">إنشاء → إرسال<br><b>'+s.secondsText(kpi.created_to_sent_seconds)+'</b></div>'+
-            '<div class="p-3 rounded-2xl bg-blue-50 border border-blue-100 text-xs">إرسال → استلام<br><b>'+s.secondsText(kpi.sent_to_received_seconds)+'</b></div>'+
-            '<div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 text-xs">استلام → إكمال<br><b>'+s.secondsText(kpi.received_to_completed_seconds)+'</b></div>'+
-            '<div class="p-3 rounded-2xl bg-violet-50 border border-violet-100 text-xs">'+
-            (kpi.current_age_seconds!==null&&kpi.current_age_seconds!==undefined
-                ?'العمر الحالي'
-                :'كامل الدورة')+
-            '<br><b>'+s.secondsText(
-                kpi.current_age_seconds!==null&&kpi.current_age_seconds!==undefined
-                    ?kpi.current_age_seconds
-                    :kpi.created_to_completed_seconds
-            )+'</b></div>'+
-            '</div>'+
-
-            '<div class="mb-3 text-xs text-slate-500">'+
-            'المرجع: '+s.esc(v.reference||'—')+
-            '<br>الإنشاء: '+s.esc(v.created_at||'—')+
-            '<br>الإرسال: '+s.esc(v.sent_date||'—')+
-            '<br>الاستلام: '+s.esc(v.received_date||'—')+
-            '<br>الإكمال: '+s.esc(v.completed_at||'—')+
-            '<br>ملاحظات: '+s.esc(v.notes||'—')+
-            '</div>'+
-
-            '<div class="border rounded-2xl overflow-auto">'+
-            '<table class="w-full text-sm">'+
+    '<div class="border rounded-2xl overflow-auto">'+
+        '<table class="w-full text-sm">'+
             '<thead class="bg-slate-100">'+
-            '<tr>'+
-            '<th class="p-3">الصنف</th>'+
-            '<th class="p-3">الكمية</th>'+
-            '<th class="p-3">المستلم</th>'+
-            '<th class="p-3">المتبقي</th>'+
-            '</tr>'+
+                '<tr>'+
+                    '<th class="p-3">كود الصنف</th>'+
+                    '<th class="p-3">الصنف</th>'+
+                    '<th class="p-3">الوحدة</th>'+
+                    '<th class="p-3">الكمية</th>'+
+                    '<th class="p-3">المستلم</th>'+
+                    '<th class="p-3">المتبقي</th>'+
+                '</tr>'+
             '</thead>'+
             '<tbody>'+
-            d.map(function(x){
-                return(
-                    '<tr class="border-t">'+
-                    '<td class="p-3">'+s.esc(x.item_name||x.item_code)+'</td>'+
-                    '<td class="p-3 text-center">'+f(x.qty)+'</td>'+
-                    '<td class="p-3 text-center">'+f(x.received_qty)+'</td>'+
-                    '<td class="p-3 text-center">'+
-                    f(Math.max(0,Number(x.qty||0)-Number(x.received_qty||0)))+
-                    '</td>'+
-                    '</tr>'
-                );
-            }).join('')+
+                d.map(function(x){
+                    return(
+                        '<tr class="border-t">'+
+                            '<td class="p-3">'+s.esc(x.item_code||'—')+'</td>'+
+                            '<td class="p-3">'+s.esc(x.item_name||x.item_code||'—')+'</td>'+
+                            '<td class="p-3 text-center">'+s.esc(x.unit||'—')+'</td>'+
+                            '<td class="p-3 text-center">'+f(x.qty)+'</td>'+
+                            '<td class="p-3 text-center">'+f(x.received_qty)+'</td>'+
+                            '<td class="p-3 text-center">'+
+                                f(
+                                    x.remaining_qty!==undefined&&x.remaining_qty!==null
+                                        ?x.remaining_qty
+                                        :Math.max(
+                                            0,
+                                            Number(x.qty||0)-
+                                            Number(x.received_qty||0)
+                                        )
+                                )+
+                            '</td>'+
+                        '</tr>'
+                    );
+                }).join('')+
             '</tbody>'+
-            '</table>'+
-            '</div>'+
-
-            '<div class="mt-4 border rounded-2xl overflow-auto">'+
-            '<div class="p-3 bg-slate-100 font-black text-sm">الحركات الفعلية + الرصيد قبل/بعد</div>'+
-            '<table class="w-full text-sm">'+
-            '<thead class="bg-slate-50">'+
-            '<tr>'+
-            '<th class="p-2">الصنف</th>'+
-            '<th class="p-2">الحركة</th>'+
-            '<th class="p-2">الكمية</th>'+
-            '<th class="p-2">المصدر قبل/بعد</th>'+
-            '<th class="p-2">الوجهة قبل/بعد</th>'+
-            '<th class="p-2">المنفذ</th>'+
-            '</tr>'+
-            '</thead>'+
-            '<tbody>'+
-            movementH+
-            '</tbody>'+
-            '</table>'+
-            '</div>'+
-
-            '<div class="mt-4 border rounded-2xl p-3 bg-slate-50">'+
-            '<div class="font-black text-sm mb-2">الأثر المالي والمحاسبي</div>'+
-            journalH+
-            '<div class="mt-3">'+
-            financialRows(financial.driver_ledger||[],'دفتر المندوب / العهدة')+
-            '</div>'+
-            '<div class="mt-3">'+
-            financialRows(financial.supplier_ledger||[],'دفتر المورد')+
-            '</div>'+
-            '</div>'+
-
-            '<details class="mt-4">'+
-            '<summary class="cursor-pointer font-black text-sm">سجل التدقيق</summary>'+
-            '<div class="mt-2">'+auditH+'</div>'+
-            '</details>'+
-
-            '<div class="mt-3 text-[10px] text-slate-400">'+
-            'Stock context: '+
-            s.esc(stock.basis||'current_stock_reconciled_against_all_inventory_log_events')+
-            '</div>'+
-
-            '</div>';
-
+        '</table>'+
+    '</div>';
         Swal.fire({
             title:'تفاصيل الإذن '+s.esc(code),
             html:h,
