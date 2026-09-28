@@ -2853,12 +2853,24 @@ editVoucher:function(code){
                                 return x.id===v.from_id;
                             });
 
+var linkedRepId=
+                            v.custodian_user_id||
+                            (
+                                s.refs.vehicleRepMap &&
+                                s.refs.vehicleRepMap[
+                                    String(v.from_id)
+                                ]
+                            )||
+                            (vv&&vv.driver_id)||
+                            '';
+
                         var rr=
-                            vv&&
                             (s.refs.reps||[])
                             .find(function(x){
-                                return x.id===vv.driver_id;
-                            });
+                                return String(x.id)===
+                                    String(linkedRepId);
+                            })||
+                            null;
 
                         if(fromSearch){
                             fromSearch.value=
@@ -3486,29 +3498,36 @@ syncDirectSaleVehicleWithRep:function(repId){
                 s.user.role===
                     'مندوب بيع مباشر'
             ){
-var currentUserId= String( (s.user||{}).id|| '' );
+var currentUserId=
+    String(
+        (s.user||{}).id||
+        ''
+    );
 
-var vehicleRepMap= s.refs.vehicleRepMap|| Object.create(null);
-              var linkedRepId=
-    vehicleRepMap[
-        String(v.id)
-    ]||
-    v.driver_id||
-    '';
+var vehicleRepMap=
+    s.refs.vehicleRepMap||
+    Object.create(null);
 
-                return (
-                    s.refs.vehicles||[]
-                )
-                .filter(function(v){
+return (
+    s.refs.vehicles||[]
+)
+.filter(function(v){
 
-                    return (
-                        v.status==='Active' &&
-                        v.mobile_stock_enabled!==false &&
-                        String(linkedRepId)===
-                            currentUserId &&
-                        !!s.vehicleBranch(v)
-                    );
-                });
+    var linkedRepId=
+        vehicleRepMap[
+            String(v.id)
+        ]||
+        v.driver_id||
+        '';
+
+    return (
+        v.status==='Active' &&
+        v.mobile_stock_enabled!==false &&
+        String(linkedRepId)===
+            currentUserId &&
+        !!s.vehicleBranch(v)
+    );
+});
             }
 
             return (
@@ -4069,13 +4088,20 @@ var allowed=
 
                     var x=o.x,
 
-                        vehicleRep=
+vehicleRep=
                             type==='vehicle' &&
                             repById
                                 ?(
                                     repById[
                                         String(
-                                            x.driver_id||''
+                                            (
+                                                s.refs.vehicleRepMap &&
+                                                s.refs.vehicleRepMap[
+                                                    String(x.id)
+                                                ]
+                                            )||
+                                            x.driver_id||
+                                            ''
                                         )
                                     ]||
                                     null
@@ -4298,26 +4324,26 @@ if(key==='wsRep'){
                         String(mappedVehicleId);
                 });
 
-        if(
-            !mappedVehicle ||
-          mappedVehicle=
-    (s.refs.vehicles||[])
-        .find(function(v){
+if(!mappedVehicle){
 
-            return (
-                String(
-                    v.driver_id||
-                    ''
-                )===
-                String(x.id) &&
+    mappedVehicle=
+        (s.refs.vehicles||[])
+            .find(function(v){
 
-                v.status==='Active' &&
-                v.mobile_stock_enabled!==false &&
-                !!s.vehicleBranch(v)
-            );
-        })||
-    null;
-      }
+                return (
+                    String(
+                        v.driver_id||
+                        ''
+                    )===
+                    String(x.id) &&
+
+                    v.status==='Active' &&
+                    v.mobile_stock_enabled!==false &&
+                    !!s.vehicleBranch(v)
+                );
+            })||
+        null;
+}
         if(
             !mappedVehicle ||
             mappedVehicle.status!=='Active' ||
