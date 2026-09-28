@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- 2026-09-25 12:20 UTC -->
+<!-- 2026-09-28 17:45 UTC -->
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
@@ -1283,351 +1283,7 @@ cards:function(rows,scope){
         '</div>'+
         '</div>'
     );
-},
-function durationText(sec){
-        if(sec===null||sec===undefined){
-            return '—';
-        }
-
-        var n=Math.max(0,Number(sec)||0),
-            d=Math.floor(n/86400);
-
-        n-=d*86400;
-
-        var h=Math.floor(n/3600);
-
-        n-=h*3600;
-
-        var m=Math.floor(n/60);
-
-        var out=[];
-
-        if(d) out.push(d+'ي');
-        if(h||d) out.push(h+'س');
-        out.push(m+'د');
-
-        return out.join(' ');
-    }
-
-    function dateText(v){
-        if(!v){
-            return '—';
-        }
-
-        var t=parseTs(v);
-
-        if(t===null){
-            return String(v);
-        }
-
-        try{
-            return new Date(t).toLocaleString(
-                'ar-EG',
-                {
-                    year:'numeric',
-                    month:'2-digit',
-                    day:'2-digit',
-                    hour:'2-digit',
-                    minute:'2-digit'
-                }
-            );
-        }catch(e){
-            return String(v);
-        }
-    }
-
-    if(!rows.length){
-        return(
-            '<div class="card text-center py-14">'+
-                '<div class="text-5xl mb-3">☕</div>'+
-                '<b class="text-slate-400">لا توجد أذونات</b>'+
-            '</div>'
-        );
-    }
-
-    return rows.map(function(v){
-
-        var c =
-            v.status==='Draft'
-                ?'bg-amber-100 text-amber-700'
-                :v.status==='Sent'
-                    ?'bg-blue-100 text-blue-700'
-                    :v.status==='Received'
-                        ?'bg-emerald-100 text-emerald-700'
-                        :v.status==='Cancelled'
-                            ?'bg-rose-100 text-rose-700'
-                            :'bg-slate-100 text-slate-700';
-
-        var l =
-            v.status==='Draft'
-                ?'مسودة'
-                :v.status==='Sent'
-                    ?'مُرسل'
-                    :v.status==='Received'
-                        ?'مُستلم'
-                        :v.status==='Completed'
-                            ?'مكتمل'
-                            :'ملغى';
-
-        var a='';
-
-        if(scope==='pending'){
-
-            var act=s.actionFor(v);
-
-            if(act==='draft'){
-          a+=
-              '<button onclick="event.stopPropagation();App.editVoucher(\''+
-              s.esc(v.voucher_code)+
-              '\')" class="bg-amber-500 text-white px-3 py-2 rounded-xl text-xs font-black">تعديل</button>';
-      
-          a+=
-              '<button onclick="event.stopPropagation();App.deleteVoucher(\''+
-              s.esc(v.voucher_code)+
-              '\')" class="bg-rose-600 text-white px-3 py-2 rounded-xl text-xs font-black">حذف</button>';
-      
-          a+=
-              '<button onclick="event.stopPropagation();App.send(\''+
-              s.esc(v.voucher_code)+
-              '\')" class="bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black">إرسال</button>';
-              }
-         if(act==='receive'){
-            if(v.type==='Transfer'){
-                a+=
-                    '<button onclick="event.stopPropagation();App.details(\''+
-                    s.esc(v.voucher_code)+
-                    '\')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-black">فتح واستلام</button>';
-            }else{
-                a+=
-                    '<button onclick="event.stopPropagation();App.receive(\''+
-                    s.esc(v.voucher_code)+
-                    '\')" class="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-black">استلام</button>';
-            }
-        }
-
-            if(act==='complete'){
-
-                a+=
-                    '<button onclick="event.stopPropagation();App.complete(\''+
-                    s.esc(v.voucher_code)+
-                    '\')" class="bg-violet-600 text-white px-3 py-2 rounded-xl text-xs font-black">إكمال</button>';
-
-            }
-        }
-
-        var fromText=s.loc(
-            v.from_id,
-            v.from_type
-        );
-
-        var toText=s.loc(
-            v.to_id,
-            v.to_type
-        );
-
-        var custodianText='—';
-
-        if(
-            (v.type==='DirectSale'||v.type==='DirectReturn') &&
-            v.custodian_user_id
-        ){
-
-            var rep=(s.refs.reps||[]).find(function(r){
-                return r.id===v.custodian_user_id;
-            });
-
-            if(rep){
-                custodianText=
-                    rep.name||
-                    rep.email||
-                    '—';
-            }
-        }
-
-        var endTs=
-            v.completed_at||
-            v.received_date||
-            null;
-
-        var createdToSent=
-            duration(
-                v.created_at,
-                v.sent_date
-            );
-
-        var sentToReceived=
-            duration(
-                v.sent_date,
-                v.received_date
-            );
-
-        var receivedToCompleted=
-            duration(
-                v.received_date,
-                v.completed_at
-            );
-
-        var lifecycleEnd=
-            endTs||
-            (
-                v.status==='Completed'||v.status==='Cancelled'
-                    ?null
-                    :new Date().toISOString()
-            );
-
-        var lifecycleText=
-            endTs
-                ?
-                durationText(
-                    duration(
-                        v.created_at,
-                        lifecycleEnd
-                    )
-                )
-                :
-                durationText(
-                    duration(
-                        v.created_at,
-                        lifecycleEnd
-                    )
-                );
-
-        return(
-            '<div class="card mb-3 cursor-pointer" onclick="App.details(\''+
-                s.esc(v.voucher_code)+
-            '\')">'+
-
-                '<div class="flex flex-col gap-3">'+
-
-                    '<div class="flex justify-between gap-3">'+
-
-                        '<div class="flex-1 min-w-0">'+
-
-                            '<div class="flex items-center gap-2 flex-wrap">'+
-                                '<span class="text-[10px] text-slate-400 font-bold">رقم الإذن</span>'+
-                                '<b class="text-base">'+
-                                    s.esc(v.voucher_code)+
-                                '</b>'+
-                                '<span class="px-2 py-1 rounded-full text-[10px] font-bold '+c+'">'+
-                                    l+
-                                '</span>'+
-                            '</div>'+
-
-                            '<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">'+
-
-                                '<div class="p-2.5 rounded-xl bg-slate-50">'+
-                                    '<span class="block text-[9px] text-slate-400 font-bold">المرجع</span>'+
-                                    '<b class="block text-xs mt-1">'+
-                                        s.esc(v.reference||'—')+
-                                    '</b>'+
-                                '</div>'+
-
-                                '<div class="p-2.5 rounded-xl bg-slate-50">'+
-                                    '<span class="block text-[9px] text-slate-400 font-bold">التاريخ</span>'+
-                                    '<b class="block text-xs mt-1">'+
-                                        s.esc(v.voucher_date||'—')+
-                                    '</b>'+
-                                '</div>'+
-
-                                '<div class="p-2.5 rounded-xl bg-slate-50">'+
-                                    '<span class="block text-[9px] text-slate-400 font-bold">النوع</span>'+
-                                    '<b class="block text-xs mt-1">'+
-                                        s.esc(v.type||'—')+
-                                    '</b>'+
-                                '</div>'+
-
-                            '</div>'+
-
-                            '<div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-2">'+
-
-                                '<div class="p-2.5 rounded-xl bg-indigo-50 border border-indigo-100">'+
-                                    '<span class="block text-[9px] text-indigo-500 font-bold">بداية الإذن</span>'+
-                                    '<b class="block text-[10px] mt-1 text-indigo-900">'+
-                                        s.esc(dateText(v.created_at))+
-                                    '</b>'+
-                                '</div>'+
-
-                                '<div class="p-2.5 rounded-xl bg-blue-50 border border-blue-100">'+
-                                    '<span class="block text-[9px] text-blue-500 font-bold">بداية التنفيذ</span>'+
-                                    '<b class="block text-[10px] mt-1 text-blue-900">'+
-                                        s.esc(dateText(v.sent_date))+
-                                    '</b>'+
-                                '</div>'+
-
-                                '<div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100">'+
-                                    '<span class="block text-[9px] text-emerald-500 font-bold">النهاية المثبتة</span>'+
-                                    '<b class="block text-[10px] mt-1 text-emerald-900">'+
-                                        s.esc(dateText(endTs))+
-                                    '</b>'+
-                                '</div>'+
-
-                                '<div class="p-2.5 rounded-xl bg-violet-50 border border-violet-100">'+
-                                    '<span class="block text-[9px] text-violet-500 font-bold">'+
-                                        (endTs?'مدة الدورة':'العمر الحالي')+
-                                    '</span>'+
-                                    '<b class="block text-[10px] mt-1 text-violet-900">'+
-                                        s.esc(lifecycleText)+
-                                    '</b>'+
-                                '</div>'+
-
-                            '</div>'+
-
-                            '<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">'+
-
-                                '<div class="text-[9px] text-slate-500 bg-slate-50 rounded-xl px-2.5 py-2">'+
-                                    'منشأ → إرسال: <b>'+
-                                    s.esc(durationText(createdToSent))+
-                                    '</b>'+
-                                '</div>'+
-
-                                '<div class="text-[9px] text-slate-500 bg-slate-50 rounded-xl px-2.5 py-2">'+
-                                    'إرسال → استلام: <b>'+
-                                    s.esc(durationText(sentToReceived))+
-                                    '</b>'+
-                                '</div>'+
-
-                                '<div class="text-[9px] text-slate-500 bg-slate-50 rounded-xl px-2.5 py-2">'+
-                                    'استلام → إكمال: <b>'+
-                                    s.esc(durationText(receivedToCompleted))+
-                                    '</b>'+
-                                '</div>'+
-
-                            '</div>'+
-
-                            '<div class="mt-2 text-[10px] text-slate-500">'+
-                                s.esc(fromText)+
-                                ' → '+
-                                s.esc(toText)+
-                            '</div>'+
-
-                            (
-                                (v.type==='DirectSale'||v.type==='DirectReturn')
-                                ?
-                                '<div class="mt-2 p-2.5 rounded-xl bg-amber-50 border border-amber-100">'+
-                                    '<span class="block text-[9px] text-amber-600 font-bold">المستلم والمسؤول عن العهدة</span>'+
-                                    '<b class="block text-xs mt-1 text-amber-900">'+
-                                        s.esc(custodianText)+
-                                    '</b>'+
-                                '</div>'
-                                :
-                                ''
-                            )+
-
-                        '</div>'+
-
-                        '<div class="flex gap-2 flex-wrap justify-end items-start">'+
-                            a+
-                        '</div>'+
-
-                    '</div>'+
-
-                '</div>'+
-
-            '</div>'
-        );
-
-    }).join('');
-},
+},,
 loc:function(id,type){var a=type==='Branch'?this.refs.branches:type==='Vehicle'?this.refs.vehicles:this.refs.suppliers,x=(a||[]).find(function(z){return z.id===id});if(!x)return'غير معروف';return type==='Vehicle'?(x.vehicle_code||x.license_plate||x.model||'غير معروف'):type==='Supplier'?(x.name||x.supplier_code||'غير معروف'):(x.name||x.branch_code||'غير معروف')},
 voucherAuditCache:null,
 
@@ -2434,9 +2090,11 @@ if(act==='draft'){
         '<button type="button" onclick="App.exportVoucher()" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black">⇩ تصدير CSV</button>';
 
 }
-
 topActions+=
     '</div>';
+
+var h=
+    topActions+
             '<div class="grid grid-cols-2 gap-2 text-xs mb-3">'+
             '<div class="p-3 bg-slate-50 rounded-2xl">النوع<br><b>'+s.esc(v.type)+'</b></div>'+
             '<div class="p-3 bg-slate-50 rounded-2xl">الحالة<br><b>'+s.esc(v.status)+'</b></div>'+
@@ -2770,6 +2428,8 @@ receive:function(code,full){
     }
 });
 
+            }
+
             var h=
                 '<div class="text-right space-y-2">';
 
@@ -3066,6 +2726,7 @@ receive:function(code,full){
 
         });
 },
+
 editVoucher:function(code){
     var s=this;
 
@@ -3576,6 +3237,113 @@ allowedBranch:function(u,b){
         a.indexOf(String(b.branch_code||''))>=0
     );
 },
+
+         vehicleBranch:function(v){
+
+    if(
+        !v ||
+        v.mobile_stock_enabled===false
+    ){
+        return null;
+    }
+
+    var branches=
+        this.refs &&
+        this.refs.branches
+            ?this.refs.branches
+            :[];
+
+    if(
+        !this._voucherBranchIndex ||
+        this._voucherBranchIndex.rows!==branches
+    ){
+
+        var byId=
+            Object.create(null);
+
+        var byCode=
+            Object.create(null);
+
+        branches.forEach(
+            function(b){
+
+                if(
+                    !b ||
+                    b.is_active===false ||
+                    String(
+                        b.company_id||''
+                    )!==String(
+                        this.company||''
+                    )
+                ){
+                    return;
+                }
+
+                byId[
+                    String(b.id)
+                ]=b;
+
+                var code=
+                    String(
+                        b.branch_code||''
+                    )
+                    .trim()
+                    .toUpperCase();
+
+                if(code){
+                    byCode[code]=b;
+                }
+
+            },
+            this
+        );
+
+        this._voucherBranchIndex={
+            rows:branches,
+            byId:byId,
+            byCode:byCode
+        };
+    }
+
+    var index=
+        this._voucherBranchIndex;
+
+    if(v.mobile_branch_id){
+
+        var direct=
+            index.byId[
+                String(
+                    v.mobile_branch_id
+                )
+            ];
+
+        if(
+            direct &&
+            String(
+                direct.company_id||''
+            )===String(
+                this.company||''
+            ) &&
+            direct.is_active!==false
+        ){
+            return direct;
+        }
+    }
+
+    var fallbackCode=
+        'VAN-'+
+        String(
+            v.vehicle_code||''
+        )
+        .trim()
+        .toUpperCase();
+
+    return (
+        index.byCode[fallbackCode]||
+        null
+    );
+},
+
 syncDirectSaleVehicleWithRep:function(repId){
 
     var s=this;
