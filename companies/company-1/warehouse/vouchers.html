@@ -3486,6 +3486,15 @@ syncDirectSaleVehicleWithRep:function(repId){
                 s.user.role===
                     'مندوب بيع مباشر'
             ){
+var currentUserId= String( (s.user||{}).id|| '' );
+
+var vehicleRepMap= s.refs.vehicleRepMap|| Object.create(null);
+              var linkedRepId=
+    vehicleRepMap[
+        String(v.id)
+    ]||
+    v.driver_id||
+    '';
 
                 return (
                     s.refs.vehicles||[]
@@ -3495,8 +3504,8 @@ syncDirectSaleVehicleWithRep:function(repId){
                     return (
                         v.status==='Active' &&
                         v.mobile_stock_enabled!==false &&
-                        v.driver_id===
-                            s.user.id &&
+                        String(linkedRepId)===
+                            currentUserId &&
                         !!s.vehicleBranch(v)
                     );
                 });
@@ -3962,7 +3971,8 @@ pickSearch:function(key,q){
                     ?(
                         repById[
                             String(
-                                x.driver_id||''
+                              ( s.refs.vehicleRepMap && s.refs.vehicleRepMap[ String(x.id) ] )||  
+                              x.driver_id||''
                             )
                         ]||
                         null
@@ -4288,6 +4298,26 @@ if(key==='wsRep'){
                         String(mappedVehicleId);
                 });
 
+        if(
+            !mappedVehicle ||
+          mappedVehicle=
+    (s.refs.vehicles||[])
+        .find(function(v){
+
+            return (
+                String(
+                    v.driver_id||
+                    ''
+                )===
+                String(x.id) &&
+
+                v.status==='Active' &&
+                v.mobile_stock_enabled!==false &&
+                !!s.vehicleBranch(v)
+            );
+        })||
+    null;
+      }
         if(
             !mappedVehicle ||
             mappedVehicle.status!=='Active' ||
