@@ -1662,18 +1662,69 @@ printDraftVoucher:function(code){
 },
          
 printVoucher:function(){
-    var node=document.querySelector('.swal2-html-container');
+    var node=
+        (typeof Swal!=='undefined' &&
+         typeof Swal.getHtmlContainer==='function')
+            ?Swal.getHtmlContainer()
+            :document.querySelector(
+                '.swal2-html-container'
+            );
 
     if(!node){
-        RW_UI.toast('لا توجد وثيقة مفتوحة للطباعة','warning');
+        RW_UI.toast(
+            'لا توجد وثيقة مفتوحة للطباعة',
+            'warning'
+        );
         return;
     }
 
-    var w=window.open('','_blank','noopener,noreferrer,width=1200,height=900');
+    var w=window.open(
+        '',
+        'rawaea-voucher-print',
+        'popup,width=1200,height=900'
+    );
 
     if(!w){
-        RW_UI.toast('تعذر فتح نافذة الطباعة','error');
+        RW_UI.toast(
+            'تعذر فتح نافذة الطباعة',
+            'error'
+        );
         return;
+    }
+
+    var printedOnce=false;
+
+    var printNow=function(){
+        if(printedOnce){
+            return;
+        }
+
+        printedOnce=true;
+
+        try{
+            w.focus();
+            w.print();
+        }catch(e){
+            RW_UI.toast(
+                'تعذر بدء الطباعة',
+                'error'
+            );
+
+            console.error(
+                'App.printVoucher',
+                e
+            );
+        }
+    };
+
+    if(
+        typeof w.addEventListener==='function'
+    ){
+        w.addEventListener(
+            'load',
+            printNow,
+            {once:true}
+        );
     }
 
     w.document.open();
@@ -1702,10 +1753,10 @@ printVoucher:function(){
 
     w.document.close();
 
-    setTimeout(function(){
-        w.focus();
-        w.print();
-    },250);
+    setTimeout(
+        printNow,
+        300
+    );
 },
 
 exportVoucher:function(){
