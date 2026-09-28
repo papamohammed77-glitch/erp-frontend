@@ -3598,27 +3598,45 @@ syncDirectSaleVehicleWithRep:function(repId){
         return userBranches;
     }
 
-    if(key==='wsRep'){
-    
-        return (
-            s.refs.reps||[]
-        )
-        .filter(function(r){
-    
-            if(!b){
-                return false;
-            }
-    
-            if(
-                s.type==='DirectSale' &&
-                !s.refs.repVehicleMap[
-                    String(r.id)
-                ]
-            ){
-                return false;
-            }
-    
+if(key==='wsRep'){
+
+    var returnBranchId=
+        s.type==='DirectReturn'
+            ?(
+                (RW_UI.byId('wsTo')||{})
+                    .value||
+                ''
+            )
+            :'',
+
+        returnBranch=
+            returnBranchId
+                ?allBranches.find(
+                    function(x){
+                        return String(x.id)===
+                            String(returnBranchId);
+                    }
+                )||
+                null
+                :null;
+
+    return (
+        s.refs.reps||[]
+    )
+    .filter(function(r){
+
+        if(!r){
+            return false;
+        }
+
+        if(
+            s.type==='DirectSale'
+        ){
             return (
+                !!s.refs.repVehicleMap[
+                    String(r.id)
+                ] &&
+                !!b &&
                 s.allowedBranch(
                     s.user,
                     b
@@ -3628,8 +3646,87 @@ syncDirectSaleVehicleWithRep:function(repId){
                     b
                 )
             );
-        });
-    }
+        }
+
+        if(
+            s.type==='DirectReturn'
+        ){
+
+            var mappedVehicleId=
+                s.refs.repVehicleMap[
+                    String(r.id)
+                ]||
+                '';
+
+            var mappedVehicle=
+                (s.refs.vehicles||[])
+                    .find(function(v){
+                        return String(v.id)===
+                            String(mappedVehicleId);
+                    });
+
+            var legacyVehicle=
+                (s.refs.vehicles||[])
+                    .find(function(v){
+                        return (
+                            String(v.driver_id||'')===
+                            String(r.id) &&
+                            v.status==='Active' &&
+                            v.mobile_stock_enabled!==false &&
+                            !!s.vehicleBranch(v)
+                        );
+                    });
+
+            var hasReturnVehicle=
+                !!(
+                    (
+                        mappedVehicle &&
+                        mappedVehicle.status==='Active' &&
+                        mappedVehicle.mobile_stock_enabled!==false &&
+                        !!s.vehicleBranch(
+                            mappedVehicle
+                        )
+                    )||
+                    legacyVehicle
+                );
+
+            if(!hasReturnVehicle){
+                return false;
+            }
+
+            if(returnBranch){
+
+                return (
+                    s.allowedBranch(
+                        s.user,
+                        returnBranch
+                    ) &&
+                    s.allowedBranch(
+                        r,
+                        returnBranch
+                    )
+                );
+            }
+
+            return true;
+        }
+
+        if(!b){
+            return false;
+        }
+
+        return (
+            s.allowedBranch(
+                s.user,
+                b
+            ) &&
+            s.allowedBranch(
+                r,
+                b
+            )
+        );
+    });
+}
 
     if(
         key==='wsTo' &&
@@ -4130,25 +4227,34 @@ pickSelect:function(key,id){
 
         RW_UI.byId('wsFromMenu').classList.add('hidden');
 
-        var r=
-            s.refs.reps.find(function(rp){
-                return rp.id===x.driver_id;
-            });
+   var linkedRepId=
+    s.refs.vehicleRepMap[
+        String(x.id)
+    ]||
+    x.driver_id||
+    '';
 
-        RW_UI.byId('wsRep').value=r?r.id:'';
-        RW_UI.byId('wsRepSearch').value=
-            r?(r.name||r.email):'';
+var r=
+    (s.refs.reps||[])
+        .find(function(rp){
+            return String(rp.id)===
+                String(linkedRepId);
+        });
 
-        if(r){
-            RW_UI.byId('wsRepSearch').setAttribute(
-                'readonly',
-                'readonly'
-            );
-        }else{
-            RW_UI.byId('wsRepSearch').removeAttribute(
-                'readonly'
-            );
-        }
+RW_UI.byId('wsRep').value=
+    r?
+        r.id:
+        '';
+
+RW_UI.byId('wsRepSearch').value=
+    r?
+        (r.name||r.email):
+        '';
+
+RW_UI.byId('wsRepSearch')
+    .removeAttribute(
+        'readonly'
+    );
 
         s.summary();
         s.renderProducts();
@@ -4158,28 +4264,79 @@ pickSelect:function(key,id){
 
     RW_UI.byId(key).value=x.id;
 
-    if(key==='wsRep'){
+if(key==='wsRep'){
 
-        RW_UI.byId(key+'Search').value=
-            x.name||
-            x.email||
+    RW_UI.byId(key+'Search').value=
+        x.name||
+        x.email||
+        '';
+
+    if(
+        s.type==='DirectReturn'
+    ){
+
+        var mappedVehicleId=
+            s.refs.repVehicleMap[
+                String(x.id)
+            ]||
             '';
 
+        var mappedVehicle=
+            (s.refs.vehicles||[])
+                .find(function(v){
+                    return String(v.id)===
+                        String(mappedVehicleId);
+                });
+
         if(
-            s.type==='DirectSale'
+            !mappedVehicle ||
+            mappedVehicle.status!=='Active' ||
+            mappedVehicle.mobile_stock_enabled===false ||
+            !s.vehicleBranch(mappedVehicle)
         ){
 
-            var synced=
-                s.syncDirectSaleVehicleWithRep(
-                    x.id
-                );
+            RW_UI.byId('wsRep').value='';
+            RW_UI.byId('wsRepSearch').value='';
 
-            if(!synced){
+            RW_UI.toast(
+                'لا توجد مركبة نشطة مرتبطة حاليًا بهذا المندوب',
+                'error'
+            );
+
+            return;
+        }
+
+        var selectedReturnBranchId=
+            (RW_UI.byId('wsTo')||{})
+                .value||
+            '';
+
+        if(selectedReturnBranchId){
+
+            var selectedReturnBranch=
+                (s.refs.branches||[])
+                    .find(function(branch){
+                        return String(branch.id)===
+                            String(selectedReturnBranchId);
+                    });
+
+            if(
+                !selectedReturnBranch ||
+                !s.allowedBranch(
+                    s.user,
+                    selectedReturnBranch
+                ) ||
+                !s.allowedBranch(
+                    x,
+                    selectedReturnBranch
+                )
+            ){
+
                 RW_UI.byId('wsRep').value='';
                 RW_UI.byId('wsRepSearch').value='';
 
                 RW_UI.toast(
-                    'لا توجد مركبة نشطة معينة لهذا المندوب في إدارة الأسطول',
+                    'المندوب خارج نطاق فرع استلام المرتجع المحدد',
                     'error'
                 );
 
@@ -4187,10 +4344,41 @@ pickSelect:function(key,id){
             }
         }
 
+        RW_UI.byId('wsFrom').value=
+            mappedVehicle.id;
+
+        RW_UI.byId('wsFromSearch').value=
+            mappedVehicle.vehicle_code||
+            mappedVehicle.license_plate||
+            mappedVehicle.model||
+            '';
+
     }else if(
-        key==='wsTo' &&
-        s.type==='SupplierReturn'
+        s.type==='DirectSale'
     ){
+
+        var synced=
+            s.syncDirectSaleVehicleWithRep(
+                x.id
+            );
+
+        if(!synced){
+            RW_UI.byId('wsRep').value='';
+            RW_UI.byId('wsRepSearch').value='';
+
+            RW_UI.toast(
+                'لا توجد مركبة نشطة معينة لهذا المندوب في إدارة الأسطول',
+                'error'
+            );
+
+            return;
+        }
+    }
+
+}else if(
+    key==='wsTo' &&
+    s.type==='SupplierReturn'
+){
         RW_UI.byId(key+'Search').value=
             x.name||
             x.supplier_code||
@@ -4265,7 +4453,7 @@ pickSelect:function(key,id){
 
     s.updateSource();
 },
-routeHtml:function(){var s=this,t=this.type;function p(k,label,readonly){return'<div class="smart-field"><input type="hidden" id="'+k+'" value=""><input id="'+k+'Search" class="smart-input" autocomplete="off" '+(readonly?'readonly ':'')+'placeholder="'+s.esc(label)+'" onfocus="App.pickShow(\''+k+'\')" oninput="App.pickSearch(\''+k+'\',this.value)"><div id="'+k+'Menu" class="smart-menu hidden"></div></div>'}if(t==='Scrap'||t==='Adjustment')return'<div class="grid grid-cols-1">'+p('wsFrom','الفرع المصدر')+'</div>';if(t==='DirectSale')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsRep','مندوب البيع المباشر')+p('wsTo','المركبة — مرتبطة بالمندوب')+'</div>';if(t==='DirectReturn')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','المركبة المصدر')+p('wsRep','مندوب البيع المباشر',true)+p('wsTo','الفرع الوجهة')+'</div>';
+routeHtml:function(){var s=this,t=this.type;function p(k,label,readonly){return'<div class="smart-field"><input type="hidden" id="'+k+'" value=""><input id="'+k+'Search" class="smart-input" autocomplete="off" '+(readonly?'readonly ':'')+'placeholder="'+s.esc(label)+'" onfocus="App.pickShow(\''+k+'\')" oninput="App.pickSearch(\''+k+'\',this.value)"><div id="'+k+'Menu" class="smart-menu hidden"></div></div>'}if(t==='Scrap'||t==='Adjustment')return'<div class="grid grid-cols-1">'+p('wsFrom','الفرع المصدر')+'</div>';if(t==='DirectSale')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','الفرع المصدر')+p('wsRep','مندوب البيع المباشر')+p('wsTo','المركبة — مرتبطة بالمندوب')+'</div>';if(t==='DirectReturn')return'<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">'+p('wsFrom','المركبة المصدر')+p('wsRep','مندوب البيع المباشر')+p('wsTo','الفرع الوجهة')+'</div>';
 if(t==='SupplierReturn')
 return(
     '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">'+
@@ -5694,9 +5882,39 @@ if(this.type==='DirectSale'){
         var bb=(this.refs.branches||[]).find(function(x){
             return x.id===to;
         });
-        var rr=vv&&(this.refs.reps||[]).find(function(x){
-            return x.id===vv.driver_id;
+var selectedRepId=
+    String(
+        rep||
+        ''
+    ).trim();
+
+var linkedRepId=
+    selectedRepId||
+    String(
+        s.refs.vehicleRepMap[
+            String(fr)
+        ]||
+        vv.driver_id||
+        ''
+    );
+
+var rr=
+    vv&&
+    (this.refs.reps||[])
+        .find(function(x){
+            return String(x.id)===
+                String(linkedRepId);
         });
+
+var assignedVehicleId=
+    selectedRepId
+        ?String(
+            s.refs.repVehicleMap[
+                selectedRepId
+            ]||
+            ''
+        )
+        :'';
 
         if(
             !vv||
@@ -5712,7 +5930,18 @@ if(this.type==='DirectSale'){
             return;
         }
     }
-
+if(
+    selectedRepId &&
+    assignedVehicleId &&
+    String(assignedVehicleId)!==
+    String(fr)
+){
+    RW_UI.toast(
+        'مندوب البيع والمركبة لا ينتميان إلى نفس التعيين الحالي في إدارة الأسطول',
+        'error'
+    );
+    return;
+}
 if(this.type==='SupplierReturn'){
     var sb=(this.refs.branches||[]).find(function(x){
         return x.id===fr;
