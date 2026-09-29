@@ -1432,21 +1432,115 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
         var fc = RW_UI.byId('forgottenItemsContainer'); if (fc) fc.classList.add('hidden');
     },
 
-    showRecentCustomers: function() {
-        var row = RW_UI.byId('recentCustomersRow'); if (!row) return;
-        var db = RW_DB.getDB('VanSales');
-        db.orders.orderBy('created_at').reverse().limit(10).toArray().then(function(orders) {
-            var codes = [];
-            for (var i = 0; i < orders.length; i++) { if (orders[i].customer_code && codes.indexOf(orders[i].customer_code) === -1) codes.push(orders[i].customer_code); if (codes.length >= 5) break; }
-            if (!codes.length) { RW_UI.safeHTML(row, '<span class="text-xs text-gray-400 py-1">لا يوجد عملاء سابقون</span>'); return; }
-            db.customers.where('customer_code').anyOf(codes).toArray().then(function(custs) {
-                var h = '';
-                for (var j = 0; j < custs.length; j++) { var c = custs[j]; h += '<button onclick="App.selectCustomer(\'' + c.customer_code + '\')" class="whitespace-nowrap bg-orange-50 text-orange-700 px-3 py-1.5 rounded-full text-xs font-bold active:bg-orange-100 flex-shrink-0"><i class="fa-solid fa-clock-rotate-left ml-1 text-orange-400"></i>' + (c.name || c.customer_code) + '</button>'; }
-                RW_UI.safeHTML(row, h);
-            });
-        });
-    },
+showRecentCustomers: function() {
+    var self = this;
+    var row = RW_UI.byId('recentCustomersRow');
 
+    if (!row || !this.currentUser || !this.currentUser.id) {
+        return;
+    }
+
+    var companyId = null;
+
+    supabase.from('users')
+        .select('company_id')
+        .eq('id', this.currentUser.id)
+        .maybeSingle()
+        .then(function(userRes) {
+            if (userRes.error) throw userRes.error;
+
+            if (!userRes.data || !userRes.data.company_id) {
+                RW_UI.safeHTML(
+                    row,
+                    '<span class="text-xs text-gray-400 py-1">لا يوجد سياق شركة</span>'
+                );
+                return null;
+            }
+
+            companyId = userRes.data.company_id;
+
+            return supabase.from('orders')
+                .select('customer_id')
+                .eq('company_id', companyId)
+                .eq('created_by', self.currentUser.email)
+                .eq('source', 'van-sales')
+                .not('customer_id', 'is', null)
+                .order('order_date', { ascending: false })
+                .limit(20);
+        })
+        .then(function(orderRes) {
+            if (!orderRes) return null;
+            if (orderRes.error) throw orderRes.error;
+
+            var orders = orderRes.data || [];
+            var customerIds = [];
+
+            for (var i = 0; i < orders.length; i++) {
+                var id = orders[i].customer_id;
+
+                if (id && customerIds.indexOf(id) === -1) {
+                    customerIds.push(id);
+                }
+
+                if (customerIds.length >= 5) break;
+            }
+
+            if (!customerIds.length) {
+                RW_UI.safeHTML(
+                    row,
+                    '<span class="text-xs text-gray-400 py-1">لا يوجد عملاء سابقون</span>'
+                );
+                return null;
+            }
+
+            return supabase.from('customers')
+                .select('id,customer_code,name')
+                .eq('company_id', companyId)
+                .in('id', customerIds);
+        })
+        .then(function(customerRes) {
+            if (!customerRes) return;
+            if (customerRes.error) throw customerRes.error;
+
+            var customers = customerRes.data || [];
+            var html = '';
+
+            for (var i = 0; i < customers.length; i++) {
+                var customer = customers[i];
+                var code = customer.customer_code || customer.id;
+
+                var safeCode = String(code).replace(/'/g, "\\'");
+
+                var safeName = String(customer.name || code)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+
+                html +=
+                    '<button onclick="App.selectCustomer(\\'' + safeCode + '\\')" ' +
+                    'class="whitespace-nowrap bg-orange-50 text-orange-700 px-3 py-1.5 rounded-full text-xs font-bold active:bg-orange-100 flex-shrink-0">' +
+                    '<i class="fa-solid fa-clock-rotate-left ml-1 text-orange-400"></i>' +
+                    safeName +
+                    '</button>';
+            }
+
+            RW_UI.safeHTML(
+                row,
+                html ||
+                '<span class="text-xs text-gray-400 py-1">لا يوجد عملاء سابقون</span>'
+            );
+        })
+        .catch(function(error) {
+            console.error('showRecentCustomers:', error);
+
+            RW_UI.safeHTML(
+                row,
+                '<span class="text-xs text-red-400 py-1">تعذر تحميل العملاء السابقين</span>'
+            );
+        });
+},
     // ==================== عرض تفاصيل المنتج ====================
     showProductDetail: function(code, name, unit, price, avail, desc, imgUrl) {
         var inCart = 0; for (var x = 0; x < this.cart.length; x++) { if (this.cart[x].code === code) { inCart = this.cart[x].qty; break; } }
