@@ -161,7 +161,16 @@ var App = {
         window.addEventListener('online', function() { App.updateConnectionStatus(); });
         window.addEventListener('offline', function() { App.updateConnectionStatus(); });
         this.renderBottomNav();
-        this.syncDown().catch(function() { return null; }).then(function() { App.loadVanBranch(); });
+        this.syncDown()
+    .then(function() {
+        App.loadVanBranch();
+    })
+    .catch(function(err) {
+        RW_UI.showError(
+            (err && err.message) ||
+            'تعذر مزامنة بيانات النظام، تم إيقاف العرض لمنع استخدام بيانات قديمة'
+        );
+    });
     },
 
     doLogout: function() {
@@ -628,53 +637,141 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
     },
 
     // ==================== تحميل ملخص العهدة ====================
-    loadHomeStockSummary: function() {
-        var self = this;
-        var db = RW_DB.getDB('VanSales');
-        var branchId = this.vanBranchId;
+   loadHomeStockSummary:function() {
+    var self=this;
+    var branchId=this.vanBranchId;
+    var companyId=this.companyId;
+    var box=RW_UI.byId('homeStockSummary');
+    var kpi=RW_UI.byId('kpiStock');
 
-        if (!branchId) {
-            RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">لم يتم تهيئة فرع السيارة بعد. استخدم الجرد السريع.</p>');
-            RW_UI.safeText(RW_UI.byId('kpiStock'), '0 ج.م');
-            return;
+    if(!branchId||!companyId){
+        RW_UI.safeHTML(
+            box,
+            '<p class="text-gray-400">لم يتم تحديد مخزن السيارة المعتمد.</p>'
+        );
+        RW_UI.safeText(kpi,'0 ج.م');
+        return;
+    }
+
+    Promise.all([
+        supabase
+            .from('stock_branches')
+            .select('item_id,qty,allocated_qty,updated_at')
+            .eq('branch_id',branchId),
+
+        supabase
+            .from('items')
+            .select('id,item_code,name,sales_price,unit')
+            .eq('company_id',companyId)
+            .eq('is_active',true)
+    ])
+    .then(function(result){
+        var stockRes=result[0],
+            itemsRes=result[1];
+
+        if(stockRes.error) throw stockRes.error;
+        if(itemsRes.error) throw itemsRes.error;
+
+        var itemMap={};
+        (itemsRes.data||[]).forEach(function(it){
+            itemMap[String(it.id)]=it;
+        });
+
+        var rows=(stockRes.data||[])
+            .map(function(st){
+                var it=itemMap[String(st.item_id)];
+                var qty=Math.max(0,Number(st.qty)||0);
+
+                return{
+                    item_id:st.item_id,
+                    item:it,
+                    qty:qty,
+                    allocated_qty:Math.max(0,Number(st.allocated_qty)||0),
+                    sales_price:it?Math.max(0,Number(it.sales_price)||0):0,
+                    updated_at:st.updated_at||null
+                };
+            })
+            .filter(function(x){
+                return x.qty>0;
+            })
+            .sort(function(a,b){
+                var ac=a.item?(a.item.item_code||''):'',
+                    bc=b.item?(b.item.item_code||''):'';
+
+                return String(ac).localeCompare(String(bc),'ar');
+            });
+
+        var totalQty=0,
+            totalValue=0;
+
+        rows.forEach(function(x){
+            totalQty+=x.qty;
+            totalValue+=x.qty*x.sales_price;
+        });
+
+        var preview=rows.slice(0,5);
+
+        var summary=
+            '<div class="text-xs text-slate-500 mb-2">'+
+                '<b>'+totalQty+'</b> صنف/وحدة حالية'+
+                ' · قيمة البيع التقريبية <b>'+
+                RW_UI.formatNumber(totalValue)+
+                ' ج.م</b>'+
+            '</div>';
+
+        preview.forEach(function(x){
+            if(!x.item) return;
+
+            summary+=
+                '<span class="inline-block bg-orange-50 text-orange-700 px-2 py-1 rounded-lg text-xs font-bold ml-1 mb-1">'+
+                x.item.name+
+                ': '+
+                x.qty+
+                '</span>';
+        });
+
+        if(rows.length>5){
+            summary+=
+                '<span class="text-xs text-gray-400">... و'+
+                (rows.length-5)+
+                ' صنف آخر</span>';
         }
 
-        db.stock.where('branch_id').equals(branchId).toArray().then(function(stockItems) {
-            if (!stockItems || stockItems.length === 0) {
-                RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">لا توجد عهدة حالياً. تواصل مع المشرف.</p>');
-                RW_UI.safeText(RW_UI.byId('kpiStock'), '0 ج.م');
-                RW_UI.safeText(RW_UI.byId('homeStockLastUpdate'), '');
-                return;
-            }
+        if(!rows.length){
+            summary=
+                '<p class="text-gray-400">لا توجد عهدة فعلية حالياً.</p>';
+        }
 
-            var totalValue = 0;
-            var promises = [];
-            for (var j = 0; j < Math.min(stockItems.length, 5); j++) {
-                promises.push(db.items.get(stockItems[j].item_id));
-            }
+        RW_UI.safeHTML(
+            box,
+            summary
+        );
 
-            Promise.all(promises).then(function(items) {
-                var summary = '';
-                for (var k = 0; k < items.length; k++) {
-                    if (items[k]) {
-                        var qty = Number(stockItems[k].qty) || 0;
-                        var price = Number(items[k].sales_price) || 0;
-                        totalValue += qty * price;
-                        summary += '<span class="inline-block bg-orange-50 text-orange-700 px-2 py-1 rounded-lg text-xs font-bold ml-1 mb-1">' + items[k].name + ': ' + qty + '</span>';
-                    }
-                }
-                if (stockItems.length > 5) summary += '<span class="text-xs text-gray-400">... وأكثر</span>';
-                RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), summary || '<p class="text-gray-400">اضغط للتفاصيل</p>');
-                RW_UI.safeText(RW_UI.byId('homeStockLastUpdate'), '🟢 آخر تحديث: الآن');
-                RW_UI.safeText(RW_UI.byId('kpiStock'), RW_UI.formatNumber(totalValue) + ' ج.م');
-            }).catch(function() {
-                RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">تعذر تحميل تفاصيل العهدة</p>');
-            });
-        }).catch(function() {
-            RW_UI.safeHTML(RW_UI.byId('homeStockSummary'), '<p class="text-gray-400">تعذر تحميل العهدة</p>');
-        });
-    },
+        RW_UI.safeText(
+            RW_UI.byId('homeStockLastUpdate'),
+            '🟢 آخر تحديث: الآن'
+        );
 
+        RW_UI.safeText(
+            kpi,
+            RW_UI.formatNumber(totalValue)+' ج.م'
+        );
+    })
+    .catch(function(err){
+        console.error('loadHomeStockSummary:',err);
+
+        RW_UI.safeHTML(
+            box,
+            '<p class="text-red-400">تعذر تحميل العهدة الحية من النظام.</p>'
+        );
+
+        RW_UI.safeText(kpi,'—');
+        RW_UI.safeText(
+            RW_UI.byId('homeStockLastUpdate'),
+            '🔴 فشل تحديث بيانات العهدة'
+        );
+    });
+},
     // ==================== تحميل ملخص مبيعات اليوم ====================
     loadHomeSalesSummary: function() {
         var self = this;
@@ -1078,58 +1175,134 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
         }, 300);
     },
 
-    _loadVehicleStock: function() {
-        var self = this;
-        var db = RW_DB.getDB('VanSales');
-        var branchId = this.vanBranchId;
-        var container = RW_UI.byId('vehicleDetail');
-        if (!container) return;
+   _loadVehicleStock:function() {
+    var self=this;
+    var branchId=this.vanBranchId;
+    var companyId=this.companyId;
+    var container=RW_UI.byId('vehicleDetail');
 
-        if (!branchId) {
-            RW_UI.safeHTML(container, '<div class="text-center py-12 bg-white rounded-2xl"><div class="text-6xl mb-4">🚛</div><p class="text-slate-400 font-bold">لم يتم تهيئة فرع السيارة بعد</p><p class="text-slate-300 text-sm mt-1">استخدم الجرد السريع لتهيئة المخزون</p></div>');
-            return;
-        }
+    if(!container) return;
 
-        db.stock.where('branch_id').equals(branchId).toArray().then(function(myStock) {
-            if (!myStock || !myStock.length) {
-                RW_UI.safeHTML(container, '<div class="text-center py-12 bg-white rounded-2xl"><div class="text-6xl mb-4">📦</div><p class="text-slate-400 font-bold">السيارة فارغة – لا توجد عهدة</p><p class="text-slate-300 text-sm mt-1">تواصل مع المشرف لاستلام عهدة</p></div>');
-                return;
-            }
+    if(!branchId||!companyId){
+        RW_UI.safeHTML(
+            container,
+            '<div class="text-center py-12 bg-white rounded-2xl">'+
+            '<div class="text-6xl mb-4">🚛</div>'+
+            '<p class="text-slate-400 font-bold">لم يتم تحديد مخزن السيارة المعتمد</p>'+
+            '</div>'
+        );
+        return;
+    }
 
-            // جلب أسماء الأصناف
-            var promises = [];
-            for (var k = 0; k < myStock.length; k++) {
-                promises.push(db.items.get(myStock[k].item_id));
-            }
+    Promise.all([
+        supabase
+            .from('stock_branches')
+            .select('item_id,qty,allocated_qty,updated_at')
+            .eq('branch_id',branchId),
 
-            Promise.all(promises).then(function(items) {
-                var today = new Date().toISOString().split('T')[0];
+        supabase
+            .from('items')
+            .select('id,item_code,name,sales_price,unit')
+            .eq('company_id',companyId)
+            .eq('is_active',true)
+    ])
+    .then(function(result){
+        var stockRes=result[0],
+            itemsRes=result[1];
 
-                // جلب مبيعات اليوم لحساب المباع
-                supabase.from('orders').select('id').eq('created_by', self.currentUser.email).eq('order_date', today).then(function(oRes) {
-                    var orderIds = [];
-                    var ordersData = oRes.data || [];
-                    for (var oi = 0; oi < ordersData.length; oi++) orderIds.push(ordersData[oi].id);
+        if(stockRes.error) throw stockRes.error;
+        if(itemsRes.error) throw itemsRes.error;
 
-                    var soldMap = {};
-                    if (orderIds.length > 0) {
-                        supabase.from('order_details').select('item_code, qty').in('order_id', orderIds).then(function(dRes) {
-                            var details = dRes.data || [];
-                            for (var d = 0; d < details.length; d++) {
-                                var it = details[d];
-                                soldMap[it.item_code] = (soldMap[it.item_code] || 0) + (Number(it.qty) || 0);
-                            }
-                            self._renderVehicleStockHTML(container, myStock, items, soldMap);
-                        });
-                    } else {
-                        self._renderVehicleStockHTML(container, myStock, items, soldMap);
-                    }
-                });
-            });
-        }).catch(function() {
-            RW_UI.safeHTML(container, '<div class="text-center py-12"><p class="text-red-400">فشل تحميل المخزون</p></div>');
+        var itemMap={};
+
+        (itemsRes.data||[]).forEach(function(it){
+            itemMap[String(it.id)]=it;
         });
-    },
+
+        var myStock=(stockRes.data||[])
+            .map(function(st){
+                var it=itemMap[String(st.item_id)];
+
+                return{
+                    item_id:st.item_id,
+                    item:it,
+                    qty:Math.max(0,Number(st.qty)||0),
+                    allocated_qty:Math.max(0,Number(st.allocated_qty)||0),
+                    updated_at:st.updated_at||null
+                };
+            })
+            .filter(function(x){
+                return x.qty>0;
+            })
+            .sort(function(a,b){
+                var ac=a.item?(a.item.item_code||''):'',
+                    bc=b.item?(b.item.item_code||''):'';
+
+                return String(ac).localeCompare(String(bc),'ar');
+            });
+
+        var orderQuery=supabase
+            .from('orders')
+            .select('id')
+            .eq('company_id',companyId)
+            .eq('created_by',self.currentUser.email)
+            .eq('source','van-sales')
+            .eq('order_date',new Date().toISOString().split('T')[0]);
+
+        return Promise.resolve(orderQuery)
+            .then(function(oRes){
+                if(oRes.error) throw oRes.error;
+
+                var orderIds=(oRes.data||[]).map(function(o){
+                    return o.id;
+                });
+
+                if(!orderIds.length){
+                    self._renderVehicleStockHTML(
+                        container,
+                        myStock,
+                        myStock.map(function(x){return x.item;}),
+                        {}
+                    );
+                    return;
+                }
+
+                return supabase
+                    .from('order_details')
+                    .select('item_code,qty')
+                    .in('order_id',orderIds)
+                    .then(function(dRes){
+                        if(dRes.error) throw dRes.error;
+
+                        var soldMap={};
+
+                        (dRes.data||[]).forEach(function(d){
+                            var code=String(d.item_code||'');
+                            soldMap[code]=
+                                (soldMap[code]||0)+
+                                (Number(d.qty)||0);
+                        });
+
+                        self._renderVehicleStockHTML(
+                            container,
+                            myStock,
+                            myStock.map(function(x){return x.item;}),
+                            soldMap
+                        );
+                    });
+            });
+    })
+    .catch(function(err){
+        console.error('_loadVehicleStock:',err);
+
+        RW_UI.safeHTML(
+            container,
+            '<div class="text-center py-12 bg-white rounded-2xl">'+
+            '<p class="text-red-400 font-bold">تعذر تحميل العهدة الحية من النظام</p>'+
+            '</div>'
+        );
+    });
+},
 
     _renderVehicleStockHTML: function(container, myStock, items, soldMap) {
         var self = this;
