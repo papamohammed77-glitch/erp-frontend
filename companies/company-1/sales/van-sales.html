@@ -1130,7 +1130,70 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
                     throw new Error('العميل غير موجود أو لا يتبع الشركة الحالية');
                 }
 
-                var operationId = crypto.randomUUID();
+                var operationStorageKey =
+    'RW_VAN_COLLECTION_PENDING:' +
+    companyId +
+    ':' +
+    customer.id;
+
+var operationFingerprint = JSON.stringify({
+    company_id: companyId,
+    customer_id: customer.id,
+    amount: amount,
+    date: new Date().toISOString().slice(0, 10),
+    user_email: email
+});
+
+var operationId = null;
+
+try {
+    var pendingCollection =
+        localStorage.getItem(operationStorageKey);
+
+    if (pendingCollection) {
+        var pendingData =
+            JSON.parse(pendingCollection);
+
+        if (
+            pendingData &&
+            pendingData.operation_id &&
+            pendingData.fingerprint === operationFingerprint
+        ) {
+            operationId =
+                pendingData.operation_id;
+        }
+    }
+} catch (e) {}
+
+if (!operationId) {
+    operationId =
+        window.crypto &&
+        crypto.randomUUID
+            ? crypto.randomUUID()
+            : (
+                'VAN-COL:' +
+                companyId +
+                ':' +
+                customer.id +
+                ':' +
+                Date.now() +
+                ':' +
+                Math.random()
+                    .toString(36)
+                    .slice(2)
+            );
+
+    try {
+        localStorage.setItem(
+            operationStorageKey,
+            JSON.stringify({
+                operation_id: operationId,
+                fingerprint: operationFingerprint,
+                created_at: new Date().toISOString()
+            })
+        );
+    } catch (e) {}
+}
 
                 var payload = {
                     header: {
