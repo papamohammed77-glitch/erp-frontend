@@ -175,8 +175,8 @@ function getDB(appName) {
     var db = new Dexie('RW_' + appName);
     var schema = {
         customers: 'customer_code, name, area, phone, visit_day',
-        items: 'item_code, name, sales_price, unit, max_qty, barcode, category, image_url',
-        stock: '[item_id+branch_id], qty, allocated_qty',
+        items: 'item_code, id, name, sales_price, unit, max_qty, barcode, category, image_url',
+        stock: '[item_id+branch_id], branch_id, item_id, qty, allocated_qty',
         branches: 'branch_code, name',
         meta: 'key',
         orders: '++id, status, created_at',
@@ -186,7 +186,20 @@ function getDB(appName) {
         schema.myCustomers = 'customer_code, name, area, phone, totalDebt, lastOrderDate, orderCount';
         schema.customerPatterns = '++id, customer_code, item_code, frequency, avgQty, item_name';
     }
+    if (appName === 'VanSales') {
+    db.version(2).stores(schema);
+
+    var originalItemsGet = db.items.get.bind(db.items);
+
+    db.items.get = function(key) {
+        return originalItemsGet(key).then(function(item) {
+            if (item || key == null) return item;
+            return db.items.where('id').equals(String(key)).first();
+        });
+    };
+} else {
     db.version(1).stores(schema);
+}
     dbInstances[appName] = db;
     return db;
 }
