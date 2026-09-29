@@ -1046,57 +1046,166 @@ else if (view === 'account') { if (fc) fc.classList.add('hidden'); this.renderAc
 
     // ==================== تحصيل نقدية من عميل ====================
     collectPayment: function(code, name) {
-        var self = this;
-        Swal.fire({
-            title: 'تحصيل نقدية من ' + (name || code),
-            html: '<input type="number" id="collectAmount" class="swal2-input" placeholder="المبلغ المحصل" step="0.01" min="0">',
-            showCancelButton: true,
-            confirmButtonText: 'حفظ التحصيل',
-            cancelButtonText: 'إلغاء',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-green-600', cancelButton: '!rounded-xl' },
-            preConfirm: function() {
-                var popup = Swal.getPopup();
-                var amtEl = popup ? popup.querySelector('#collectAmount') : null;
-                var amt = amtEl ? (parseFloat(amtEl.value) || 0) : 0;
-                if (amt <= 0) { Swal.showValidationMessage('أدخل مبلغاً صحيحاً'); return false; }
-                return amt;
+    var self = this;
+
+    Swal.fire({
+        title: 'تحصيل نقدية من ' + (name || code),
+        html: '<input type="number" id="collectAmount" class="swal2-input" placeholder="المبلغ المحصل" step="0.01" min="0">',
+        showCancelButton: true,
+        confirmButtonText: 'حفظ التحصيل',
+        cancelButtonText: 'إلغاء',
+        customClass: {
+            popup: '!rounded-3xl',
+            confirmButton: '!rounded-xl !bg-green-600',
+            cancelButton: '!rounded-xl'
+        },
+        preConfirm: function() {
+            var popup = Swal.getPopup();
+            var amountEl = popup ? popup.querySelector('#collectAmount') : null;
+            var amount = amountEl ? (parseFloat(amountEl.value) || 0) : 0;
+
+            if (amount <= 0) {
+                Swal.showValidationMessage('أدخل مبلغاً صحيحاً');
+                return false;
             }
-        }).then(function(result) {
-            if (!result.isConfirmed) return;
-            var amount = result.value;
-            RW_UI.showLoader('جاري حفظ التحصيل...');
 
-            // ١. حفظ سند القبض (مع إضافة collectedByDriverEmail)
-            var payload = {
-                header: {
-                    date: new Date().toISOString().split('T')[0],
-                    cashBoxId: 'MAIN',
-                    mainAccountName: name || code,
-                    notes: 'تحصيل من مندوب: ' + (self.currentUser ? self.currentUser.email : ''),
-                    collectedByDriverEmail: self.currentUser ? self.currentUser.email : ''
-                },
-                lines: [{ accountName: name || code, description: 'تحصيل نقدية', amount: amount }]
-            };
+            return amount;
+        }
+    }).then(function(result) {
+        if (!result.isConfirmed) return;
 
-            RW_API.call('save-receipt-voucher', payload, function(json) {
-                if (json.success) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: '✅ تم التحصيل',
-                        html: '<div class="text-right"><p>تم تحصيل <strong>' + RW_UI.formatNumber(amount) + ' ج.م</strong> من ' + (name || code) + '</p></div>',
-                        confirmButtonText: 'حسناً',
-                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-green-600' }
-                    }).then(function() {
-                        self.loadBalanceDetail();
-                        self.loadHomeBalanceSummary();
-                    });
-                } else {
-                    RW_UI.hideLoader();
-                    RW_UI.toast(json.error || json.msg || 'فشل', 'error');
+        var amount = Number(result.value) || 0;
+        if (amount <= 0) return;
+
+        var email = self.currentUser
+            ? String(self.currentUser.email || '').trim().toLowerCase()
+            : '';
+
+        var companyId = self.companyId;
+
+        if (!email) {
+            RW_UI.toast('هوية مندوب البيع غير محددة', 'error');
+            return;
+        }
+
+        if (!companyId) {
+            RW_UI.toast('سياق الشركة غير محدد', 'error');
+            return;
+        }
+
+        RW_UI.showLoader('جاري حفظ التحصيل...');
+
+        function resolveCustomer() {
+            var value = String(code || '').trim();
+
+            if (!value) {
+                throw new Error('هوية العميل غير محددة');
+            }
+
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+                return supabase
+                    .from('customers')
+                    .select('id,customer_code,name')
+                    .eq('company_id', companyId)
+                    .eq('id', value)
+                    .eq('is_active', true)
+                    .maybeSingle();
+            }
+
+            return supabase
+                .from('customers')
+                .select('id,customer_code,name')
+                .eq('company_id', companyId)
+                .eq('customer_code', value)
+                .eq('is_active', true)
+                .maybeSingle();
+        }
+
+        resolveCustomer()
+            .then(function(customerRes) {
+                if (customerRes.error) throw customerRes.error;
+
+                var customer = customerRes.data;
+                if (!customer) {
+                    throw new Error('العميل غير موجود أو لا يتبع الشركة الحالية');
                 }
+
+                var operationId = crypto.randomUUID();
+
+                var payload = {
+                    header: {
+                        date: new Date().toISOString().split('T')[0],
+                        operationId: operationId,
+                        customerId: customer.id,
+                        reference: 'VAN-COL-' + operationId,
+                        notes: 'تحصيل من عميل بواسطة مندوب البيع المباشر: ' + email,
+                        sourceType: 'VAN_SALES'
+                    },
+                    lines: [{
+                        accountName: customer.name || customer.customer_code || name || code,
+                        description: 'تحصيل نقدية',
+                        amount: amount
+                    }]
+                };
+
+                return new Promise(function(resolve, reject) {
+                    RW_API.call('save-receipt-voucher', payload, function(json, err) {
+                        if (err) {
+                            reject(new Error(err));
+                            return;
+                        }
+
+                        if (!json || !json.success) {
+                            reject(new Error(
+                                (json && (json.error || json.msg)) ||
+                                'فشل حفظ التحصيل'
+                            ));
+                            return;
+                        }
+
+                        resolve({
+                            customer: customer,
+                            operationId: operationId,
+                            result: json
+                        });
+                    });
+                });
+            })
+            .then(function(resultData) {
+                RW_UI.hideLoader();
+
+                Swal.fire({
+                    icon: 'success',
+                    title: '✅ تم التحصيل',
+                    html:
+                        '<div class="text-right">' +
+                        '<p>تم تحصيل <strong>' +
+                        RW_UI.formatNumber(amount) +
+                        ' ج.م</strong> من ' +
+                        (resultData.customer.name || resultData.customer.customer_code || name || code) +
+                        '</p></div>',
+                    confirmButtonText: 'حسناً',
+                    customClass: {
+                        popup: '!rounded-3xl',
+                        confirmButton: '!rounded-xl !bg-green-600'
+                    }
+                }).then(function() {
+                    self.loadBalanceDetail();
+                    self.loadHomeBalanceSummary();
+                });
+            })
+            .catch(function(error) {
+                RW_UI.hideLoader();
+                console.error('collectPayment:', error);
+                RW_UI.toast(
+                    error && error.message
+                        ? error.message
+                        : 'فشل حفظ التحصيل',
+                    'error'
+                );
             });
-        });
-    },
+    });
+},
         // ==================== تبويب "فواتيري" ====================
     renderInvoicesView: function() {
         var self = this;
