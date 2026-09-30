@@ -501,49 +501,85 @@ loadMyCustomers: function() {
         if (!this.currentUser) return;
         var db = RW_DB.getDB('VanSales');
 
-        supabase.from('orders')
-            .select('id, customer_id, customer_name, order_date')
-            .eq('created_by', this.currentUser.email)
-            .order('order_date', { ascending: false })
-            .then(function(oRes) {
-                var orders = oRes.data || [];
-                supabase.from('order_details')
-                    .select('order_id, item_code, item_name, qty')
-                    .then(function(dRes) {
-                        var details = dRes.data || [];
-                        var orderMap = {}, detailMap = {};
-                        for (var i = 0; i < orders.length; i++) orderMap[orders[i].id] = orders[i];
-                        for (var j = 0; j < details.length; j++) {
-                            var d = details[j], ord = orderMap[d.order_id];
-                            if (!ord) continue;
-                            var cid = ord.customer_id || ord.customer_name;
-                            if (!cid) continue;
-                            if (!detailMap[cid]) detailMap[cid] = {};
-                            if (!detailMap[cid][d.item_code]) detailMap[cid][d.item_code] = { count: 0, totalQty: 0, name: d.item_name };
-                            detailMap[cid][d.item_code].count++;
-                            detailMap[cid][d.item_code].totalQty += Number(d.qty) || 0;
-                        }
-                        var patterns = [];
-                        for (var cid in detailMap) {
-                            if (detailMap.hasOwnProperty(cid)) {
-                                var items = detailMap[cid];
-                                for (var ic in items) {
-                                    if (items.hasOwnProperty(ic)) {
-                                        patterns.push({
-                                            customer_code: cid,
-                                            item_code: ic,
-                                            frequency: items[ic].count,
-                                            avgQty: Math.ceil(items[ic].totalQty / items[ic].count),
-                                            item_name: items[ic].name
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                        if (db.customerPatterns) {
-                            db.customerPatterns.clear().then(function() { db.customerPatterns.bulkPut(patterns); });
-                        }
+supabase.from('orders')
+    .select('id, customer_id, customer_name, order_date')
+    .eq('company_id', self.companyId)
+    .eq('created_by', self.currentUser.email)
+    .eq('source', 'van-sales')
+    .not('customer_id', 'is', null)
+    .order('order_date', { ascending: false })
+    .then(function(oRes) {
+        if (oRes.error) throw oRes.error;
+        var orders = oRes.data || [];
+        if (!orders.length) return [];
+
+        var orderIds = orders.map(function(o) { return o.id; });
+        var customerIds = [];
+        for (var i = 0; i < orders.length; i++) {
+            if (orders[i].customer_id && customerIds.indexOf(orders[i].customer_id) === -1) {
+                customerIds.push(orders[i].customer_id);
+            }
+        }
+
+        return Promise.all([
+            supabase.from('customers')
+                .select('id,customer_code')
+                .eq('company_id', self.companyId)
+                .in('id', customerIds),
+            supabase.from('order_details')
+                .select('order_id,item_code,item_name,qty')
+                .in('order_id', orderIds)
+        ]).then(function(parts) {
+            if (parts[0].error) throw parts[0].error;
+            if (parts[1].error) throw parts[1].error;
+
+            var customerMap = {};
+            (parts[0].data || []).forEach(function(c) {
+                customerMap[String(c.id)] = c.customer_code || String(c.id);
+            });
+
+            var orderMap = {};
+            orders.forEach(function(o) { orderMap[String(o.id)] = o; });
+
+            var detailMap = {};
+            (parts[1].data || []).forEach(function(d) {
+                var ord = orderMap[String(d.order_id)];
+                if (!ord || !ord.customer_id) return;
+                var customerCode = customerMap[String(ord.customer_id)];
+                if (!customerCode) return;
+                if (!detailMap[customerCode]) detailMap[customerCode] = {};
+                if (!detailMap[customerCode][d.item_code]) {
+                    detailMap[customerCode][d.item_code] = { count: 0, totalQty: 0, name: d.item_name };
+                }
+                detailMap[customerCode][d.item_code].count++;
+                detailMap[customerCode][d.item_code].totalQty += Number(d.qty) || 0;
+            });
+
+            var patterns = [];
+            for (var customerCode in detailMap) {
+                if (!detailMap.hasOwnProperty(customerCode)) continue;
+                for (var itemCode in detailMap[customerCode]) {
+                    if (!detailMap[customerCode].hasOwnProperty(itemCode)) continue;
+                    var x = detailMap[customerCode][itemCode];
+                    patterns.push({
+                        customer_code: customerCode,
+                        item_code: itemCode,
+                        frequency: x.count,
+                        avgQty: x.count ? Math.ceil(x.totalQty / x.count) : 0,
+                        item_name: x.name || itemCode
                     });
+                }
+            }
+            return patterns;
+        });
+    })
+    .then(function(patterns) {
+        if (db && db.customerPatterns) {
+            return db.customerPatterns.clear().then(function() {
+                return db.customerPatterns.bulkPut(patterns);
+            });
+        }
+    });
         }).catch(function() {});
     },
     // ==================== الشاشة الرئيسية – لوحة القيادة ====================
@@ -678,7 +714,9 @@ loadMyCustomers: function() {
 
         supabase.from('orders')
             .select('total_amount, payment_type')
+            .eq('company_id', this.companyId)
             .eq('created_by', this.currentUser.email)
+            .eq('source', 'van-sales')
             .eq('order_date', today)
             .then(function(res) {
                 var orders = res.data || [];
@@ -850,7 +888,9 @@ loadMyCustomers: function() {
 
         supabase.from('orders')
             .select('total_amount, payment_type')
+            .eq('company_id', this.companyId)
             .eq('created_by', this.currentUser.email)
+            .eq('source', 'van-sales')
             .eq('order_date', today)
             .then(function(res) {
                 var orders = res.data || [];
@@ -1345,7 +1385,13 @@ showCustomerDetail: function(customerId, name) {
                 // تعيين العميل
                 if (order.customer_id) {
                     var db = RW_DB.getDB('VanSales');
-                    db.myCustomers.where('customer_code').equals(order.customer_id).first().then(function(c) {
+                    supabase.from('customers')
+                        .select('id,customer_code,name,area,payment_type')
+                        
+                        .eq('company_id', self.companyId)
+                        .eq('id', order.customer_id)
+                        .maybeSingle()
+                        .then(function(c) {
                         if (c) {
                             self.selCust = { customer_code: c.customer_code, name: c.name, area: c.area || '', payment_type: c.payment_type || 'نقدي' };
                         } else {
@@ -1626,7 +1672,9 @@ if (!operationId) {
 
         supabase.from('orders')
             .select('*')
+            .eq('company_id', this.companyId)
             .eq('created_by', this.currentUser.email)
+            .eq('source', 'van-sales')
             .eq('order_date', dateFilter)
             .order('order_date', { ascending: false })
             .then(function(res) {
