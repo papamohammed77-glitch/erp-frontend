@@ -1361,52 +1361,97 @@ showCustomerDetail: function(customerId, name) {
 },
 
     // ==================== إعادة الطلب من فاتورة سابقة ====================
-    repeatOrder: function(orderId) {
-        var self = this;
-        Swal.close();
-        RW_UI.showLoader('جاري تحميل الأوردر...');
+   repeatOrder: function(orderId) {
+    var self = this;
 
-        supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
+    Swal.close();
+    RW_UI.showLoader('جاري تحميل الأوردر...');
+
+    if (!this.companyId) {
+        RW_UI.hideLoader();
+        RW_UI.toast('سياق الشركة غير محدد', 'error');
+        return;
+    }
+
+    supabase.from('orders')
+        .select('*')
+        .eq('id', orderId)
+        .eq('company_id', this.companyId)
+        .eq('source', 'van-sales')
+        .maybeSingle()
+        .then(function(oRes) {
+            if (oRes.error) throw oRes.error;
+
             var order = oRes.data;
-            if (!order) { RW_UI.hideLoader(); RW_UI.toast('الأوردر غير موجود', 'error'); return; }
-            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
+
+            if (!order) {
                 RW_UI.hideLoader();
-                var details = dRes.data || [];
-                self.cart = [];
-                for (var i = 0; i < details.length; i++) {
-                    self.cart.push({
-                        code: details[i].item_code,
-                        name: details[i].item_name,
-                        price: Number(details[i].unit_price) || 0,
-                        unit: details[i].unit || 'حبة',
-                        qty: Number(details[i].qty) || 1
-                    });
-                }
-                // تعيين العميل
-                if (order.customer_id) {
-                    var db = RW_DB.getDB('VanSales');
-                    supabase.from('customers')
-                        .select('id,customer_code,name,area,payment_type')
-                        
-                        .eq('company_id', self.companyId)
-                        .eq('id', order.customer_id)
-                        .maybeSingle()
-                        .then(function(c) {
-                        if (c) {
-                            self.selCust = { customer_code: c.customer_code, name: c.name, area: c.area || '', payment_type: c.payment_type || 'نقدي' };
-                        } else {
-                            self.selCust = { customer_code: order.customer_id, name: order.customer_name || '', area: order.area || '', payment_type: order.payment_type || 'نقدي' };
-                        }
-                        self.openQuickSaleForCustomer(self.selCust.customer_code);
-                        RW_UI.toast('تم نسخ الأوردر للسلة', 'success');
-                    });
-                } else {
+                RW_UI.toast('الأوردر غير موجود أو لا يتبع مبيعات السيارة الحالية', 'error');
+                return;
+            }
+
+            return supabase.from('order_details')
+                .select('*')
+                .eq('order_id', order.id)
+                .then(function(dRes) {
+                    if (dRes.error) throw dRes.error;
+
+                    var details = dRes.data || [];
+                    self.cart = [];
+
+                    for (var i = 0; i < details.length; i++) {
+                        self.cart.push({
+                            code: details[i].item_code,
+                            name: details[i].item_name,
+                            price: Number(details[i].unit_price) || 0,
+                            unit: details[i].unit || 'حبة',
+                            qty: Number(details[i].qty) || 1
+                        });
+                    }
+
+                    if (order.customer_id) {
+                        return supabase.from('customers')
+                            .select('id,customer_code,name,area,payment_type')
+                            .eq('company_id', self.companyId)
+                            .eq('id', order.customer_id)
+                            .maybeSingle()
+                            .then(function(cRes) {
+                                if (cRes.error) throw cRes.error;
+
+                                var customer = cRes.data;
+
+                                RW_UI.hideLoader();
+
+                                if (!customer || !customer.customer_code) {
+                                    RW_UI.toast('تعذر تحديد كود العميل لإعادة الطلب', 'error');
+                                    return;
+                                }
+
+                                self.selCust = {
+                                    customer_code: customer.customer_code,
+                                    name: customer.name || order.customer_name || '',
+                                    area: customer.area || order.area || '',
+                                    payment_type: customer.payment_type || order.payment_type || 'نقدي'
+                                };
+
+                                self.openQuickSaleForCustomer(self.selCust.customer_code);
+                                RW_UI.toast('تم نسخ الأوردر للسلة', 'success');
+                            });
+                    }
+
+                    RW_UI.hideLoader();
                     self.openQuickSale();
                     RW_UI.toast('تم نسخ الأوردر للسلة', 'success');
-                }
-            });
-        }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
-    },
+                });
+        })
+        .catch(function(err) {
+            RW_UI.hideLoader();
+            RW_UI.toast(
+                err && err.message ? err.message : 'فشل تحميل الأوردر',
+                'error'
+            );
+        });
+},
 
     // ==================== تحصيل نقدية من عميل ====================
     collectPayment: function(code, name) {
@@ -1993,48 +2038,195 @@ if (!operationId) {
     },
 
     // ==================== إقفال الوردية ====================
-    initiateEndOfDay: function() {
-        var self = this;
-        if (this.eodLocked) { RW_UI.toast('الوردية مقفلة بالفعل', 'warning'); return; }
+initiateEndOfDay: function() {
+    var self = this;
 
-        // التحقق من الرصيد أولاً
-        supabase.from('driver_ledger')
-            .select('debit, credit')
-            .eq('driver_email', this.currentUser.email)
-            .then(function(res) {
-                var rows = res.data || [];
-                var totalDebit = 0, totalCredit = 0;
-                for (var i = 0; i < rows.length; i++) {
-                    totalDebit += Number(rows[i].debit) || 0;
-                    totalCredit += Number(rows[i].credit) || 0;
+    if (!this.companyId) {
+        RW_UI.toast('سياق الشركة غير محدد', 'error');
+        return;
+    }
+
+    var driverId = this.currentUser && this.currentUser.id
+        ? this.currentUser.id
+        : (RW_Auth.getUser() && RW_Auth.getUser().id
+            ? RW_Auth.getUser().id
+            : null);
+
+    if (!driverId) {
+        RW_UI.toast('هوية مندوب البيع غير محددة', 'error');
+        return;
+    }
+
+    RW_UI.showLoader('جاري البحث عن الرانشيتات الجاهزة للتسوية...');
+
+    supabase.from('runsheets')
+        .select('runsheet_code,status,run_date,vehicle_id')
+        .eq('company_id', this.companyId)
+        .eq('driver_id', driverId)
+        .in('status', ['Delivered', 'Returned'])
+        .order('run_date', { ascending: false })
+        .order('updated_at', { ascending: false })
+        .limit(20)
+        .then(function(res) {
+            RW_UI.hideLoader();
+
+            if (res.error) throw res.error;
+
+            var runsheets = res.data || [];
+
+            if (!runsheets.length) {
+                self.eodLocked = true;
+                self.renderBalanceView();
+                RW_UI.toast('لا توجد رانشيتات وصلت إلى مرحلة التسوية.', 'info');
+                return;
+            }
+
+            var options = {};
+            for (var i = 0; i < runsheets.length; i++) {
+                var rs = runsheets[i];
+                options[rs.runsheet_code] =
+                    rs.runsheet_code + ' — ' + rs.status + ' — ' + (rs.run_date || '');
+            }
+
+            return Swal.fire({
+                title: 'إقفال الوردية',
+                text: 'اختر الرانشيت التي تريد تسويتها وإغلاقها:',
+                input: 'select',
+                inputOptions: options,
+                inputPlaceholder: 'اختر رانشيت',
+                showCancelButton: true,
+                confirmButtonText: 'متابعة التسوية',
+                cancelButtonText: 'إلغاء',
+                customClass: {
+                    popup: '!rounded-3xl',
+                    confirmButton: '!rounded-xl !bg-green-600',
+                    cancelButton: '!rounded-xl'
+                },
+                inputValidator: function(value) {
+                    return value ? undefined : 'اختر رانشيت أولاً';
                 }
-                var balance = totalDebit - totalCredit;
-                if (balance !== 0) {
-                    RW_UI.toast('يجب تصفير الرصيد أولاً. المتبقي: ' + RW_UI.formatNumber(Math.abs(balance)) + ' ج.م', 'warning');
-                    return;
+            }).then(function(choice) {
+                if (!choice.isConfirmed || !choice.value) return;
+
+                var runsheetCode = choice.value;
+                var opKey = 'RW_VAN_SETTLEMENT_OP:' + self.companyId + ':' + runsheetCode;
+                var operationId = null;
+
+                try {
+                    var saved = JSON.parse(localStorage.getItem(opKey) || 'null');
+                    if (saved && saved.operation_id) operationId = saved.operation_id;
+                } catch (e) {}
+
+                if (!operationId) {
+                    operationId = window.crypto && crypto.randomUUID
+                        ? crypto.randomUUID()
+                        : ('VAN-SETTLE-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+                    try {
+                        localStorage.setItem(opKey, JSON.stringify({
+                            operation_id: operationId,
+                            created_at: new Date().toISOString()
+                        }));
+                    } catch (e) {}
                 }
 
-                RW_UI.showConfirm(
-                    'أنت على وشك إقفال وردية اليوم. سيتم منع إنشاء فواتير جديدة. هل أنت متأكد؟',
-                    function() {
-                        self.eodLocked = true;
-                        // تحديث زر الإقفال
-                        var btn = RW_UI.byId('btnEOD');
-                        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-check ml-2"></i> تم إقفال الوردية'; }
+                RW_UI.showLoader('جاري التحقق من الرصيد...');
 
-                        Swal.fire({
-                            icon: 'success',
-                            title: '✅ تم إقفال الوردية',
-                            text: 'تم إقفال الوردية بنجاح. لا يمكن إنشاء فواتير جديدة.',
-                            confirmButtonText: 'حسناً',
-                            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-green-600' }
-                        });
+                return supabase.from('driver_ledger')
+                    .select('debit,credit')
+                    .eq('driver_email', self.currentUser.email)
+                    .then(function(balanceRes) {
+                        if (balanceRes.error) throw balanceRes.error;
 
-                        self.showView('home');
-                    }
-                );
+                        var rows = balanceRes.data || [];
+                        var totalDebit = 0;
+                        var totalCredit = 0;
+
+                        for (var j = 0; j < rows.length; j++) {
+                            totalDebit += Number(rows[j].debit) || 0;
+                            totalCredit += Number(rows[j].credit) || 0;
+                        }
+
+                        var balance = totalDebit - totalCredit;
+
+                        if (balance !== 0) {
+                            RW_UI.hideLoader();
+                            RW_UI.toast(
+                                'يجب تصفير الرصيد أولاً. المتبقي: ' +
+                                RW_UI.formatNumber(Math.abs(balance)) +
+                                ' ج.م',
+                                'warning'
+                            );
+                            return;
+                        }
+
+                        RW_UI.showLoader('جاري حفظ التسوية المحاسبية...');
+
+                        RW_API.call(
+                            'save-daily-settlement',
+                            {
+                                runsheet_code: runsheetCode,
+                                operation_id: operationId,
+                                notes: 'تسوية يومية للرانشيت ' + runsheetCode
+                            },
+                            function(json) {
+                                RW_UI.hideLoader();
+
+                                if (!json || !json.success) {
+                                    RW_UI.showError(
+                                        (json && (json.msg || json.error)) ||
+                                        'فشل حفظ التسوية'
+                                    );
+                                    return;
+                                }
+
+                                try {
+                                    localStorage.removeItem(opKey);
+                                } catch (e) {}
+
+                                supabase.from('runsheets')
+                                    .select('runsheet_code')
+                                    .eq('company_id', self.companyId)
+                                    .eq('driver_id', driverId)
+                                    .in('status', ['Delivered', 'Returned'])
+                                    .limit(1)
+                                    .then(function(leftRes) {
+                                        self.eodLocked =
+                                            !leftRes.data || leftRes.data.length === 0;
+                                        self.renderBalanceView();
+
+                                        RW_UI.toast(
+                                            json.duplicate
+                                                ? 'تم استرجاع نتيجة التسوية السابقة'
+                                                : 'تم حفظ وإغلاق التسوية بنجاح',
+                                            'success'
+                                        );
+                                    })
+                                    .catch(function() {
+                                        self.eodLocked = false;
+                                        self.renderBalanceView();
+                                    });
+                            }
+                        );
+                    })
+                    .catch(function(err) {
+                        RW_UI.hideLoader();
+                        RW_UI.showError(
+                            err && err.message
+                                ? err.message
+                                : 'فشل التحقق من الرصيد'
+                        );
+                    });
             });
-    },
+        })
+        .catch(function(err) {
+            RW_UI.hideLoader();
+            RW_UI.showError(
+                err && err.message
+                    ? err.message
+                    : 'فشل تحميل رانشيتات التسوية'
+            );
+        });
+},
         // ==================== بيع سريع – فتح الشاشة ====================
     openQuickSale: function() {
         this.openQuickSaleForCustomer('');
