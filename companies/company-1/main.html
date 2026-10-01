@@ -1267,7 +1267,7 @@ var meta = user.user_metadata || {};
 
 return RW_SUPABASE_CLIENT
     .from('users')
-    .select('company_id, status')
+    .select('company_id, status, permissions, name')
     .eq('auth_id', user.id)
     .maybeSingle()
     .then(function(profileRes) {
@@ -1279,15 +1279,23 @@ return RW_SUPABASE_CLIENT
             throw new Error('حساب المستخدم غير نشط');
         }
 
+        var dbPermissions = Array.isArray(profileRes.data.permissions)
+            ? profileRes.data.permissions
+                .map(function(p) { return String(p).trim(); })
+                .filter(function(p) { return !!p; })
+            : [];
+        var isOwner = dbPermissions.indexOf('*') !== -1;
+
         RW_STATE.app.authenticated = true;
         RW_STATE.app.currentUser = {
-            name: meta.name || user.email,
+            name: profileRes.data.name || meta.name || user.email,
             email: user.email,
             role: meta.role || 'مدير النظام',
-            isOwner: meta.isOwner === true || meta.isOwner === 'true'
+            isOwner: isOwner,
+            permissions: dbPermissions
         };
 
-        RW_STATE.permissions = Array.isArray(meta.permissions) ? meta.permissions : [];
+        RW_STATE.permissions = dbPermissions;
         RW_STATE.app.company = {
             id: profileRes.data.company_id,
             name: meta.companyName || 'الروائع ERP',
@@ -5516,7 +5524,8 @@ async function _loadMovementReport() {
         html += '</div></div></div>';
         // تبويب الأسعار والمخزون
         html += '<div id="item-panel-pricing" class="hidden"><div class="bg-white rounded-2xl shadow-sm border p-6 space-y-4"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
-        html += '<div class="flex flex-col"><label class="text-sm font-bold">سعر البيع</label><input id="item-price" type="number" value="' + _esc(item ? (item.sales_price || 0) : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
+        html += '<div class="flex flex-col"><label class="text-sm font-bold">سعر التكلفة</label><input id="item-cost" type="number" value="' + _esc(item ? (item.cost_price || 0) : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg" min="0" step="0.01"></div>';
+		html += '<div class="flex flex-col"><label class="text-sm font-bold">سعر البيع</label><input id="item-price" type="number" value="' + _esc(item ? (item.sales_price || 0) : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
         html += '<div class="flex flex-col"><label class="text-sm font-bold">السعر القديم</label><input id="item-oprice" type="number" value="' + _esc(item ? (item.old_price || 0) : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
         html += '<div class="flex flex-col"><label class="text-sm font-bold">حد إعادة الطلب</label><input id="item-reorder" type="number" value="' + _esc(item ? (item.reorder_point || 5) : 5) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
         html += '<div class="flex flex-col"><label class="text-sm font-bold">الحد الأقصى للطلب</label><input id="item-maxqty" type="number" value="' + _esc(item ? (item.max_qty || 0) : 0) + '" class="p-2.5 bg-gray-50 border rounded-lg"></div>';
@@ -5577,42 +5586,46 @@ async function _loadMovementReport() {
 	        // الدالة المضمونة لحل مشكلة undefined وانتظار الرفع
 function resolveImageUrlAndSave(item, fileInput, callback) {
     var file = (fileInput && fileInput.files.length > 0) ? fileInput.files[0] : null;
-    
+
     if (!file) {
         var existingUrl = (item && item.image_url != null) ? item.image_url : null;
         console.log('📸 لا توجد صورة جديدة. استخدام:', existingUrl);
         callback(existingUrl);
         return;
     }
-    
+
     console.log('📤 بدء رفع الصورة:', file.name, file.size);
-    
-    // ✅ اسم ملف آمن – ASCII فقط مع الحفاظ على الامتداد
+
+    // اسم ملف آمن – ASCII فقط مع الحفاظ على الامتداد
     var lastDot = file.name.lastIndexOf('.');
     var fileExt = lastDot > -1 ? file.name.substring(lastDot) : '.jpg';
     var safeName = encodeURIComponent(file.name.substring(0, lastDot > -1 ? lastDot : file.name.length));
     var fileName = Date.now() + '-' + safeName + fileExt;
-    
-    supabase.storage.from('product-images').upload(fileName, file, { upsert: true })
+
+    supabase.storage.from('product-images').upload(fileName, file, { upsert: false })
         .then(function(res) {
             if (res.error) {
                 console.error('❌ فشل الرفع:', res.error.message);
+                hideLoader();
                 showToast('فشل رفع الصورة: ' + res.error.message, 'error');
-                var fallbackUrl = (item && item.image_url != null) ? item.image_url : null;
-                callback(fallbackUrl);
                 return;
             }
-            
+
             console.log('✅ رفع ناجح. جاري توليد الرابط العام...');
             var publicUrl = supabase.storage.from('product-images').getPublicUrl(fileName).data.publicUrl;
+            if (!publicUrl) {
+                hideLoader();
+                showToast('تم رفع الصورة لكن تعذر إنشاء الرابط العام', 'error');
+                return;
+            }
+
             console.log('✅ الرابط العام:', publicUrl);
             callback(publicUrl);
         })
         .catch(function(err) {
             console.error('❌ خطأ شبكة:', err.message);
-            showToast('فشل رفع الصورة: ' + err.message, 'error');
-            var fallbackUrl = (item && item.image_url != null) ? item.image_url : null;
-            callback(fallbackUrl);
+            hideLoader();
+            showToast('فشل رفع الصورة: ' + (err && err.message ? err.message : 'خطأ غير معروف'), 'error');
         });
 }
 	        // دالة الحفظ الفعلية – تستقبل imageUrl كمعامل
@@ -5628,7 +5641,8 @@ function resolveImageUrlAndSave(item, fileInput, callback) {
 	                unit: (byId('item-unit') ? byId('item-unit').value : '').trim(),
 	                alt_unit: (byId('item-altunit') ? byId('item-altunit').value : '').trim(),
 	                alt_unit_qty: parseFloat(byId('item-altqty') ? byId('item-altqty').value : 0) || 0,
-	                sales_price: parseFloat(byId('item-price') ? byId('item-price').value : 0) || 0,
+	                cost_price: parseFloat(byId('item-cost') ? byId('item-cost').value : 0) || 0,
+					sales_price: parseFloat(byId('item-price') ? byId('item-price').value : 0) || 0,
 	                old_price: parseFloat(byId('item-oprice') ? byId('item-oprice').value : 0) || 0,
 	                reorder_point: parseFloat(byId('item-reorder') ? byId('item-reorder').value : 5) || 5,
 	                max_qty: parseFloat(byId('item-maxqty') ? byId('item-maxqty').value : 0) || 0,
