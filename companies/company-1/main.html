@@ -14871,13 +14871,44 @@ async function _saveAndSendVoucher() {
                 </div>
             </div>
             <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh" id="vouchers-table-container">
-                <table class="w-full"><thead class="bg-gray-800 text-white sticky top-0"><tr><th class="p-3">رقم الإذن</th><th class="p-3">النوع</th><th class="p-3">التاريخ</th><th class="p-3">الحالة</th><th class="p-3">المرجع</th><th class="p-3">من</th><th class="p-3">إلى</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="vouchers-tbody"><tr><td colspan="8" class="text-center py-8">جاري التحميل...</td></tr></tbody></table>
+                <table class="w-full"><thead class="bg-gray-800 text-white sticky top-0"><tr><th class="p-3">رقم الإذن</th><th class="p-3">النوع</th><th class="p-3">التاريخ</th><th class="p-3">الحالة</th><th class="p-3">المرجع</th><th class="p-3">من</th><th class="p-3">إلى</th><th class="p-3">المندوب</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="vouchers-tbody"><tr><td colspan="9" class="text-center py-8">جاري التحميل...</td></tr></tbody></table>
             </div>
         </div>`);
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
 if (!companyId) { showToast('سياق الشركة غير محدد', 'error'); return; }
 var res = await supabase.from('stock_vouchers').select('*').eq('company_id', companyId).order('voucher_date', { ascending: false });
-        window._vouchersData = res.data || [];
+        if (res.error) throw res.error;
+        var voucherRows = res.data || [];
+        var custodianIds = [];
+        var custodianSeen = Object.create(null);
+        for (var vi = 0; vi < voucherRows.length; vi++) {
+            var voucher = voucherRows[vi];
+            if ((voucher.type === 'DirectSale' || voucher.type === 'DirectReturn') && voucher.custodian_user_id) {
+                var custodianKey = String(voucher.custodian_user_id);
+                if (!custodianSeen[custodianKey]) {
+                    custodianSeen[custodianKey] = true;
+                    custodianIds.push(voucher.custodian_user_id);
+                }
+            }
+        }
+        window._vouchersRepMap = Object.create(null);
+        if (custodianIds.length) {
+            var repsRes = await supabase.from('users')
+                .select('id,name,email')
+                .eq('company_id', companyId)
+                .in('id', custodianIds);
+            if (repsRes.error) throw repsRes.error;
+            (repsRes.data || []).forEach(function(rep) {
+                window._vouchersRepMap[String(rep.id)] = rep.name || rep.email || '';
+            });
+        }
+        window._vouchersData = voucherRows.map(function(v) {
+            var isDirectVehicleVoucher = v.type === 'DirectSale' || v.type === 'DirectReturn';
+            v._custodian_name = isDirectVehicleVoucher && v.custodian_user_id
+                ? (window._vouchersRepMap[String(v.custodian_user_id)] || '-')
+                : '-';
+            return v;
+        });
         _applyVouchers();
     }
 
@@ -14899,7 +14930,7 @@ var res = await supabase.from('stock_vouchers').select('*').eq('company_id', com
         if (to) d = d.filter(function(v) { return v.voucher_date <= to; });
         if (search) d = d.filter(function(v) { return (v.voucher_code||'').toLowerCase().indexOf(search) !== -1; });
         var tb = byId('vouchers-tbody'); if (!tb) return;
-        if (!d.length) { safeHTML(tb, '<tr><td colspan="8" class="text-center py-8">لا توجد أذونات</td></tr>'); return; }
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="9" class="text-center py-8">لا توجد أذونات</td></tr>'); return; }
         RW_Table.paginate('vouchers-tbody', d, 1, 50, function(v) {
             var statusBadge = { 'Draft':'bg-gray-100 text-gray-600', 'Sent':'bg-blue-100 text-blue-700', 'Received':'bg-purple-100 text-purple-700', 'Completed':'bg-green-100 text-green-700' }[v.status] || 'bg-gray-100 text-gray-700';
             var isSystem = (v.source === 'Auto' || ['Picking','Loading','Return','Unloading'].indexOf(v.type) !== -1);
@@ -14907,7 +14938,7 @@ var res = await supabase.from('stock_vouchers').select('*').eq('company_id', com
             if (v.status === 'Draft' && !isSystem) actions += '<button onclick="RW_Warehouse._sendVoucher(\'' + v.voucher_code + '\')" class="text-blue-600 mx-1"><i class="fa-solid fa-paper-plane"></i></button>';
             if (v.status === 'Sent') actions += '<button onclick="RW_Warehouse._receiveVoucher(\'' + v.voucher_code + '\')" class="text-green-600 mx-1"><i class="fa-solid fa-check-circle"></i></button>';
             var sourceIndicator = isSystem ? ' <i class="fa-solid fa-robot text-gray-400 text-xs" title="تلقائي"></i>' : '';
-            return '<tr class="hover:bg-gray-50"><td class="p-3 font-bold text-indigo-700">' + (v.voucher_code||'') + sourceIndicator + '</td><td class="p-3">' + (v.type||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + statusBadge + '">' + (v.status||'') + '</span></td><td class="p-3">' + (v.reference||'-') + '</td><td class="p-3">' + (v.from_id||'-') + '</td><td class="p-3">' + (v.to_id||'-') + '</td><td class="p-3 text-center">' + actions + '</td></tr>';
+            return '<tr class="hover:bg-gray-50"><td class="p-3 font-bold text-indigo-700">' + (v.voucher_code||'') + sourceIndicator + '</td><td class="p-3">' + (v.type||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + statusBadge + '">' + (v.status||'') + '</span></td><td class="p-3">' + (v.reference||'-') + '</td><td class="p-3">' + (v.from_id||'-') + '</td><td class="p-3">' + (v.to_id||'-') + '</td><td class="p-3">' + esc(v._custodian_name||'-') + '</td><td class="p-3 text-center">' + actions + '</td></tr>';
         });
     }
 
