@@ -1104,13 +1104,21 @@ self.submitOrder = function() {
             }
         });
     } else {
-        var operationStorageKey = 'RW_TELESALES_ORDER_PENDING:' + currentUser.company_id + ':' + (selCust.customer_code || '') + ':' + (selBranch || '');
+        var operationFingerprint = JSON.stringify({
+            customer: selCust.customer_code,
+            branch: selBranch,
+            items: items,
+            total: t.total
+        });
+        var operationStorageKey = 'RW_TELESALES_ORDER_PENDING:' +
+            currentUser.company_id + ':' +
+            encodeURIComponent(operationFingerprint);
         var operationId = null;
         try {
             var pendingOrder = localStorage.getItem(operationStorageKey);
             if (pendingOrder) {
                 var pendingData = JSON.parse(pendingOrder);
-                if (pendingData && pendingData.operation_id && pendingData.fingerprint === JSON.stringify({customer:selCust.customer_code,branch:selBranch,items:items,total:t.total})) {
+                if (pendingData && pendingData.operation_id && pendingData.fingerprint === operationFingerprint) {
                     operationId = pendingData.operation_id;
                 }
             }
@@ -1120,7 +1128,7 @@ self.submitOrder = function() {
             try {
                 localStorage.setItem(operationStorageKey, JSON.stringify({
                     operation_id: operationId,
-                    fingerprint: JSON.stringify({customer:selCust.customer_code,branch:selBranch,items:items,total:t.total}),
+                    fingerprint: operationFingerprint,
                     created_at: new Date().toISOString()
                 }));
             } catch (e) {}
