@@ -36,7 +36,8 @@ var RW_Auth = (function() {
                 currentUser = res.data.session.user;
                 checkWarehouseRole(callback);
             } else {
-                if (callback) callback(null, 'NO_SESSION');
+                window.RW_CURRENT_DB_USER = null;
+            if (callback) callback(null, 'NO_SESSION');
             }
         }).catch(function(e) {
             console.error('❌ فشل استعادة الجلسة:', e);
@@ -101,6 +102,7 @@ var RW_Auth = (function() {
             currentUser = null;
             currentSession = null;
             pubUserId = null;
+            window.RW_CURRENT_DB_USER = null;
             if (callback) callback(true);
         }).catch(function(e) {
             console.error('فشل تسجيل الخروج:', e);
