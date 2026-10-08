@@ -199,7 +199,7 @@ var App = (function() {
             var isOwner = u.isOwner, perms = u.permissions || [];
             if (!isOwner && perms.indexOf('orders') === -1 && perms.indexOf('telesales') === -1) { RW_UI.showError('غير مصرح – ليس لديك صلاحية التلي سيلز'); RW_Auth.doLogout(); return; }
             currentUser = u; pubUserId = u.id;
-            supabase.from('app_settings').select('*').limit(1).single().then(function(sRes) { if (sRes.data) { delFee = Number(sRes.data.delivery_fee) || 0; taxRate = Number(sRes.data.tax_rate) || 0; minAmt = Number(sRes.data.min_invoice_amount) || 0; } });
+            supabase.from('app_settings').select('*').eq('company_id', u.company_id).limit(1).single().then(function(sRes) { if (sRes.data) { delFee = Number(sRes.data.delivery_fee) || 0; taxRate = Number(sRes.data.tax_rate) || 0; minAmt = Number(sRes.data.min_invoice_amount) || 0; } });
             RW_ImageCache.loadAll(function() { self.enterApp(); });
         }
         if (user) _setup(user);
@@ -223,11 +223,35 @@ var App = (function() {
     self.updateConnectionStatus = function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); };
 
     self.syncDown = function() {
+        if (!currentUser || !currentUser.company_id) {
+            return Promise.reject(new Error('سياق الشركة غير متاح للمزامنة'));
+        }
+        var companyId = currentUser.company_id;
         return Promise.all([
-            supabase.from('customers').select('*').then(function(r) { customersCache = r.data || []; return db.customers.clear().then(function() { return db.customers.bulkPut(r.data || []); }); }),
-            supabase.from('items').select('*').then(function(r) { productsCache = r.data || []; return db.items.clear().then(function() { return db.items.bulkPut(r.data || []); }); }),
-            supabase.from('stock_branches').select('*').then(function(r) { return db.stock.clear().then(function() { return db.stock.bulkPut(r.data || []); }); }),
-            supabase.from('branches').select('*').then(function(r) { return db.branches.clear().then(function() { return db.branches.bulkPut(r.data || []); }); })
+            supabase.from('customers').select('*').eq('company_id', companyId).then(function(r) {
+                if (r.error) throw r.error;
+                customersCache = r.data || [];
+                return db.customers.clear().then(function() { return db.customers.bulkPut(r.data || []); });
+            }),
+            supabase.from('items').select('*').eq('company_id', companyId).then(function(r) {
+                if (r.error) throw r.error;
+                productsCache = r.data || [];
+                return db.items.clear().then(function() { return db.items.bulkPut(r.data || []); });
+            }),
+            supabase.from('branches').select('*').eq('company_id', companyId).then(function(r) {
+                if (r.error) throw r.error;
+                var branchRows = r.data || [];
+                var branchIds = branchRows.map(function(b) { return b.id; });
+                return db.branches.clear().then(function() {
+                    return db.branches.bulkPut(branchRows);
+                }).then(function() {
+                    if (!branchIds.length) return db.stock.clear();
+                    return supabase.from('stock_branches').select('*').in('branch_id', branchIds).then(function(sr) {
+                        if (sr.error) throw sr.error;
+                        return db.stock.clear().then(function() { return db.stock.bulkPut(sr.data || []); });
+                    });
+                });
+            })
         ]);
     };
 
@@ -567,7 +591,7 @@ var cardClickActionGrid = cardClickAction;
     self.loadCatalogCategories = function() {
         var cd = RW_UI.byId('productCategories'); if (!cd) return;
         RW_UI.showSkeleton('productCategories', 1, 'card');
-        supabase.from('categories').select('category_name').order('category_name').then(function(res) {
+        supabase.from('categories').select('category_name').eq('company_id', currentUser.company_id).order('category_name').then(function(res) {
             if (res.data && res.data.length > 0) { var catNames = []; for (var i = 0; i < res.data.length; i++) catNames.push(res.data[i].category_name); _renderCategoryButtons(catNames); }
             else { _buildCategoriesFromItems(); }
         }).catch(function() { _buildCategoriesFromItems(); });
@@ -1008,7 +1032,7 @@ self.clearCartAndReset = function() {
     self.renderOrdersList = function() {
         var c = RW_UI.byId('ordersListContainer'); if (!c) return;
         RW_UI.showSkeleton('ordersListContainer', 3, 'card');
-        var q = supabase.from('orders').select('*').eq('created_by', currentUser.email).order('order_date', { ascending: false }).limit(50);
+        var q = supabase.from('orders').select('*').eq('company_id', currentUser.company_id).eq('created_by', currentUser.email).order('order_date', { ascending: false }).limit(50);
         var sf = RW_UI.byId('orderStatusFilter') ? RW_UI.byId('orderStatusFilter').value : '';
         var df = RW_UI.byId('orderDateFilter') ? RW_UI.byId('orderDateFilter').value : '';
         if (sf) q = q.eq('order_status', sf); if (df) q = q.eq('order_date', df);
@@ -1051,69 +1075,56 @@ self.submitOrder = function() {
     RW_UI.showLoader(isEdit ? 'جاري تحديث الأوردر...' : 'جاري حفظ الأوردر...');
 
     if (isEdit) {
-        var orderId = null;
+        var hdr = {
+            customer_code: selCust.customer_code,
+            custName: selCust.name,
+            area: selCust.area || '',
+            total: t.total,
+            deliveryFees: t.del,
+            status: 'Confirmed',
+            paymentType: selCust.payment_type || 'أجل',
+            customerPhone: selCust.phone || '',
+            customerEmail: selCust.email || '',
+            notes: ''
+        };
 
-        supabase.from('orders').select('id').eq('order_code', oldOrderCode).maybeSingle()
-        .then(function(res) {
-            if (!res.data) { throw new Error('الأوردر القديم غير موجود'); }
-            orderId = res.data.id;
-
-            return supabase.from('orders').update({
-                customer_name: selCust.name,
-                area: selCust.area || '',
-                total_amount: t.total,
-                delivery_fee: t.del,
-                order_status: 'Confirmed',
-                payment_type: selCust.payment_type || 'أجل',
-                branch_id: branchMap[selBranch] || null
-            }).eq('id', orderId);
-        })
-        .then(function(upRes) {
-            if (upRes.error) { throw new Error(upRes.error.message); }
-            return supabase.from('order_details').delete().eq('order_id', orderId);
-        })
-        .then(function(delRes) {
-            if (delRes.error) { throw new Error(delRes.error.message); }
-            var itemCodes = [];
-            for (var j = 0; j < items.length; j++) {
-                if (itemCodes.indexOf(items[j].code) === -1) itemCodes.push(items[j].code);
-            }
-            return supabase.from('items').select('id, item_code').in('item_code', itemCodes);
-        })
-        .then(function(itemRes) {
-            if (itemRes.error) { throw new Error(itemRes.error.message); }
-            var itemData = itemRes.data || [];
-            var itemIdMap = {};
-            for (var m = 0; m < itemData.length; m++) {
-                itemIdMap[itemData[m].item_code] = itemData[m].id;
-            }
-            var detailsToInsert = [];
-            for (var j = 0; j < items.length; j++) {
-                detailsToInsert.push({
-                    order_id: orderId,
-                    item_id: itemIdMap[items[j].code] || null,
-                    item_code: items[j].code,
-                    item_name: items[j].name,
-                    unit: items[j].unit,
-                    unit_price: items[j].price,
-                    qty: items[j].qty
-                });
-            }
-            return supabase.from('order_details').insert(detailsToInsert);
-        })
-        .then(function(insRes) {
-            if (insRes.error) { throw new Error(insRes.error.message); }
+        RW_API.call('update-order', {
+            order_code: oldOrderCode,
+            orderHeader: hdr,
+            itemsList: items,
+            branchCode: selBranch
+        }, function(json) {
             RW_UI.hideLoader();
-            RW_UI.toast('تم تحديث الأوردر ' + oldOrderCode + ' بنجاح', 'success');
-            cart = []; selCust = null; selBranch = null; editingOrderCode = null;
-            self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
-        })
-        .catch(function(e) {
-            RW_UI.hideLoader();
-            RW_UI.showError(e.message || 'فشل تحديث الأوردر');
+            if (json.success) {
+                RW_UI.toast('تم تحديث الأوردر ' + oldOrderCode + ' بنجاح', 'success');
+                cart = []; selCust = null; selBranch = null; editingOrderCode = null;
+                self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
+            } else {
+                RW_UI.showError(json.msg || 'فشل تحديث الأوردر');
+            }
         });
-
     } else {
+        var operationStorageKey = 'RW_TELESALES_ORDER_PENDING:' + currentUser.company_id + ':' + (selCust.customer_code || '') + ':' + (selBranch || '');
+        var operationId = null;
+        try {
+            var pendingOrder = localStorage.getItem(operationStorageKey);
+            if (pendingOrder) {
+                var pendingData = JSON.parse(pendingOrder);
+                if (pendingData && pendingData.operation_id && pendingData.fingerprint === JSON.stringify({customer:selCust.customer_code,branch:selBranch,items:items,total:t.total})) {
+                    operationId = pendingData.operation_id;
+                }
+            }
+        } catch (e) {}
+        if (!operationId) {
+            operationId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('TEL:' + currentUser.company_id + ':' + Date.now() + ':' + Math.random().toString(36).slice(2));
+            try {
+                localStorage.setItem(operationStorageKey, JSON.stringify({
+                    operation_id: operationId,
+                    fingerprint: JSON.stringify({customer:selCust.customer_code,branch:selBranch,items:items,total:t.total}),
+                    created_at: new Date().toISOString()
+                }));
+            } catch (e) {}
+        }
         var hdr = {
             customer_code: selCust.customer_code,
             custName: selCust.name,
@@ -1123,11 +1134,14 @@ self.submitOrder = function() {
             status: 'Confirmed',
             paymentType: selCust.payment_type || 'أجل',
             taxAmount: t.tax,
-            taxRate: taxRate
+            taxRate: taxRate,
+            source: 'telesales',
+            operation_id: operationId
         };
-        RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch }, function(json) {
+        RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch, operation_id: operationId }, function(json) {
             RW_UI.hideLoader();
             if (json.success) {
+                try { localStorage.removeItem(operationStorageKey); } catch (e) {}
                 RW_UI.toast('تم الحفظ: ' + (json.orderID || ''), 'success');
                 cart = []; selCust = null; selBranch = null; editingOrderCode = null;
                 self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
@@ -1141,7 +1155,7 @@ self.submitOrder = function() {
 self._editOrderFromDetail = function(orderId) {
     Swal.close();
     RW_UI.showLoader('جاري تحميل الأوردر للتعديل...');
-    supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) {
+    supabase.from('orders').select('*').eq('company_id', currentUser.company_id).eq('id', orderId).single().then(function(oRes) {
         var order = oRes.data;
         if (!order) { RW_UI.hideLoader(); RW_UI.toast('الأوردر غير موجود', 'error'); return; }
         if (order.order_status !== 'Draft' && order.order_status !== 'Confirmed') {
@@ -1190,7 +1204,7 @@ self._editOrderFromDetail = function(orderId) {
 // ✅ دالة مساعدة جديدة – تكمل عملية التعديل
 self._finalizeEditCart = function() {
     if (editingOrderCode) {
-        supabase.from('orders').select('branch_id').eq('order_code', editingOrderCode).maybeSingle().then(function(oRes) {
+        supabase.from('orders').select('branch_id').eq('company_id', currentUser.company_id).eq('order_code', editingOrderCode).maybeSingle().then(function(oRes) {
             if (oRes.data && oRes.data.branch_id) {
                 db.branches.toArray().then(function(branches) {
                     for (var b = 0; b < branches.length; b++) {
