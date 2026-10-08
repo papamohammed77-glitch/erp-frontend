@@ -134,14 +134,23 @@ var App = {
         supabase.auth.getSession().then(function(res) {
             var user = res.data.session ? res.data.session.user : null;
             if (!user) return;
-            var meta = user.user_metadata || {};
-            var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-            var perms = meta.permissions || [];
-
-            supabase.from('users').select('active_warehouse_role').eq('email', user.email).single().then(function(r) {
-                var activeWarehouseRole = (r.data && r.data.active_warehouse_role) ? r.data.active_warehouse_role : '';
-                App._doRedirect(isOwner, perms, activeWarehouseRole);
-            });
+            supabase.from('users')
+                .select('company_id, status, permissions, active_warehouse_role')
+                .eq('auth_id', user.id)
+                .maybeSingle()
+                .then(function(r) {
+                    if (r.error) throw r.error;
+                    if (!r.data || !r.data.company_id) throw new Error('بيانات المستخدم أو الشركة غير مكتملة');
+                    if (r.data.status && r.data.status !== 'Active') throw new Error('حساب المستخدم غير نشط');
+                    var perms = Array.isArray(r.data.permissions) ? r.data.permissions.map(function(p) { return String(p).trim(); }).filter(function(p) { return !!p; }) : [];
+                    var isOwner = perms.indexOf('*') !== -1;
+                    App._doRedirect(isOwner, perms, r.data.active_warehouse_role || '');
+                })
+                .catch(function(err) {
+                    console.error('تعذر تحميل صلاحيات التوجيه من قاعدة البيانات:', err);
+                    byId('loginMsg').innerText = err.message || 'تعذر تحميل صلاحيات المستخدم';
+                    byId('loginMsg').classList.remove('hidden');
+                });
         });
     },
 
