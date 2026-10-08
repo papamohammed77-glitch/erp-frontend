@@ -49,34 +49,30 @@ var RW_Auth = (function() {
             if (callback) callback(null, 'NO_USER');
             return;
         }
-        supabase.from('users').select('id, name, active_warehouse_role').eq('email', currentUser.email).maybeSingle().then(function(uRes) {
+        supabase.from('users').select('id, name, company_id, status, permissions, role, active_warehouse_role').eq('auth_id', currentUser.id).maybeSingle().then(function(uRes) {
+            if (uRes.error) throw uRes.error;
             var userData = uRes.data || {};
-            pubUserId = userData.id || null;
-            var meta = currentUser.user_metadata || {};
-            var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
+            if (!userData.id || !userData.company_id) throw new Error('تعذر تحديد سياق الشركة للمستخدم');
+            if (userData.status && userData.status !== 'Active') throw new Error('حساب المستخدم غير نشط');
+            pubUserId = userData.id;
+            var dbPermissions = Array.isArray(userData.permissions) ? userData.permissions.map(function(p) { return String(p).trim(); }).filter(function(p) { return !!p; }) : [];
+            var isOwner = dbPermissions.indexOf('*') !== -1;
             var user = {
                 id: pubUserId,
+                authId: currentUser.id,
                 email: currentUser.email,
-                name: userData.name || meta.name || currentUser.email,
-                role: meta.role || 'موظف',
+                name: userData.name || currentUser.email,
+                role: userData.role || 'موظف',
+                company_id: userData.company_id,
                 isOwner: isOwner,
-                permissions: meta.permissions || [],
-                activeWarehouseRole: userData.active_warehouse_role || meta.active_warehouse_role || ''
+                permissions: dbPermissions,
+                activeWarehouseRole: userData.active_warehouse_role || ''
             };
+            window.RW_CURRENT_DB_USER = user;
             if (callback) callback(user, null);
         }).catch(function(e) {
-            var meta = currentUser.user_metadata || {};
-            var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-            var user = {
-                id: null,
-                email: currentUser.email,
-                name: meta.name || currentUser.email,
-                role: meta.role || 'موظف',
-                isOwner: isOwner,
-                permissions: meta.permissions || [],
-                activeWarehouseRole: meta.active_warehouse_role || ''
-            };
-            if (callback) callback(user, null);
+            console.error('❌ فشل تحميل هوية المستخدم من DB:', e);
+            if (callback) callback(null, e.message || 'تعذر تحميل صلاحيات المستخدم');
         });
     }
 
@@ -127,23 +123,28 @@ var RW_Auth = (function() {
 
     function checkPermission(permissionKey) {
         if (!currentUser) return false;
-        var meta = currentUser.user_metadata || {};
-        if (meta.isOwner === true || meta.isOwner === 'true') return true;
-        var perms = meta.permissions || [];
-        if (perms.indexOf('*') !== -1) return true;
-        return perms.indexOf(permissionKey) !== -1;
+        var user = currentUser;
+        var email = user && user.email;
+        if (!email) return false;
+        // Authorization authority is public.users.permissions, not mutable user_metadata.
+        // The hydrated user object is DB-backed; re-checking here avoids metadata elevation.
+        if (window.RW_CURRENT_DB_USER && window.RW_CURRENT_DB_USER.email === email) {
+            var perms = window.RW_CURRENT_DB_USER.permissions || [];
+            if (perms.indexOf('*') !== -1) return true;
+            return perms.indexOf(permissionKey) !== -1;
+        }
+        return false;
     }
 
     function hasWarehouseRole(roleName) {
         if (!currentUser) return false;
-        var meta = currentUser.user_metadata || {};
-        if (meta.isOwner === true || meta.isOwner === 'true') return true;
         var activeRole = '';
         try {
-            activeRole = window._rwActiveRole || meta.active_warehouse_role || '';
+            activeRole = window._rwActiveRole || (window.RW_CURRENT_DB_USER && window.RW_CURRENT_DB_USER.activeWarehouseRole) || '';
         } catch(e) {
-            activeRole = meta.active_warehouse_role || '';
+            activeRole = '';
         }
+        if (window.RW_CURRENT_DB_USER && window.RW_CURRENT_DB_USER.isOwner) return true;
         return activeRole === roleName;
     }
 
