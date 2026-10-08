@@ -1088,14 +1088,41 @@ self.submitOrder = function() {
             notes: ''
         };
 
+        var editFingerprint = JSON.stringify({
+            order_code: oldOrderCode,
+            branch: selBranch,
+            items: items,
+            total: t.total
+        });
+        var editStorageKey = 'RW_TELESALES_EDIT_PENDING:' + currentUser.company_id + ':' + encodeURIComponent(editFingerprint);
+        var editOperationId = null;
+        try {
+            var editPending = localStorage.getItem(editStorageKey);
+            if (editPending) {
+                var editData = JSON.parse(editPending);
+                if (editData && editData.operation_id && editData.fingerprint === editFingerprint) editOperationId = editData.operation_id;
+            }
+        } catch (e) {}
+        if (!editOperationId) {
+            editOperationId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('TEL-EDIT:' + currentUser.company_id + ':' + Date.now() + ':' + Math.random().toString(36).slice(2));
+            try {
+                localStorage.setItem(editStorageKey, JSON.stringify({
+                    operation_id: editOperationId,
+                    fingerprint: editFingerprint,
+                    created_at: new Date().toISOString()
+                }));
+            } catch (e) {}
+        }
         RW_API.call('update-order', {
             order_code: oldOrderCode,
             orderHeader: hdr,
             itemsList: items,
-            branchCode: selBranch
+            branchCode: selBranch,
+            operation_id: editOperationId
         }, function(json) {
             RW_UI.hideLoader();
             if (json.success) {
+                try { localStorage.removeItem(editStorageKey); } catch (e) {}
                 RW_UI.toast('تم تحديث الأوردر ' + oldOrderCode + ' بنجاح', 'success');
                 cart = []; selCust = null; selBranch = null; editingOrderCode = null;
                 self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
