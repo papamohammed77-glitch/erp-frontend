@@ -1036,108 +1036,149 @@ self.submitOrder = function() {
     if (!selCust) { RW_UI.toast('اختر عميلاً أولاً', 'warning'); return; }
     if (!cart.length) { RW_UI.toast('السلة فارغة', 'warning'); return; }
     if (!selBranch) { RW_UI.toast('اختر فرعاً', 'warning'); return; }
-    var t = self.calcTotals();
-    if (minAmt > 0 && t.total < minAmt) { RW_UI.toast('الحد الأدنى للفاتورة: ' + fmtNum(minAmt), 'warning'); return; }
+
+    var totals = self.calcTotals();
+    if (minAmt > 0 && totals.total < minAmt) {
+        RW_UI.toast('الحد الأدنى للفاتورة: ' + fmtNum(minAmt), 'warning');
+        return;
+    }
 
     var items = [];
     for (var i = 0; i < cart.length; i++) {
-        items.push({ code: cart[i].code, name: cart[i].name, price: cart[i].price, qty: cart[i].qty, unit: cart[i].unit });
+        if (!cart[i].code || !(Number(cart[i].qty) > 0) || !(Number(cart[i].price) >= 0)) {
+            RW_UI.toast('يوجد صنف ببيانات أو كمية غير صالحة', 'error');
+            return;
+        }
+        items.push({
+            code: String(cart[i].code),
+            name: cart[i].name || '',
+            price: Number(cart[i].price),
+            qty: Number(cart[i].qty),
+            unit: cart[i].unit || 'حبة'
+        });
     }
 
     var oldOrderCode = editingOrderCode;
     var isEdit = !!oldOrderCode;
+    var customerCandidate = String(selCust.customer_code || selCust.id || '').trim();
 
     self.closeCartModal();
     RW_UI.showLoader(isEdit ? 'جاري تحديث الأوردر...' : 'جاري حفظ الأوردر...');
 
-    if (isEdit) {
-        var orderId = null;
+    function finishSuccess(message) {
+        RW_UI.hideLoader();
+        RW_UI.toast(message, 'success');
+        cart = [];
+        selCust = null;
+        selBranch = null;
+        editingOrderCode = null;
+        self.clearCustomer();
+        self.updateFloatingCart();
+        self.updateCartTabBadge();
+        self.switchTab('today');
+    }
 
-        supabase.from('orders').select('id').eq('order_code', oldOrderCode).maybeSingle()
-        .then(function(res) {
-            if (!res.data) { throw new Error('الأوردر القديم غير موجود'); }
-            orderId = res.data.id;
+    function finishFailure(json, err) {
+        RW_UI.hideLoader();
+        var message = (json && (json.msg || json.error)) || err || 'فشلت العملية';
+        RW_UI.showError(message);
+    }
 
-            return supabase.from('orders').update({
-                customer_name: selCust.name,
-                area: selCust.area || '',
-                total_amount: t.total,
-                delivery_fee: t.del,
-                order_status: 'Confirmed',
-                payment_type: selCust.payment_type || 'أجل',
-                branch_id: branchMap[selBranch] || null
-            }).eq('id', orderId);
-        })
-        .then(function(upRes) {
-            if (upRes.error) { throw new Error(upRes.error.message); }
-            return supabase.from('order_details').delete().eq('order_id', orderId);
-        })
-        .then(function(delRes) {
-            if (delRes.error) { throw new Error(delRes.error.message); }
-            var itemCodes = [];
-            for (var j = 0; j < items.length; j++) {
-                if (itemCodes.indexOf(items[j].code) === -1) itemCodes.push(items[j].code);
-            }
-            return supabase.from('items').select('id, item_code').in('item_code', itemCodes);
-        })
-        .then(function(itemRes) {
-            if (itemRes.error) { throw new Error(itemRes.error.message); }
-            var itemData = itemRes.data || [];
-            var itemIdMap = {};
-            for (var m = 0; m < itemData.length; m++) {
-                itemIdMap[itemData[m].item_code] = itemData[m].id;
-            }
-            var detailsToInsert = [];
-            for (var j = 0; j < items.length; j++) {
-                detailsToInsert.push({
-                    order_id: orderId,
-                    item_id: itemIdMap[items[j].code] || null,
-                    item_code: items[j].code,
-                    item_name: items[j].name,
-                    unit: items[j].unit,
-                    unit_price: items[j].price,
-                    qty: items[j].qty
-                });
-            }
-            return supabase.from('order_details').insert(detailsToInsert);
-        })
-        .then(function(insRes) {
-            if (insRes.error) { throw new Error(insRes.error.message); }
-            RW_UI.hideLoader();
-            RW_UI.toast('تم تحديث الأوردر ' + oldOrderCode + ' بنجاح', 'success');
-            cart = []; selCust = null; selBranch = null; editingOrderCode = null;
-            self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
-        })
-        .catch(function(e) {
-            RW_UI.hideLoader();
-            RW_UI.showError(e.message || 'فشل تحديث الأوردر');
-        });
+    function resolveCustomerCode(callback) {
+        if (!customerCandidate) {
+            callback(null, 'كود العميل غير متوفر');
+            return;
+        }
 
-    } else {
-        var hdr = {
-            customer_code: selCust.customer_code,
-            custName: selCust.name,
+        supabase.from('customers')
+            .select('customer_code')
+            .eq('customer_code', customerCandidate)
+            .maybeSingle()
+            .then(function(byCode) {
+                if (byCode.error) {
+                    callback(null, byCode.error.message);
+                    return;
+                }
+                if (byCode.data && byCode.data.customer_code) {
+                    callback(byCode.data.customer_code, null);
+                    return;
+                }
+
+                // Edit flow currently seeds selCust.customer_code with orders.customer_id (UUID).
+                // Resolve that UUID to the canonical customer_code before calling the atomic RPC.
+                supabase.from('customers')
+                    .select('customer_code')
+                    .eq('id', customerCandidate)
+                    .maybeSingle()
+                    .then(function(byId) {
+                        if (byId.error) {
+                            callback(null, byId.error.message);
+                            return;
+                        }
+                        if (!byId.data || !byId.data.customer_code) {
+                            callback(null, 'العميل غير موجود ضمن الشركة');
+                            return;
+                        }
+                        callback(byId.data.customer_code, null);
+                    })
+                    .catch(function(error) {
+                        callback(null, error && error.message ? error.message : 'تعذر التحقق من العميل');
+                    });
+            })
+            .catch(function(error) {
+                callback(null, error && error.message ? error.message : 'تعذر التحقق من العميل');
+            });
+    }
+
+    resolveCustomerCode(function(customerCode, customerError) {
+        if (customerError || !customerCode) {
+            finishFailure({ msg: customerError || 'تعذر تحديد العميل' }, null);
+            return;
+        }
+
+        var header = {
+            customer_code: customerCode,
+            custName: selCust.name || '',
             area: selCust.area || '',
-            total: t.total,
-            deliveryFees: t.del,
+            total: totals.total,
+            deliveryFees: totals.del,
             status: 'Confirmed',
             paymentType: selCust.payment_type || 'أجل',
-            taxAmount: t.tax,
-            taxRate: taxRate
+            taxAmount: totals.tax,
+            taxRate: taxRate,
+            source: 'telesales'
         };
-        RW_API.call('save-sales-invoice', { orderHeader: hdr, itemsList: items, branchCode: selBranch }, function(json) {
-            RW_UI.hideLoader();
-            if (json.success) {
-                RW_UI.toast('تم الحفظ: ' + (json.orderID || ''), 'success');
-                cart = []; selCust = null; selBranch = null; editingOrderCode = null;
-                self.clearCustomer(); self.updateFloatingCart(); self.switchTab('today');
-            } else {
-                RW_UI.toast(json.msg || 'فشل الحفظ', 'error');
-            }
-        });
-    }
-};
 
+        if (isEdit) {
+            RW_API.call('update-order', {
+                order_code: oldOrderCode,
+                orderHeader: header,
+                itemsList: items,
+                branchCode: selBranch
+            }, function(json, err) {
+                if (err || !json || json.success !== true) {
+                    finishFailure(json, err);
+                    return;
+                }
+                finishSuccess('تم تحديث الأوردر ' + oldOrderCode + ' بنجاح');
+            });
+            return;
+        }
+
+        RW_API.call('save-sales-invoice', {
+            orderHeader: header,
+            itemsList: items,
+            branchCode: selBranch
+        }, function(json, err) {
+            if (err || !json || json.success !== true) {
+                finishFailure(json, err);
+                return;
+            }
+            finishSuccess('تم الحفظ: ' + (json.orderID || json.order_id || 'تم إنشاء الأوردر'));
+        });
+    });
+};
+    
 self._editOrderFromDetail = function(orderId) {
     Swal.close();
     RW_UI.showLoader('جاري تحميل الأوردر للتعديل...');
