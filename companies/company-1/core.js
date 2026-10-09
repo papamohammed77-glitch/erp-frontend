@@ -21,62 +21,115 @@ if (!supabase) {
 // ============================================================
 var RW_Auth = (function() {
     var currentUser = null;
+    var currentProfile = null;
     var currentSession = null;
     var pubUserId = null;
 
-    function init(callback) {
-        if (!supabase) {
-            console.error('❌ Supabase غير مهيأ');
-            if (callback) callback(null, 'Supabase غير مهيأ');
+    function normalizePermissions(value) {
+        if (!Array.isArray(value)) return [];
+        var out = [];
+        for (var i = 0; i < value.length; i++) {
+            var permission = String(value[i] == null ? '' : value[i]).trim();
+            if (permission && out.indexOf(permission) === -1) out.push(permission);
+        }
+        return out;
+    }
+
+    function clearState() {
+        currentUser = null;
+        currentProfile = null;
+        currentSession = null;
+        pubUserId = null;
+    }
+
+    function toClientUser(profile) {
+        var p = profile || currentProfile || {};
+        return {
+            id: p.id || pubUserId || null,
+            auth_id: p.auth_id || (currentUser ? currentUser.id : null),
+            company_id: p.company_id || null,
+            email: p.email || (currentUser ? currentUser.email : null),
+            name: p.name || (currentUser ? currentUser.email : null),
+            role: p.role || 'موظف',
+            isOwner: p.isOwner === true || p.isOwner === 'true',
+            permissions: normalizePermissions(p.permissions),
+            activeWarehouseRole: p.active_warehouse_role || p.activeWarehouseRole || '',
+            defaultBranchId: p.default_branch_id || null,
+            allowedBranchIds: p.allowed_branch_ids || null,
+            session: currentSession
+        };
+    }
+
+    function hydrateProfile(callback) {
+        if (!supabase || !currentUser || !currentUser.id) {
+            if (callback) callback(null, 'جلسة غير صالحة');
             return;
         }
-        supabase.auth.getSession().then(function(res) {
-            if (res.data && res.data.session) {
-                currentSession = res.data.session;
-                currentUser = res.data.session.user;
-                checkWarehouseRole(callback);
-            } else {
-                if (callback) callback(null, 'NO_SESSION');
+
+        supabase.rpc('get_my_effective_profile').then(function(result) {
+            if (result.error) {
+                if (callback) callback(null, 'تعذر تحميل ملف المستخدم وصلاحياته: ' + result.error.message);
+                return;
             }
-        }).catch(function(e) {
-            console.error('❌ فشل استعادة الجلسة:', e);
-            if (callback) callback(null, e.message);
+
+            var profile = result.data;
+            if (!profile || !profile.id || !profile.company_id) {
+                if (callback) callback(null, 'لا يوجد سجل مستخدم صالح مرتبط بحساب المصادقة');
+                return;
+            }
+
+            if (profile.status && String(profile.status).toLowerCase() !== 'active') {
+                if (callback) callback(null, 'حساب المستخدم غير نشط');
+                return;
+            }
+
+            currentProfile = {
+                id: profile.id,
+                auth_id: profile.auth_id || currentUser.id,
+                company_id: profile.company_id,
+                email: profile.email || currentUser.email,
+                name: profile.name || currentUser.email,
+                role: profile.role || 'موظف',
+                status: profile.status || 'Active',
+                isOwner: profile.isOwner === true || profile.isOwner === 'true',
+                permissions: normalizePermissions(profile.permissions),
+                active_warehouse_role: profile.active_warehouse_role || '',
+                default_branch_id: profile.default_branch_id || null,
+                allowed_branch_ids: profile.allowed_branch_ids || null
+            };
+            pubUserId = profile.id;
+
+            if (callback) callback(toClientUser(currentProfile), null);
+        }).catch(function(error) {
+            if (callback) callback(
+                null,
+                'فشل تحميل ملف المستخدم: ' +
+                (error && error.message ? error.message : 'خطأ غير معروف')
+            );
         });
     }
 
-    function checkWarehouseRole(callback) {
-        if (!currentUser) {
-            if (callback) callback(null, 'NO_USER');
+    function init(callback) {
+        if (!supabase) {
+            if (callback) callback(null, 'Supabase غير مهيأ');
             return;
         }
-        supabase.from('users').select('id, name, active_warehouse_role').eq('email', currentUser.email).maybeSingle().then(function(uRes) {
-            var userData = uRes.data || {};
-            pubUserId = userData.id || null;
-            var meta = currentUser.user_metadata || {};
-            var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-            var user = {
-                id: pubUserId,
-                email: currentUser.email,
-                name: userData.name || meta.name || currentUser.email,
-                role: meta.role || 'موظف',
-                isOwner: isOwner,
-                permissions: meta.permissions || [],
-                activeWarehouseRole: userData.active_warehouse_role || meta.active_warehouse_role || ''
-            };
-            if (callback) callback(user, null);
-        }).catch(function(e) {
-            var meta = currentUser.user_metadata || {};
-            var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-            var user = {
-                id: null,
-                email: currentUser.email,
-                name: meta.name || currentUser.email,
-                role: meta.role || 'موظف',
-                isOwner: isOwner,
-                permissions: meta.permissions || [],
-                activeWarehouseRole: meta.active_warehouse_role || ''
-            };
-            if (callback) callback(user, null);
+
+        supabase.auth.getSession().then(function(result) {
+            if (!result.data || !result.data.session) {
+                clearState();
+                if (callback) callback(null, 'NO_SESSION');
+                return;
+            }
+
+            currentSession = result.data.session;
+            currentUser = result.data.session.user;
+            hydrateProfile(callback);
+        }).catch(function(error) {
+            if (callback) callback(
+                null,
+                error && error.message ? error.message : 'فشل استعادة الجلسة'
+            );
         });
     }
 
@@ -85,38 +138,69 @@ var RW_Auth = (function() {
             if (callback) callback(null, 'أدخل البريد الإلكتروني وكلمة المرور');
             return;
         }
-        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res) {
-            if (res.error) {
-                if (callback) callback(null, res.error.message);
-            } else {
-                currentSession = res.data.session;
-                currentUser = res.data.session.user;
-                checkWarehouseRole(function(user, err) {
-                    if (callback) callback(user, err);
-                });
+
+        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(result) {
+            if (result.error) {
+                if (callback) callback(null, result.error.message);
+                return;
             }
-        }).catch(function(e) {
-            if (callback) callback(null, e.message);
+
+            currentSession = result.data.session;
+            currentUser = result.data.session.user;
+
+            hydrateProfile(function(user, error) {
+                if (error || !user) {
+                    supabase.auth.signOut().then(function() {
+                        clearState();
+                        if (callback) callback(null, error || 'تعذر تحميل صلاحيات المستخدم');
+                    }).catch(function() {
+                        clearState();
+                        if (callback) callback(null, error || 'تعذر تحميل صلاحيات المستخدم');
+                    });
+                    return;
+                }
+
+                if (callback) callback(user, null);
+            });
+        }).catch(function(error) {
+            if (callback) callback(
+                null,
+                error && error.message ? error.message : 'فشل تسجيل الدخول'
+            );
         });
     }
 
     function doLogout(callback) {
-        supabase.auth.signOut().then(function() {
-            currentUser = null;
-            currentSession = null;
-            pubUserId = null;
+        if (!supabase) {
+            clearState();
             if (callback) callback(true);
-        }).catch(function(e) {
-            console.error('فشل تسجيل الخروج:', e);
+            return;
+        }
+
+        supabase.auth.signOut().then(function() {
+            clearState();
+            if (callback) callback(true);
+        }).catch(function(error) {
+            console.error('فشل تسجيل الخروج:', error);
+            clearState();
             if (callback) callback(false);
         });
     }
 
     function getUser() {
+        if (currentProfile) return toClientUser(currentProfile);
         return {
             id: pubUserId,
+            auth_id: currentUser ? currentUser.id : null,
+            company_id: null,
             email: currentUser ? currentUser.email : null,
-            name: currentUser ? (currentUser.user_metadata ? currentUser.user_metadata.name : currentUser.email) : null,
+            name: currentUser ? (
+                currentUser.user_metadata ? currentUser.user_metadata.name : currentUser.email
+            ) : null,
+            role: 'موظف',
+            isOwner: false,
+            permissions: [],
+            activeWarehouseRole: '',
             session: currentSession
         };
     }
@@ -126,23 +210,23 @@ var RW_Auth = (function() {
     }
 
     function checkPermission(permissionKey) {
-        if (!currentUser) return false;
-        var meta = currentUser.user_metadata || {};
-        if (meta.isOwner === true || meta.isOwner === 'true') return true;
-        var perms = meta.permissions || [];
-        if (perms.indexOf('*') !== -1) return true;
-        return perms.indexOf(permissionKey) !== -1;
+        if (!currentProfile) return false;
+        if (currentProfile.isOwner) return true;
+        var permissions = normalizePermissions(currentProfile.permissions);
+        if (permissions.indexOf('*') !== -1) return true;
+        return permissions.indexOf(permissionKey) !== -1;
     }
 
     function hasWarehouseRole(roleName) {
-        if (!currentUser) return false;
-        var meta = currentUser.user_metadata || {};
-        if (meta.isOwner === true || meta.isOwner === 'true') return true;
+        if (!currentProfile) return false;
+        if (currentProfile.isOwner) return true;
+
         var activeRole = '';
         try {
-            activeRole = window._rwActiveRole || meta.active_warehouse_role || '';
-        } catch(e) {
-            activeRole = meta.active_warehouse_role || '';
+            activeRole = window._rwActiveRole ||
+                currentProfile.active_warehouse_role || '';
+        } catch (error) {
+            activeRole = currentProfile.active_warehouse_role || '';
         }
         return activeRole === roleName;
     }
