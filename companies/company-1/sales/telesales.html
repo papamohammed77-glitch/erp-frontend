@@ -211,7 +211,13 @@ var App = (function() {
         self.updateConnectionStatus();
         window.addEventListener('online', function() { self.updateConnectionStatus(); self.syncPendingOrders(); });
         window.addEventListener('offline', function() { self.updateConnectionStatus(); });
-        self.syncDown().then(function() { self.loadBranches(); });
+            
+    self.syncDown().then(function() {
+        self.loadBranches();
+    }).catch(function() {
+        self.loadBranches();
+        RW_UI.toast('تعذر تحديث البيانات من الخادم؛ تم الاحتفاظ بالبيانات المحلية', 'warning');
+    });
         self.switchTab('today');
     };
 
@@ -222,15 +228,49 @@ var App = (function() {
 
     self.updateConnectionStatus = function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); };
 
-    self.syncDown = function() {
-        return Promise.all([
-            supabase.from('customers').select('*').then(function(r) { customersCache = r.data || []; return db.customers.clear().then(function() { return db.customers.bulkPut(r.data || []); }); }),
-            supabase.from('items').select('*').then(function(r) { productsCache = r.data || []; return db.items.clear().then(function() { return db.items.bulkPut(r.data || []); }); }),
-            supabase.from('stock_branches').select('*').then(function(r) { return db.stock.clear().then(function() { return db.stock.bulkPut(r.data || []); }); }),
-            supabase.from('branches').select('*').then(function(r) { return db.branches.clear().then(function() { return db.branches.bulkPut(r.data || []); }); })
-        ]);
-    };
+self.syncDown = function() {
+    if (!supabase) {
+        return Promise.reject(new Error('Supabase غير مهيأ'));
+    }
 
+    return Promise.all([
+        supabase.from('customers').select('*'),
+        supabase.from('items').select('*'),
+        supabase.from('stock_branches').select('*'),
+        supabase.from('branches').select('*')
+    ]).then(function(results) {
+        var labels = ['العملاء', 'الأصناف', 'أرصدة المخازن', 'الفروع'];
+
+        for (var i = 0; i < results.length; i++) {
+            if (results[i].error) {
+                throw new Error('فشل تحميل ' + labels[i] + ': ' + results[i].error.message);
+            }
+        }
+
+        var customers = results[0].data || [];
+        var items = results[1].data || [];
+        var stock = results[2].data || [];
+        var branches = results[3].data || [];
+
+        return db.transaction('rw', db.customers, db.items, db.stock, db.branches, function() {
+            return Promise.all([
+                db.customers.clear().then(function() { return db.customers.bulkPut(customers); }),
+                db.items.clear().then(function() { return db.items.bulkPut(items); }),
+                db.stock.clear().then(function() { return db.stock.bulkPut(stock); }),
+                db.branches.clear().then(function() { return db.branches.bulkPut(branches); })
+            ]);
+        }).then(function() {
+            customersCache = customers;
+            productsCache = items;
+            return {
+                customers: customers.length,
+                items: items.length,
+                stock: stock.length,
+                branches: branches.length
+            };
+        });
+    });
+};
     self.syncNow = function() {
         if (!navigator.onLine) { RW_UI.toast('لا يوجد اتصال', 'warning'); return; }
         RW_UI.showLoader('جاري المزامنة...');
