@@ -182,7 +182,7 @@ var POS = (function() {
     var currentUser = null, pubUserId = null;
     var cart = [], selCust = null, selBranch = null, branchMap = {};
     var currency = 'EGP';
-    var productsCache = [], customersCache = [];
+    var productsCache = [], customersCache = [], fastSellingCache = [];
     var activeCategory = 'الكل', currentView = 'pos';
     var heldInvoices = [];
     var activePaymentMethod = 'cash';
@@ -310,26 +310,25 @@ self.enterApp = function() {
 self.syncDown = function() {
     if (!db) return Promise.reject(new Error('قاعدة البيانات المحلية غير مهيأة'));
 
-    return Promise.all([
-        supabase.from('customers').select('*'),
-        supabase.from('items').select('*'),
-        supabase.from('stock_branches').select('*'),
-        supabase.rpc('get_pos_branches')
-    ]).then(function(results) {
-        var names = ['customers', 'items', 'stock_branches', 'الفروع المصرح بها'];
-        for (var i = 0; i < results.length; i++) {
-            if (results[i].error) {
-                throw new Error('فشل تحميل ' + names[i] + ': ' + results[i].error.message);
-            }
-            if (!Array.isArray(results[i].data)) {
-                throw new Error('استجابة غير صالحة من ' + names[i]);
-            }
+    return supabase.rpc('get_pos_bootstrap_data').then(function(result) {
+        if (result.error) {
+            throw new Error('فشل تحميل بيانات نقطة البيع: ' + result.error.message);
         }
 
-        var customers = results[0].data;
-        var items = results[1].data;
-        var stock = results[2].data;
-        var branches = results[3].data;
+        var payload = result.data;
+        if (!payload ||
+            !Array.isArray(payload.customers) ||
+            !Array.isArray(payload.items) ||
+            !Array.isArray(payload.stock) ||
+            !Array.isArray(payload.branches) ||
+            !Array.isArray(payload.fast_selling)) {
+            throw new Error('استجابة بيانات نقطة البيع غير مكتملة أو غير صالحة');
+        }
+
+        var customers = payload.customers;
+        var items = payload.items;
+        var stock = payload.stock;
+        var branches = payload.branches;
 
         return db.transaction('rw', db.customers, db.items, db.stock, db.branches, function() {
             return db.customers.clear()
@@ -343,11 +342,18 @@ self.syncDown = function() {
         }).then(function() {
             customersCache = customers;
             productsCache = items;
-            return { success: true, offline: false, branchCount: branches.length };
+            fastSellingCache = payload.fast_selling;
+            if (payload.currency) currency = payload.currency;
+            return {
+                success: true,
+                offline: false,
+                branchCount: branches.length,
+                itemCount: items.length,
+                customerCount: customers.length
+            };
         });
     });
 };
-
     self.syncNow = function() {
         if (!navigator.onLine) { RW_UI.toast('لا يوجد اتصال', 'warning'); return; }
         RW_UI.showLoader('جاري المزامنة...');
@@ -1178,43 +1184,120 @@ self._finalizeReturn = function() {
 
     self.setCategory = function(cat) { activeCategory = cat; self.renderProducts(); self.loadCategories(); };
 
-    self.loadFastSelling = function() {
-        var today = new Date().toISOString().split('T')[0];
-        supabase.from('order_details').select('item_code, item_name').gte('created_at', today).order('created_at', { ascending: false }).limit(100).then(function(r) {
-            var items = r.data || [], map = {};
-            for (var i = 0; i < items.length; i++) { var c = items[i].item_code; if (!map[c]) map[c] = { name: items[i].item_name || c, count: 0 }; map[c].count++; }
-            var arr = []; for (var k in map) { if (map.hasOwnProperty(k)) arr.push({ code: k, name: map[k].name, count: map[k].count }); }
-            arr.sort(function(a, b) { return b.count - a.count; }); arr = arr.slice(0, 8);
-            var h = '';
-            for (var j = 0; j < arr.length; j++) h += '<button onclick="POS.addToCart(\'' + arr[j].code + '\')" class="whitespace-nowrap bg-slate-800 text-slate-300 px-3 py-1.5 rounded-full text-xs font-bold border border-slate-600 hover:bg-slate-700 transition">' + arr[j].name + '</button>';
-            RW_UI.safeHTML(RW_UI.byId('fastSellingItems'), h || '<span class="text-slate-500">لا توجد مبيعات اليوم</span>');
-        });
-    };
+self.loadFastSelling = function() {
+    var items = Array.isArray(fastSellingCache) ? fastSellingCache : [];
+    var map = {};
 
+    for (var i = 0; i < items.length; i++) {
+        var code = items[i].item_code;
+        if (!code) continue;
+        if (!map[code]) map[code] = { name: items[i].item_name || code, count: 0 };
+        map[code].count++;
+    }
+
+    var arr = [];
+    for (var key in map) {
+        if (Object.prototype.hasOwnProperty.call(map, key)) {
+            arr.push({ code: key, name: map[key].name, count: map[key].count });
+        }
+    }
+
+    arr.sort(function(a, b) { return b.count - a.count; });
+    arr = arr.slice(0, 8);
+
+    var html = '';
+    for (var j = 0; j < arr.length; j++) {
+        html += '<button onclick="POS.addToCart(\'' +
+            String(arr[j].code).replace(/\\/g, '\\\\').replace(/'/g, "\\\'") +
+            '\')" class="whitespace-nowrap bg-slate-800 text-slate-300 px-3 py-1.5 rounded-full text-xs font-bold border border-slate-600 hover:bg-slate-700 transition">' +
+            String(arr[j].name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+            '</button>';
+    }
+
+    RW_UI.safeHTML(
+        RW_UI.byId('fastSellingItems'),
+        html || '<span class="text-slate-500">لا توجد مبيعات اليوم</span>'
+    );
+};
     self.onSearchInput = function(q) { 
         if (searchTimer) clearTimeout(searchTimer); 
         if (!q || !q.trim()) { self.renderProducts(); return; } 
         searchTimer = setTimeout(function() { self._searchProducts(q.trim().toLowerCase()); }, 200); 
     };
 
-    self._searchProducts = function(q) {
-        if (!db) return;
-        var grid = RW_UI.byId('productsGrid'); if (!grid) return;
-        db.items.toArray().then(function(items) {
-            var f = [];
-            for (var i = 0; i < items.length; i++) { 
-                var it = items[i]; 
-                if ((it.name || '').toLowerCase().indexOf(q) !== -1 || (it.item_code || '').toLowerCase().indexOf(q) !== -1 || (it.barcode || '').indexOf(q) !== -1) f.push(it); 
-                if (f.length >= 20) break; 
+self._searchProducts = function(q) {
+    var grid = RW_UI.byId('productsGrid');
+    if (!grid) return;
+
+    if (!db) {
+        RW_UI.safeHTML(grid, '<div class="col-span-full text-center text-red-400 py-10">قاعدة بيانات الأصناف غير متاحة</div>');
+        return;
+    }
+
+    var query = String(q || '').trim().toLowerCase();
+    if (!query) {
+        self.renderProducts();
+        return;
+    }
+
+    var branchAtSearch = selBranch;
+    var categoryAtSearch = activeCategory;
+    var input = RW_UI.byId('posSearch');
+
+    if (!branchAtSearch || !branchMap[branchAtSearch]) {
+        RW_UI.safeHTML(grid, '<div class="col-span-full text-center text-amber-400 py-10">اختر الفرع أولاً لعرض الأصناف ورصيدها الصحيح</div>');
+        return;
+    }
+
+    db.items.toArray().then(function(items) {
+        var matches = [];
+
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            if (!item || !item.item_code) continue;
+
+            if (categoryAtSearch && categoryAtSearch !== 'الكل' &&
+                (item.category || 'أخرى') !== categoryAtSearch) continue;
+
+            var name = String(item.name || '').toLowerCase();
+            var code = String(item.item_code || '').toLowerCase();
+            var barcode = String(item.barcode || '').toLowerCase();
+            var searchLabel = String(item.search_label || '').toLowerCase();
+
+            if (name.indexOf(query) !== -1 ||
+                code.indexOf(query) !== -1 ||
+                barcode.indexOf(query) !== -1 ||
+                searchLabel.indexOf(query) !== -1) {
+                matches.push(item);
+                if (matches.length >= 20) break;
             }
-            if (!f.length) { RW_UI.safeHTML(grid, '<div class="col-span-full text-center text-slate-500 py-10">🔍 لا توجد نتائج</div>'); return; }
-            var promises = []; for (var j = 0; j < f.length; j++) promises.push(self.getAvail(f[j].id));
-            Promise.all(promises).then(function(avails) { 
-                var h = ''; for (var k = 0; k < f.length; k++) h += self._productCard(f[k], avails[k]); 
-                RW_UI.safeHTML(grid, h); 
-            });
+        }
+
+        if (input && String(input.value || '').trim().toLowerCase() !== query) return;
+        if (selBranch !== branchAtSearch || activeCategory !== categoryAtSearch) return;
+
+        if (!matches.length) {
+            RW_UI.safeHTML(grid, '<div class="col-span-full text-center text-slate-500 py-10">🔍 لا توجد نتائج مطابقة في هذا الفرع والتصنيف</div>');
+            return;
+        }
+
+        return Promise.all(matches.map(function(item) {
+            return self.getAvail(item.id);
+        })).then(function(avails) {
+            if (input && String(input.value || '').trim().toLowerCase() !== query) return;
+            if (selBranch !== branchAtSearch || activeCategory !== categoryAtSearch) return;
+
+            var html = '';
+            for (var j = 0; j < matches.length; j++) {
+                html += self._productCard(matches[j], avails[j]);
+            }
+            RW_UI.safeHTML(grid, html);
         });
-    };
+    }).catch(function(err) {
+        console.error('POS item search failed:', err);
+        RW_UI.safeHTML(grid, '<div class="col-span-full text-center text-red-400 py-10">تعذر البحث عن الأصناف؛ لم تُغيّر بيانات البيع</div>');
+    });
+};
 
     self.startBarcodeScanner = function() {
         if ('BarcodeDetector' in window) {
