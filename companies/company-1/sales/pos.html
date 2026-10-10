@@ -1074,21 +1074,60 @@ self._finalizeReturn = function() {
     };
 
     self.switchView = function(view) {
-        currentView = view;
-        var views = ['pos', 'suspended', 'invoices', 'returns'];
-        for (var i = 0; i < views.length; i++) { var b = RW_UI.byId('nav-' + views[i]); if (b) b.classList.remove('active'); }
-        var a = RW_UI.byId('nav-' + view); if (a) a.classList.add('active');
-        if (view === 'pos') { 
-            self.renderProducts(); 
-            self.updateCartUI(); 
-            RW_UI.byId('cartActionsNormal').classList.remove('hidden');
-            RW_UI.byId('btnPayNormal').classList.remove('hidden');
-            RW_UI.byId('cartActionsReturn').classList.add('hidden');
-            RW_UI.byId('btnPayReturn').classList.add('hidden');
+        var allowedViews = ['pos', 'suspended', 'invoices', 'returns'];
+        if (allowedViews.indexOf(view) === -1) {
+            console.error('Unsupported POS view:', view);
+            return;
         }
-        else if (view === 'suspended') self.renderSuspendedView();
-        else if (view === 'invoices') self.renderInvoicesView();
-        else if (view === 'returns') self.renderReturnsView();
+
+        currentView = view;
+
+        for (var i = 0; i < allowedViews.length; i++) {
+            var navButton = RW_UI.byId('nav-' + allowedViews[i]);
+            if (navButton) navButton.classList.remove('active');
+        }
+
+        var activeButton = RW_UI.byId('nav-' + view);
+        if (activeButton) activeButton.classList.add('active');
+
+        var isSaleView = view === 'pos';
+        var isReturnView = view === 'returns';
+
+        var normalActions = RW_UI.byId('cartActionsNormal');
+        var returnActions = RW_UI.byId('cartActionsReturn');
+        var normalPayButton = RW_UI.byId('btnPayNormal');
+        var returnPayButton = RW_UI.byId('btnPayReturn');
+
+        if (normalActions) {
+            if (isSaleView) normalActions.classList.remove('hidden');
+            else normalActions.classList.add('hidden');
+        }
+
+        if (returnActions) {
+            if (isReturnView) returnActions.classList.remove('hidden');
+            else returnActions.classList.add('hidden');
+        }
+
+        if (normalPayButton) {
+            if (isSaleView) normalPayButton.classList.remove('hidden');
+            else normalPayButton.classList.add('hidden');
+        }
+
+        if (returnPayButton) {
+            if (isReturnView) returnPayButton.classList.remove('hidden');
+            else returnPayButton.classList.add('hidden');
+        }
+
+        if (isSaleView) {
+            self.renderProducts();
+            self.updateCartUI();
+        } else if (view === 'suspended') {
+            self.renderSuspendedView();
+        } else if (view === 'invoices') {
+            self.renderInvoicesView();
+        } else if (isReturnView) {
+            self.renderReturnsView();
+        }
     };
 
     self.renderSuspendedView = function() {
