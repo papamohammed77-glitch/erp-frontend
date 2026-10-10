@@ -1100,35 +1100,79 @@ editingOrderCode = order.order_code;
                 });
             }
 
-            // ✅ بناء selCust من بيانات الطلب مباشرة (حتى لو العميل غير موجود في Dexie)
-            selCust = {
-                customer_code: order.customer_id || '',
-                name: order.customer_name || 'عميل بدون اسم',
-                area: order.area || '',
-                phone: order.customer_phone || '',
-                payment_type: order.payment_type || 'أجل',
-                debt: 0,
-                credit_limit: 0,
-                location: '',
-                visit_day: ''
-            };
+            // Resolve the order's customer by the canonical customers.id UUID.
+            // Never place orders.customer_id into selCust.customer_code.
+            function failCustomerResolution(error) {
+                if (myGeneration !== _rwRenderGeneration) return;
+                console.error('تعذر حل هوية عميل الأوردر:', error);
+                cart = [];
+                selCust = null;
+                selBranch = null;
+                editingOrderCode = null;
+                RW_UI.hideLoader();
+                RW_UI.toast('تعذر التحقق من العميل المرتبط بالأوردر؛ لم يتم فتح التعديل. حدّث بيانات العملاء ثم أعد المحاولة.', 'error');
+                self.switchTab('my-orders');
+            }
 
-            // ✅ محاولة إثراء بيانات العميل من Dexie إن وجد
-            if (order.customer_id) {
-                db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) {
-                    if (c) {
-                        selCust = c; // نستخدم البيانات الكاملة من Dexie
-                    }
-                    // فتح السلة بعد التأكد من تحميل بيانات العميل
-                    _commitEditCart(myGeneration);
-                }).catch(function() {
-                    // فتح السلة حتى لو فشل جلب العميل
-                    _commitEditCart(myGeneration);
-                });
-            } else {
+            function commitResolvedCustomer(customer) {
+                if (myGeneration !== _rwRenderGeneration) return;
+                if (!customer || !customer.customer_code ||
+                    String(customer.company_id) !== String(order.company_id)) {
+                    failCustomerResolution(new Error('Customer missing, code missing, or company mismatch'));
+                    return;
+                }
+                selCust = customer;
                 _commitEditCart(myGeneration);
             }
 
+            if (!order.customer_id) {
+                // Legacy order without customer_id: preserve legacy behavior without
+                // inventing a customer code. The RPC will retain the existing customer.
+                selCust = {
+                    customer_code: '',
+                    name: order.customer_name || 'عميل بدون اسم',
+                    area: order.area || '',
+                    phone: order.customer_phone || '',
+                    payment_type: order.payment_type || 'أجل',
+                    debt: 0,
+                    credit_limit: 0,
+                    location: '',
+                    visit_day: '',
+                    company_id: order.company_id
+                };
+                _commitEditCart(myGeneration);
+            } else {
+                db.customers.toArray().then(function(localCustomers) {
+                    var match = null;
+                    for (var i = 0; i < localCustomers.length; i++) {
+                        var candidate = localCustomers[i];
+                        if (String(candidate.id) === String(order.customer_id) &&
+                            String(candidate.company_id) === String(order.company_id)) {
+                            match = candidate;
+                            break;
+                        }
+                    }
+                    if (match && match.customer_code) {
+                        commitResolvedCustomer(match);
+                        return null;
+                    }
+
+                    // Cache miss/staleness: resolve by UUID from Production under
+                    // the current user's RLS, and explicitly constrain company_id.
+                    return supabase.from('customers')
+                        .select('*')
+                        .eq('id', order.customer_id)
+                        .eq('company_id', order.company_id)
+                        .maybeSingle()
+                        .then(function(result) {
+                            if (result.error) throw result.error;
+                            if (!result.data) {
+                                throw new Error('Customer UUID not visible in this company');
+                            }
+                            commitResolvedCustomer(result.data);
+                        });
+                }).catch(failCustomerResolution);
+            }
             function _commitEditCart(myGen) {
                 if (myGen !== _rwRenderGeneration) return;
                 
@@ -1450,8 +1494,41 @@ self._printOrderFromDetail = function(orderId) {
         RW_UI.toast('فشل تحميل بيانات الأوردر للطباعة', 'error');
     });
 },
-    self.repeatOrder = function(orderId) { RW_UI.showLoader('جاري نسخ الأوردر...'); if (currentTab === 'new-order') RW_UI.showSkeleton('productsContainer', 4, 'card'); supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) { var order = oRes.data; if (!order) { RW_UI.hideLoader(); RW_UI.toast('الأوردر غير موجود', 'error'); return; } supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) { RW_UI.hideLoader(); var details = dRes.data || []; cart = []; for (var i = 0; i < details.length; i++) cart.push({ code: details[i].item_code, name: details[i].item_name, price: Number(details[i].unit_price) || 0, unit: details[i].unit || 'حبة', qty: Number(details[i].qty) || 1 }); if (order.customer_id) db.customers.where('customer_code').equals(order.customer_id).first().then(function(c) { if (c) { selCust = c; self.selectCustomer(c.customer_code); } }); self.updateFloatingCart(); self.switchTab('new-order'); RW_UI.toast('تم نسخ الأوردر للسلة', 'success'); }); }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); }); };
+    self.repeatOrder = function(orderId) { RW_UI.showLoader('جاري نسخ الأوردر...'); if (currentTab === 'new-order') RW_UI.showSkeleton('productsContainer', 4, 'card'); supabase.from('orders').select('*').eq('id', orderId).single().then(function(oRes) { var order = oRes.data; if (!order) { RW_UI.hideLoader(); RW_UI.toast('الأوردر غير موجود', 'error'); return; } supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) { RW_UI.hideLoader(); var details = dRes.data || []; cart = []; for (var i = 0; i < details.length; i++) cart.push({ code: details[i].item_code, name: details[i].item_name, price: Number(details[i].unit_price) || 0, unit: details[i].unit || 'حبة', qty: Number(details[i].qty) || 1 }); if (order.customer_id) {
+    db.customers.toArray().then(function(localCustomers) {
+        var customer = null;
+        for (var j = 0; j < localCustomers.length; j++) {
+            if (String(localCustomers[j].id) === String(order.customer_id) &&
+                String(localCustomers[j].company_id) === String(order.company_id)) {
+                customer = localCustomers[j];
+                break;
+            }
+        }
 
+        if (customer && customer.customer_code) {
+            self._selectCustomerCore(customer);
+            return;
+        }
+
+        return supabase.from('customers')
+            .select('*')
+            .eq('id', order.customer_id)
+            .eq('company_id', order.company_id)
+            .maybeSingle()
+            .then(function(result) {
+                if (result.error) throw result.error;
+                if (!result.data || !result.data.customer_code) {
+                    throw new Error('تعذر التحقق من العميل داخل الشركة');
+                }
+                self._selectCustomerCore(result.data);
+            });
+    }).catch(function(error) {
+        console.error('تعذر حل عميل إعادة الطلب:', error);
+        RW_UI.toast('تعذر التحقق من العميل؛ لم تتم إعادة الطلب', 'error');
+    });
+} 
+self.updateFloatingCart(); self.switchTab('new-order'); RW_UI.toast('تم نسخ الأوردر للسلة', 'success'); }); }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); }); };
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
     // ==================== مودال العملاء ====================
     self.searchCustomersModal = function(q) { var c = RW_UI.byId('customerModalBody'); if (!c) return; if (!q || !q.trim()) { RW_UI.safeHTML(c, '<div class="text-center text-gray-400 py-8">اكتب للبحث عن عميل...</div>'); return; } RW_UI.safeHTML(c, '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i> جاري البحث...</div>'); var s = q.toLowerCase(); db.customers.toArray().then(function(all) { var filtered = self._filterCustomersByAssignment(all); var f = []; for (var i = 0; i < filtered.length; i++) { var cu = filtered[i]; if ((cu.name || '').toLowerCase().indexOf(s) !== -1 || (cu.customer_code || '').toLowerCase().indexOf(s) !== -1 || (cu.phone || '').indexOf(s) !== -1) f.push(cu); if (f.length >= 20) break; } if (!f.length) { RW_UI.safeHTML(c, '<div class="text-center text-gray-400 py-8">لا توجد نتائج</div>'); return; } var h = ''; for (var j = 0; j < f.length; j++) { var cu2 = f[j], dc = Number(cu2.debt) > 0 ? 'text-red-500' : 'text-green-600'; h += '<div onclick="App.selectCustomerFromModal(\'' + cu2.customer_code + '\')" class="bg-white p-3 rounded-xl shadow-sm border cursor-pointer hover:bg-purple-50 active:bg-purple-100"><div class="font-bold text-sm">' + (cu2.name || '') + '</div><div class="text-xs text-gray-400">' + (cu2.customer_code || '') + ' - ' + (cu2.area || '') + (cu2.location ? ' | 📍 ' + cu2.location : '') + ' | الرصيد: <span class="' + dc + ' font-bold">' + fmtNum(cu2.debt) + '</span></div></div>'; } RW_UI.safeHTML(c, h); }); };
     self.selectCustomerFromModal = function(code) { self.closeCustomerModal(); self.selectCustomer(code); };
