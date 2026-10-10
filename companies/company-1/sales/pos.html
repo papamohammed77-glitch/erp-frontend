@@ -831,41 +831,97 @@ self.printReceipt = function(orderCode, orderTotal, customerName, paymentMethod,
         RW_UI.safeHTML(cartCont, '<div class="text-center text-slate-500 py-8">↩️ سلة المرتجع – ابحث عن فاتورة أولاً</div>');
     };
 
-    self._searchReturnInvoice = function() {
-        var code = RW_UI.byId('returnSearch') ? RW_UI.byId('returnSearch').value.trim() : '';
-        if (!code) { RW_UI.toast('أدخل رقم الفاتورة', 'warning'); return; }
-        RW_UI.showLoader('جاري تحميل الفاتورة...');
-        supabase.from('orders').select('*').eq('order_code', code).maybeSingle().then(function(oRes) {
-            var order = oRes.data;
-            if (!order) { RW_UI.hideLoader(); RW_UI.toast('الفاتورة غير موجودة', 'error'); return; }
-            if (order.order_status === 'Cancelled') { RW_UI.hideLoader(); RW_UI.toast('الفاتورة ملغية ولا يمكن عمل مرتجع عليها', 'error'); return; }
-            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
-                RW_UI.hideLoader();
-                var details = dRes.data || [];
-                if (!details.length) { RW_UI.toast('الفاتورة لا تحتوي على أصناف', 'warning'); return; }
-                returnOriginalInvoice = order;
-                returnCart = [];
-                for (var i = 0; i < details.length; i++) {
-                    var det = details[i];
-                    var deliveredQty = Number(det.qty_delivered) || Number(det.qty) || 0;
-                    var alreadyReturned = Number(det.qty_returned) || 0;
-                    var remainingQty = Math.max(0, deliveredQty - alreadyReturned);
-                    returnCart.push({ 
-                        code: det.item_code, 
-                        name: det.item_name || '', 
-                        unit: det.unit || 'حبة', 
-                        price: Number(det.unit_price) || 0,
-                        originalQty: remainingQty,
-                        returnQty: 0 
-                    });
-                }
-                var hasReturnable = false;
-                for (var j = 0; j < returnCart.length; j++) { if (returnCart[j].originalQty > 0) { hasReturnable = true; break; } }
-                if (!hasReturnable) { RW_UI.toast('جميع الأصناف في هذه الفاتورة تم ترجيعها مسبقاً', 'warning'); return; }
-                self._buildReturnScreen(order);
+    self._getPosInvoiceData = function(action, orderCode) {
+    return supabase.rpc('get_pos_invoice_data', {
+        p_action: action,
+        p_order_code: orderCode || null
+    }).then(function(result) {
+        if (result.error) {
+            throw new Error(result.error.message || 'فشل قراءة بيانات الفاتورة');
+        }
+        if (!result.data || result.data.success !== true) {
+            throw new Error('استجابة قراءة الفاتورة غير صالحة');
+        }
+        return result.data;
+    });
+};
+
+self._escapePosText = function(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+self._searchReturnInvoice = function() {
+    var input = RW_UI.byId('returnSearch');
+    var code = input ? String(input.value || '').trim() : '';
+
+    if (!code) {
+        RW_UI.toast('أدخل رقم الفاتورة', 'warning');
+        return;
+    }
+
+    RW_UI.showLoader('جاري تحميل الفاتورة...');
+    self._getPosInvoiceData('return_lookup', code).then(function(payload) {
+        RW_UI.hideLoader();
+
+        var order = payload.order;
+        var details = Array.isArray(payload.details) ? payload.details : [];
+
+        if (!order) {
+            RW_UI.toast('الفاتورة غير موجودة في فروع POS المصرح بها', 'error');
+            return;
+        }
+        if (order.order_status === 'Cancelled') {
+            RW_UI.toast('الفاتورة ملغاة ولا يمكن عمل مرتجع عليها', 'error');
+            return;
+        }
+        if (!details.length) {
+            RW_UI.toast('الفاتورة لا تحتوي على أصناف', 'warning');
+            return;
+        }
+
+        var nextReturnCart = [];
+        for (var i = 0; i < details.length; i++) {
+            var det = details[i];
+            var soldQty = Number(det.qty_delivered) || Number(det.qty) || 0;
+            var alreadyReturned = Number(det.qty_returned) || 0;
+            var remainingQty = Math.max(0, soldQty - alreadyReturned);
+
+            nextReturnCart.push({
+                code: det.item_code || '',
+                name: det.item_name || '',
+                unit: det.unit || 'حبة',
+                price: Number(det.unit_price) || 0,
+                originalQty: remainingQty,
+                returnQty: 0
             });
-        }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل الاتصال', 'error'); });
-    };
+        }
+
+        var hasReturnable = nextReturnCart.some(function(item) {
+            return item.originalQty > 0;
+        });
+
+        if (!hasReturnable) {
+            returnCart = [];
+            returnOriginalInvoice = null;
+            RW_UI.toast('جميع أصناف هذه الفاتورة تم إرجاعها سابقًا', 'warning');
+            return;
+        }
+
+        returnOriginalInvoice = order;
+        returnCart = nextReturnCart;
+        self._buildReturnScreen(order);
+    }).catch(function(err) {
+        RW_UI.hideLoader();
+        console.error('POS return invoice lookup failed:', err);
+        RW_UI.showError('تعذر تحميل الفاتورة للمرتجع: ' +
+            (err && err.message ? err.message : 'خطأ غير معروف'));
+    });
+};
 
     self._buildReturnScreen = function(order) {
         var grid = RW_UI.byId('productsGrid');
@@ -1053,124 +1109,188 @@ self._finalizeReturn = function() {
         self.updateCartUI(); self.renderProducts(); 
     };
 
-    self.renderInvoicesView = function() {
-        var grid = RW_UI.byId('productsGrid'), today = new Date().toISOString().split('T')[0];
-        RW_UI.safeHTML(grid, '<div class="col-span-full p-4"><h3 class="text-lg font-black text-white mb-4">📄 فواتير اليوم</h3><div id="invoicesTodayList" class="space-y-2"><div class="text-center text-slate-400 py-4">جاري التحميل...</div></div></div>');
-        supabase.from('orders').select('*').eq('created_by', currentUser.email).eq('order_date', today).order('order_date', { ascending: false }).then(function(r) {
-            var invs = r.data || [], h = '';
-            if (!invs.length) {
-                h = '<div class="text-center py-8 text-slate-400">لا توجد فواتير اليوم</div>';
-            } else {
-                var total = 0, cancelledCount = 0;
-                for (var i = 0; i < invs.length; i++) {
-                    var inv = invs[i];
-                    var isCancelled = inv.order_status === 'Cancelled';
-                    if (!isCancelled) total += Number(inv.total_amount) || 0;
-                    else cancelledCount++;
-                    var cardBg = isCancelled ? 'bg-red-950/20 border-red-900/50' : '';
-                    var statusBadge = isCancelled ? '<span class="text-[10px] font-bold text-red-400 bg-red-950/50 px-2 py-0.5 rounded-full ml-2">🚫 ملغاة</span>' : '';
-                    var amountClass = isCancelled ? 'text-red-400 line-through' : 'text-emerald-400';
-                    var onClickAction = isCancelled 
-                        ? ' onclick="POS._viewCancelledInvoice(\'' + (inv.order_code || '') + '\')"'
-                        : ' onclick="POS._viewActiveInvoice(\'' + (inv.order_code || '') + '\')"';
-                    h += '<div class="card-dark flex justify-between items-center ' + cardBg + '"' + onClickAction + '>';
-                    h += '<div class="flex-1"><div class="flex items-center"><span class="font-black text-white text-sm">' + (inv.order_code || '') + '</span>' + statusBadge + '</div><p class="text-xs text-slate-400">' + (inv.customer_name || '') + '</p></div>';
-                    h += '<span class="font-black ' + amountClass + ' text-sm">' + fmtNum(Number(inv.total_amount) || 0) + '</span>';
-                    h += '</div>';
-                }
-                var summaryText = invs.length + ' فاتورة';
-                if (cancelledCount > 0) summaryText += ' | ' + cancelledCount + ' ملغاة';
-                summaryText += ' | الإجمالي: ' + fmtNum(total) + ' ' + currency;
-                h = '<div class="bg-emerald-900/30 p-3 rounded-xl mb-3 text-center"><span class="text-emerald-400 font-bold">' + summaryText + '</span></div>' + h;
+self.renderInvoicesView = function() {
+    var grid = RW_UI.byId('productsGrid');
+    if (!grid) return;
+
+    RW_UI.safeHTML(grid,
+        '<div class="col-span-full p-4">' +
+            '<h3 class="text-lg font-black text-white mb-4">📄 فواتير اليوم</h3>' +
+            '<div id="invoicesTodayList" class="space-y-2">' +
+                '<div class="text-center text-slate-400 py-4">جاري التحميل...</div>' +
+            '</div>' +
+        '</div>'
+    );
+    RW_UI.safeHTML(RW_UI.byId('cartItemsContainer'),
+        '<div class="text-center text-slate-500 py-8">فواتير اليوم</div>'
+    );
+
+    self._getPosInvoiceData('today').then(function(payload) {
+        var invs = Array.isArray(payload.invoices) ? payload.invoices : [];
+        var list = RW_UI.byId('invoicesTodayList');
+        if (!list) return;
+
+        if (!invs.length) {
+            RW_UI.safeHTML(list,
+                '<div class="text-center py-8 text-slate-400">لا توجد فواتير اليوم لهذا الكاشير</div>'
+            );
+            return;
+        }
+
+        var total = 0;
+        var cancelledCount = 0;
+        var h = '';
+
+        for (var i = 0; i < invs.length; i++) {
+            var inv = invs[i];
+            var cancelled = inv.order_status === 'Cancelled';
+            var code = self._escapePosText(inv.order_code || '');
+            var customer = self._escapePosText(inv.customer_name || 'عميل نقدي');
+            var amount = Number(inv.total_amount) || 0;
+
+            if (cancelled) cancelledCount++;
+            else total += amount;
+
+            h += '<button type="button" data-pos-order-code="' + code +
+                '" data-pos-cancelled="' + (cancelled ? 'true' : 'false') + '"' +
+                ' class="card-dark w-full flex justify-between items-center text-right ' +
+                (cancelled ? 'bg-red-950/20 border-red-900/50' : '') + '">' +
+                '<span class="flex-1">' +
+                    '<span class="flex items-center gap-2">' +
+                        '<span class="font-black text-white text-sm">' + code + '</span>' +
+                        (cancelled
+                            ? '<span class="text-[10px] font-bold text-red-400 bg-red-950/50 px-2 py-0.5 rounded-full">🚫 ملغاة</span>'
+                            : '') +
+                    '</span>' +
+                    '<span class="block text-xs text-slate-400 mt-1">' + customer + '</span>' +
+                    '<span class="block text-[10px] text-slate-500 mt-1">' +
+                        self._escapePosText(inv.order_date || '') +
+                    '</span>' +
+                '</span>' +
+                '<span class="font-black ' + (cancelled ? 'text-red-400 line-through' : 'text-emerald-400') +
+                    ' text-sm">' + fmtNum(amount) + ' ' + self._escapePosText(currency) + '</span>' +
+            '</button>';
+        }
+
+        var summary = invs.length + ' فاتورة';
+        if (cancelledCount) summary += ' | ' + cancelledCount + ' ملغاة';
+        summary += ' | الإجمالي غير الملغى: ' + fmtNum(total) + ' ' + self._escapePosText(currency);
+
+        RW_UI.safeHTML(list,
+            '<div class="bg-emerald-900/30 p-3 rounded-xl mb-3 text-center">' +
+                '<span class="text-emerald-400 font-bold">' + summary + '</span>' +
+            '</div>' + h
+        );
+
+        var rows = list.querySelectorAll('[data-pos-order-code]');
+        for (var j = 0; j < rows.length; j++) {
+            (function(button) {
+                button.addEventListener('click', function() {
+                    var orderCode = button.getAttribute('data-pos-order-code');
+                    if (button.getAttribute('data-pos-cancelled') === 'true') {
+                        self._viewCancelledInvoice(orderCode);
+                    } else {
+                        self._viewActiveInvoice(orderCode);
+                    }
+                });
+            })(rows[j]);
+        }
+    }).catch(function(err) {
+        console.error('POS today invoices read failed:', err);
+        var list = RW_UI.byId('invoicesTodayList');
+        if (list) {
+            RW_UI.safeHTML(list,
+                '<div class="text-center py-8 text-red-400">تعذر تحميل فواتير اليوم. أعد المحاولة بعد التحقق من الاتصال.</div>'
+            );
+        }
+    });
+};
+
+self._viewActiveInvoice = function(orderCode) {
+    RW_UI.showLoader('جاري تحميل الفاتورة...');
+
+    self._getPosInvoiceData('detail', orderCode).then(function(payload) {
+        RW_UI.hideLoader();
+
+        var order = payload.order;
+        var details = Array.isArray(payload.details) ? payload.details : [];
+        if (!order) {
+            RW_UI.toast('الفاتورة غير موجودة أو خارج نطاق الفروع المصرح بها', 'error');
+            return;
+        }
+
+        var cancelled = order.order_status === 'Cancelled';
+        var esc = self._escapePosText;
+        var h = '<div class="text-right text-sm">';
+
+        if (cancelled) {
+            h += '<div class="bg-red-950/50 border border-red-700/50 rounded-xl p-3 mb-4 text-center">' +
+                '<p class="text-red-400 font-bold text-lg">🚫 فاتورة ملغاة</p>' +
+                '<p class="text-xs text-slate-400 mt-1">الحالة معروضة من قاعدة البيانات المركزية.</p>' +
+            '</div>';
+        }
+
+        h += '<div class="bg-slate-800 rounded-xl p-3 mb-4">' +
+            '<p><strong>رقم الفاتورة:</strong> ' + esc(order.order_code) + '</p>' +
+            '<p><strong>التاريخ:</strong> ' + esc(order.order_date) + '</p>' +
+            '<p><strong>العميل:</strong> ' + esc(order.customer_name || 'عميل نقدي') + '</p>' +
+            '<p><strong>الحالة:</strong> ' + esc(order.order_status) + '</p>' +
+            '<p><strong>الإجمالي:</strong> <span class="' +
+                (cancelled ? 'text-red-400 line-through' : 'text-emerald-400') +
+                ' font-bold text-lg">' + fmtNum(Number(order.total_amount) || 0) +
+                ' ' + esc(currency) + '</span></p>' +
+        '</div>';
+
+        if (details.length) {
+            h += '<div class="overflow-x-auto"><table class="w-full text-sm border border-slate-700">' +
+                '<thead class="bg-slate-800"><tr>' +
+                    '<th class="p-2 border border-slate-700">الصنف</th>' +
+                    '<th class="p-2 border border-slate-700 text-center">الكمية</th>' +
+                    '<th class="p-2 border border-slate-700 text-center">السعر</th>' +
+                    '<th class="p-2 border border-slate-700 text-center">الإجمالي</th>' +
+                '</tr></thead><tbody>';
+
+            for (var i = 0; i < details.length; i++) {
+                var det = details[i];
+                var qty = Number(det.qty) || 0;
+                var price = Number(det.unit_price) || 0;
+                h += '<tr class="border-b border-slate-700">' +
+                    '<td class="p-2 border border-slate-700 font-semibold">' + esc(det.item_name || '') + '</td>' +
+                    '<td class="p-2 border border-slate-700 text-center">' + fmtNum(qty) + '</td>' +
+                    '<td class="p-2 border border-slate-700 text-center">' + fmtNum(price) + '</td>' +
+                    '<td class="p-2 border border-slate-700 text-center font-bold">' + fmtNum(qty * price) + '</td>' +
+                '</tr>';
             }
-            RW_UI.safeHTML(RW_UI.byId('invoicesTodayList'), h);
+
+            h += '</tbody></table></div>';
+        } else {
+            h += '<div class="text-center py-4 text-slate-400">لا توجد أصناف مسجلة</div>';
+        }
+
+        h += '</div>';
+
+        Swal.fire({
+            title: cancelled ? 'استعراض فاتورة ملغاة' : 'تفاصيل الفاتورة',
+            html: h,
+            width: '650px',
+            showCloseButton: true,
+            showConfirmButton: false,
+            customClass: {
+                popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700',
+                closeButton: '!text-slate-400'
+            }
         });
-        RW_UI.safeHTML(RW_UI.byId('cartItemsContainer'), '<div class="text-center text-slate-500 py-8">فواتير اليوم</div>');
-    };
+    }).catch(function(err) {
+        RW_UI.hideLoader();
+        console.error('POS invoice detail read failed:', err);
+        RW_UI.showError('تعذر تحميل تفاصيل الفاتورة: ' +
+            (err && err.message ? err.message : 'خطأ غير معروف'));
+    });
+};
 
-    self._viewActiveInvoice = function(orderCode) {
-        RW_UI.showLoader('جاري تحميل الفاتورة...');
-        supabase.from('orders').select('*').eq('order_code', orderCode).maybeSingle().then(function(oRes) {
-            var order = oRes.data;
-            if (!order) { RW_UI.hideLoader(); RW_UI.toast('الفاتورة غير موجودة', 'error'); return; }
-            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
-                RW_UI.hideLoader();
-                var details = dRes.data || [];
-                var h = '<div class="text-right text-sm">';
-                h += '<div class="bg-slate-800 rounded-xl p-3 mb-4">';
-                h += '<p><strong>رقم الفاتورة:</strong> ' + (order.order_code || '') + '</p>';
-                h += '<p><strong>التاريخ:</strong> ' + (order.order_date || '') + '</p>';
-                h += '<p><strong>العميل:</strong> ' + (order.customer_name || '') + '</p>';
-                h += '<p><strong>الإجمالي:</strong> <span class="text-emerald-400 font-bold text-lg">' + fmtNum(Number(order.total_amount) || 0) + ' ' + currency + '</span></p>';
-                h += '</div>';
-                if (details.length > 0) {
-                    h += '<div class="overflow-x-auto"><table class="w-full text-sm border border-slate-700"><thead class="bg-slate-800"><tr><th class="p-2 border border-slate-700">الصنف</th><th class="p-2 border border-slate-700 text-center">الكمية</th><th class="p-2 border border-slate-700 text-center">السعر</th><th class="p-2 border border-slate-700 text-center">الإجمالي</th></tr></thead><tbody>';
-                    for (var i = 0; i < details.length; i++) {
-                        var det = details[i];
-                        var lt = (Number(det.qty) || 0) * (Number(det.unit_price) || 0);
-                        h += '<tr class="border-b border-slate-700"><td class="p-2 border border-slate-700 font-semibold">' + (det.item_name || '') + '</td><td class="p-2 border border-slate-700 text-center">' + det.qty + '</td><td class="p-2 border border-slate-700 text-center">' + fmtNum(det.unit_price) + '</td><td class="p-2 border border-slate-700 text-center font-bold">' + fmtNum(lt) + '</td></tr>';
-                    }
-                    h += '</tbody></table></div>';
-                } else {
-                    h += '<div class="text-center py-4 text-slate-400">لا توجد أصناف مسجلة</div>';
-                }
-                h += '</div>';
-                Swal.fire({
-                    title: 'تفاصيل الفاتورة',
-                    html: h,
-                    width: '650px',
-                    showCloseButton: true,
-                    showConfirmButton: false,
-                    customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', closeButton: '!text-slate-400' }
-                });
-            });
-        }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل التحميل', 'error'); });
-    };
-
-    self._viewCancelledInvoice = function(orderCode) {
-        RW_UI.showLoader('جاري تحميل الفاتورة...');
-        supabase.from('orders').select('*').eq('order_code', orderCode).maybeSingle().then(function(oRes) {
-            var order = oRes.data;
-            if (!order) { RW_UI.hideLoader(); RW_UI.toast('الفاتورة غير موجودة', 'error'); return; }
-            if (order.order_status !== 'Cancelled') { RW_UI.hideLoader(); self._viewActiveInvoice(orderCode); return; }
-            supabase.from('order_details').select('*').eq('order_id', order.id).then(function(dRes) {
-                RW_UI.hideLoader();
-                var details = dRes.data || [];
-                var h = '<div class="text-right text-sm">';
-                h += '<div class="bg-red-950/50 border border-red-700/50 rounded-xl p-3 mb-4 text-center">';
-                h += '<p class="text-red-400 font-bold text-lg">🚫 فاتورة ملغاة</p>';
-                h += '<p class="text-xs text-slate-400 mt-1">تم إلغاء هذه الفاتورة وعكس جميع آثارها (مخزون، قيد، عميل)</p>';
-                h += '</div>';
-                h += '<div class="bg-slate-800 rounded-xl p-3 mb-4">';
-                h += '<p><strong>رقم الفاتورة:</strong> ' + (order.order_code || '') + '</p>';
-                h += '<p><strong>التاريخ:</strong> ' + (order.order_date || '') + '</p>';
-                h += '<p><strong>العميل:</strong> ' + (order.customer_name || '') + '</p>';
-                h += '<p><strong>الإجمالي:</strong> <span class="text-red-400 line-through font-bold">' + fmtNum(Number(order.total_amount) || 0) + ' ' + currency + '</span></p>';
-                h += '</div>';
-                if (details.length > 0) {
-                    h += '<div class="overflow-x-auto"><table class="w-full text-sm border border-slate-700"><thead class="bg-slate-800"><tr><th class="p-2 border border-slate-700">الصنف</th><th class="p-2 border border-slate-700 text-center">الكمية</th><th class="p-2 border border-slate-700 text-center">السعر</th><th class="p-2 border border-slate-700 text-center">الإجمالي</th></tr></thead><tbody>';
-                    for (var i = 0; i < details.length; i++) {
-                        var det = details[i];
-                        var lt = (Number(det.qty) || 0) * (Number(det.unit_price) || 0);
-                        h += '<tr class="border-b border-slate-700"><td class="p-2 border border-slate-700 font-semibold">' + (det.item_name || '') + '</td><td class="p-2 border border-slate-700 text-center">' + det.qty + '</td><td class="p-2 border border-slate-700 text-center">' + fmtNum(det.unit_price) + '</td><td class="p-2 border border-slate-700 text-center font-bold">' + fmtNum(lt) + '</td></tr>';
-                    }
-                    h += '</tbody></table></div>';
-                } else {
-                    h += '<div class="text-center py-4 text-slate-400">لا توجد أصناف مسجلة</div>';
-                }
-                h += '</div>';
-                Swal.fire({
-                    title: 'استعراض فاتورة ملغاة',
-                    html: h,
-                    width: '650px',
-                    showCloseButton: true,
-                    showConfirmButton: false,
-                    customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700', closeButton: '!text-slate-400' }
-                });
-            });
-        }).catch(function() { RW_UI.hideLoader(); RW_UI.toast('فشل التحميل', 'error'); });
-    };
-
+self._viewCancelledInvoice = function(orderCode) {
+    self._viewActiveInvoice(orderCode);
+};
     self.loadCategories = function() {
         if (!db) return;
         db.items.toArray().then(function(items) {
