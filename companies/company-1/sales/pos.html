@@ -1013,7 +1013,7 @@ self._finalizeReturn = function() {
                 unit_price: Number(it.price) || 0,
                 returnedQty: Number(it.returnQty),
                 return_condition: 'good',
-                reason: 'مرتجع نقطة بيع - إشعار دائن'
+                reason: 'مرتجع نقطة بيع'
             });
         }
     }
@@ -1023,49 +1023,66 @@ self._finalizeReturn = function() {
         return;
     }
 
-    RW_UI.showLoader('جاري تسجيل المرتجع...');
+    RW_UI.showLoader('جاري تسجيل المرتجع ورد المبلغ النقدي...');
     RW_API.call('complete-return', {
         runsheet_code: null,
         order_code: orderCode,
         items: items,
         is_pos_return: true,
-        reason: 'مرتجع نقطة بيع - إشعار دائن'
+        reason: 'مرتجع نقطة بيع'
     }, function(json, err) {
         RW_UI.hideLoader();
 
-        if (!err && json && json.success) {
-            var newStatus = json.new_order_status || 'Returned';
-            var isPartial = newStatus === 'Partially Returned';
-
-            returnCart = [];
-            returnOriginalInvoice = null;
-            _returnTotal = 0;
-
-            Swal.fire({
-                icon: isPartial ? 'warning' : 'success',
-                title: isPartial ? 'تم تسجيل المرتجع جزئيًا' : 'تم تسجيل المرتجع',
-                html: '<div class="text-right text-white text-sm">' +
-                    '<p>عدد الأصناف المرتجعة: <strong>' + items.length + '</strong></p>' +
-                    '<p>القيمة المرجعية: <strong>' + fmtNum(items.reduce(function(sum, item) { return sum + item.unit_price * item.returnedQty; }, 0)) + ' ' + currency + '</strong></p>' +
-                    '<p>حالة الفاتورة: <strong>' + newStatus + '</strong></p>' +
-                    '<p class="text-amber-300 mt-3">تم تسجيل المرتجع وفق عقد الإشعار الدائن. لم يتم تنفيذ رد نقدي أو رد للبطاقة من هذه الشاشة.</p>' +
-                    '</div>',
-                confirmButtonText: 'حسنًا',
-                customClass: {
-                    popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700',
-                    confirmButton: isPartial ? '!bg-amber-600 !rounded-xl' : '!bg-emerald-600 !rounded-xl'
-                }
-            });
-
-            self.switchView('invoices');
+        if (err || !json || json.success !== true) {
+            RW_UI.byId('returnPaymentModal').classList.remove('hidden');
+            RW_UI.showError((json && (json.msg || json.error)) ||
+                (err && String(err)) ||
+                'فشل تسجيل المرتجع؛ لم يتم تفريغ السلة');
             return;
         }
 
-        RW_UI.byId('returnPaymentModal').classList.remove('hidden');
-        RW_UI.showError((json && (json.msg || json.error)) ||
-            (err && String(err)) || 'فشل تسجيل المرتجع؛ لم يتم تفريغ السلة');
+        if (json.refund_posted !== true) {
+            RW_UI.byId('returnPaymentModal').classList.remove('hidden');
+            RW_UI.showError('لم يؤكد الخادم رد المبلغ؛ احتفظنا بالسلة ولم نعلن نجاح الصرف');
+            return;
+        }
+
+        var newStatus = json.new_order_status || 'Returned';
+        var isPartial = newStatus === 'Partially Returned';
+        var refundAmount = Number(json.refund_amount) || 0;
+        var refundReference = self._escapePosText(json.refund_reference || orderCode);
+        var creditNoteCode = self._escapePosText(json.creditNoteCode || '—');
+        var cashBoxId = self._escapePosText(json.refund_cash_box_id || '—');
+
+        returnCart = [];
+        returnOriginalInvoice = null;
+        _returnTotal = 0;
+        self.closeReturnPaymentModal();
+
+        Swal.fire({
+            icon: isPartial ? 'warning' : 'success',
+            title: isPartial ? 'تم المرتجع الجزئي ورد المبلغ' : 'تم المرتجع ورد المبلغ',
+            html: '<div class="text-right text-white text-sm">' +
+                '<p>عدد الأصناف المرتجعة: <strong>' + items.length + '</strong></p>' +
+                '<p>المبلغ النقدي المصروف فعليًا: <strong class="text-emerald-300">' +
+                    fmtNum(refundAmount) + ' ' + self._escapePosText(currency) + '</strong></p>' +
+                '<p>مرجع الفاتورة: <strong>' + refundReference + '</strong></p>' +
+                '<p>الإشعار الدائن: <strong>' + creditNoteCode + '</strong></p>' +
+                '<p>سند الصرف: <strong>' + cashBoxId + '</strong></p>' +
+                '<p>حالة الفاتورة: <strong>' + self._escapePosText(newStatus) + '</strong></p>' +
+                '<p class="text-amber-300 mt-3">تم رد النقد إلى الخزينة المرتبطة بإيصال البيع الأصلي.</p>' +
+                '</div>',
+            confirmButtonText: 'حسنًا',
+            customClass: {
+                popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700',
+                confirmButton: isPartial ? '!bg-amber-600 !rounded-xl' : '!bg-emerald-600 !rounded-xl'
+            }
+        });
+
+        self.switchView('invoices');
     });
 };
+
     self._cancelReturnScreen = function() {
         RW_UI.showConfirm('إلغاء المرتجع والعودة لشاشة البيع؟', function() {
             returnCart = []; returnOriginalInvoice = null; _returnTotal = 0;
