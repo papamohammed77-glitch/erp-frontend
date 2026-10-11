@@ -10234,7 +10234,7 @@ async function render() {
                 '<select id="f-status" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">' +
                     '<option value="">الحالة</option>' +
                     '<option>Draft</option><option>Confirmed</option><option>Pending</option>' +
-                    '<option>Invoiced</option><option>Delivered</option><option>Returned</option><option>Cancelled</option>' +
+                    '<option>Invoiced</option><option>Delivered</option><option>Returned</option><option>Partially Returned</option><option>Cancelled</option>' +
                 '</select>' +
                 '<input type="text" id="f-area" oninput="RW_Orders._applyFilters()" placeholder="المنطقة" class="p-2 bg-gray-50 rounded text-sm">' +
                 '<input type="text" id="f-rs" oninput="RW_Orders._applyFilters()" placeholder="الرانشيت" class="p-2 bg-gray-50 rounded text-sm">' +
@@ -10252,11 +10252,13 @@ async function render() {
             '<table class="w-full min-w-[1200px]" id="orders-main-table">' +
                 '<thead class="bg-gray-50 sticky top-0 z-10" id="orders-thead">' +
                     '<tr>' +
-                        '<th class="p-3 text-center"><input type="checkbox" id="check-all" onchange="var cbs=document.querySelectorAll(\'.order-checkbox\');for(var i=0;i<cbs.length;i++)cbs[i].checked=this.checked;"></th>' +
+                        '<th class="p-3 text-center"><input type="checkbox" id="check-all" onchange="var cbs=document.querySelectorAll(\'.order-checkbox:not(:disabled)\');for(var i=0;i<cbs.length;i++)cbs[i].checked=this.checked;"></th>' +
                         '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_code\')">رقم الأوردر <i class="fa-solid fa-sort"></i></th>' +
-                        '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_date\')">التاريخ <i class="fa-solid fa-sort"></i></th>' +
+                        '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'created_at\')">تاريخ ووقت الإنشاء <i class="fa-solid fa-sort"></i></th>' +
                         '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'customer_name\')">العميل والمنطقة <i class="fa-solid fa-sort"></i></th>' +
-                        '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'itemsCount\')">عدد الأصناف <i class="fa-solid fa-sort"></i></th>' +
+                        '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'source\')">المصدر <i class="fa-solid fa-sort"></i></th>' +
+						'<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'created_by\')">المنشئ <i class="fa-solid fa-sort"></i></th>' +
+			 			'<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'itemsCount\')">عدد الأصناف <i class="fa-solid fa-sort"></i></th>' +
                         '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'total_amount\')">القيمة (' + currency + ') <i class="fa-solid fa-sort"></i></th>' +
                         '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'order_status\')">الحالة <i class="fa-solid fa-sort"></i></th>' +
                         '<th class="p-3 text-center cursor-pointer text-xs font-bold uppercase" onclick="RW_Orders._sort(\'runsheet_id\')">الرانشيت <i class="fa-solid fa-sort"></i></th>' +
@@ -10264,7 +10266,7 @@ async function render() {
                     '</tr>' +
                 '</thead>' +
                 '<tbody id="orders-table-body">' +
-                    '<tr><td colspan="9" class="text-center py-8 text-gray-500">جاري التحميل...</td></tr>' +
+                    '<tr><td colspan="11" class="text-center py-8 text-gray-500">جاري التحميل...</td></tr>' +
                 '</tbody>' +
             '</table>' +
             '<div id="orders-table-body-controls"></div>' +
@@ -10291,18 +10293,26 @@ var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)')
     ordersData = ordRes.data || [];
     var orderIds = ordersData.map(function(o) { return o.id; }).filter(Boolean);
 var detRes = orderIds.length
-    ? await supabase.from('order_details').select('order_id, item_code').in('order_id', orderIds)
-    : { data: [] };
-    var details = detRes.data || [];
-    var itemsCountMap = {};
-    for (var i = 0; i < details.length; i++) {
-        var oid = details[i].order_id;
-        if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
+    ? await supabase.from('order_details')
+        .select('order_id, item_code, qty, qty_returned')
+        .in('order_id', orderIds)
+    : { data: [], error: null };
+
+if (detRes.error) throw detRes.error;
+
+var itemsCountMap = {};
+var details = detRes.data || [];
+for (var i = 0; i < details.length; i++) {
+    var d = details[i];
+    var originalQty = Math.max(0, Number(d.qty) || 0);
+    var returnedQty = Math.min(originalQty, Math.max(0, Number(d.qty_returned) || 0));
+    if (originalQty - returnedQty > 0) {
+        itemsCountMap[d.order_id] = (itemsCountMap[d.order_id] || 0) + 1;
     }
-    for (var j = 0; j < ordersData.length; j++) {
-        // ✅ التصحيح الوحيد: استخدام ordersData[j].id بدلاً من ordersData[j].order_code
-        ordersData[j].itemsCount = itemsCountMap[ordersData[j].id] || 0;
-    }
+}
+for (var j = 0; j < ordersData.length; j++) {
+    ordersData[j].itemsCount = itemsCountMap[ordersData[j].id] || 0;
+}
     hideLoader();
 } catch(e) {
     hideLoader();
@@ -10389,7 +10399,7 @@ window._rwOrdersRealtimeChannel = supabase
             var va = a[sortField] || '', vb = b[sortField] || '';
             if (sortField === 'total_amount' || sortField === 'itemsCount') {
                 va = Number(va); vb = Number(vb);
-            } else if (sortField === 'order_date') {
+            } else if (sortField === 'order_date' || sortField === 'created_at') {
                 va = new Date(va); vb = new Date(vb);
             } else {
                 va = String(va).toLowerCase(); vb = String(vb).toLowerCase();
@@ -10441,55 +10451,79 @@ window._rwOrdersRealtimeChannel = supabase
     }
 
     // ========== عرض الجدول ==========
-    function _renderTable(data) {
-        var tbody = byId('orders-table-body');
-        if (!tbody) return;
+function _renderTable(data) {
+    var tbody = byId('orders-table-body');
+    if (!tbody) return;
 
-        if (!data || data.length === 0) {
-            safeHTML(tbody, '<tr><td colspan="9" class="text-center py-8 text-gray-500">لا توجد أوردرات</td></tr>');
-            var pc = byId('orders-table-body-controls');
-            if (pc) safeHTML(pc, '');
-            return;
-        }
-
-        var checkAll = byId('check-all');
-        if (checkAll) checkAll.checked = false;
-
-        RW_Table.paginate('orders-table-body', data, 1, 50, function(o) {
-            var sc = '';
-            if (o.order_status === 'Draft') sc = 'bg-yellow-100 text-yellow-700';
-            else if (o.order_status === 'Confirmed') sc = 'bg-blue-100 text-blue-700';
-            else if (o.order_status === 'Pending') sc = 'bg-purple-100 text-purple-700';
-            else if (o.order_status === 'Invoiced' || o.order_status === 'Delivered') sc = 'bg-green-100 text-green-700';
-            else if (o.order_status === 'Returned') sc = 'bg-orange-100 text-orange-700';
-            else if (o.order_status === 'Cancelled') sc = 'bg-red-100 text-red-700';
-            else sc = 'bg-gray-100 text-gray-700';
-            var actions = '';
-            if (o.order_status === 'Draft') {
-                actions += '<button onclick="event.stopPropagation();RW_Orders._confirm(\'' + o.order_code + '\')" class="text-green-600 mx-1" title="تأكيد"><i class="fa-solid fa-check-circle"></i></button>';
-            }
-            var currentUser = (typeof RW_STATE !== 'undefined' && RW_STATE.app) ? RW_STATE.app.currentUser : null;
-var permissions = (currentUser && Array.isArray(currentUser.permissions)) ? currentUser.permissions : [];
-var canDeleteInvoiced = !!(currentUser && (currentUser.isOwner === true || permissions.indexOf('*') !== -1 || permissions.indexOf('general_manager') !== -1 || permissions.indexOf('sales_manager') !== -1 || permissions.indexOf('sales_supervisor') !== -1));
-var canDelete = (o.order_status === 'Draft' || o.order_status === 'Confirmed' || o.order_status === 'Pending' || (o.order_status === 'Invoiced' && canDeleteInvoiced)) && !o.runsheet_id;
-
-if (canDelete) {
-    actions += '<button onclick="event.stopPropagation();RW_Orders._delete(\'' + o.order_code + '\')" class="text-red-500 mx-1" title="حذف"><i class="fa-solid fa-trash-can"></i></button>';
-}
-            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Orders._showDetails(\'' + o.order_code + '\')">' +
-                '<td class="p-3 text-center" onclick="event.stopPropagation()"><input type="checkbox" class="order-checkbox" data-id="' + o.order_code + '"></td>' +
-                '<td class="p-3 text-center font-bold text-blue-600">' + (o.order_code || '') + '</td>' +
-                '<td class="p-3 text-center">' + (o.order_date ? new Date(o.order_date).toLocaleDateString('ar-EG') : '') + '</td>' +
-                '<td class="p-3 text-center"><p class="font-semibold">' + esc(o.customer_name || '') + '</p><p class="text-xs text-gray-500">' + esc(o.area || '') + '</p></td>' +
-                '<td class="p-3 text-center font-bold">' + (o.itemsCount || 0) + '</td>' +
-                '<td class="p-3 text-center font-bold">' + Number(o.total_amount || 0).toLocaleString() + ' ' + currency + '</td>' +
-                '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-semibold ' + sc + '">' + (o.order_status || '') + '</span></td>' +
-                '<td class="p-3 text-center">' + (o._runsheetCode || '---') + '</td>' +
-                '<td class="p-3 text-center">' + actions + '</td>' +
-            '</tr>';
-        });
+    if (!data || data.length === 0) {
+        safeHTML(tbody, '<tr><td colspan="11" class="text-center py-8 text-gray-500">لا توجد أوردرات</td></tr>');
+        var pc = byId('orders-table-body-controls');
+        if (pc) safeHTML(pc, '');
+        return;
     }
 
+    var checkAll = byId('check-all');
+    if (checkAll) checkAll.checked = false;
+
+    RW_Table.paginate('orders-table-body', data, 1, 50, function(o) {
+        var sc = 'bg-gray-100 text-gray-700';
+        if (o.order_status === 'Draft') sc = 'bg-yellow-100 text-yellow-700';
+        else if (o.order_status === 'Confirmed') sc = 'bg-blue-100 text-blue-700';
+        else if (o.order_status === 'Pending') sc = 'bg-purple-100 text-purple-700';
+        else if (o.order_status === 'Invoiced' || o.order_status === 'Delivered') sc = 'bg-green-100 text-green-700';
+        else if (o.order_status === 'Returned') sc = 'bg-orange-100 text-orange-700';
+        else if (o.order_status === 'Partially Returned') sc = 'bg-amber-100 text-amber-700';
+        else if (o.order_status === 'Cancelled') sc = 'bg-red-100 text-red-700';
+
+        var actions = '';
+        if (o.order_status === 'Draft') {
+            actions += '<button onclick="event.stopPropagation();RW_Orders._confirm(\'' + esc(o.order_code) + '\')" class="text-green-600 mx-1" title="تأكيد"><i class="fa-solid fa-check-circle"></i></button>';
+        }
+
+        var currentUser = (typeof RW_STATE !== 'undefined' && RW_STATE.app) ? RW_STATE.app.currentUser : null;
+        var permissions = (currentUser && Array.isArray(currentUser.permissions)) ? currentUser.permissions : [];
+        var canDeleteInvoiced = !!(currentUser && (currentUser.isOwner === true || permissions.indexOf('*') !== -1 || permissions.indexOf('general_manager') !== -1 || permissions.indexOf('sales_manager') !== -1 || permissions.indexOf('sales_supervisor') !== -1));
+        var canDelete = (o.order_status === 'Draft' || o.order_status === 'Confirmed' || o.order_status === 'Pending' || (o.order_status === 'Invoiced' && canDeleteInvoiced)) && !o.runsheet_id;
+        if (canDelete) {
+            actions += '<button onclick="event.stopPropagation();RW_Orders._delete(\'' + esc(o.order_code) + '\')" class="text-red-500 mx-1" title="حذف"><i class="fa-solid fa-trash-can"></i></button>';
+        }
+
+        var source = String(o.source || '').trim().toLowerCase().replace(/[ _]+/g, '-');
+        var sourceEligible = ['telesales', 'tele-sales', 'order-taker', 'online-store'].indexOf(source) !== -1;
+        var runsheetEligible = sourceEligible &&
+            ['Confirmed', 'Pending'].indexOf(o.order_status) !== -1 &&
+            !o.runsheet_id;
+        var codeForAttr = String(o.order_code || '').replace(/[&<>"']/g, function(ch) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+        });
+        var checkbox = '<input type="checkbox" class="order-checkbox" data-id="' + codeForAttr + '"' +
+            (runsheetEligible ? '' : ' disabled title="المصدر أو الحالة لا يسمحان بإدخال الأوردر في رانشيت"') +
+            ' aria-label="اختيار ' + codeForAttr + ' للرانشيت">';
+
+        var sourceLabel = {
+            'pos': 'كاشير / POS',
+            'telesales': 'تلي سيلز',
+            'tele-sales': 'تلي سيلز',
+            'order-taker': 'آخذ أوردر',
+            'online-store': 'المتجر الإلكتروني'
+        }[source] || (String(o.source || '').trim() || 'غير معروف');
+
+        var createdAt = o.created_at ? new Date(o.created_at).toLocaleString('ar-EG') : '—';
+        return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Orders._showDetails(\'' + esc(o.order_code) + '\')">' +
+            '<td class="p-3 text-center" onclick="event.stopPropagation()">' + checkbox + '</td>' +
+            '<td class="p-3 text-center font-bold text-blue-600">' + esc(o.order_code || '') + '</td>' +
+            '<td class="p-3 text-center">' + createdAt + '</td>' +
+            '<td class="p-3 text-center"><p class="font-semibold">' + esc(o.customer_name || '') + '</p><p class="text-xs text-gray-500">' + esc(o.area || '') + '</p></td>' +
+            '<td class="p-3 text-center">' + esc(sourceLabel) + '</td>' +
+            '<td class="p-3 text-center text-xs">' + esc(o.created_by || 'غير محدد') + '</td>' +
+            '<td class="p-3 text-center font-bold">' + (o.itemsCount || 0) + '</td>' +
+            '<td class="p-3 text-center font-bold">' + Number(o.total_amount || 0).toLocaleString('ar-EG') + ' ' + esc(currency) + '</td>' +
+            '<td class="p-3 text-center"><span class="px-2 py-1 rounded-full text-xs font-semibold ' + sc + '">' + esc(o.order_status || '') + '</span></td>' +
+            '<td class="p-3 text-center">' + esc(o._runsheetCode || '---') + '</td>' +
+            '<td class="p-3 text-center">' + actions + '</td>' +
+        '</tr>';
+    });
+}
     // ========== الإجراءات الأساسية ==========
     function _getSelectedOrders() {
         var selected = [];
@@ -10628,12 +10662,9 @@ function _confirmOrderFromDetails(code) {
                 if (found) {
                     var oldStatus = found.order_status;
                     found.order_status = 'Confirmed';
-                    // ✅ إعادة حساب itemsCount لهذا الأوردر
-                    supabase.from('order_details').select('id', { count: 'exact', head: true }).eq('order_id', found.id).then(function(countRes) {
-                        if (countRes && countRes.count !== undefined) {
-                            found.itemsCount = countRes.count;
-                        }
-                    });
+_refreshData().catch(function(refreshError) {
+    console.error('Orders refresh after confirmation failed:', refreshError);
+});
                     if (typeof RW_Audit_log === 'function') {
                         RW_Audit_log('update', 'orders', code, { order_status: oldStatus }, { order_status: 'Confirmed' });
                     }
@@ -10660,110 +10691,121 @@ function _confirmOrderFromDetails(code) {
     // ========== مودال التفاصيل ==========
 function _showDetails(code) {
     showLoader('جاري تحميل التفاصيل...');
-    supabase.from('orders').select('*').eq('company_id', _rwCompanyId()).eq('order_code', code).maybeSingle().then(function(oRes) {
-        var order = oRes.data;
-        if (!order) { hideLoader(); showToast('الأوردر غير موجود', 'error'); return; }
+    supabase.from('orders').select('*')
+        .eq('company_id', _rwCompanyId())
+        .eq('order_code', code)
+        .maybeSingle()
+        .then(function(oRes) {
+            if (oRes.error) throw oRes.error;
+            var order = oRes.data;
+            if (!order) throw new Error('الأوردر غير موجود');
 
-        return supabase.from('order_details').select('*').eq('order_id', order.id).then(function(itemsRes) {
-            var items = itemsRes.data || [];
-            hideLoader();
+            return supabase.from('order_details').select('*')
+                .eq('order_id', order.id)
+                .then(function(itemsRes) {
+                    if (itemsRes.error) throw itemsRes.error;
+                    var items = itemsRes.data || [];
+                    var originalItemsTotal = 0;
+                    var remainingItemsTotal = 0;
+                    var returnedLineCount = 0;
+                    var remainingLineCount = 0;
+                    var itemsHtml = '';
 
-            var warningHtml = '';
-            if (order.runsheet_id) {
-                warningHtml = '<div class="bg-amber-50 border-r-4 border-amber-500 p-3 mb-4 rounded">' +
-                    '<p class="text-amber-700 text-sm"><i class="fa-solid fa-link ml-2"></i> مرتبط بالرانشيت: <strong>' + esc(order.runsheet_id) + '</strong></p></div>';
-            }
+                    items.forEach(function(it) {
+                        var qty = Math.max(0, Number(it.qty) || 0);
+                        var returned = Math.min(qty, Math.max(0, Number(it.qty_returned) || 0));
+                        var remaining = Math.max(0, qty - returned);
+                        var price = Math.max(0, Number(it.unit_price) || 0);
+                        var originalValue = Number(it.line_amount);
+                        if (!Number.isFinite(originalValue)) originalValue = qty * price;
+                        var remainingValue = remaining * price;
+                        var note = String(it.reason_return || it.notes || '').trim();
+                        if (!note && qty > 0 && remaining === 0) note = 'مرتجع بالكامل';
+                        else if (!note && returned > 0) note = 'مرتجع جزئي';
+                        else if (!note) note = '—';
 
-            var itemsHtml = '';
-            var itemsTotal = 0;
-            if (items.length > 0) {
-                itemsHtml = '<table class="w-full border text-sm"><thead class="bg-gray-100"><tr>' +
-                    '<th class="p-2">الصنف</th><th class="p-2 text-center">الوحدة</th><th class="p-2 text-center">الكمية</th>' +
-                    '<th class="p-2 text-center">السعر</th><th class="p-2 text-center">الإجمالي</th></tr></thead><tbody>';
-                for (var i = 0; i < items.length; i++) {
-                    var it = items[i];
-                    var lt = Number(it.line_amount) || (Number(it.qty) * Number(it.unit_price));
-                    itemsTotal += lt;
-                    itemsHtml += '<tr><td class="p-2 font-semibold">' + (it.item_name || '') + '</td>' +
-                        '<td class="p-2 text-center">' + (it.unit || 'حبة') + '</td>' +
-                        '<td class="p-2 text-center">' + it.qty + '</td>' +
-                        '<td class="p-2 text-center">' + Number(it.unit_price).toLocaleString() + '</td>' +
-                        '<td class="p-2 text-center font-bold">' + lt.toLocaleString() + '</td></tr>';
-                }
-                itemsHtml += '</tbody></table>';
-            } else {
-                itemsHtml = '<div class="text-center py-4 text-gray-500">لا توجد أصناف مسجلة لهذا الأوردر</div>';
-            }
+                        originalItemsTotal += originalValue;
+                        remainingItemsTotal += remainingValue;
+                        if (returned > 0) returnedLineCount++;
+                        if (remaining > 0) remainingLineCount++;
 
-            var deliveryFee = Number(order.delivery_fee) || 0;
-            var grandTotal = itemsTotal + deliveryFee;
+                        itemsHtml += '<tr class="' + (qty > 0 && remaining === 0 ? 'bg-red-50' : (returned > 0 ? 'bg-amber-50' : '')) + '">' +
+                            '<td class="p-2 font-semibold">' + esc(it.item_name || it.item_code || '') + '</td>' +
+                            '<td class="p-2 text-center">' + esc(it.unit || 'حبة') + '</td>' +
+                            '<td class="p-2 text-center">' + qty.toLocaleString('ar-EG') + '</td>' +
+                            '<td class="p-2 text-center text-red-600">' + returned.toLocaleString('ar-EG') + '</td>' +
+                            '<td class="p-2 text-center font-bold">' + remaining.toLocaleString('ar-EG') + '</td>' +
+                            '<td class="p-2 text-center">' + price.toLocaleString('ar-EG') + '</td>' +
+                            '<td class="p-2 text-center font-bold">' + remainingValue.toLocaleString('ar-EG') + '</td>' +
+                            '<td class="p-2 text-center">' + esc(note) + '</td></tr>';
+                    });
 
-            var actionButtons = '';
+                    if (!itemsHtml) itemsHtml = '<tr><td colspan="8" class="text-center py-4 text-gray-500">لا توجد أصناف مسجلة لهذا الأوردر</td></tr>';
+                    var deliveryFee = Number(order.delivery_fee) || 0;
+                    var finalTotal = Number(order.total_amount);
+                    if (!Number.isFinite(finalTotal)) finalTotal = remainingItemsTotal + deliveryFee;
+                    var originalTotal = Number(order.original_total_amount);
+                    if (!Number.isFinite(originalTotal)) originalTotal = originalItemsTotal + deliveryFee;
 
-            // ✅ زر تأكيد الأوردر – يظهر لـ Draft أو Pending غير المرتبطة برانشيت
-            if ((order.order_status === 'Draft' || order.order_status === 'Pending') && !order.runsheet_id) {
-                actionButtons += '<button id="btn-confirm-order-modal" class="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-check-circle ml-2"></i> تأكيد الأوردر</button>';
-            }
-
-// ✅ حذف Invoiced من النظام الأم متاح فقط للمستخدم المصرح له تاريخيًا.
-var currentUser = (typeof RW_STATE !== 'undefined' && RW_STATE.app) ? RW_STATE.app.currentUser : null;
-var permissions = (currentUser && Array.isArray(currentUser.permissions)) ? currentUser.permissions : [];
-var canDeleteInvoiced = !!(currentUser && (currentUser.isOwner === true || permissions.indexOf('*') !== -1 || permissions.indexOf('general_manager') !== -1 || permissions.indexOf('sales_manager') !== -1 || permissions.indexOf('sales_supervisor') !== -1));
-var isDeletable = (order.order_status === 'Draft' || order.order_status === 'Pending' || order.order_status === 'Confirmed' || (order.order_status === 'Invoiced' && canDeleteInvoiced));
-var canDelete = isDeletable && !order.runsheet_id;
-if (canDelete) {
-    actionButtons += '<button id="btn-delete-order-modal" class="bg-red-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-trash ml-2"></i> حذف الأوردر</button>';
-}
-
-            // ✅ زر طباعة الفاتورة – يظهر دائماً
-            actionButtons += '<button id="btn-print-order-modal" class="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-print ml-2"></i> طباعة الفاتورة</button>';
-
-            var html = '<div class="text-right">' + warningHtml +
-                '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4">' +
-                    '<div><p><b>العميل:</b> ' + esc(order.customer_name || '') + '</p><p><b>المنطقة:</b> ' + esc(order.area || '') + '</p></div>' +
-                    '<div><p><b>الحالة:</b> <span class="font-bold">' + esc(order.order_status || '') + '</span></p><p><b>الرانشيت:</b> ' + (order.runsheet_id || '---') + '</p></div>' +
-                '</div>' +
-                '<div class="overflow-x-auto">' + itemsHtml + '</div>' +
-                '<div class="bg-gray-50 p-4 rounded-2xl mt-4">' +
-                    '<div class="flex justify-between mb-2"><span>مجموع الأصناف:</span><span>' + Number(itemsTotal).toLocaleString() + ' ' + currency + '</span></div>' +
-                    '<div class="flex justify-between mb-2"><span class="text-blue-600">رسوم التوصيل:</span><span class="text-blue-600">' + Number(deliveryFee).toLocaleString() + ' ' + currency + '</span></div>' +
-                    '<div class="flex justify-between pt-2 border-t"><span class="font-bold">الإجمالي:</span><span class="font-bold text-emerald-600 text-lg">' + Number(grandTotal).toLocaleString() + ' ' + currency + '</span></div>' +
-                '</div>' +
-                '<div class="flex justify-center gap-3 mt-6 pt-4 border-t">' +
-                    actionButtons +
-                '</div>' +
-            '</div>';
-
-            Swal.fire({
-                title: 'تفاصيل الأوردر: ' + code,
-                html: html,
-                width: '900px',
-                showCloseButton: true,
-                showConfirmButton: false,
-                showCancelButton: true,
-                cancelButtonText: 'إغلاق',
-                didOpen: function() {
-                    var confirmBtn = document.getElementById('btn-confirm-order-modal');
-                    if (confirmBtn) {
-                        confirmBtn.onclick = function() {
-                            Swal.close();
-                            _confirmOrderFromDetails(code);
-                        };
+                    var warningHtml = order.runsheet_id
+                        ? '<div class="bg-amber-50 border-r-4 border-amber-500 p-3 mb-4 rounded"><p class="text-amber-700 text-sm"><i class="fa-solid fa-link ml-2"></i> مرتبط بالرانشيت: <strong>' + esc(order.runsheet_id) + '</strong></p></div>'
+                        : '';
+                    var actionButtons = '';
+                    if ((order.order_status === 'Draft' || order.order_status === 'Pending') && !order.runsheet_id) {
+                        actionButtons += '<button id="btn-confirm-order-modal" class="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-check-circle ml-2"></i> تأكيد الأوردر</button>';
                     }
-
-                    var deleteBtn = document.getElementById('btn-delete-order-modal');
-                    if (deleteBtn) {
-                        deleteBtn.onclick = function() { Swal.close(); _delete(code); };
+                    var currentUser = (typeof RW_STATE !== 'undefined' && RW_STATE.app) ? RW_STATE.app.currentUser : null;
+                    var permissions = (currentUser && Array.isArray(currentUser.permissions)) ? currentUser.permissions : [];
+                    var canDeleteInvoiced = !!(currentUser && (currentUser.isOwner === true || permissions.indexOf('*') !== -1 || permissions.indexOf('general_manager') !== -1 || permissions.indexOf('sales_manager') !== -1 || permissions.indexOf('sales_supervisor') !== -1));
+                    var canDelete = ['Draft', 'Pending', 'Confirmed'].indexOf(order.order_status) !== -1 ||
+                        (order.order_status === 'Invoiced' && canDeleteInvoiced);
+                    if (canDelete && !order.runsheet_id) {
+                        actionButtons += '<button id="btn-delete-order-modal" class="bg-red-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-trash ml-2"></i> حذف الأوردر</button>';
                     }
+                    actionButtons += '<button id="btn-print-order-modal" class="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold shadow"><i class="fa-solid fa-print ml-2"></i> طباعة الفاتورة</button>';
 
-                    var printBtn = document.getElementById('btn-print-order-modal');
-                    if (printBtn) {
-                        printBtn.onclick = function() { _printOrder(code); };
-                    }
-                }
-            });
-        });
-    }).catch(function(e) { hideLoader(); showToast('فشل التحميل', 'error'); console.error(e); });
+                    var html = '<div class="text-right">' + warningHtml +
+                        '<div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-2xl mb-4">' +
+                        '<div><p><b>العميل:</b> ' + esc(order.customer_name || '') + '</p><p><b>المنطقة:</b> ' + esc(order.area || '') + '</p></div>' +
+                        '<div><p><b>الحالة:</b> <span class="font-bold">' + esc(order.order_status || '') + '</span></p><p><b>الرانشيت:</b> ' + esc(order.runsheet_id || '---') + '</p></div></div>' +
+                        '<div class="overflow-x-auto"><table class="w-full border text-sm"><thead class="bg-gray-100"><tr>' +
+                        '<th class="p-2">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">الكمية الأصلية</th><th class="p-2">المرتجع</th><th class="p-2">المتبقي</th><th class="p-2">السعر</th><th class="p-2">قيمة المتبقي التقريبية</th><th class="p-2">سبب/ملاحظة</th>' +
+                        '</tr></thead><tbody>' + itemsHtml + '</tbody></table></div>' +
+                        '<div class="text-xs text-gray-500 mt-2">أسطر الفاتورة الأصلية: ' + items.length +
+                        ' | أسطر بها مرتجع: ' + returnedLineCount + ' | أسطر متبقية: ' + remainingLineCount + '</div>' +
+                        '<div class="bg-gray-50 p-4 rounded-2xl mt-4">' +
+                        '<div class="flex justify-between mb-2"><span>قيمة الأصناف الأصلية المسجلة/المحسوبة:</span><span>' + originalItemsTotal.toLocaleString('ar-EG') + ' ' + esc(currency) + '</span></div>' +
+                        '<div class="flex justify-between mb-2"><span>قيمة المتبقي بسعر الوحدة قبل الخصومات:</span><span>' + remainingItemsTotal.toLocaleString('ar-EG') + ' ' + esc(currency) + '</span></div>' +
+                        '<div class="flex justify-between mb-2"><span>الإجمالي الأصلي المسجل:</span><span>' + originalTotal.toLocaleString('ar-EG') + ' ' + esc(currency) + '</span></div>' +
+                        '<div class="flex justify-between mb-2"><span>رسوم التوصيل المسجلة:</span><span>' + deliveryFee.toLocaleString('ar-EG') + ' ' + esc(currency) + '</span></div>' +
+                        '<div class="flex justify-between pt-2 border-t"><span class="font-bold">الإجمالي النهائي المسجل بالنظام:</span><span class="font-bold text-emerald-600 text-lg">' + finalTotal.toLocaleString('ar-EG') + ' ' + esc(currency) + '</span></div>' +
+                        '<p class="text-xs text-gray-500 mt-2">الإجمالي النهائي مأخوذ من orders.total_amount؛ قيمة المتبقي المعروضة تقريبية قبل تسوية الخصومات والرسوم.</p></div>' +
+                        '<div class="flex justify-center gap-3 mt-6 pt-4 border-t">' + actionButtons + '</div></div>';
+
+                    Swal.fire({
+                        title: 'تفاصيل الأوردر: ' + esc(code),
+                        html: html,
+                        width: '1100px',
+                        showCloseButton: true,
+                        showConfirmButton: false,
+                        showCancelButton: true,
+                        cancelButtonText: 'إغلاق',
+                        didOpen: function() {
+                            var confirmBtn = document.getElementById('btn-confirm-order-modal');
+                            if (confirmBtn) confirmBtn.onclick = function() { Swal.close(); _confirmOrderFromDetails(code); };
+                            var deleteBtn = document.getElementById('btn-delete-order-modal');
+                            if (deleteBtn) deleteBtn.onclick = function() { Swal.close(); _delete(code); };
+                            var printBtn = document.getElementById('btn-print-order-modal');
+                            if (printBtn) printBtn.onclick = function() { _printOrder(code); };
+                        }
+                    });
+                });
+        })
+        .catch(function(e) {
+            showToast('فشل تحميل التفاصيل', 'error');
+            console.error('Order details error:', e);
+        })
+        .finally(function() { hideLoader(); });
 }
     function _printOrder(code) {
         showLoader('جاري تحضير الطباعة...');
@@ -10797,52 +10839,73 @@ if (canDelete) {
             });
     }
     
-    function _buildPrintWindow(order, items, settings) {
-        hideLoader();
-        
-        var companyName = settings.company_name || 'الروائع';
-        var taxRate = Number(settings.tax_rate) || 0;
-        var vatNumber = settings.vat_number || '310000000000003';
-        var registeredName = settings.registered_name || companyName;
-        var businessAddress = settings.business_address || '';
+function _buildPrintWindow(order, items, settings) {
+    hideLoader();
+    settings = settings || {};
 
-        var printWindow = window.open('', '_blank');
-        if (!printWindow) { showToast('الرجاء السماح للنوافذ المنبثقة', 'warning'); return; }
-
-        var itemsHtml = '', itemsTotal = 0;
-        for (var i = 0; i < items.length; i++) {
-            var it = items[i];
-            var lt = Number(it.line_amount) || (Number(it.qty) * Number(it.unit_price));
-            itemsTotal += lt;
-            itemsHtml += '<tr><td class="border p-2">' + esc(it.item_name) + '</td>' +
-                '<td class="border p-2 text-center">' + (it.unit || 'حبة') + '</td>' +
-                '<td class="border p-2 text-center">' + it.qty + '</td>' +
-                '<td class="border p-2 text-center">' + Number(it.unit_price).toLocaleString() + '</td>' +
-                '<td class="border p-2 text-center">' + lt.toLocaleString() + '</td></tr>';
-        }
-
-        var deliveryFee = Number(order.delivery_fee) || 0;
-        var grandTotal = itemsTotal + deliveryFee;
-        var beforeTax = itemsTotal + deliveryFee;
-        var taxAmount = Math.round(beforeTax * taxRate) / 100;
-
-        var invoiceDate = order.order_date ? new Date(order.order_date).toISOString() : new Date().toISOString();
-        var qrBase64 = generateQRInvoiceBase64(registeredName, vatNumber, invoiceDate, String(grandTotal), String(taxAmount));
-
-        var html = '<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><title>فاتورة ' + esc(order.order_code) + '</title>' +
-            '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>' +
-            '<style>body{font-family:"Cairo",sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:right}th{background:#f2f2f2}</style></head>' +
-            '<body><div style="text-align:center;border-bottom:2px solid #000;padding-bottom:10px"><h1>فاتورة بيع</h1><p>رقم: ' + esc(order.order_code) + '</p><p>التاريخ: ' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p></div>' +
-            '<p><strong>البائع:</strong> ' + esc(registeredName) + ' | <strong>رقم ضريبي:</strong> ' + esc(vatNumber) + '</p>' +
-            '<p><strong>العميل:</strong> ' + esc(order.customer_name || '') + '</p><p><strong>المنطقة:</strong> ' + esc(order.area || '') + '</p>' +
-            '<table><thead><tr><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead><tbody>' + itemsHtml + '</tbody></table>' +
-            '<div style="font-weight:bold;font-size:18px;margin-top:20px">الإجمالي: ' + Number(order.total_amount || 0).toLocaleString() + ' ' + currency + '</div>' +
-            '<div style="text-align:center;margin-top:20px;padding-top:15px;border-top:1px dashed #ccc;"><p style="font-weight:bold">رمز الفاتورة الإلكترونية</p><div id="print-qrcode-container" style="display:inline-block;"></div><p style="font-size:11px;color:#888">امسح الكود للتحقق من الفاتورة</p></div>' +
-            '<script>window.onload=function(){try{var c=document.getElementById("print-qrcode-container");if(c&&typeof QRCode!=="undefined"){c.innerHTML="";new QRCode(c,{text:"' + qrBase64 + '",width:150,height:150,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}}catch(e){}window.print();};<\/script></body></html>';
-        printWindow.document.write(html);
-        printWindow.document.close();
+    var companyName = settings.company_name || 'الروائع';
+    var taxRate = Number(settings.tax_rate) || 0;
+    var vatNumber = settings.vat_number || '310000000000003';
+    var registeredName = settings.registered_name || companyName;
+    var businessAddress = settings.business_address || '';
+    var printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        showToast('الرجاء السماح بالنوافذ المنبثقة', 'warning');
+        return;
     }
 
+    var itemsHtml = '';
+    for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        var qty = Math.max(0, Number(it.qty) || 0);
+        var returned = Math.min(qty, Math.max(0, Number(it.qty_returned) || 0));
+        var remaining = Math.max(0, qty - returned);
+        var price = Math.max(0, Number(it.unit_price) || 0);
+        var remainingValue = remaining * price;
+        var note = String(it.reason_return || it.notes || '').trim();
+        if (!note && qty > 0 && remaining === 0) note = 'مرتجع بالكامل';
+        else if (!note && returned > 0) note = 'مرتجع جزئي';
+        else if (!note) note = '—';
+
+        itemsHtml += '<tr>' +
+            '<td class="border p-2">' + esc(it.item_name || it.item_code || '') + '</td>' +
+            '<td class="border p-2 text-center">' + esc(it.unit || 'حبة') + '</td>' +
+            '<td class="border p-2 text-center">' + qty.toLocaleString('ar-EG') + '</td>' +
+            '<td class="border p-2 text-center">' + returned.toLocaleString('ar-EG') + '</td>' +
+            '<td class="border p-2 text-center">' + remaining.toLocaleString('ar-EG') + '</td>' +
+            '<td class="border p-2 text-center">' + price.toLocaleString('ar-EG') + '</td>' +
+            '<td class="border p-2 text-center">' + remainingValue.toLocaleString('ar-EG') + '</td>' +
+            '<td class="border p-2">' + esc(note) + '</td></tr>';
+    }
+    if (!itemsHtml) itemsHtml = '<tr><td colspan="8" class="border p-2 text-center">لا توجد أصناف</td></tr>';
+
+    var deliveryFee = Number(order.delivery_fee) || 0;
+    var finalTotal = Number(order.total_amount);
+    if (!Number.isFinite(finalTotal)) finalTotal = deliveryFee;
+    var originalTotal = Number(order.original_total_amount);
+    if (!Number.isFinite(originalTotal)) originalTotal = finalTotal;
+    var taxAmount = Math.round((finalTotal * taxRate / 100) * 100) / 100;
+    var invoiceDate = order.order_date ? new Date(order.order_date).toISOString() : new Date().toISOString();
+    var qrBase64 = generateQRInvoiceBase64(registeredName, vatNumber, invoiceDate, String(finalTotal), String(taxAmount));
+
+    var html = '<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>فاتورة ' + esc(order.order_code) + '</title>' +
+        '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>' +
+        '<style>body{font-family:"Cairo",sans-serif;padding:20px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:8px;text-align:right}th{background:#f2f2f2}.muted{color:#666;font-size:11px}</style></head>' +
+        '<body><div style="text-align:center;border-bottom:2px solid #000;padding-bottom:10px"><h1>فاتورة بيع</h1><p>رقم: ' + esc(order.order_code) + '</p><p>التاريخ: ' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p></div>' +
+        '<p><strong>البائع:</strong> ' + esc(registeredName) + ' | <strong>رقم ضريبي:</strong> ' + esc(vatNumber) + '</p>' +
+        '<p><strong>العنوان:</strong> ' + esc(businessAddress) + '</p><p><strong>العميل:</strong> ' + esc(order.customer_name || '') + '</p><p><strong>المنطقة:</strong> ' + esc(order.area || '') + '</p>' +
+        '<p><strong>الحالة:</strong> ' + esc(order.order_status || '') + '</p>' +
+        '<table><thead><tr><th>الصنف</th><th>الوحدة</th><th>الأصلي</th><th>المرتجع</th><th>المتبقي</th><th>السعر</th><th>قيمة المتبقي التقريبية</th><th>سبب/ملاحظة</th></tr></thead><tbody>' + itemsHtml + '</tbody></table>' +
+        '<p class="muted">الكميات الأصلية محفوظة للتدقيق؛ قيمة المتبقي تقريبية قبل تسوية الخصومات.</p>' +
+        '<div style="margin-top:20px"><p>الإجمالي الأصلي المسجل: ' + originalTotal.toLocaleString('ar-EG') + ' ' + esc(currency) + '</p>' +
+        '<p>رسوم التوصيل المسجلة: ' + deliveryFee.toLocaleString('ar-EG') + ' ' + esc(currency) + '</p>' +
+        '<p style="font-weight:bold;font-size:18px">الإجمالي النهائي المسجل: ' + finalTotal.toLocaleString('ar-EG') + ' ' + esc(currency) + '</p>' +
+        '<p>ضريبة القيمة المضافة المحسوبة على الإجمالي النهائي وفق الإعداد: ' + taxAmount.toLocaleString('ar-EG') + '</p></div>' +
+        '<div style="text-align:center;margin-top:20px;padding-top:15px;border-top:1px dashed #ccc"><p style="font-weight:bold">رمز الفاتورة الإلكترونية</p><div id="print-qrcode-container" style="display:inline-block"></div></div>' +
+        '<script>window.onload=function(){try{var c=document.getElementById("print-qrcode-container");if(c&&typeof QRCode!=="undefined"){c.innerHTML="";new QRCode(c,{text:"' + qrBase64 + '",width:150,height:150,colorDark:"#000000",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}}catch(e){}window.print();};<\/script></body></html>';
+    printWindow.document.write(html);
+    printWindow.document.close();
+}
     // ========== إنشاء وضم الرانشيتات ==========
     async function _createRS() {
         var selected = _getSelectedOrders();
@@ -10967,27 +11030,37 @@ function _loadRunsheetCodes() {
 }
 
 async function _refreshData() {
-    var ordRes = await supabase.from('orders').select('*, runsheets(runsheet_code)').eq('company_id', _rwCompanyId());
+    var ordRes = await supabase.from('orders')
+        .select('*, runsheets(runsheet_code)')
+        .eq('company_id', _rwCompanyId());
+    if (ordRes.error) throw ordRes.error;
+
     ordersData = (ordRes.data || []).map(function(o) {
-        if (o.runsheets && o.runsheets.runsheet_code) {
-            o._runsheetCode = o.runsheets.runsheet_code;
-        } else {
-            o._runsheetCode = null;
-        }
+        o._runsheetCode = o.runsheets && o.runsheets.runsheet_code
+            ? o.runsheets.runsheet_code
+            : null;
         return o;
     });
+
     var orderIds = ordersData.map(function(o) { return o.id; }).filter(Boolean);
-var detRes = orderIds.length
-    ? await supabase.from('order_details').select('order_id, item_code').in('order_id', orderIds)
-    : { data: [] };
-    var details = detRes.data || [];
+    var detRes = orderIds.length
+        ? await supabase.from('order_details')
+            .select('order_id, qty, qty_returned')
+            .in('order_id', orderIds)
+        : { data: [], error: null };
+    if (detRes.error) throw detRes.error;
+
     var itemsCountMap = {};
+    var details = detRes.data || [];
     for (var i = 0; i < details.length; i++) {
-        var oid = details[i].order_id;
-        if (oid) itemsCountMap[oid] = (itemsCountMap[oid] || 0) + 1;
+        var d = details[i];
+        var originalQty = Math.max(0, Number(d.qty) || 0);
+        var returnedQty = Math.min(originalQty, Math.max(0, Number(d.qty_returned) || 0));
+        if (originalQty - returnedQty > 0) {
+            itemsCountMap[d.order_id] = (itemsCountMap[d.order_id] || 0) + 1;
+        }
     }
     for (var j = 0; j < ordersData.length; j++) {
-        // ✅ التصحيح الوحيد: استخدام ordersData[j].id بدلاً من ordersData[j].order_code
         ordersData[j].itemsCount = itemsCountMap[ordersData[j].id] || 0;
     }
     _applyFilters();
