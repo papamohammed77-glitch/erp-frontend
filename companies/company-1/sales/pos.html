@@ -1291,34 +1291,59 @@ self._viewActiveInvoice = function(orderCode) {
             '<p><strong>التاريخ:</strong> ' + esc(order.order_date) + '</p>' +
             '<p><strong>العميل:</strong> ' + esc(order.customer_name || 'عميل نقدي') + '</p>' +
             '<p><strong>الحالة:</strong> ' + esc(order.order_status) + '</p>' +
-            '<p><strong>الإجمالي:</strong> <span class="' +
+            '<p><strong>الإجمالي النهائي:</strong> <span class="' +
                 (cancelled ? 'text-red-400 line-through' : 'text-emerald-400') +
                 ' font-bold text-lg">' + fmtNum(Number(order.total_amount) || 0) +
                 ' ' + esc(currency) + '</span></p>' +
+            '<p class="text-[10px] text-slate-400 mt-1">الكمية الأصلية محفوظة للمراجعة؛ المتبقي والملاحظات يعكسان المرتجعات المسجلة.</p>' +
         '</div>';
 
         if (details.length) {
             h += '<div class="overflow-x-auto"><table class="w-full text-sm border border-slate-700">' +
                 '<thead class="bg-slate-800"><tr>' +
                     '<th class="p-2 border border-slate-700">الصنف</th>' +
-                    '<th class="p-2 border border-slate-700 text-center">الكمية</th>' +
+                    '<th class="p-2 border border-slate-700 text-center">الكمية الأصلية</th>' +
+                    '<th class="p-2 border border-slate-700 text-center">المرتجع</th>' +
+                    '<th class="p-2 border border-slate-700 text-center">المتبقي</th>' +
                     '<th class="p-2 border border-slate-700 text-center">السعر</th>' +
-                    '<th class="p-2 border border-slate-700 text-center">الإجمالي</th>' +
+                    '<th class="p-2 border border-slate-700 text-center">قيمة المتبقي</th>' +
+                    '<th class="p-2 border border-slate-700 text-center">ملاحظات</th>' +
                 '</tr></thead><tbody>';
 
+            var returnedLineCount = 0;
+            var remainingLineCount = 0;
             for (var i = 0; i < details.length; i++) {
                 var det = details[i];
-                var qty = Number(det.qty) || 0;
+                var qty = Math.max(0, Number(det.qty) || 0);
+                var qtyReturned = Math.min(qty, Math.max(0, Number(det.qty_returned) || 0));
+                var qtyRemaining = Math.max(0, qty - qtyReturned);
                 var price = Number(det.unit_price) || 0;
-                h += '<tr class="border-b border-slate-700">' +
-                    '<td class="p-2 border border-slate-700 font-semibold">' + esc(det.item_name || '') + '</td>' +
+                var remainingValue = qtyRemaining * price;
+                var hasReturn = qtyReturned > 0;
+                var fullyReturned = qty > 0 && qtyRemaining <= 0;
+                var note = fullyReturned ? 'مرتجع بالكامل' : (hasReturn ? 'مرتجع جزئي' : '—');
+
+                if (hasReturn) returnedLineCount++;
+                if (qtyRemaining > 0) remainingLineCount++;
+
+                h += '<tr class="border-b border-slate-700 ' + (fullyReturned ? 'bg-red-950/20' : (hasReturn ? 'bg-amber-950/10' : '')) + '">' +
+                    '<td class="p-2 border border-slate-700 font-semibold">' + esc(det.item_name || det.item_code || '') + '</td>' +
                     '<td class="p-2 border border-slate-700 text-center">' + fmtNum(qty) + '</td>' +
+                    '<td class="p-2 border border-slate-700 text-center ' + (hasReturn ? 'text-red-400 font-bold' : '') + '">' + fmtNum(qtyReturned) + '</td>' +
+                    '<td class="p-2 border border-slate-700 text-center font-bold">' + fmtNum(qtyRemaining) + '</td>' +
                     '<td class="p-2 border border-slate-700 text-center">' + fmtNum(price) + '</td>' +
-                    '<td class="p-2 border border-slate-700 text-center font-bold">' + fmtNum(qty * price) + '</td>' +
+                    '<td class="p-2 border border-slate-700 text-center font-bold">' + fmtNum(remainingValue) + '</td>' +
+                    '<td class="p-2 border border-slate-700 text-center ' + (hasReturn ? 'text-amber-300 font-bold' : 'text-slate-500') + '">' + esc(note) + '</td>' +
                 '</tr>';
             }
 
-            h += '</tbody></table></div>';
+            h += '</tbody></table></div>' +
+                '<div class="flex flex-wrap gap-3 text-xs mt-3 text-slate-400">' +
+                    '<span>عدد أسطر الفاتورة الأصلية: ' + fmtNum(details.length) + '</span>' +
+                    '<span>أسطر بها مرتجع: ' + fmtNum(returnedLineCount) + '</span>' +
+                    '<span>أسطر متبقية: ' + fmtNum(remainingLineCount) + '</span>' +
+                '</div>' +
+                '<p class="text-[10px] text-slate-500 mt-2">قيمة المتبقي لكل سطر قبل توزيع أي خصم عام على الفاتورة؛ إجمالي الفاتورة النهائي أعلاه مأخوذ من قاعدة البيانات.</p>';
         } else {
             h += '<div class="text-center py-4 text-slate-400">لا توجد أصناف مسجلة</div>';
         }
@@ -1328,7 +1353,7 @@ self._viewActiveInvoice = function(orderCode) {
         Swal.fire({
             title: cancelled ? 'استعراض فاتورة ملغاة' : 'تفاصيل الفاتورة',
             html: h,
-            width: '650px',
+            width: '900px',
             showCloseButton: true,
             showConfirmButton: false,
             customClass: {
