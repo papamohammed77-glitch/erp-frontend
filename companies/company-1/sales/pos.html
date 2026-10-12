@@ -106,7 +106,7 @@
                 </div>
                 <div id="cartActionsReturn" class="hidden grid grid-cols-1 gap-1.5 pt-1"><button onclick="POS._cancelReturnScreen()" class="bg-red-900/30 text-red-400 py-2 rounded-lg font-bold text-xs border border-red-700/30 hover:bg-red-900/50 transition">🗑 إلغاء المرتجع</button></div>
                 <button id="btnPayNormal" onclick="POS.openPaymentModal()" class="btn-emerald mt-2"><i class="fa-solid fa-check ml-2"></i> إتمام الدفع وحفظ الفاتورة (Space)</button>
-                <button id="btnPayReturn" onclick="POS.openReturnPaymentModal()" class="btn-red mt-2 hidden"><i class="fa-solid fa-undo ml-2"></i> إتمام المرتجع وإعادة المبلغ للعميل</button>
+                <button id="btnPayReturn" onclick="POS.openReturnPaymentModal()" class="btn-red mt-2 hidden"><i class="fa-solid fa-undo ml-2"></i> تسجيل المرتجع ورد النقد (للفواتير النقدية)</button>
             </div>
         </aside>
     </main>
@@ -126,8 +126,8 @@
             <div class="bg-slate-800 p-4 rounded-xl text-center"><p class="text-xs text-slate-400">المبلغ المطلوب</p><p id="modalPayableTotal" class="text-3xl font-black text-amber-400 font-mono mt-1">0.00</p></div>
             <div class="grid grid-cols-3 gap-2">
                 <button onclick="POS.setPaymentMethod('cash')" id="btnPayCash" class="py-2.5 rounded-xl border-2 border-emerald-500 bg-emerald-950/40 text-emerald-300 font-bold text-sm flex flex-col items-center"><span>💵</span><span>نقدي</span></button>
-                <button onclick="POS.setPaymentMethod('card')" id="btnPayCard" class="py-2.5 rounded-xl border border-slate-600 bg-slate-800 text-slate-400 font-bold text-sm flex flex-col items-center"><span>💳</span><span>بطاقة</span></button>
-                <button onclick="POS.setPaymentMethod('split')" id="btnPaySplit" class="py-2.5 rounded-xl border border-slate-600 bg-slate-800 text-slate-400 font-bold text-sm flex flex-col items-center"><span>🔀</span><span>مختلط</span></button>
+                <button type="button" id="btnPayCard" disabled aria-disabled="true" title="يتطلب عقد تسوية محاسبيًا معتمدًا" class="py-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-500 font-bold text-sm flex flex-col items-center opacity-60 cursor-not-allowed"><span>💳</span><span>بطاقة — قيد الربط</span></button>
+                <button type="button" id="btnPaySplit" disabled aria-disabled="true" title="يتطلب توزيعًا محاسبيًا معتمدًا لكل وسيلة دفع" class="py-2.5 rounded-xl border border-slate-700 bg-slate-900 text-slate-500 font-bold text-sm flex flex-col items-center opacity-60 cursor-not-allowed"><span>🔀</span><span>مختلط — قيد الربط</span></button>
             </div>
             <div id="splitPaymentFields" class="hidden space-y-2">
                 <input type="number" id="splitCash" placeholder="نقدي" class="w-full bg-slate-800 border border-slate-600 text-white p-2.5 rounded-xl text-sm font-bold" oninput="POS.calcSplitRemaining()">
@@ -155,8 +155,8 @@
             <div class="bg-slate-800 p-4 rounded-xl text-center"><p class="text-xs text-slate-400">المبلغ المستحق للعميل</p><p id="modalReturnTotal" class="text-3xl font-black text-red-400 font-mono mt-1">0.00</p></div>
             <div class="bg-red-950/30 border border-red-700/50 p-3 rounded-xl text-center"><p class="text-xs text-red-400">سيتم إعادة المخزون وإنشاء قيد عكسي تلقائياً</p></div>
 <div class="bg-amber-950/30 border border-amber-700/50 p-3 rounded-xl text-center">
-    <p class="text-sm font-bold text-amber-300">هذه الشاشة تسجل المرتجع والإشعار الدائن فقط.</p>
-    <p class="text-xs text-slate-300 mt-1">لا يتم رد نقدي أو رد للبطاقة حتى ربط عملية التسوية المحاسبية واعتمادها في النظام.</p>
+    <p class="text-sm font-bold text-amber-300">المرتجع النقدي يعيد المخزون وينشئ الإشعار الدائن ويرد المبلغ إلى خزينة إيصال البيع الأصلي ضمن عقد الخادم.</p>
+    <p class="text-xs text-slate-300 mt-1">رد البطاقة أو المحفظة غير مدعوم حاليًا؛ لا تعتمد المرتجع غير النقدي من هذه الشاشة.</p>
 </div>
         </div>
         <div class="p-4 bg-slate-800 border-t border-slate-700 flex gap-2">
@@ -236,11 +236,22 @@ var POS = (function() {
     };
 
     self._setupUser = function(user) {
-        var isOwner = user.isOwner, perms = user.permissions || [];
-        if (!isOwner && perms.indexOf('pos') === -1) { RW_UI.showError('غير مصرح'); RW_Auth.doLogout(); return; }
-        currentUser = user; pubUserId = user.id;
-        supabase.from('app_settings').select('*').limit(1).single().then(function(sRes) { if (sRes.data) { currency = sRes.data.currency || 'EGP'; } });
-        RW_ImageCache.loadAll(function() { self.enterApp(); });
+        var isOwner = user.isOwner;
+        var perms = user.permissions || [];
+
+        if (!isOwner && perms.indexOf('pos') === -1) {
+            RW_UI.showError('غير مصرح');
+            RW_Auth.doLogout();
+            return;
+        }
+
+        currentUser = user;
+        pubUserId = user.id;
+
+        // Currency is loaded from company-scoped get_pos_bootstrap_data() inside syncDown().
+        RW_ImageCache.loadAll(function() {
+            self.enterApp();
+        });
     };
 
 self.enterApp = function() {
