@@ -85,6 +85,7 @@
                 <div class="flex gap-2">
                     <div class="relative flex-1"><select id="posCustSelect" onchange="POS.onCustomerChange()" class="w-full p-2.5 bg-slate-800 border border-slate-600 rounded-lg text-sm font-bold text-white appearance-none"><option value="">👤 عميل نقدي (عام)</option></select></div>
                     <div class="relative w-40"><select id="posBranchSel" onchange="POS.onBranchChange()" class="w-full p-2.5 bg-slate-800 border border-slate-600 rounded-lg text-sm font-bold text-white appearance-none"><option value="">🏭 اختر الفرع</option></select></div>
+<button type="button" id="posShiftButton" onclick="POS.openShiftModal()" class="shrink-0 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black"><span id="posShiftButtonLabel">الوردية: جارٍ التحقق</span></button>
                 </div>
                 <div id="fastSellingZone" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar text-xs"><span class="text-slate-500 whitespace-nowrap self-center">🔥 الأكثر مبيعاً:</span><div id="fastSellingItems" class="flex gap-2"></div></div>
                 <div id="quickCategories" class="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar"><button onclick="POS.setCategory('الكل')" class="cat-btn whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-bold bg-blue-600 text-white">الكل</button></div>
@@ -166,6 +167,46 @@
     </div>
 </div>
 
+<div id="posShiftModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[70] hidden flex items-center justify-center p-4">
+  <div class="bg-slate-900 border border-indigo-600 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl">
+    <div class="p-4 bg-indigo-950/60 border-b border-indigo-700 flex justify-between items-center">
+      <h3 class="font-black text-lg text-indigo-200">إدارة الوردية والخزينة</h3>
+      <button type="button" onclick="POS.closeShiftModal()" class="text-slate-400 hover:text-white text-2xl">&times;</button>
+    </div>
+    <div class="p-4 space-y-4">
+      <div id="posShiftOpenPanel" class="space-y-3">
+        <p class="text-sm text-slate-300">اختر الفرع أولًا، ثم سجّل النقدية الموجودة فعليًا في بداية الوردية.</p>
+        <label class="block text-xs text-slate-400">العهدة الافتتاحية</label>
+        <input id="posShiftOpeningFloat" type="number" min="0" step="0.01" value="0" class="w-full p-3 rounded-lg bg-slate-800 border border-slate-600 text-white">
+        <button type="button" onclick="POS.startShift()" class="w-full p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black">بدء الوردية</button>
+      </div>
+      <div id="posShiftActivePanel" class="hidden space-y-3">
+        <div class="grid grid-cols-2 gap-2">
+          <div class="p-3 rounded-xl bg-slate-800"><div class="text-xs text-slate-400">النقد المتوقع</div><div id="posShiftExpected" class="text-xl font-black text-emerald-300">0.00</div></div>
+          <div class="p-3 rounded-xl bg-slate-800"><div class="text-xs text-slate-400">عدد الفواتير</div><div id="posShiftSaleCount" class="text-xl font-black text-white">0</div></div>
+          <div class="p-3 rounded-xl bg-slate-800"><div class="text-xs text-slate-400">قبض نقدي</div><div id="posShiftCashSales" class="font-bold text-white">0.00</div></div>
+          <div class="p-3 rounded-xl bg-slate-800"><div class="text-xs text-slate-400">رد نقدي</div><div id="posShiftCashRefunds" class="font-bold text-red-300">0.00</div></div>
+        </div>
+        <p class="text-xs text-slate-400">X-Report قراءة فقط. إغلاق الوردية يحفظ عدّ النقد والفرق ولا ينشئ قيد قبض مكررًا.</p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <label class="text-xs text-slate-400">200<input id="posShiftCount200" type="number" min="0" step="1" value="0" oninput="POS.updateShiftCountTotal()" class="mt-1 w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"></label>
+          <label class="text-xs text-slate-400">100<input id="posShiftCount100" type="number" min="0" step="1" value="0" oninput="POS.updateShiftCountTotal()" class="mt-1 w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"></label>
+          <label class="text-xs text-slate-400">50<input id="posShiftCount50" type="number" min="0" step="1" value="0" oninput="POS.updateShiftCountTotal()" class="mt-1 w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"></label>
+          <label class="text-xs text-slate-400">20<input id="posShiftCount20" type="number" min="0" step="1" value="0" oninput="POS.updateShiftCountTotal()" class="mt-1 w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"></label>
+          <label class="text-xs text-slate-400">10<input id="posShiftCount10" type="number" min="0" step="1" value="0" oninput="POS.updateShiftCountTotal()" class="mt-1 w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"></label>
+          <label class="text-xs text-slate-400">5<input id="posShiftCount5" type="number" min="0" step="1" value="0" oninput="POS.updateShiftCountTotal()" class="mt-1 w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"></label>
+          <label class="text-xs text-slate-400">1<input id="posShiftCount1" type="number" min="0" step="1" value="0" oninput="POS.updateShiftCountTotal()" class="mt-1 w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"></label>
+          <label class="text-xs text-slate-400">0.5<input id="posShiftCount05" type="number" min="0" step="1" value="0" oninput="POS.updateShiftCountTotal()" class="mt-1 w-full p-2 bg-slate-800 border border-slate-600 rounded-lg text-white"></label>
+        </div>
+        <div class="p-3 rounded-xl bg-slate-800 flex justify-between"><span class="text-slate-300">إجمالي النقد المعدود</span><strong id="posShiftCountTotal" class="text-xl text-white">0.00</strong></div>
+        <label class="block text-xs text-slate-400">سبب الفرق (إلزامي إذا اختلف المعدود عن المتوقع)</label>
+        <textarea id="posShiftDiscrepancyReason" rows="2" class="w-full p-3 rounded-lg bg-slate-800 border border-slate-600 text-white" placeholder="سبب فرق العهدة إن وجد"></textarea>
+        <button type="button" onclick="POS.closeShift()" class="w-full p-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black">إغلاق الوردية وإصدار Z-Report</button>
+      </div>
+    </div>
+  </div>
+</div>
+    
 <script>
 function fmtNum(n) { return Number(n || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2 }); }
 
@@ -226,6 +267,187 @@ var POS = (function() {
         });
     };
 
+
+    self._shiftLoaded = false;
+self._activeShiftId = null;
+self._shiftSummary = null;
+
+self._newShiftOperationId = function() {
+    var c = window.crypto, bytes, hex = [], i;
+    if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+    if (!c || typeof c.getRandomValues !== 'function') return null;
+    bytes = new Uint8Array(16);
+    c.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    for (i = 0; i < bytes.length; i++) hex.push(bytes[i].toString(16).padStart(2, '0'));
+    return hex.slice(0,4).join('') + '-' + hex.slice(4,6).join('') + '-' + hex.slice(6,8).join('') + '-' + hex.slice(8,10).join('') + '-' + hex.slice(10).join('');
+};
+
+self._getShiftTerminalCode = function() {
+    var code = '';
+    try { code = localStorage.getItem('rawaea_pos_terminal_code') || ''; } catch (e) {}
+    if (!code) {
+        var op = self._newShiftOperationId();
+        code = 'POS-' + (op || (String(Date.now()) + '-' + String(Math.floor(Math.random() * 100000000))));
+        try { localStorage.setItem('rawaea_pos_terminal_code', code); } catch (e) {}
+    }
+    return code;
+};
+
+self._renderShiftState = function() {
+    var label = RW_UI.byId('posShiftButtonLabel');
+    var openPanel = RW_UI.byId('posShiftOpenPanel');
+    var activePanel = RW_UI.byId('posShiftActivePanel');
+    var s = self._shiftSummary && self._shiftSummary.shift;
+    if (label) label.innerText = self._activeShiftId ? ('وردية مفتوحة • ' + Number((self._shiftSummary || {}).expected_cash || 0).toFixed(2)) : 'بدء الوردية';
+    if (openPanel) openPanel.classList.toggle('hidden', !!self._activeShiftId);
+    if (activePanel) activePanel.classList.toggle('hidden', !self._activeShiftId);
+    if (s) {
+        RW_UI.safeText(RW_UI.byId('posShiftExpected'), Number((self._shiftSummary || {}).expected_cash || 0).toFixed(2));
+        RW_UI.safeText(RW_UI.byId('posShiftSaleCount'), String((self._shiftSummary || {}).sale_count || 0));
+        RW_UI.safeText(RW_UI.byId('posShiftCashSales'), Number((self._shiftSummary || {}).cash_sales || 0).toFixed(2));
+        RW_UI.safeText(RW_UI.byId('posShiftCashRefunds'), Number((self._shiftSummary || {}).cash_refunds || 0).toFixed(2));
+    }
+};
+
+self.loadShiftState = function(callback) {
+    if (!currentUser || typeof supabase === 'undefined' || !supabase || typeof supabase.rpc !== 'function') return;
+    supabase.rpc('pos_get_shift_summary', { p_shift_id: null }).then(function(res) {
+        if (res.error || !res.data || res.data.success !== true) {
+            self._shiftLoaded = false;
+            self._activeShiftId = null;
+            self._shiftSummary = null;
+            self._renderShiftState();
+            console.error('POS shift summary failed:', res.error || res.data);
+            if (typeof callback === 'function') callback(false);
+            return;
+        }
+        self._shiftSummary = res.data;
+        self._activeShiftId = res.data.active_shift && res.data.shift ? res.data.shift.id : null;
+        self._shiftLoaded = true;
+        self._renderShiftState();
+        if (typeof callback === 'function') callback(true);
+    }).catch(function(err) {
+        self._shiftLoaded = false;
+        self._activeShiftId = null;
+        self._shiftSummary = null;
+        self._renderShiftState();
+        console.error('POS shift summary exception:', err);
+        if (typeof callback === 'function') callback(false);
+    });
+};
+
+self.openShiftModal = function() {
+    var modal = RW_UI.byId('posShiftModal');
+    if (modal) modal.classList.remove('hidden');
+    self.loadShiftState();
+};
+
+self.closeShiftModal = function() {
+    var modal = RW_UI.byId('posShiftModal');
+    if (modal) modal.classList.add('hidden');
+};
+
+self.updateShiftCountTotal = function() {
+    var ds = [
+        ['posShiftCount200',200],['posShiftCount100',100],['posShiftCount50',50],
+        ['posShiftCount20',20],['posShiftCount10',10],['posShiftCount5',5],
+        ['posShiftCount1',1],['posShiftCount05',0.5]
+    ];
+    var total = 0, i, el, qty;
+    for (i = 0; i < ds.length; i++) {
+        el = RW_UI.byId(ds[i][0]);
+        qty = el ? Number(el.value || 0) : 0;
+        if (!isFinite(qty) || qty < 0 || Math.floor(qty) !== qty) {
+            RW_UI.safeText(RW_UI.byId('posShiftCountTotal'), '—');
+            return;
+        }
+        total += ds[i][1] * qty;
+    }
+    RW_UI.safeText(RW_UI.byId('posShiftCountTotal'), total.toFixed(2));
+    return total;
+};
+
+self.startShift = function() {
+    if (!selBranch || !branchMap[selBranch]) {
+        RW_UI.toast('اختر الفرع أولًا', 'warning');
+        return;
+    }
+    var opening = Number(RW_UI.byId('posShiftOpeningFloat').value);
+    var op = self._newShiftOperationId();
+    if (!isFinite(opening) || opening < 0 || !op) {
+        RW_UI.showError('العهدة الافتتاحية أو هوية العملية غير صالحة');
+        return;
+    }
+    RW_UI.showLoader('جاري فتح الوردية والتحقق من الخزينة...');
+    supabase.rpc('pos_open_shift', {
+        p_branch_id: branchMap[selBranch],
+        p_terminal_code: self._getShiftTerminalCode(),
+        p_opening_float: opening,
+        p_operation_id: op,
+        p_treasury_id: null,
+        p_terminal_label: 'POS ' + selBranch
+    }).then(function(res) {
+        RW_UI.hideLoader();
+        if (res.error || !res.data || res.data.success !== true) {
+            RW_UI.showError((res.error && res.error.message) || 'تعذر فتح الوردية');
+            return;
+        }
+        self.loadShiftState(function(ok) {
+            if (ok) RW_UI.toast(res.data.duplicate ? 'الوردية موجودة بالفعل' : 'تم فتح الوردية', 'success');
+        });
+    }).catch(function(err) {
+        RW_UI.hideLoader();
+        RW_UI.showError(err && err.message ? err.message : 'تعذر فتح الوردية');
+    });
+};
+
+self.closeShift = function() {
+    if (!self._activeShiftId) {
+        RW_UI.toast('لا توجد وردية مفتوحة', 'warning');
+        return;
+    }
+    var ds = [
+        ['posShiftCount200',200],['posShiftCount100',100],['posShiftCount50',50],
+        ['posShiftCount20',20],['posShiftCount10',10],['posShiftCount5',5],
+        ['posShiftCount1',1],['posShiftCount05',0.5]
+    ];
+    var counts = [], total = 0, i, el, qty, op;
+    for (i = 0; i < ds.length; i++) {
+        el = RW_UI.byId(ds[i][0]);
+        qty = el ? Number(el.value || 0) : 0;
+        if (!isFinite(qty) || qty < 0 || Math.floor(qty) !== qty) {
+            RW_UI.showError('أدخل أعدادًا صحيحة غير سالبة لفئات النقد');
+            return;
+        }
+        counts.push({ denomination: ds[i][1], quantity: qty });
+        total += ds[i][1] * qty;
+    }
+    op = self._newShiftOperationId();
+    if (!op) { RW_UI.showError('تعذر إنشاء هوية آمنة لعملية الإغلاق'); return; }
+    RW_UI.showLoader('جاري مطابقة النقد وإغلاق الوردية...');
+    supabase.rpc('pos_close_shift', {
+        p_shift_id: self._activeShiftId,
+        p_counted_cash: Number(total.toFixed(2)),
+        p_counts: counts,
+        p_operation_id: op,
+        p_discrepancy_reason: (RW_UI.byId('posShiftDiscrepancyReason').value || '').trim() || null
+    }).then(function(res) {
+        RW_UI.hideLoader();
+        if (res.error || !res.data || res.data.success !== true) {
+            RW_UI.showError((res.error && res.error.message) || 'تعذر إغلاق الوردية؛ تحقق من مجموع الفئات وسبب الفرق');
+            return;
+        }
+        RW_UI.toast('تم إغلاق الوردية. الفرق: ' + Number(res.data.cash_difference || 0).toFixed(2), 'success');
+        self._activeShiftId = null;
+        self.loadShiftState();
+    }).catch(function(err) {
+        RW_UI.hideLoader();
+        RW_UI.showError(err && err.message ? err.message : 'تعذر إغلاق الوردية');
+    });
+};
+    
     self.init = function() {
         var remembered = localStorage.getItem('pos_remember_email');
         if (remembered) { RW_UI.byId('loginEmail').value = remembered; RW_UI.byId('rememberMe').checked = true; }
@@ -248,6 +470,8 @@ var POS = (function() {
         currentUser = user;
         pubUserId = user.id;
 
+        self.loadShiftState();
+        
         // Currency is loaded from company-scoped get_pos_bootstrap_data() inside syncDown().
         RW_ImageCache.loadAll(function() {
             self.enterApp();
@@ -437,7 +661,28 @@ self.syncDown = function() {
         RW_UI.safeHTML(RW_UI.byId('cartCustDetails'), h);
     };
 
-    self.onBranchChange = function() { selBranch = RW_UI.byId('posBranchSel') ? RW_UI.byId('posBranchSel').value : null; self.renderProducts(); };
+    self.onBranchChange = function() {
+    var select = RW_UI.byId('posBranchSel');
+    var next = select ? select.value : null;
+    var s = self._shiftSummary && self._shiftSummary.shift;
+    if (self._activeShiftId && s) {
+        var allowedCode = '';
+        var code;
+        for (code in branchMap) {
+            if (Object.prototype.hasOwnProperty.call(branchMap, code) && branchMap[code] === s.branch_id) {
+                allowedCode = code;
+                break;
+            }
+        }
+        if (allowedCode && next !== allowedCode) {
+            RW_UI.toast('لا يمكن تغيير الفرع أثناء الوردية؛ أغلق الوردية أولًا', 'warning');
+            if (select) select.value = allowedCode;
+            next = allowedCode;
+        }
+    }
+    selBranch = next;
+    self.renderProducts();
+};
 
     self.getAvail = function(itemId) {
         if (!db) return Promise.resolve(0);
@@ -615,14 +860,32 @@ self.syncDown = function() {
         RW_UI.toast('تم استئناف الفاتورة ▶️', 'success');
     };
 
-    self.openPaymentModal = function() {
-        var t = self.calcTotals(); if (!t.count) { RW_UI.toast('السلة فارغة', 'warning'); return; }
+self.openPaymentModal = function() {
+    self.loadShiftState(function(ok) {
+        if (!ok || !self._activeShiftId || !self._shiftSummary || !self._shiftSummary.shift) {
+            self.openShiftModal();
+            RW_UI.toast('يجب فتح وردية قبل البيع', 'warning');
+            return;
+        }
+        if (!selBranch || !branchMap[selBranch]) {
+            RW_UI.toast('اختر الفرع قبل الدفع', 'warning');
+            return;
+        }
+        if (branchMap[selBranch] !== self._shiftSummary.shift.branch_id) {
+            RW_UI.showError('الوردية المفتوحة تخص فرعًا آخر؛ أغلقها قبل تغيير الفرع');
+            return;
+        }
+        var t = self.calcTotals();
+        if (!t.count) { RW_UI.toast('السلة فارغة', 'warning'); return; }
         RW_UI.safeText(RW_UI.byId('modalPayableTotal'), fmtNum(t.total) + ' ' + currency);
         RW_UI.byId('paymentModal').classList.remove('hidden');
-        RW_UI.byId('txtTendered').value = ''; RW_UI.safeText(RW_UI.byId('lblChangeDue'), '0.00');
-        activePaymentMethod = 'cash'; self.setPaymentMethod('cash');
-    };
-
+        RW_UI.byId('txtTendered').value = '';
+        RW_UI.safeText(RW_UI.byId('lblChangeDue'), '0.00');
+        activePaymentMethod = 'cash';
+        self.setPaymentMethod('cash');
+    });
+};
+  
     self.closePaymentModal = function() { RW_UI.byId('paymentModal').classList.add('hidden'); };
 
     self.setPaymentMethod = function(m) {
@@ -648,6 +911,15 @@ self.syncDown = function() {
     };
 
 self.finalizeCheckout = function() {
+   if (!self._shiftLoaded || !self._activeShiftId || !self._shiftSummary || !self._shiftSummary.shift) {
+    RW_UI.showError('لا يمكن ترحيل فاتورة دون وردية مفتوحة ومتحقق منها');
+    self.openShiftModal();
+    return;
+}
+if (!selBranch || !branchMap[selBranch] || branchMap[selBranch] !== self._shiftSummary.shift.branch_id) {
+    RW_UI.showError('فرع الفاتورة لا يطابق فرع الوردية المفتوحة');
+    return;
+}
     var t = self.calcTotals();
     if (!t.count || !cart.length) {
         RW_UI.toast('السلة فارغة', 'warning');
