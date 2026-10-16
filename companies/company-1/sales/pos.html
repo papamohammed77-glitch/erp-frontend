@@ -117,6 +117,7 @@
         <button onclick="POS.switchView('suspended')" class="tab-btn" id="nav-suspended"><i class="fa-solid fa-pause-circle text-xl mb-0.5"></i><span>معلقة</span></button>
         <button onclick="POS.switchView('invoices')" class="tab-btn" id="nav-invoices"><i class="fa-solid fa-file-invoice text-xl mb-0.5"></i><span>فواتير اليوم</span></button>
         <button onclick="POS.switchView('returns')" class="tab-btn" id="nav-returns"><i class="fa-solid fa-rotate-left text-xl mb-0.5"></i><span>مرتجع</span></button>
+        <button onclick="POS.switchView('treasury')" class="tab-btn" id="nav-treasury"><i class="fa-solid fa-wallet text-xl mb-0.5"></i><span>خزينتي</span></button>
     </nav>
 </div>
 
@@ -1373,8 +1374,62 @@ self._finalizeReturn = function() {
         });
     };
 
+    self._treasuryRefreshTimer = null;
+
+    self.renderTreasuryView = function() {
+        var grid = RW_UI.byId('productsGrid');
+        var cartCont = RW_UI.byId('cartItemsContainer');
+
+        function money(v) {
+            var n = Number(v || 0);
+            return isFinite(n) ? n.toFixed(2) : '0.00';
+        }
+
+        function paint() {
+            if (currentView !== 'treasury') return;
+            var summary = self._shiftSummary || {};
+            var shift = summary.shift || null;
+            var active = !!(self._activeShiftId && shift);
+            var status = active ? 'وردية مفتوحة' : 'لا توجد وردية مفتوحة';
+            var html = '<div class="col-span-full p-4 space-y-4">' +
+                '<div class="flex items-center justify-between gap-3"><div><h2 class="text-xl font-black text-white">خزينتي</h2>' +
+                '<p class="text-xs text-slate-400 mt-1">تحديث تلقائي كل 5 ثوانٍ من قاعدة البيانات</p></div>' +
+                '<button type="button" onclick="POS.loadShiftState(function(){POS.renderTreasuryView();})" class="px-3 py-2 rounded-lg bg-blue-700 text-white font-bold text-xs">تحديث الآن</button></div>' +
+                '<div class="rounded-2xl border border-slate-700 bg-slate-900 p-4">' +
+                '<div class="text-xs text-slate-400">الحالة</div><div class="text-lg font-black ' + (active ? 'text-emerald-300' : 'text-amber-300') + '">' + status + '</div>' +
+                (active ? '<div class="mt-2 text-xs text-slate-400">وقت البداية: ' + String(shift.opened_at || '—') + '</div>' : '') +
+                '</div>' +
+                '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+                '<div class="rounded-2xl border border-slate-700 bg-slate-900 p-4"><div class="text-xs text-slate-400">العهدة الافتتاحية</div><div class="text-2xl font-black text-white mt-1">' + money(shift && shift.opening_float) + '</div></div>' +
+                '<div class="rounded-2xl border border-emerald-800 bg-emerald-950/30 p-4"><div class="text-xs text-emerald-300">الرصيد النقدي المتوقع</div><div class="text-2xl font-black text-emerald-200 mt-1">' + money(summary.expected_cash) + '</div></div>' +
+                '<div class="rounded-2xl border border-slate-700 bg-slate-900 p-4"><div class="text-xs text-slate-400">المبيعات النقدية</div><div class="text-xl font-black text-white mt-1">' + money(summary.cash_sales) + '</div></div>' +
+                '<div class="rounded-2xl border border-slate-700 bg-slate-900 p-4"><div class="text-xs text-slate-400">المردودات النقدية</div><div class="text-xl font-black text-red-300 mt-1">' + money(summary.cash_refunds) + '</div></div>' +
+                '</div>' +
+                '<div class="rounded-xl border border-slate-700 bg-slate-900 p-3 text-xs text-slate-400">الرصيد المعروض هو رصيد متوقع من قيود النقد المسجلة. لا يمثل استلام المحاسب للعهدة، ولا يُعدّ إغلاقًا ماليًا.</div>' +
+                (active ? '<button type="button" onclick="POS.openShiftModal()" class="w-full rounded-xl bg-indigo-700 p-3 font-black text-white">إدارة الوردية والعدّ النقدي</button>' : '<button type="button" onclick="POS.openShiftModal()" class="w-full rounded-xl bg-emerald-700 p-3 font-black text-white">بدء وردية جديدة</button>') +
+                '</div>';
+            if (grid) RW_UI.safeHTML(grid, html);
+            if (cartCont) RW_UI.safeHTML(cartCont, '<div class="p-4 space-y-3"><h3 class="font-black text-white">ملخص الخزينة</h3><div class="flex justify-between text-sm"><span class="text-slate-400">الرصيد المتوقع</span><strong class="text-emerald-300">' + money(summary.expected_cash) + '</strong></div><div class="flex justify-between text-sm"><span class="text-slate-400">عدد الفواتير</span><strong class="text-white">' + String(summary.sale_count || 0) + '</strong></div><div class="text-xs text-slate-500">آخر تحديث: ' + new Date().toLocaleTimeString() + '</div></div>');
+        }
+
+        if (self._treasuryRefreshTimer) {
+            clearInterval(self._treasuryRefreshTimer);
+            self._treasuryRefreshTimer = null;
+        }
+        paint();
+        self.loadShiftState(function() { paint(); });
+        self._treasuryRefreshTimer = setInterval(function() {
+            if (currentView !== 'treasury') {
+                clearInterval(self._treasuryRefreshTimer);
+                self._treasuryRefreshTimer = null;
+                return;
+            }
+            self.loadShiftState(function() { paint(); });
+        }, 5000);
+    };
+    
     self.switchView = function(view) {
-        var allowedViews = ['pos', 'suspended', 'invoices', 'returns'];
+        var allowedViews = ['pos', 'suspended', 'invoices', 'returns', 'treasury'];
         if (allowedViews.indexOf(view) === -1) {
             console.error('Unsupported POS view:', view);
             return;
@@ -1427,6 +1482,8 @@ self._finalizeReturn = function() {
             self.renderInvoicesView();
         } else if (isReturnView) {
             self.renderReturnsView();
+        } else if (view === 'treasury') {
+            self.renderTreasuryView();
         }
     };
 
