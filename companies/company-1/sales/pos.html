@@ -176,7 +176,11 @@
     </div>
     <div class="p-4 space-y-4">
       <div id="posShiftOpenPanel" class="space-y-3">
-        <p class="text-sm text-slate-300">اختر الفرع أولًا، ثم سجّل النقدية الموجودة فعليًا في بداية الوردية.</p>
+        <p class="text-sm text-slate-300">هوية الموظف منفصلة عن الجهاز. اربط الجهاز بالخزينة الثابتة مرة واحدة قبل فتح أول وردية عليه.</p>
+        <button type="button" onclick="POS.bindTerminalTreasuryQR()" class="w-full p-3 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-black">
+          <i class="fa-solid fa-qrcode ml-2"></i>ربط هذا الجهاز بخزينة ثابتة عبر QR
+        </button>
+        <p class="text-[11px] text-slate-400">يجب مسح QR للخزينة من النظام الأم بحساب المالك أو مدير مخوّل. الربط يتحقق منه الخادم ولا يعتمد على قيمة محلية وحدها.</p>
         <label class="block text-xs text-slate-400">العهدة الافتتاحية</label>
         <input id="posShiftOpeningFloat" type="number" min="0" step="0.01" value="0" class="w-full p-3 rounded-lg bg-slate-800 border border-slate-600 text-white">
         <button type="button" onclick="POS.startShift()" class="w-full p-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black">بدء الوردية</button>
@@ -296,6 +300,183 @@ self._getShiftTerminalCode = function() {
     return code;
 };
 
+self.bindTerminalTreasuryQR = function() {
+    var perms = currentUser && Array.isArray(currentUser.permissions) ? currentUser.permissions : [];
+    var canConfigure = !!(currentUser && (
+        currentUser.isOwner === true ||
+        perms.indexOf('*') !== -1 ||
+        perms.indexOf('general_manager') !== -1 ||
+        perms.indexOf('cash_manager') !== -1
+    ));
+
+    if (!canConfigure) {
+        RW_UI.toast('إعداد خزينة الجهاز يتطلب المالك أو مديرًا مخولًا', 'warning');
+        return;
+    }
+    if (!selBranch || !branchMap[selBranch]) {
+        RW_UI.toast('اختر الفرع المسموح أولًا', 'warning');
+        return;
+    }
+
+    function applyPayload(raw) {
+        var payload;
+        try {
+            payload = JSON.parse(String(raw || '').trim());
+        } catch (e) {
+            RW_UI.showError('محتوى QR ليس JSON صالحًا');
+            return;
+        }
+
+        var uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!payload || payload.type !== 'rawaea_treasury' ||
+            Number(payload.version) !== 1 ||
+            !uuidPattern.test(String(payload.treasury_id || ''))) {
+            RW_UI.showError('رمز QR ليس رمز خزينة RAWAEA صالحًا');
+            return;
+        }
+
+        RW_UI.showLoader('جاري التحقق من الخزينة وربط جهاز الكاشير...');
+        supabase.rpc('pos_bind_terminal_treasury', {
+            p_branch_id: branchMap[selBranch],
+            p_terminal_code: self._getShiftTerminalCode(),
+            p_treasury_id: String(payload.treasury_id),
+            p_terminal_label: 'POS ' + selBranch
+        }).then(function(res) {
+            RW_UI.hideLoader();
+            if (res.error || !res.data || res.data.success !== true) {
+                var message = (res.error && res.error.message) || 'تعذر ربط الجهاز بالخزينة';
+                if (message.indexOf('POS_TERMINAL_TREASURY_HISTORY_LOCKED') !== -1) {
+                    message = 'هذا الجهاز له سجل ورديات سابق؛ لا يمكن تغيير خزينته. استخدم جهازًا جديدًا أو اطلب إجراء إعادة تهيئة معتمدًا.';
+                } else if (message.indexOf('POS_TERMINAL_CONFIGURATION_PERMISSION_REQUIRED') !== -1) {
+                    message = 'ليس لديك صلاحية إعداد أجهزة الكاشير والخزائن.';
+                } else if (message.indexOf('SHIFT_TREASURY_NOT_ALLOWED') !== -1) {
+                    message = 'الخزينة لا تتبع الشركة الحالية أو لا تتوافق مع الفرع المحدد.';
+                }
+                RW_UI.showError(message);
+                return;
+            }
+
+            try {
+                localStorage.setItem('rawaea_pos_terminal_treasury_id', String(res.data.treasury_id));
+                localStorage.setItem('rawaea_pos_terminal_id', String(res.data.terminal_id));
+            } catch (e) {}
+
+            RW_UI.toast(
+                res.data.duplicate
+                    ? 'هذا الجهاز مربوط بالفعل بالخزينة المحددة'
+                    : 'تم ربط جهاز الكاشير بالخزينة الثابتة بنجاح',
+                'success'
+            );
+            self.loadShiftState();
+        }).catch(function(err) {
+            RW_UI.hideLoader();
+            RW_UI.showError((err && err.message) || 'تعذر الاتصال بخدمة ربط جهاز الكاشير');
+        });
+    }
+
+    function manualEntry() {
+        Swal.fire({
+            title: 'إدخال QR يدويًا',
+            input: 'textarea',
+            inputLabel: 'الصق النص الكامل الموجود داخل QR للخزينة',
+            inputPlaceholder: '{"type":"rawaea_treasury","version":1,"company_id":"...","treasury_id":"..."}',
+            showCancelButton: true,
+            confirmButtonText: 'التحقق والربط',
+            cancelButtonText: 'إلغاء',
+            preConfirm: function(value) {
+                if (!value || !String(value).trim()) {
+                    Swal.showValidationMessage('أدخل محتوى QR');
+                    return false;
+                }
+                return value;
+            }
+        }).then(function(result) {
+            if (result.isConfirmed) applyPayload(result.value);
+        });
+    }
+
+    if (!('BarcodeDetector' in window) ||
+        !navigator.mediaDevices ||
+        typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        manualEntry();
+        return;
+    }
+
+    var detector;
+    try {
+        detector = new BarcodeDetector({ formats: ['qr_code'] });
+    } catch (e) {
+        manualEntry();
+        return;
+    }
+
+    var stream = null;
+    var scanning = false;
+    var handled = false;
+
+    function stopStream() {
+        scanning = false;
+        if (stream) {
+            stream.getTracks().forEach(function(track) { track.stop(); });
+            stream = null;
+        }
+    }
+
+    Swal.fire({
+        title: 'امسح QR الخزينة من النظام الأم',
+        html: '<video id="posTreasuryQrVideo" style="width:100%;max-width:340px;border-radius:12px" playsinline></video><p class="text-xs mt-2">سيتم التحقق من الشركة والفرع والصلاحية في قاعدة البيانات.</p>',
+        showCancelButton: true,
+        showConfirmButton: false,
+        cancelButtonText: 'إلغاء',
+        customClass: { popup: '!bg-slate-900 !rounded-3xl !border !border-slate-700' },
+        didOpen: function() {
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(function(cameraStream) {
+                    stream = cameraStream;
+                    var video = document.getElementById('posTreasuryQrVideo');
+                    if (!video) {
+                        stopStream();
+                        return;
+                    }
+                    video.srcObject = stream;
+                    video.play().then(function() {
+                        scanning = true;
+                        function scanLoop() {
+                            if (!scanning || handled) return;
+                            detector.detect(video).then(function(codes) {
+                                if (!scanning || handled) return;
+                                if (codes && codes.length && codes[0].rawValue) {
+                                    handled = true;
+                                    var raw = codes[0].rawValue;
+                                    stopStream();
+                                    Swal.close();
+                                    applyPayload(raw);
+                                    return;
+                                }
+                                requestAnimationFrame(scanLoop);
+                            }).catch(function() {
+                                if (scanning && !handled) requestAnimationFrame(scanLoop);
+                            });
+                        }
+                        scanLoop();
+                    }).catch(function() {
+                        stopStream();
+                        Swal.close();
+                        RW_UI.toast('تعذر تشغيل كاميرا QR؛ استخدم الإدخال اليدوي', 'warning');
+                        manualEntry();
+                    });
+                }).catch(function() {
+                    stopStream();
+                    Swal.close();
+                    RW_UI.toast('تعذر الوصول للكاميرا؛ استخدم الإدخال اليدوي', 'warning');
+                    manualEntry();
+                });
+        },
+        willClose: stopStream
+    });
+};
+    
+    
 self._renderShiftState = function() {
     var label = RW_UI.byId('posShiftButtonLabel');
     var openPanel = RW_UI.byId('posShiftOpenPanel');
@@ -375,13 +556,15 @@ self.startShift = function() {
         RW_UI.toast('اختر الفرع أولًا', 'warning');
         return;
     }
+
     var opening = Number(RW_UI.byId('posShiftOpeningFloat').value);
     var op = self._newShiftOperationId();
     if (!isFinite(opening) || opening < 0 || !op) {
         RW_UI.showError('العهدة الافتتاحية أو هوية العملية غير صالحة');
         return;
     }
-    RW_UI.showLoader('جاري فتح الوردية والتحقق من الخزينة...');
+
+    RW_UI.showLoader('جاري فتح الوردية والتحقق من هوية الجهاز والخزينة...');
     supabase.rpc('pos_open_shift', {
         p_branch_id: branchMap[selBranch],
         p_terminal_code: self._getShiftTerminalCode(),
@@ -391,20 +574,36 @@ self.startShift = function() {
         p_terminal_label: 'POS ' + selBranch
     }).then(function(res) {
         RW_UI.hideLoader();
+
         if (res.error || !res.data || res.data.success !== true) {
-            RW_UI.showError((res.error && res.error.message) || 'تعذر فتح الوردية');
+            var message = (res.error && res.error.message) || 'تعذر فتح الوردية';
+            if (message.indexOf('SHIFT_TREASURY_SELECTION_REQUIRED') !== -1 ||
+                message.indexOf('SHIFT_TERMINAL_CONFIGURATION_REQUIRED') !== -1) {
+                message = 'هذا الجهاز غير مربوط بخزينة ثابتة. اربطه أولًا بمسح QR الخزينة من النظام الأم بحساب مخول.';
+            } else if (message.indexOf('SHIFT_TERMINAL_TREASURY_MISMATCH') !== -1) {
+                message = 'الخزينة المختارة لا تطابق الخزينة الثابتة لهذا الجهاز. لم تُفتح وردية ولم تُغيّر الخزينة.';
+            } else if (message.indexOf('SHIFT_TERMINAL_BRANCH_MISMATCH') !== -1) {
+                message = 'هذا الجهاز مسجل لفرع آخر. لا يمكن نقله بتغيير اختيار الفرع.';
+            }
+            RW_UI.showError(message);
             return;
         }
+
         self.loadShiftState(function(ok) {
-            if (ok) RW_UI.toast(res.data.duplicate ? 'الوردية موجودة بالفعل' : 'تم فتح الوردية', 'success');
+            if (ok) {
+                RW_UI.toast(
+                    res.data.duplicate ? 'الوردية موجودة بالفعل' : 'تم فتح الوردية على الجهاز والخزينة المرتبطين',
+                    'success'
+                );
+            }
         });
     }).catch(function(err) {
         RW_UI.hideLoader();
-        RW_UI.showError(err && err.message ? err.message : 'تعذر فتح الوردية');
+        RW_UI.showError((err && err.message) || 'تعذر فتح الوردية');
     });
 };
 
-self.closeShift = function() {
+    self.closeShift = function() {
     if (!self._activeShiftId) {
         RW_UI.toast('لا توجد وردية مفتوحة', 'warning');
         return;
