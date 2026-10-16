@@ -18078,40 +18078,116 @@ else if (tab === 'commission') _renderCommission();
         var filtered = _cache.treasury.filter(function(t) { return (t.account_name||'').toLowerCase().indexOf(q) !== -1 || (t.account_code||'').toLowerCase().indexOf(q) !== -1; });
         var list = byId('tr-list'); if (list) safeHTML(list, _buildTreasuryTable(filtered));
     }
-    function _openTreasuryDialog() {
-        Swal.fire({
-            title: 'إضافة خزينة / بنك',
-            html: '<div class="text-right"><div class="mb-4"><label class="block text-sm font-bold">الاسم *</label><input id="tr-name" class="swal2-input w-full"></div><div class="mb-4"><label class="block text-sm font-bold">النوع</label><select id="tr-type" class="swal2-input"><option value="Cash">خزينة</option><option value="Bank">بنك</option></select></div><div class="mb-4"><label class="block text-sm font-bold">الرصيد الافتتاحي</label><input id="tr-balance" type="number" step="0.01" value="0" class="swal2-input"></div></div>',
-            showCancelButton: true,
-            confirmButtonText: 'حفظ',
-            preConfirm: function() {
-                var name = document.getElementById('tr-name').value.trim();
-                if (!name) { Swal.showValidationMessage('الاسم مطلوب'); return false; }
-                var balance = parseFloat(document.getElementById('tr-balance').value) || 0;
-                return {
-                    company_id: _companyId(),
-                    account_code: 'CASH-' + Date.now().toString().slice(-5),
-                    account_name: name,
-                    type: document.getElementById('tr-type').value,
-                    opening_balance: balance,
-                    current_balance: balance,
-                    is_active: true
-                };
-            }
-        }).then(function(r) {
-            if (!r.isConfirmed) return;
-            _showLoader('جاري حفظ الخزينة...');
-            supabase.from('treasury').insert(r.value).then(function(res) {
-                if (res.error) throw res.error;
-                _refreshCache();
-                renderSubTab('treasury');
-                _showToast('تمت الإضافة', 'success');
-            }).catch(function(e) {
-                _showToast(e.message || 'فشل الحفظ', 'error');
-            }).finally(_hideLoader);
+async function _openTreasuryDialog() {
+    var companyId;
+    var branchResult;
+
+    try {
+        companyId = _companyId();
+        branchResult = await supabase.rpc('finance_list_treasury_branches', {
+            p_company_id: companyId
         });
+        if (branchResult.error) throw branchResult.error;
+    } catch (e) {
+        _showToast((e && e.message) || 'تعذر تحميل فروع الشركة', 'error');
+        return;
     }
-function _editTreasury(code) {
+
+    var branches = branchResult.data || [];
+
+    function e(v) {
+        return String(v == null ? '' : v)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    var branchOptions = '<option value="">بدون ربط بفرع — حساب على مستوى الشركة</option>';
+    branches.forEach(function (b) {
+        branchOptions += '<option value="' + e(b.id) + '">' +
+            e((b.name || b.branch_code) + ' (' + b.branch_code + ')') +
+            '</option>';
+    });
+
+    var result = await Swal.fire({
+        title: 'إضافة خزينة / بنك',
+        width: 720,
+        html: '<div class="text-right space-y-3">' +
+            '<div><label class="block text-sm font-bold">الاسم *</label>' +
+            '<input id="tr-name" class="swal2-input w-full" maxlength="255" placeholder="اسم الخزينة أو البنك"></div>' +
+            '<div><label class="block text-sm font-bold">النوع *</label>' +
+            '<select id="tr-type" class="swal2-select w-full">' +
+            '<option value="Cash">خزينة نقدية</option><option value="Bank">بنك</option>' +
+            '</select></div>' +
+            '<div><label class="block text-sm font-bold">الفرع</label>' +
+            '<select id="tr-branch" class="swal2-select w-full">' + branchOptions + '</select>' +
+            '<p class="text-xs text-gray-500 mt-1">اختيار الفرع يحفظ علاقة الحساب بالفرع نفسه، ويتيح استخدام العلاقة لاحقًا في ربط الكاشير.</p></div>' +
+            '<div><label class="block text-sm font-bold">الرصيد الافتتاحي</label>' +
+            '<input id="tr-balance" type="number" min="0" step="0.01" value="0" class="swal2-input w-full"></div>' +
+            '</div>',
+        showCancelButton: true,
+        confirmButtonText: 'حفظ',
+        cancelButtonText: 'إلغاء',
+        focusConfirm: false,
+        preConfirm: function () {
+            var nameEl = document.getElementById('tr-name');
+            var typeEl = document.getElementById('tr-type');
+            var branchEl = document.getElementById('tr-branch');
+            var balanceEl = document.getElementById('tr-balance');
+            var name = nameEl ? nameEl.value.trim() : '';
+            var type = typeEl ? typeEl.value : '';
+            var rawBalance = balanceEl ? balanceEl.value : '0';
+            var balance = rawBalance === '' ? 0 : Number(rawBalance);
+
+            if (!name) {
+                Swal.showValidationMessage('اسم الخزينة أو البنك مطلوب');
+                return false;
+            }
+            if (type !== 'Cash' && type !== 'Bank') {
+                Swal.showValidationMessage('نوع الحساب غير صالح');
+                return false;
+            }
+            if (!Number.isFinite(balance) || balance < 0) {
+                Swal.showValidationMessage('الرصيد الافتتاحي يجب أن يكون رقمًا صحيحًا غير سالب');
+                return false;
+            }
+
+            return {
+                account_name: name,
+                type: type,
+                opening_balance: balance,
+                branch_id: branchEl && branchEl.value ? branchEl.value : null
+            };
+        }
+    });
+
+    if (!result.isConfirmed) return;
+
+    _showLoader('جاري حفظ الخزينة / البنك...');
+    try {
+        var saved = await supabase.rpc('finance_save_treasury', {
+            p_company_id: companyId,
+            p_treasury_id: null,
+            p_account_name: result.value.account_name,
+            p_type: result.value.type,
+            p_opening_balance: result.value.opening_balance,
+            p_branch_id: result.value.branch_id
+        });
+        if (saved.error) throw saved.error;
+
+        _refreshCache();
+        renderSubTab('treasury');
+        _showToast('تم حفظ الحساب بنجاح', 'success');
+    } catch (e) {
+        _showToast((e && e.message) || 'فشل حفظ الخزينة / البنك', 'error');
+    } finally {
+        _hideLoader();
+    }
+}
+	
+async function _editTreasury(code) {
     var item = null;
     for (var i = 0; i < _cache.treasury.length; i++) {
         if (_cache.treasury[i].account_code === code) {
@@ -18119,122 +18195,178 @@ function _editTreasury(code) {
             break;
         }
     }
+
     if (!item) {
-        _showToast('الخزينة غير موجودة', 'error');
+        _showToast('الخزينة أو البنك غير موجود', 'error');
         return;
     }
 
     var companyId;
+    var branchResult;
     try {
         companyId = _companyId();
+        branchResult = await supabase.rpc('finance_list_treasury_branches', {
+            p_company_id: companyId
+        });
+        if (branchResult.error) throw branchResult.error;
     } catch (e) {
-        _showToast(e.message || 'سياق الشركة غير محدد', 'error');
+        _showToast((e && e.message) || 'تعذر تحميل فروع الشركة', 'error');
         return;
     }
 
-    Swal.fire({
-        title: 'تعديل ' + item.account_name,
-        html: '<div class="text-right">' +
-            '<div class="mb-4"><label class="block text-sm font-bold">الاسم</label>' +
-            '<input id="tr-name" class="swal2-input" value="' + _esc(item.account_name) + '"></div>' +
-            '<div class="mb-4"><label class="block text-sm font-bold">النوع</label>' +
-            '<select id="tr-type" class="swal2-input">' +
-            '<option value="Cash"' + (item.type === 'Cash' ? ' selected' : '') + '>خزينة</option>' +
+    var branches = branchResult.data || [];
+
+    function e(v) {
+        return String(v == null ? '' : v)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    var branchOptions = '<option value=""' + (!item.branch_id ? ' selected' : '') +
+        '>بدون ربط بفرع — حساب على مستوى الشركة</option>';
+    var currentBranchFound = false;
+
+    branches.forEach(function (b) {
+        var selected = item.branch_id === b.id;
+        if (selected) currentBranchFound = true;
+        branchOptions += '<option value="' + e(b.id) + '"' + (selected ? ' selected' : '') + '>' +
+            e((b.name || b.branch_code) + ' (' + b.branch_code + ')') +
+            '</option>';
+    });
+
+    if (item.branch_id && !currentBranchFound) {
+        branchOptions += '<option value="' + e(item.branch_id) + '" selected>' +
+            'الفرع المرتبط حاليًا غير نشط — اختر فرعًا نشطًا أو أزل الارتباط' +
+            '</option>';
+    }
+
+    var result = await Swal.fire({
+        title: 'تعديل ' + e(item.account_name),
+        width: 720,
+        html: '<div class="text-right space-y-3">' +
+            '<div><label class="block text-sm font-bold">الاسم *</label>' +
+            '<input id="tr-name" class="swal2-input w-full" maxlength="255" value="' + e(item.account_name) + '"></div>' +
+            '<div><label class="block text-sm font-bold">النوع *</label>' +
+            '<select id="tr-type" class="swal2-select w-full">' +
+            '<option value="Cash"' + (item.type === 'Cash' ? ' selected' : '') + '>خزينة نقدية</option>' +
             '<option value="Bank"' + (item.type === 'Bank' ? ' selected' : '') + '>بنك</option>' +
             '</select></div>' +
-            '<div class="mb-2"><label class="block text-sm font-bold">الرصيد الافتتاحي</label>' +
-            '<input class="swal2-input" value="' + _fmtNum(item.opening_balance) + '" disabled></div>' +
-            '<div class="mb-2"><label class="block text-sm font-bold">الرصيد الحالي</label>' +
-            '<input class="swal2-input" value="' + _fmtNum(item.current_balance) + '" disabled></div>' +
-            '<div class="text-xs text-gray-500 mt-2">الأرصدة لا تُعدل من شاشة البيانات الأساسية.</div>' +
+            '<div><label class="block text-sm font-bold">الفرع</label>' +
+            '<select id="tr-branch" class="swal2-select w-full">' + branchOptions + '</select>' +
+            '<p class="text-xs text-gray-500 mt-1">لا يمكن تغيير الفرع إلى فرع يتعارض مع فروع وردت في سجل الورديات المرتبطة بهذا الحساب.</p></div>' +
+            '<div class="grid grid-cols-1 md:grid-cols-2 gap-2">' +
+            '<div><label class="block text-sm font-bold">الرصيد الافتتاحي</label>' +
+            '<input class="swal2-input w-full" value="' + e(_fmtNum(item.opening_balance)) + '" disabled></div>' +
+            '<div><label class="block text-sm font-bold">الرصيد الحالي</label>' +
+            '<input class="swal2-input w-full" value="' + e(_fmtNum(item.current_balance)) + '" disabled></div>' +
+            '</div>' +
+            '<p class="text-xs text-gray-500">تعديل البيانات الأساسية لا يغير أي رصيد مالي.</p>' +
             '</div>',
         showCancelButton: true,
-        confirmButtonText: 'حفظ',
+        confirmButtonText: 'حفظ التعديل',
         cancelButtonText: 'إلغاء',
         showDenyButton: true,
         denyButtonText: 'حذف',
         denyButtonColor: '#ef4444',
-        preConfirm: function() {
+        preConfirm: function () {
             var nameEl = document.getElementById('tr-name');
             var typeEl = document.getElementById('tr-type');
+            var branchEl = document.getElementById('tr-branch');
             var name = nameEl ? nameEl.value.trim() : '';
+            var type = typeEl ? typeEl.value : '';
+
             if (!name) {
-                Swal.showValidationMessage('اسم الخزينة مطلوب');
+                Swal.showValidationMessage('اسم الخزينة أو البنك مطلوب');
                 return false;
             }
+            if (type !== 'Cash' && type !== 'Bank') {
+                Swal.showValidationMessage('نوع الحساب غير صالح');
+                return false;
+            }
+
             return {
                 account_name: name,
-                type: typeEl ? typeEl.value : item.type,
-                updated_at: new Date().toISOString()
+                type: type,
+                branch_id: branchEl && branchEl.value ? branchEl.value : null
             };
         }
-    }).then(function(result) {
-        if (result.isConfirmed) {
-            _showLoader('جاري حفظ التعديل...');
-            supabase.from('treasury')
-                .update(result.value)
-                .eq('id', item.id)
-                .eq('company_id', companyId)
-                .then(function(res) {
-                    if (res.error) throw res.error;
-                    _refreshCache();
-                    renderSubTab('treasury');
-                    _showToast('تم تعديل بيانات الخزينة دون المساس بالأرصدة', 'success');
-                })
-                .catch(function(e) {
-                    _showToast(e.message || 'فشل الحفظ', 'error');
-                })
-                .finally(_hideLoader);
-        } else if (result.isDenied) {
-            _showLoader('جاري التحقق قبل الحذف...');
-            Promise.all([
-                supabase.from('cash_box').select('id', { count: 'exact', head: true })
-                    .eq('company_id', companyId)
-                    .eq('treasury_id', item.id),
-                Promise.resolve({ count: Number(item.current_balance || 0) !== 0 ? 1 : 0 })
-            ]).then(function(checks) {
-                var cashHistoryCount = Number(checks[0].count || 0);
-                var nonZeroBalance = Number(checks[1].count || 0) > 0;
-                _hideLoader();
-                if (cashHistoryCount > 0 || nonZeroBalance) {
-                    _showToast('لا يمكن حذف خزينة لها حركات نقدية أو رصيد غير صفري.', 'warning');
-                    return;
-                }
-                return Swal.fire({
-                    title: 'تأكيد الحذف',
-                    text: 'حذف ' + item.account_name + '؟',
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#ef4444',
-                    confirmButtonText: 'حذف',
-                    cancelButtonText: 'إلغاء'
-                });
-            }).then(function(confirmResult) {
-                if (!confirmResult || !confirmResult.isConfirmed) return;
-                _showLoader('جاري الحذف...');
-                return supabase.from('treasury')
-                    .delete()
-                    .eq('id', item.id)
-                    .eq('company_id', companyId)
-                    .then(function(res) {
-                        if (res.error) throw res.error;
-                        _refreshCache();
-                        renderSubTab('treasury');
-                        _showToast('تم الحذف', 'success');
-                    })
-                    .catch(function(e) {
-                        _showToast(e.message || 'فشل الحذف', 'error');
-                    })
-                    .finally(_hideLoader);
-            }).catch(function(e) {
-                _hideLoader();
-                _showToast(e.message || 'تعذر التحقق من الحذف', 'error');
-            });
-        }
     });
+
+    if (result.isConfirmed) {
+        _showLoader('جاري حفظ التعديل...');
+        try {
+            var saved = await supabase.rpc('finance_save_treasury', {
+                p_company_id: companyId,
+                p_treasury_id: item.id,
+                p_account_name: result.value.account_name,
+                p_type: result.value.type,
+                p_opening_balance: Number(item.opening_balance || 0),
+                p_branch_id: result.value.branch_id
+            });
+            if (saved.error) throw saved.error;
+
+            _refreshCache();
+            renderSubTab('treasury');
+            _showToast('تم تعديل بيانات الحساب دون المساس بالأرصدة', 'success');
+        } catch (e) {
+            var message = (e && e.message) || 'فشل حفظ التعديل';
+            if (message.indexOf('TREASURY_BRANCH_CONFLICT_WITH_POS_SHIFT') !== -1) {
+                message = 'لا يمكن ربط الحساب بفرع يتعارض مع سجل ورديات الكاشير المرتبطة به.';
+            } else if (message.indexOf('TREASURY_BRANCH_INVALID') !== -1) {
+                message = 'الفرع المحدد غير نشط أو لا يتبع الشركة الحالية.';
+            }
+            _showToast(message, 'error');
+        } finally {
+            _hideLoader();
+        }
+    } else if (result.isDenied) {
+        var confirmDelete = await Swal.fire({
+            title: 'تأكيد الحذف',
+            text: 'حذف ' + item.account_name + '؟ لن يُسمح بالحذف إذا كان للحساب رصيد أو حركات أو ورديات مرتبطة.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            confirmButtonText: 'حذف',
+            cancelButtonText: 'إلغاء'
+        });
+
+        if (!confirmDelete.isConfirmed) return;
+
+        _showLoader('جاري التحقق والحذف...');
+        try {
+            var deleted = await supabase.rpc('finance_delete_treasury', {
+                p_company_id: companyId,
+                p_treasury_id: item.id
+            });
+            if (deleted.error) throw deleted.error;
+
+            _refreshCache();
+            renderSubTab('treasury');
+            _showToast('تم حذف الحساب', 'success');
+        } catch (e) {
+            var deleteMessage = (e && e.message) || 'فشل حذف الحساب';
+            if (deleteMessage.indexOf('TREASURY_NONZERO_BALANCE') !== -1) {
+                deleteMessage = 'لا يمكن حذف حساب له رصيد غير صفري.';
+            } else if (deleteMessage.indexOf('TREASURY_HAS_CASH_HISTORY') !== -1) {
+                deleteMessage = 'لا يمكن حذف حساب له حركات نقدية.';
+            } else if (deleteMessage.indexOf('TREASURY_HAS_POS_SHIFT_HISTORY') !== -1) {
+                deleteMessage = 'لا يمكن حذف حساب مرتبط بورديات كاشير.';
+            } else if (deleteMessage.indexOf('TREASURY_HAS_FINANCE_EXPENSE_HISTORY') !== -1 ||
+                       deleteMessage.indexOf('TREASURY_HAS_CHEQUE_HISTORY') !== -1 ||
+                       deleteMessage.indexOf('TREASURY_HAS_BANK_STATEMENT_HISTORY') !== -1) {
+                deleteMessage = 'لا يمكن حذف حساب له سجلات مالية مرتبطة.';
+            }
+            _showToast(deleteMessage, 'error');
+        } finally {
+            _hideLoader();
+        }
+    }
 }
 
-    // ==================== دليل الحسابات ====================
+	// ==================== دليل الحسابات ====================
     function _renderAccounts() {
         var content = byId('finance-content'); if (!content) return;
         var html = '<div class="bg-white rounded-2xl shadow-sm border p-4"><div class="flex justify-between items-center mb-4"><h2 class="text-xl font-bold"><i class="fa-solid fa-sitemap ml-2 text-indigo-600"></i>دليل الحسابات</h2><div><button onclick="RW_Finance._seedAccounts()" class="bg-amber-500 text-white px-3 py-2 rounded-lg ml-2"><i class="fa-solid fa-seedling ml-1"></i> تهيئة</button><button onclick="RW_Finance._openAccountDialog()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg"><i class="fa-solid fa-plus ml-1"></i> حساب جديد</button></div></div><div class="mb-3"><input type="text" id="acc-search" placeholder="بحث..." class="w-full md:w-80 border rounded-lg px-3 py-2 text-sm" oninput="RW_Finance._filterAccounts()"></div><div id="acc-tree" class="overflow-auto">' + _buildAccountTree(_cache.accountsTree, 0) + '</div></div>';
