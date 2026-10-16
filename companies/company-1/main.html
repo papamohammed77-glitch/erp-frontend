@@ -18108,100 +18108,137 @@ function _buildTreasuryTable(data) {
     return html;
 }
 
-	async function _showTreasuryQR(code, fallbackItem) {
-    var item = fallbackItem || null;
+	async function _showTreasuryQR(code, fallbackItem, suppressErrorToast) { 
+		var item = fallbackItem || null; 
+		var treasuryCache = Array.isArray(_cache.treasury) ? _cache.treasury : [];
 
-    if (!item) {
-        for (var i = 0; i < _cache.treasury.length; i++) {
-            if (_cache.treasury[i].account_code === code || _cache.treasury[i].id === code) {
-                item = _cache.treasury[i];
-                break;
-            }
-        }
-    }
+  if (!item) {
+      for (var i = 0; i < treasuryCache.length; i++) {
+          if (treasuryCache[i].account_code === code || treasuryCache[i].id === code) {
+              item = treasuryCache[i];
+              break;
+          }
+      }
+  }
 
-    if (!item || !item.id) {
-        _showToast('تعذر العثور على هوية الخزينة لإنشاء رمز QR', 'error');
-        return;
-    }
+  if (!item || !item.id) {
+      if (!suppressErrorToast) _showToast('تعذر العثور على هوية الخزينة لإنشاء رمز QR', 'error');
+      return false;
+  }
 
-    var companyId;
-    try {
-        companyId = _companyId();
-    } catch (e) {
-        _showToast((e && e.message) || 'سياق الشركة غير محدد', 'error');
-        return;
-    }
+  var companyId;
+  try {
+      companyId = _companyId();
+      if (!companyId) throw new Error('سياق الشركة غير محدد');
+  } catch (e) {
+      if (!suppressErrorToast) _showToast((e && e.message) || 'سياق الشركة غير محدد', 'error');
+      return false;
+  }
 
-    var payload = JSON.stringify({
-        type: 'rawaea_treasury',
-        version: 1,
-        company_id: String(companyId),
-        treasury_id: String(item.id)
-    });
+  var payload = JSON.stringify({
+      type: 'rawaea_treasury',
+      version: 1,
+      company_id: String(companyId),
+      treasury_id: String(item.id)
+  });
 
-    try {
-        if (typeof QRCode === 'undefined') {
-            await new Promise(function (resolve, reject) {
-                var existing = document.querySelector('script[data-rawaea-qrcode="1"]');
-                if (existing) {
-                    existing.addEventListener('load', resolve, { once: true });
-                    existing.addEventListener('error', reject, { once: true });
-                    return;
-                }
+  try {
+      if (typeof QRCode === 'undefined') {
+          var script = document.querySelector('script[data-rawaea-qrcode="1"]');
+          if (script && (script.dataset.qrLoadState === 'failed' ||
+              script.dataset.qrLoadState === 'loaded')) {
+              script.remove();
+              script = null;
+          }
 
-                var script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js';
-                script.async = true;
-                script.dataset.rawaeaQrcode = '1';
-                script.onload = resolve;
-                script.onerror = function () {
-                    reject(new Error('تعذر تحميل مكتبة إنشاء QR'));
-                };
-                document.head.appendChild(script);
-            });
-        }
+          await new Promise(function (resolve, reject) {
+              var target = script;
+              var settled = false;
 
-        if (typeof QRCode === 'undefined') {
-            throw new Error('مكتبة QR غير متاحة بعد التحميل');
-        }
+              function finish(ok, error) {
+                  if (settled) return;
+                  settled = true;
+                  if (target) {
+                      target.removeEventListener('load', onLoad);
+                      target.removeEventListener('error', onError);
+                  }
+                  if (ok && typeof QRCode !== 'undefined') {
+                      if (target) target.dataset.qrLoadState = 'loaded';
+                      resolve();
+                  } else {
+                      if (target) {
+                          target.dataset.qrLoadState = 'failed';
+                          target.remove();
+                      }
+                      reject(error || new Error('تعذر تحميل مكتبة إنشاء QR'));
+                  }
+              }
 
-        await Swal.fire({
-            title: 'رمز QR — ' + String(item.account_name || 'الخزينة'),
-            width: 560,
-            html:
-                '<div class="text-center space-y-3">' +
-                    '<div class="rounded-xl border bg-gray-50 p-4">' +
-                        '<div id="treasury-qr-container" class="flex justify-center min-h-[250px] items-center"></div>' +
-                    '</div>' +
-                    '<div class="text-right rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm">' +
-                        '<div><strong>الحساب:</strong> ' + _esc(item.account_name || '') + '</div>' +
-                        '<div><strong>الكود:</strong> ' + _esc(item.account_code || '') + '</div>' +
-                        '<div><strong>النوع:</strong> ' + (item.type === 'Cash' ? 'خزينة نقدية' : 'بنك') + '</div>' +
-                        '<p class="mt-2 text-xs text-gray-600">هذا الرمز يعرّف الخزينة فقط ولا يمنح صلاحية دخول أو تنفيذ مالي. عند مسحه يجب على تطبيق الكاشير التحقق من جلسة المستخدم والشركة وصلاحية الربط من الخادم.</p>' +
-                    '</div>' +
-                    '<div class="text-xs text-gray-500 break-all">هوية الخزينة: ' + _esc(item.id) + '</div>' +
-                '</div>',
-            confirmButtonText: 'تم',
-            didOpen: function () {
-                var container = document.getElementById('treasury-qr-container');
-                if (!container) return;
-                container.innerHTML = '';
-                new QRCode(container, {
-                    text: payload,
-                    width: 240,
-                    height: 240,
-                    colorDark: '#111827',
-                    colorLight: '#ffffff',
-                    correctLevel: QRCode.CorrectLevel.M
-                });
-            }
-        });
-    } catch (e) {
-        _showToast((e && e.message) || 'تعذر إنشاء رمز QR للخزينة', 'error');
-    }
+              function onLoad() {
+                  finish(typeof QRCode !== 'undefined',
+                      typeof QRCode === 'undefined'
+                          ? new Error('تم تحميل الملف لكن مكتبة QR غير متاحة')
+                          : null);
+              }
+
+              function onError() {
+                  finish(false, new Error('تعذر تحميل مكتبة إنشاء QR'));
+              }
+
+              if (!target) {
+                  target = document.createElement('script');
+                  target.src = 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js';
+                  target.async = true;
+                  target.dataset.rawaeaQrcode = '1';
+                  target.dataset.qrLoadState = 'loading';
+              }
+
+              target.addEventListener('load', onLoad, { once: true });
+              target.addEventListener('error', onError, { once: true });
+              if (!target.isConnected) document.head.appendChild(target);
+          });
+      }
+
+      if (typeof QRCode === 'undefined') throw new Error('مكتبة QR غير متاحة بعد التحميل');
+
+      await Swal.fire({
+          title: 'رمز QR — ' + String(item.account_name || 'الخزينة'),
+          width: 560,
+          html:
+              '<div class="text-center space-y-3">' +
+                  '<div class="rounded-xl border bg-gray-50 p-4">' +
+                      '<div id="treasury-qr-container" class="flex justify-center min-h-[250px] items-center"></div>' +
+                  '</div>' +
+                  '<div class="text-right rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm">' +
+                      '<div><strong>الحساب:</strong> ' + _esc(item.account_name || '') + '</div>' +
+                      '<div><strong>الكود:</strong> ' + _esc(item.account_code || '') + '</div>' +
+                      '<div><strong>النوع:</strong> ' + (item.type === 'Cash' ? 'خزينة نقدية' : 'بنك') + '</div>' +
+                      '<p class="mt-2 text-xs text-gray-600">هذا الرمز يعرّف الخزينة فقط ولا يمنح صلاحية دخول أو تنفيذ مالي. عند مسحه يجب على تطبيق الكاشير التحقق من جلسة المستخدم والشركة وصلاحية الربط من الخادم.</p>' +
+                  '</div>' +
+                  '<div class="text-xs text-gray-500 break-all">هوية الخزينة: ' + _esc(item.id) + '</div>' +
+              '</div>',
+          confirmButtonText: 'تم',
+          didOpen: function () {
+              var container = document.getElementById('treasury-qr-container');
+              if (!container) return;
+              container.innerHTML = '';
+              new QRCode(container, {
+                  text: payload,
+                  width: 240,
+                  height: 240,
+                  colorDark: '#111827',
+                  colorLight: '#ffffff',
+                  correctLevel: QRCode.CorrectLevel.M
+              });
+          }
+      });
+      return true;
+  } catch (e) {
+      if (!suppressErrorToast) _showToast((e && e.message) || 'تعذر إنشاء رمز QR للخزينة', 'error');
+      return false;
+  }
 }
-	
+
     function _filterTreasury() {
         var q = (byId('tr-search') ? byId('tr-search').value : '').toLowerCase();
         var filtered = _cache.treasury.filter(function(t) { return (t.account_name||'').toLowerCase().indexOf(q) !== -1 || (t.account_code||'').toLowerCase().indexOf(q) !== -1; });
@@ -18242,7 +18279,7 @@ async function _openTreasuryDialog() {
 
     var result = await Swal.fire({
         title: 'إضافة خزينة / بنك',
-        width: 920,
+          width: 'min(1120px, calc(100vw - 32px))',
         html: '<div class="text-right space-y-3">' +
             '<div><label class="block text-sm font-bold">الاسم *</label>' +
             '<input id="tr-name" class="swal2-input w-full" maxlength="255" placeholder="اسم الخزينة أو البنك"></div>' +
@@ -18311,10 +18348,15 @@ async function _openTreasuryDialog() {
             throw new Error('تم الحفظ لكن استجابة الخزينة لا تحتوي الهوية اللازمة لإنشاء QR');
         }
 
-        _refreshCache();
-        renderSubTab('treasury');
-        await _showTreasuryQR(savedTreasury.account_code, savedTreasury);
-        _showToast('تم حفظ الحساب وإنشاء رمز QR الخاص به', 'success');
+          _refreshCache();
+  renderSubTab('treasury');
+
+  var qrDisplayed = await _showTreasuryQR(savedTreasury.account_code, savedTreasury, true);
+  if (qrDisplayed) {
+      _showToast('تم حفظ الحساب وإنشاء رمز QR الخاص به', 'success');
+  } else {
+      _showToast('تم حفظ الخزينة بنجاح، لكن تعذر عرض QR. يمكنك إعادة المحاولة من زر «عرض QR» بالقائمة.', 'warning');
+  }
 		
     } catch (e) {
         _showToast((e && e.message) || 'فشل حفظ الخزينة / البنك', 'error');
