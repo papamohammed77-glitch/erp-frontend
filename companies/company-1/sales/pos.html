@@ -497,7 +497,20 @@ self.loadShiftState = function(callback) {
         return;
     }
 
-    supabase.rpc('pos_get_shift_summary', { p_shift_id: null }).then(function(res) {
+        supabase.auth.getSession().then(function(sessionResult) {
+        var session = sessionResult && sessionResult.data ? sessionResult.data.session : null;
+        if (!sessionResult || sessionResult.error || !session || !session.user || !session.user.id ||
+            !currentUser || !currentUser.auth_id ||
+            String(currentUser.auth_id) !== String(session.user.id)) {
+            RW_UI.toast('انتهت جلسة الدخول أو لم تعد مطابقة للمستخدم الحالي؛ أعد تسجيل الدخول قبل إدارة الوردية أو البيع.', 'warning');
+            return {
+                error: new Error('POS_SESSION_REQUIRED'),
+                data: null
+            };
+        }
+        return supabase.rpc('pos_get_shift_summary', { p_shift_id: null });
+    }).then(function(res) {
+            
         if (res.error || !res.data || res.data.success !== true) {
             self._shiftLoaded = false;
             self._activeShiftId = null;
