@@ -83,7 +83,7 @@
             <div class="p-3 bg-slate-900 border-b border-slate-800 space-y-2 shrink-0">
                 <div class="relative"><input type="text" id="posSearch" oninput="POS.onSearchInput(this.value)" placeholder="🔍 امسح الباركود أو ابحث باسم/كود الصنف... (F2)" class="w-full bg-slate-800 border border-slate-600 text-white px-4 py-3 rounded-xl text-sm font-bold focus:border-blue-500 focus:outline-none pl-12" autocomplete="off"><button onclick="POS.startBarcodeScanner()" class="absolute left-2 top-2 bg-blue-600 text-white p-2 rounded-lg text-sm hover:bg-blue-500 transition"><i class="fa-solid fa-camera"></i></button></div>
                 <div class="flex gap-2">
-                    <div class="relative flex-1"><select id="posCustSelect" onchange="POS.onCustomerChange()" class="w-full p-2.5 bg-slate-800 border border-slate-600 rounded-lg text-sm font-bold text-white appearance-none"><option value="">👤 عميل نقدي (عام)</option></select></div>
+                    <div class="relative flex-1"><select id="posCustSelect" disabled onchange="POS.onCustomerChange()" class="w-full p-2.5 bg-slate-800 border border-slate-600 rounded-lg text-sm font-bold text-white appearance-none"><option value="">👤 عميل نقدي (عام)</option></select></div>
                     <div class="relative w-40"><select id="posBranchSel" onchange="POS.onBranchChange()" class="w-full p-2.5 bg-slate-800 border border-slate-600 rounded-lg text-sm font-bold text-white appearance-none"><option value="">🏭 اختر الفرع</option></select></div>
 <button type="button" id="posShiftButton" onclick="POS.openShiftModal()" class="shrink-0 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black"><span id="posShiftButtonLabel">الوردية: جارٍ التحقق</span></button>
                 </div>
@@ -274,6 +274,7 @@ var POS = (function() {
 
 
     self._shiftLoaded = false;
+    self._shiftOnOtherTerminal = false;
 self._activeShiftId = null;
 self._shiftSummary = null;
 
@@ -482,7 +483,7 @@ self._renderShiftState = function() {
     var openPanel = RW_UI.byId('posShiftOpenPanel');
     var activePanel = RW_UI.byId('posShiftActivePanel');
     var s = self._shiftSummary && self._shiftSummary.shift;
-    if (label) label.innerText = self._activeShiftId ? ('وردية مفتوحة • ' + Number((self._shiftSummary || {}).expected_cash || 0).toFixed(2)) : 'بدء الوردية';
+    if (label) label.innerText = self._shiftOnOtherTerminal ? 'الوردية مفتوحة على جهاز آخر' : (self._activeShiftId ? ('وردية مفتوحة • ' + Number((self._shiftSummary || {}).expected_cash || 0).toFixed(2)) : 'بدء الوردية');
     if (openPanel) openPanel.classList.toggle('hidden', !!self._activeShiftId);
     if (activePanel) activePanel.classList.toggle('hidden', !self._activeShiftId);
     if (s) {
@@ -494,19 +495,53 @@ self._renderShiftState = function() {
 };
 
 self.loadShiftState = function(callback) {
-    if (!currentUser || typeof supabase === 'undefined' || !supabase || typeof supabase.rpc !== 'function') return;
+    if (!currentUser || typeof supabase === 'undefined' || !supabase || typeof supabase.rpc !== 'function') {
+        if (typeof callback === 'function') callback(false);
+        return;
+    }
+
     supabase.rpc('pos_get_shift_summary', { p_shift_id: null }).then(function(res) {
         if (res.error || !res.data || res.data.success !== true) {
             self._shiftLoaded = false;
             self._activeShiftId = null;
             self._shiftSummary = null;
+            self._shiftOnOtherTerminal = false;
             self._renderShiftState();
             console.error('POS shift summary failed:', res.error || res.data);
             if (typeof callback === 'function') callback(false);
             return;
         }
+
+        var shift = res.data.active_shift && res.data.shift ? res.data.shift : null;
+        var terminalCode = self._getShiftTerminalCode();
+        var localTerminalId = '';
+        var localTreasuryId = '';
+
+        try {
+            localTerminalId = localStorage.getItem('rawaea_pos_terminal_id') || '';
+            localTreasuryId = localStorage.getItem('rawaea_pos_terminal_treasury_id') || '';
+        } catch (e) {}
+
+        self._shiftOnOtherTerminal = !!(shift && (
+            !localTerminalId ||
+            !localTreasuryId ||
+            String(shift.terminal_id || '') !== String(localTerminalId) ||
+            String(shift.treasury_id || '') !== String(localTreasuryId) ||
+            String(shift.terminal_code || '') !== String(terminalCode)
+        ));
+
+        if (self._shiftOnOtherTerminal) {
+            self._shiftLoaded = true;
+            self._activeShiftId = null;
+            self._shiftSummary = null;
+            self._renderShiftState();
+            console.warn('POS open shift belongs to a different terminal; it will not be reused on this device.');
+            if (typeof callback === 'function') callback(true);
+            return;
+        }
+
         self._shiftSummary = res.data;
-        self._activeShiftId = res.data.active_shift && res.data.shift ? res.data.shift.id : null;
+        self._activeShiftId = shift ? shift.id : null;
         self._shiftLoaded = true;
         self._renderShiftState();
         if (typeof callback === 'function') callback(true);
@@ -514,6 +549,7 @@ self.loadShiftState = function(callback) {
         self._shiftLoaded = false;
         self._activeShiftId = null;
         self._shiftSummary = null;
+        self._shiftOnOtherTerminal = false;
         self._renderShiftState();
         console.error('POS shift summary exception:', err);
         if (typeof callback === 'function') callback(false);
@@ -552,6 +588,11 @@ self.updateShiftCountTotal = function() {
 };
 
 self.startShift = function() {
+
+    if (self._shiftOnOtherTerminal) {
+    RW_UI.showError('لا يمكن فتح وردية ثانية لهذا الحساب قبل إغلاق الوردية المفتوحة على الجهاز الأصلي.');
+    return;
+}
     if (!selBranch || !branchMap[selBranch]) {
         RW_UI.toast('اختر الفرع أولًا', 'warning');
         return;
@@ -819,29 +860,100 @@ self.syncDown = function() {
         });
     };
 
-    self.loadBranches = function() {
-        if (!db) {
-            var s = RW_UI.byId('posBranchSel');
-            if (s) RW_UI.safeHTML(s, '<option value="">🏭 فشل تحميل الفروع</option>');
-            return;
+self.loadBranches = function() {
+    if (!db) {
+        var failedSelect = RW_UI.byId('posBranchSel');
+        if (failedSelect) RW_UI.safeHTML(failedSelect, '<option value="">🏭 فشل تحميل الفروع</option>');
+        return;
+    }
+
+    db.branches.toArray().then(function(branches) {
+        var user = currentUser || {};
+        var permissions = Array.isArray(user.permissions) ? user.permissions : [];
+        var isOwner = user.isOwner === true || permissions.indexOf('*') !== -1;
+        var defaultId = String(user.defaultBranchId || '').trim();
+        var rawAllowed = user.allowedBranchIds;
+        var allowed = [];
+        var i;
+
+        if (Array.isArray(rawAllowed)) {
+            allowed = rawAllowed.map(function(x) { return String(x || '').trim(); }).filter(function(x) { return !!x; });
+        } else if (typeof rawAllowed === 'string' && rawAllowed.trim()) {
+            var raw = rawAllowed.trim();
+            if (raw.charAt(0) === '[') {
+                try {
+                    var parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) allowed = parsed.map(function(x) { return String(x || '').trim(); }).filter(function(x) { return !!x; });
+                } catch (e) {
+                    allowed = [];
+                }
+            } else {
+                allowed = raw.split(',').join(';').split(';').map(function(x) { return String(x || '').trim(); }).filter(function(x) { return !!x; });
+            }
         }
-        db.branches.toArray().then(function(br) {
-            branchMap = {};
-            var h = '<option value="">🏭 اختر الفرع</option>';
-            for (var i = 0; i < br.length; i++) { branchMap[br[i].branch_code] = br[i].id; h += '<option value="' + br[i].branch_code + '">' + (br[i].name || br[i].branch_code) + '</option>'; }
-            var s = RW_UI.byId('posBranchSel'); if (s) RW_UI.safeHTML(s, h);
-        });
-    };
+
+        if (!isOwner) {
+            var allowedValue = defaultId || (allowed.length === 1 ? allowed[0] : '');
+            if (!allowedValue) {
+                branchMap = {};
+                selBranch = null;
+                var noBranchSelect = RW_UI.byId('posBranchSel');
+                if (noBranchSelect) RW_UI.safeHTML(noBranchSelect, '<option value="">لا يوجد فرع افتراضي وحيد مصرح به</option>');
+                RW_UI.showError('اربط حساب الكاشير بفرع افتراضي أو فرع واحد مسموح به من النظام الأم قبل البيع.');
+                return;
+            }
+            branches = branches.filter(function(branch) {
+                return String(branch.id) === allowedValue || String(branch.branch_code) === allowedValue;
+            });
+        }
+
+        branchMap = {};
+        var html = '<option value="">🏭 اختر الفرع</option>';
+        for (i = 0; i < branches.length; i++) {
+            branchMap[branches[i].branch_code] = branches[i].id;
+            html += '<option value="' + branches[i].branch_code + '">' + (branches[i].name || branches[i].branch_code) + '</option>';
+        }
+
+        var select = RW_UI.byId('posBranchSel');
+        if (select) RW_UI.safeHTML(select, html);
+
+        var preferredCode = '';
+        var activeShift = self._shiftSummary && self._shiftSummary.shift;
+        if (activeShift) {
+            for (i = 0; i < branches.length; i++) {
+                if (String(branches[i].id) === String(activeShift.branch_id)) {
+                    preferredCode = branches[i].branch_code;
+                    break;
+                }
+            }
+        }
+        if (!preferredCode && !isOwner && branches.length === 1) preferredCode = branches[0].branch_code;
+        if (!preferredCode && isOwner && selBranch && branchMap[selBranch]) preferredCode = selBranch;
+
+        if (select) select.value = preferredCode;
+        selBranch = preferredCode || null;
+        if (selBranch) self.renderProducts();
+        if (!isOwner && branches.length !== 1) {
+            RW_UI.showError('الفرع المحدد في ملف المستخدم غير موجود ضمن الفروع المحملة. راجع ربط الفرع من النظام الأم.');
+        }
+    }).catch(function(err) {
+        console.error('POS branch load failed:', err);
+        RW_UI.showError('تعذر تحميل الفروع المصرح بها.');
+    });
+};
 
     self.loadCustomers = function() {
-        if (!db) return;
-        db.customers.toArray().then(function(list) {
-            var h = '<option value="">👤 عميل نقدي (عام)</option>';
-            for (var i = 0; i < Math.min(list.length, 50); i++) h += '<option value="' + list[i].customer_code + '">' + list[i].name + ' (' + (list[i].area || '') + ')</option>';
-            var s = RW_UI.byId('posCustSelect'); if (s) RW_UI.safeHTML(s, h);
-        });
-    };
-
+    selCust = null;
+    var select = RW_UI.byId('posCustSelect');
+    if (select) {
+        select.disabled = true;
+        RW_UI.safeHTML(select, '<option value="">👤 عميل نقدي (عام)</option>');
+        select.value = '';
+    }
+    RW_UI.safeText(RW_UI.byId('cartCustName'), 'عميل نقدي (عام)');
+    RW_UI.safeHTML(RW_UI.byId('cartCustDetails'), '');
+};
+    
     self.onCustomerChange = function() {
         var code = RW_UI.byId('posCustSelect') ? RW_UI.byId('posCustSelect').value : '';
         if (!code) { selCust = null; RW_UI.safeText(RW_UI.byId('cartCustName'), 'عميل نقدي (عام)'); RW_UI.safeHTML(RW_UI.byId('cartCustDetails'), ''); return; }
@@ -1062,6 +1174,10 @@ self.syncDown = function() {
 
 self.openPaymentModal = function() {
     self.loadShiftState(function(ok) {
+        if (self._shiftOnOtherTerminal) {
+    RW_UI.showError('هذا الحساب لديه وردية مفتوحة على جهاز آخر. لا يمكن نقل الوردية أو استخدام خزينة الجهاز الآخر؛ أغلق الوردية من الجهاز الأصلي أولًا.');
+    return;
+}
         if (!ok || !self._activeShiftId || !self._shiftSummary || !self._shiftSummary.shift) {
             self.openShiftModal();
             RW_UI.toast('يجب فتح وردية قبل البيع', 'warning');
@@ -1161,16 +1277,18 @@ if (!selBranch || !branchMap[selBranch] || branchMap[selBranch] !== self._shiftS
         });
     }
 
-    var custCode = selCust ? selCust.customer_code : '';
-    var custName = selCust ? selCust.name : 'عميل نقدي';
+        var custCode = '';
+        var custName = 'عميل نقدي';
     var hdr = {
         customer_code: custCode,
         custName: custName,
-        area: selCust ? (selCust.area || '') : '',
+        area: '',
         total: t.total,
         deliveryFees: 0,
         status: 'Invoiced',
         source: 'pos',
+        shift_id: self._activeShiftId,
+        device_id: self._getShiftTerminalCode(),
         paymentType: 'نقدي',
         taxAmount: 0,
         taxRate: 0
@@ -2094,6 +2212,63 @@ self._searchProducts = function(q) {
     return self;
 })();
 
+(function() {
+    var idleTimer = null;
+    var hiddenTimer = null;
+    var logoutInProgress = false;
+
+    function appVisible() {
+        var app = document.getElementById('mainApp');
+        return !!(app && !app.classList.contains('hidden'));
+    }
+
+    function clearTimers() {
+        if (idleTimer) {
+            clearTimeout(idleTimer);
+            idleTimer = null;
+        }
+        if (hiddenTimer) {
+            clearTimeout(hiddenTimer);
+            hiddenTimer = null;
+        }
+    }
+
+    function secureLogout() {
+        if (logoutInProgress || !appVisible()) return;
+        logoutInProgress = true;
+        clearTimers();
+        RW_UI.toast('تم تسجيل الخروج تلقائيًا لحماية حساب الكاشير', 'warning');
+        POS.doLogout();
+        setTimeout(function() { logoutInProgress = false; }, 1500);
+    }
+
+    function armIdleTimer() {
+        if (!appVisible()) return;
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(secureLogout, 3 * 60 * 1000);
+    }
+
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            if (hiddenTimer) clearTimeout(hiddenTimer);
+            hiddenTimer = setTimeout(function() {
+                if (document.hidden) secureLogout();
+            }, 15000);
+        } else {
+            if (hiddenTimer) {
+                clearTimeout(hiddenTimer);
+                hiddenTimer = null;
+            }
+            armIdleTimer();
+        }
+    });
+
+    ['pointerdown', 'keydown', 'touchstart', 'click'].forEach(function(eventName) {
+        document.addEventListener(eventName, armIdleTimer, { passive: true });
+    });
+    window.addEventListener('focus', armIdleTimer);
+})();
+    
 RW_SW.register('../sw.js');
 document.addEventListener('DOMContentLoaded', function() { POS.init(); });
 </script>
