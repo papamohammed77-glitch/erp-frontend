@@ -119,41 +119,61 @@ var Store = (function() {
     };
 
     self.loadSettings = function() {
-        return supabase.from('app_settings').select('*').limit(1).single().then(function(res) {
-            if (res.data) {
-                settings = {
-                    storeName: res.data.store_name || res.data.company_name || 'متجر الروائع',
-                    storeLogo: res.data.store_logo || res.data.company_logo || '',
-                    primaryColor: res.data.store_primary_color || '#2563eb',
-                    deliveryFee: Number(res.data.delivery_fee) || 0,
-                    taxRate: Number(res.data.tax_rate) || 0,
-                    minInvoiceAmount: Number(res.data.min_invoice_amount) || 0,
-                    freeShippingThreshold: Number(res.data.free_shipping_threshold) || 0,
-                    paymentMethod: res.data.payment_method || 'both',
-                    currency: res.data.currency || 'SAR'
-                };
-                RW_UI.byId('storeName').textContent = settings.storeName;
-                RW_UI.byId('headerStoreName').textContent = settings.storeName;
-                if (settings.storeLogo) {
-                    var logo = RW_UI.byId('storeLogo');
-                    logo.src = settings.storeLogo;
-                    logo.classList.remove('hidden');
-                }
+    return supabase.rpc('get_public_store_catalog', { p_storefront_key: null })
+        .then(function(res) {
+            if (res.error) throw res.error;
+            if (!res.data || !res.data.settings || !Array.isArray(res.data.products)) {
+                throw new Error('تعذر تحميل كتالوج المتجر المنشور');
+            }
+            storeCatalog = res.data;
+            var s = storeCatalog.settings;
+            settings = {
+                storeName: s.storeName || 'متجر الروائع',
+                storeLogo: s.storeLogo || '',
+                primaryColor: s.primaryColor || '#2563eb',
+                secondaryColor: s.secondaryColor || '',
+                deliveryFee: Number(s.deliveryFee) || 0,
+                taxRate: Number(s.taxRate) || 0,
+                minInvoiceAmount: Number(s.minInvoiceAmount) || 0,
+                freeShippingThreshold: Number(s.freeShippingThreshold) || 0,
+                paymentMethod: s.paymentMethod || 'both',
+                currency: s.currency || 'SAR'
+            };
+            RW_UI.byId('storeName').textContent = settings.storeName;
+            RW_UI.byId('headerStoreName').textContent = settings.storeName;
+            if (settings.storeLogo) {
+                var logo = RW_UI.byId('storeLogo');
+                logo.src = settings.storeLogo;
+                logo.classList.remove('hidden');
+            }
+            document.documentElement.style.setProperty('--store-primary', settings.primaryColor);
+            if (settings.secondaryColor) {
+                document.documentElement.style.setProperty('--store-secondary', settings.secondaryColor);
             }
         });
-    };
+};
 
     self.syncProducts = function() {
-        return supabase.from('items').select('*').eq('show_in_store', true).eq('is_active', true).order('sort_order', { ascending: true }).then(function(res) {
-            if (res.data && res.data.length > 0) {
-                products = res.data;
-                db.items.clear().then(function() { db.items.bulkPut(res.data); });
-                self.extractCategories();
-                self.renderCategoryBar();
-                self.loadPage();
-            }
+    if (!storeCatalog || !Array.isArray(storeCatalog.products)) {
+        return Promise.reject(new Error('كتالوج المتجر لم يتم تحميله'));
+    }
+    products = storeCatalog.products.filter(function(p) {
+        return p && p.is_active === true && p.show_in_store === true;
+    }).map(function(p) {
+        return Object.assign({}, p, {
+            price: Number(p.sales_price) || 0,
+            qty: Number(p.qty) || 0
         });
-    };
+    });
+    return db.items.clear()
+        .then(function() { return db.items.bulkPut(products); })
+        .then(function() {
+            self.extractCategories();
+            self.renderCategoryBar();
+            currentPage = 0;
+            self.loadPage();
+        });
+};
 
     self.checkDailyDeals = function() {
         var hasDeals = false;
