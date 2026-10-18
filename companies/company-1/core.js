@@ -150,7 +150,7 @@ var RW_Auth = (function() {
 
             hydrateProfile(function(user, error) {
                 if (error || !user) {
-                    supabase.auth.signOut().then(function() {
+                    supabase.auth.signOut({ scope: 'local' }).then(function() {
                         clearState();
                         if (callback) callback(null, error || 'تعذر تحميل صلاحيات المستخدم');
                     }).catch(function() {
@@ -177,7 +177,7 @@ var RW_Auth = (function() {
             return;
         }
 
-        supabase.auth.signOut().then(function() {
+        supabase.auth.signOut({ scope: 'local' }).then(function() {
             clearState();
             if (callback) callback(true);
         }).catch(function(error) {
