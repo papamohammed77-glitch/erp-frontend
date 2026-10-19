@@ -292,6 +292,13 @@ renderPendingTab: function(){
 
     Promise.all([p1, p2])
         .then(function(results){
+            if (results[0].error || results[1].error) { console.error('Picker runsheets load error:', { mine: results[0].error || null, available: results[1].error || null }); 
+            safeHTML( byId('mainContent'), '
+            
+            تعذر تحميل الرانشيتات. حدّث الصفحة أو راجع صلاحياتك واتصالك.
+            ' ); return; 
+            }
+
             var myRunsheets = results[0].data || [];
             var openRunsheets = results[1].data || [];
 
@@ -474,6 +481,9 @@ var textColor = isMine
     .eq('runsheet_code', code)
     .maybeSingle()
     .then(function(rsRes){
+        if (rsRes.error) { console.error('Picker runsheet read error:', rsRes.error); 
+                          toast('تعذر قراءة الرانشيت. تحقق من الاتصال والصلاحيات.', 'error'); 
+                          self.renderPendingTab(); return; }
             if(!rsRes.data){ toast('الرانشيت غير موجود', 'error'); self.renderPendingTab(); return; }var rs = rsRes.data;
 
 if(
@@ -499,6 +509,9 @@ supabase
     .select('*')
     .eq('runsheet_id', rs.id)
     .then(function(detRes){
+        if (detRes.error) { console.error('Picker runsheet details read error:', detRes.error); 
+                           toast('تعذر تحميل أصناف الرانشيت.', 'error'); 
+                           self.renderPendingTab(); return; }
                 var items = detRes.data || [];
                 var itemCount = items.length;
                 if(rs.status === 'Picking' && rs.picker_id === self.pubUserId){
@@ -513,9 +526,38 @@ supabase
                             qty_picked: items[i].qty_picked || 0,
                             notes: items[i].notes || ''
                         });
+                    }                   
+                    db.session.get(code).then(function(savedSession){
+                var sameSession = savedSession &&
+                    savedSession.runsheet_id === rs.id &&
+                    savedSession.start_time === self.session.start_time &&
+                    Array.isArray(savedSession.items);
+            
+                if(sameSession){
+                    for(var i = 0; i < self.session.items.length; i++){
+                        var currentItem = self.session.items[i];
+                        for(var j = 0; j < savedSession.items.length; j++){
+                            var savedItem = savedSession.items[j];
+                            if(savedItem.item_code === currentItem.item_code){
+                                var savedQty = Number(savedItem.qty_picked);
+                                if(isFinite(savedQty) && savedQty >= 0 && savedQty <= currentItem.qty_ordered){
+                                    currentItem.qty_picked = savedQty;
+                                }
+                                currentItem.notes = typeof savedItem.notes === 'string' ? savedItem.notes : '';
+                                break;
+                            }
+                        }
                     }
-                    self.renderActiveSession();
-                    return;
+                }
+            
+                return db.session.put(self.session);
+            }).then(function(){
+                self.renderActiveSession();
+            }).catch(function(err){
+                console.error('Picker draft restore/save error:', err);
+                self.renderActiveSession();
+            });
+            return;            
                 }
                 var html = '';
                 html += '<div class="flex items-center gap-3 mb-6"><button onclick="App.renderPendingTab()" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-indigo-600 shadow-sm"><i class="fa-solid fa-arrow-right"></i></button><span class="font-black text-xl text-slate-800">' + code + ' | عدد الأصناف: ' + itemCount + '</span></div>';
@@ -640,7 +682,6 @@ self.openRunsheet(code);
             if(r.isConfirmed){
                 self.session.items[index].qty_picked = r.value.qty;
                 self.session.items[index].notes = r.value.notes;
-                supabase.from('run_sheet_details').update({ qty_picked: r.value.qty }).eq('runsheet_id', self.session.runsheet_id || null).eq('item_code', it.item_code).then(function(){});
                 self.renderActiveSession();
                 if(r.value.qty < it.qty_ordered && !r.value.notes){
                     Swal.fire({
