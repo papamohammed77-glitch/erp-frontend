@@ -105,6 +105,74 @@ var Store = (function() {
     function saveCustomerData(data) { try { localStorage.setItem('rw_store_customer', JSON.stringify(data)); } catch(e) {} }
     function loadCustomerData() { try { var d = localStorage.getItem('rw_store_customer'); return d ? JSON.parse(d) : {}; } catch(e) { return {}; } }
 
+    function _createStoreOperationUuid() {
+        var cryptoApi = window.crypto;
+        if (!cryptoApi || typeof cryptoApi.getRandomValues !== 'function') {
+            throw new Error('المتصفح لا يدعم إنشاء مفتاح طلب آمن؛ لم يتم إرسال الطلب.');
+        }
+        if (typeof cryptoApi.randomUUID === 'function') return cryptoApi.randomUUID();
+
+        var bytes = new Uint8Array(16);
+        cryptoApi.getRandomValues(bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        var hex = Array.prototype.map.call(bytes, function (b) {
+            return ('0' + b.toString(16)).slice(-2);
+        }).join('');
+        return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' +
+            hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+    }
+
+    function _getOrCreateStoreOperationId(payload) {
+        if (!window.crypto || !window.crypto.subtle || typeof TextEncoder === 'undefined') {
+            return Promise.reject(new Error('تعذر إنشاء بصمة آمنة للطلب؛ حدّث المتصفح ثم أعد المحاولة.'));
+        }
+
+        var serialized = JSON.stringify(payload);
+        var storageKey = 'rw_store_pending_checkout_v1';
+        return window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(serialized)).then(function (hashBuffer) {
+            var fingerprint = Array.prototype.map.call(new Uint8Array(hashBuffer), function (b) {
+                return ('0' + b.toString(16)).slice(-2);
+            }).join('');
+            var saved = null;
+
+            try {
+                saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+            } catch (e) {
+                saved = null;
+            }
+
+            var uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (saved && saved.fingerprint === fingerprint && uuidPattern.test(saved.operation_id || '')) {
+                return saved.operation_id;
+            }
+
+            var operationId = _createStoreOperationUuid();
+            try {
+                localStorage.setItem(storageKey, JSON.stringify({
+                    fingerprint: fingerprint,
+                    operation_id: operationId,
+                    created_at: new Date().toISOString()
+                }));
+            } catch (e) {
+                throw new Error('تعذر حفظ مفتاح منع تكرار الطلب؛ لم يتم إرسال الطلب.');
+            }
+            return operationId;
+        });
+    }
+
+    function _clearStoreOperationId(operationId) {
+        var storageKey = 'rw_store_pending_checkout_v1';
+        try {
+            var saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+            if (saved && saved.operation_id === operationId) {
+                localStorage.removeItem(storageKey);
+            }
+        } catch (e) {
+            console.warn('تعذر تنظيف مفتاح الطلب المكتمل:', e);
+        }
+    }
+    
     self.init = function() {
         self.loadSettings().then(function() {
             RW_ImageCache.loadAll(function() {
@@ -119,7 +187,7 @@ var Store = (function() {
     };
 
     self.loadSettings = function() {
-    return supabase.rpc('get_public_store_catalog', { p_storefront_key: null })
+        return supabase.rpc('get_public_store_catalog', { p_storefront_key: 'company-1' })
         .then(function(res) {
             if (res.error) throw res.error;
             if (!res.data || !res.data.settings || !Array.isArray(res.data.products)) {
@@ -496,6 +564,7 @@ self.submitOrder = function(customer, total) {
     }
 
     var bodyPayload = {
+        storefront_key: 'company-1',
         user: customer,
         cartItems: itemsList,
         total: total,
@@ -505,14 +574,19 @@ self.submitOrder = function(customer, total) {
     };
 
     // ✅ إرسال كلا الهيدرين: apikey + Authorization
-    fetch(SUPABASE_URL + '/functions/v1/submit-online-order', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'apikey': SUPABASE_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_KEY
-        },
-        body: JSON.stringify(bodyPayload)
+    _getOrCreateStoreOperationId(bodyPayload).then(function (operationId) {
+        bodyPayload.operation_id = operationId;
+        return fetch(SUPABASE_URL + '/functions/v1/submit-online-order', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'apikey': SUPABASE_KEY,
+                'Authorization': 'Bearer ' + SUPABASE_KEY,
+                'Idempotency-Key': operationId,
+                'x-storefront-key': 'company-1'
+            },
+            body: JSON.stringify(bodyPayload)
+        });
     }).then(function(res) {
         console.log('📥 استجابة الخادم:', res.status);
         if (!res.ok) {
@@ -530,7 +604,8 @@ self.submitOrder = function(customer, total) {
                 title: 'تم إرسال الطلب بنجاح!',
                 text: 'رقم الطلب: ' + (json.orderCode || json.orderID || ''),
                 confirmButtonText: 'حسناً'
-            }).then(function() {
+                  }).then(function() {
+                _clearStoreOperationId(bodyPayload.operation_id);
                 cart = [];
                 couponCode = '';
                 couponDiscount = 0;
