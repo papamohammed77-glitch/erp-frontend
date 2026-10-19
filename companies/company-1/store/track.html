@@ -26,7 +26,7 @@
             <i class="fa-solid fa-magnifying-glass-location text-white text-2xl"></i>
         </div>
         <h1 class="text-2xl font-black mb-2">تتبع طلبك</h1>
-        <p class="text-blue-100 text-sm">أدخل رقم الطلب لمعرفة حالته</p>
+        <p class="text-blue-100 text-sm">أدخل رقم الطلب أو رقم الهاتف لمعرفة حالة طلبك</p>
     </div>
 </div>
 
@@ -45,7 +45,7 @@
         <button type="button" onclick="Tracker.lookup()" class="mt-3 w-full bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition">
             <i class="fa-solid fa-search ml-1"></i> استعلام آمن عن الطلب
         </button>
-        <p class="text-xs text-gray-400 mt-2">لخصوصيتك، أدخل رقم الطلب ورقم الهاتف المستخدم عند إتمام الشراء.</p>
+        <p class="text-xs text-gray-400 mt-2">يمكنك البحث برقم الطلب أو الهاتف فقط. أدخل الرقمين معًا لعرض تفاصيل الطلب والأصناف.</p>
     </div>
 
     <div id="resultContainer"></div>
@@ -76,12 +76,17 @@
 }
 
 var Tracker = {
-        lookup: function() {
+    lookup: function() {
         var orderCode = (document.getElementById('orderCodeInput').value || '').trim();
         var customerPhone = (document.getElementById('customerPhoneInput').value || '').trim();
 
-        if (!orderCode || !customerPhone) {
-            Swal.fire({ icon: 'warning', title: 'أدخل رقم الطلب ورقم الهاتف المستخدم عند الشراء' });
+        if (!orderCode && !customerPhone) {
+            Swal.fire({ icon: 'warning', title: 'أدخل رقم الطلب أو رقم الهاتف' });
+            return;
+        }
+
+        if (customerPhone && customerPhone.replace(/[^0-9]/g, '').length < 7) {
+            Swal.fire({ icon: 'warning', title: 'راجع رقم الهاتف وأدخل 7 أرقام على الأقل' });
             return;
         }
 
@@ -91,24 +96,87 @@ var Tracker = {
         var self = this;
         supabase.rpc('get_public_store_order_tracking', {
             p_storefront_key: 'company-1',
-            p_order_code: orderCode,
-            p_customer_phone: customerPhone
+            p_order_code: orderCode || null,
+            p_customer_phone: customerPhone || null
         }).then(function(result) {
             if (result.error) throw result.error;
 
             var payload = result.data;
-            if (!payload || payload.success !== true || !payload.order) {
-                container.innerHTML = '<div class="card text-center py-8"><i class="fa-solid fa-circle-xmark text-4xl text-red-400 mb-3"></i><p class="font-bold text-gray-700">تعذر العثور على الطلب بهذه البيانات</p><p class="text-sm text-gray-400 mt-1">راجع رقم الطلب ورقم الهاتف ثم حاول مرة أخرى.</p></div>';
+            if (!payload || payload.success !== true) {
+                container.innerHTML = '<div class="card text-center py-8"><i class="fa-solid fa-circle-xmark text-4xl text-red-400 mb-3"></i><p class="font-bold text-gray-700">تعذر العثور على الطلب بهذه البيانات</p><p class="text-sm text-gray-400 mt-1">راجع البيانات ثم حاول مرة أخرى.</p></div>';
                 return;
             }
 
-            self.showStatus(container, payload.order, Array.isArray(payload.items) ? payload.items : []);
+            if (payload.lookup_mode === 'phone' && Array.isArray(payload.orders)) {
+                self.showOrderList(container, payload.orders);
+                return;
+            }
+
+            if (!payload.order) {
+                container.innerHTML = '<div class="card text-center py-8"><p class="font-bold text-gray-700">تعذر العثور على الطلب بهذه البيانات</p></div>';
+                return;
+            }
+
+            self.showStatus(
+                container,
+                payload.order,
+                Array.isArray(payload.items) ? payload.items : [],
+                payload.lookup_mode || 'full'
+            );
         }).catch(function(error) {
             console.error('Order tracking RPC failed:', error);
             container.innerHTML = '<div class="card text-center py-8"><i class="fa-solid fa-triangle-exclamation text-4xl text-red-400 mb-3"></i><p class="font-bold text-gray-700">تعذر الاستعلام عن الطلب الآن</p><p class="text-sm text-gray-400 mt-1">تحقق من الاتصال وحاول مرة أخرى.</p></div>';
         });
     },
-    showStatus: function(container, order, details) {
+
+    showOrderList: function(container, orders) {
+        if (!Array.isArray(orders) || orders.length === 0) {
+            container.innerHTML = '<div class="card text-center py-8"><p class="font-bold text-gray-700">لا توجد طلبات مرتبطة بهذا الهاتف</p></div>';
+            return;
+        }
+
+        var statusLabels = {
+            'Draft': 'قيد المراجعة',
+            'Confirmed': 'تم التأكيد',
+            'Pending': 'قيد الانتظار',
+            'Picking': 'جاري التجهيز',
+            'Picked': 'تم التجهيز',
+            'Loading': 'جاري التحميل',
+            'Loaded': 'تم التحميل',
+            'Delivering': 'خارج للتوصيل',
+            'Delivered': 'تم التسليم',
+            'Partially Delivered': 'تم التسليم جزئيًا',
+            'Partially Returned': 'تم إرجاع جزء من الطلب',
+            'Cancelled': 'ملغي',
+            'Canceled': 'ملغي'
+        };
+
+        var html = '<div class="space-y-3">';
+        html += '<div class="card"><p class="font-bold text-gray-800">طلبات مرتبطة برقم الهاتف</p><p class="text-xs text-gray-500 mt-1">تظهر هنا الحالة فقط. أدخل رقم الطلب مع الهاتف لعرض التفاصيل الكاملة.</p></div>';
+
+        for (var i = 0; i < orders.length; i++) {
+            var order = orders[i] || {};
+            var status = order.order_status || '';
+            var statusLabel = statusLabels[status] || status || 'غير محدد';
+            var statusColor = status === 'Delivered' ? 'bg-green-100 text-green-700' :
+                (status === 'Cancelled' || status === 'Canceled') ? 'bg-red-100 text-red-700' :
+                'bg-blue-100 text-blue-700';
+            var orderDate = order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '';
+
+            html += '<div class="card">';
+            html += '<div class="flex items-center justify-between gap-3">';
+            html += '<div><p class="text-xs text-gray-500">رقم الطلب</p><p class="font-black text-lg">' + escapeHtml(order.order_code || '') + '</p></div>';
+            html += '<span class="px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + escapeHtml(statusLabel) + '</span>';
+            html += '</div>';
+            html += '<p class="text-xs text-gray-500 mt-2">التاريخ: ' + escapeHtml(orderDate) + '</p>';
+            html += '</div>';
+        }
+
+        html += '</div>';
+        container.innerHTML = html;
+    },
+   
+    showStatus: function(container, order, details, lookupMode) {
                 var statusLabels = {
             'Draft': 'قيد المراجعة',
             'Confirmed': 'تم التأكيد',
@@ -205,9 +273,11 @@ var Tracker = {
         html += '</div>';
         html += '<div class="grid grid-cols-2 gap-2 text-sm">';
         html += '<div><p class="text-xs text-gray-500">التاريخ</p><p class="font-bold">' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p></div>';
-        html += '<div><p class="text-xs text-gray-500">العميل</p><p class="font-bold">' + escapeHtml(order.customer_name || '') + '</p></div>';
-        html += '<div><p class="text-xs text-gray-500">المنطقة</p><p class="font-bold">' + escapeHtml(order.area || '') + '</p></div>';
-        html += '<div><p class="text-xs text-gray-500">الإجمالي</p><p class="font-black text-blue-600 text-lg">' + Number(order.total_amount || 0).toLocaleString() + '</p></div>';
+        if (lookupMode === 'full') {
+            html += '<div><p class="text-xs text-gray-500">العميل</p><p class="font-bold">' + escapeHtml(order.customer_name || '') + '</p></div>';
+            html += '<div><p class="text-xs text-gray-500">المنطقة</p><p class="font-bold">' + escapeHtml(order.area || '') + '</p></div>';
+            html += '<div><p class="text-xs text-gray-500">الإجمالي</p><p class="font-black text-blue-600 text-lg">' + Number(order.total_amount || 0).toLocaleString() + '</p></div>';
+        }
         html += '</div></div>';
         html += progressHtml;
         html += itemsHtml;
