@@ -10204,7 +10204,7 @@ window.RW_TeleSales = RW_TeleSales;
 // RW_Orders – أوردرات المبيعات (فلترة، تأكيد، حذف، رانشيت)
 // ============================================================
 var RW_Orders = (function() {
-    var sortField = 'order_code', sortAsc = true, ordersData = [], currency = 'SAR';
+    var sortField = 'order_code', sortAsc = true, ordersData = [], currency = 'SAR', operationsOnly = false;
     var _sortIcons = {};
 
     function esc(s) {
@@ -10223,13 +10223,14 @@ async function render() {
         '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">' +
             '<div class="flex flex-wrap justify-between items-center gap-2 mb-3">' +
                 '<h3 class="font-bold text-lg">فلترة الأوردرات</h3>' +
-                '<div class="flex gap-2">' +
+                '<div class="flex flex-wrap gap-2">' +
                     '<button onclick="RW_Orders._applyFilters()" class="bg-blue-50 text-blue-600 px-3 py-1 rounded text-sm font-bold">تحديث</button>' +
                     '<button onclick="RW_Orders._showWithoutRS()" class="bg-amber-50 text-amber-600 px-3 py-1 rounded text-sm font-bold">بدون رانشيت</button>' +
+                    '<button id="btn-operations-orders" type="button" aria-pressed="false" onclick="RW_Orders._toggleOperationsOnly()" class="bg-emerald-50 text-emerald-700 px-3 py-1 rounded text-sm font-bold">أوردرات عمليات</button>' +
                     '<button onclick="RW_Orders._resetFilters()" class="bg-gray-50 text-gray-600 px-3 py-1 rounded text-sm font-bold">إعادة تعيين</button>' +
                 '</div>' +
             '</div>' +
-            '<div class="grid grid-cols-2 md:grid-cols-6 gap-2">' +
+            '<div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">' +
                 '<input type="date" id="f-date-from" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">' +
                 '<input type="date" id="f-date-to" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">' +
                 '<input type="text" id="f-cust" oninput="RW_Orders._applyFilters()" placeholder="العميل" class="p-2 bg-gray-50 rounded text-sm">' +
@@ -10240,6 +10241,9 @@ async function render() {
                 '</select>' +
                 '<input type="text" id="f-area" oninput="RW_Orders._applyFilters()" placeholder="المنطقة" class="p-2 bg-gray-50 rounded text-sm">' +
                 '<input type="text" id="f-rs" oninput="RW_Orders._applyFilters()" placeholder="الرانشيت" class="p-2 bg-gray-50 rounded text-sm">' +
+                '<select id="f-source" aria-label="المصدر" onchange="RW_Orders._applyFilters()" class="p-2 bg-gray-50 rounded text-sm">' +
+                    '<option value="">المصدر (الكل)</option>' +
+                '</select>' +
             '</div>' +
         '</div>' +
         '<div class="flex flex-wrap gap-3 mb-4">' +
@@ -10315,6 +10319,7 @@ for (var i = 0; i < details.length; i++) {
 for (var j = 0; j < ordersData.length; j++) {
     ordersData[j].itemsCount = itemsCountMap[ordersData[j].id] || 0;
 }
+    _populateSourceFilter();
     hideLoader();
 } catch(e) {
     hideLoader();
@@ -10377,11 +10382,70 @@ window._rwOrdersRealtimeChannel = supabase
     .subscribe();
 }
 
+    function _normalizeOrderSource(value) {
+        return String(value || '').trim().toLowerCase().replace(/[ _]+/g, '-');
+    }
+
+    function _isRunsheetEligible(order) {
+        var source = _normalizeOrderSource(order && order.source);
+        return ['telesales', 'tele-sales', 'order-taker', 'online-store'].indexOf(source) !== -1 &&
+            ['Confirmed', 'Pending'].indexOf(order && order.order_status) !== -1 &&
+            !(order && order.runsheet_id);
+    }
+
+    function _populateSourceFilter() {
+        var selectEl = byId('f-source');
+        if (!selectEl) return;
+
+        var labels = {
+            'pos': 'كاشير / POS',
+            'telesales': 'تلي سيلز',
+            'tele-sales': 'تلي سيلز',
+            'order-taker': 'أوردر تيكر',
+            'online-store': 'المتجر الإلكتروني',
+            'van-sales': 'بيع مباشر'
+        };
+        var selected = selectEl.value;
+        var sourceSet = {};
+
+        ordersData.forEach(function(order) {
+            var source = _normalizeOrderSource(order.source);
+            if (source) sourceSet[source] = true;
+        });
+
+        while (selectEl.options.length > 1) selectEl.remove(1);
+
+        Object.keys(sourceSet).sort().forEach(function(source) {
+            var option = document.createElement('option');
+            option.value = source;
+            option.textContent = labels[source] || source;
+            selectEl.appendChild(option);
+        });
+
+        selectEl.value = sourceSet[selected] ? selected : '';
+    }
+
+    function _setOperationsOnly(active) {
+        operationsOnly = !!active;
+        var button = byId('btn-operations-orders');
+        if (!button) return;
+        button.setAttribute('aria-pressed', operationsOnly ? 'true' : 'false');
+        button.className = operationsOnly
+            ? 'bg-emerald-600 text-white px-3 py-1 rounded text-sm font-bold'
+            : 'bg-emerald-50 text-emerald-700 px-3 py-1 rounded text-sm font-bold';
+    }
+
+    function _toggleOperationsOnly() {
+        _setOperationsOnly(!operationsOnly);
+        _applyFilters();
+    }
+	
     // ========== الفلترة والفرز ==========
     function _applyFilters() {
         var filtered = ordersData.slice();
         var fdEl = byId('f-date-from'), tdEl = byId('f-date-to'), custEl = byId('f-cust'),
-            stEl = byId('f-status'), areaEl = byId('f-area'), rsEl = byId('f-rs');
+            stEl = byId('f-status'), areaEl = byId('f-area'), rsEl = byId('f-rs'),
+            sourceEl = byId('f-source');
 
         var fd = fdEl ? fdEl.value : '';
         var td = tdEl ? tdEl.value : '';
@@ -10389,6 +10453,7 @@ window._rwOrdersRealtimeChannel = supabase
         var st = stEl ? stEl.value : '';
         var area = areaEl ? (areaEl.value || '').toLowerCase() : '';
         var rs = rsEl ? (rsEl.value || '').toLowerCase() : '';
+        var source = sourceEl ? sourceEl.value : '';
 
         if (fd) filtered = filtered.filter(function(o) { return o.order_date >= fd; });
         if (td) filtered = filtered.filter(function(o) { return o.order_date <= td; });
@@ -10396,6 +10461,8 @@ window._rwOrdersRealtimeChannel = supabase
         if (st) filtered = filtered.filter(function(o) { return o.order_status === st; });
         if (area) filtered = filtered.filter(function(o) { return (o.area || '').toLowerCase().indexOf(area) !== -1; });
         if (rs) filtered = filtered.filter(function(o) { return String(o._runsheetCode || '').toLowerCase().indexOf(rs) !== -1; });
+        if (source) filtered = filtered.filter(function(o) { return _normalizeOrderSource(o.source) === source; });
+        if (operationsOnly) filtered = filtered.filter(_isRunsheetEligible);
 
         var sorted = filtered.sort(function(a, b) {
             var va = a[sortField] || '', vb = b[sortField] || '';
@@ -10411,17 +10478,19 @@ window._rwOrdersRealtimeChannel = supabase
 
         _renderTable(sorted);
     }
-
+	
     function _resetFilters() {
-        var ids = ['f-date-from', 'f-date-to', 'f-cust', 'f-status', 'f-area', 'f-rs'];
+        var ids = ['f-date-from', 'f-date-to', 'f-cust', 'f-status', 'f-area', 'f-rs', 'f-source'];
         for (var i = 0; i < ids.length; i++) {
             var el = byId(ids[i]);
             if (el) el.value = '';
         }
+        _setOperationsOnly(false);
         _applyFilters();
     }
-
+	
     function _showWithoutRS() {
+        _setOperationsOnly(false);
         var filtered = ordersData.filter(function(o) { return !o.runsheet_id || o.runsheet_id === ''; });
         _renderTable(filtered);
     }
@@ -11066,7 +11135,9 @@ async function _refreshData() {
     for (var j = 0; j < ordersData.length; j++) {
         ordersData[j].itemsCount = itemsCountMap[ordersData[j].id] || 0;
     }
-    _applyFilters();
+    _populateSourceFilter();
+    _applyFilters();        
+	_toggleOperationsOnly: _toggleOperationsOnly,
 }
     return {
         render: render,
