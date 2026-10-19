@@ -250,7 +250,8 @@ self.buildProductCard = function(item) {
     var finalPrice = price, discPct = 0, saved = 0;
     if (discActive && hasDisc) { discPct = Number(item.discount_percent); finalPrice = price - (price * discPct / 100); saved = price - finalPrice; }
     else if (oldPrice > price) { discPct = Math.round(((oldPrice - price) / oldPrice) * 100); saved = oldPrice - price; finalPrice = price; }
-    var stockAvail = Number(item.qty) || 0;
+    var displayQty = item.store_display_qty === null || item.store_display_qty === undefined || String(item.store_display_qty).trim() === '' ? null : Number(item.store_display_qty);
+    var displayRemaining = item.store_remaining_qty === null || item.store_remaining_qty === undefined || String(item.store_remaining_qty).trim() === '' ? null : Number(item.store_remaining_qty);
 
     var cachedUrl = RW_ImageCache.getImageUrl(item.item_code);
     var imgUrl = cachedUrl || item.image_url || '';
@@ -269,7 +270,10 @@ self.buildProductCard = function(item) {
     else if (item.badge_text) html += '<span class="absolute top-2 right-2 bg-blue-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">' + item.badge_text + '</span>';
     if (item.is_daily_deal) html += '<span class="absolute top-2 left-2 bg-amber-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow pulse-dot"><i class="fa-solid fa-fire ml-1"></i>عرض اليوم</span>';
     if (freeShip) html += '<span class="absolute bottom-2 left-2 bg-green-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow"><i class="fa-solid fa-truck-fast ml-1"></i>توصيل مجاني</span>';
-    if (stockAvail <= 10 && stockAvail > 0) html += '<span class="absolute bottom-2 right-2 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">تبقت ' + stockAvail + ' فقط!</span>';
+    if (displayQty !== null && isFinite(displayQty) && displayRemaining !== null && isFinite(displayRemaining)) {
+        if (displayRemaining > 0) html += '<span class="absolute bottom-2 right-2 bg-red-500 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">تبقت ' + displayRemaining + ' فقط!</span>';
+        else html += '<span class="absolute bottom-2 right-2 bg-gray-700 text-white text-[10px] font-black px-2 py-1 rounded-full shadow">انتهت كمية العرض</span>';
+    }
     html += '</div><div class="p-3 flex flex-col flex-1"><h3 class="text-sm font-bold text-gray-800 line-clamp-2 mb-2 min-h-[2.5rem]">' + (item.name||'') + '</h3><div class="mt-auto">';
     if (saved > 0) { html += '<div class="flex items-baseline gap-1.5"><span class="text-lg font-black text-red-600">' + formatCurrency(finalPrice, curr) + '</span></div>'; html += '<div class="flex items-center gap-2 mt-0.5"><span class="text-xs text-gray-400 line-through">' + formatCurrency((oldPrice||price), curr) + '</span></div>'; html += '<div class="text-[10px] text-emerald-600 font-bold">وفرت ' + formatCurrency(saved, curr) + '</div>'; }
     else { html += '<div class="flex items-baseline gap-1.5"><span class="text-lg font-black text-gray-800">' + formatCurrency(price, curr) + '</span></div>'; }
@@ -309,8 +313,52 @@ self.showProductDetail = function(code) {
     Swal.fire({ html: html, width: '600px', showCloseButton: true, showConfirmButton: false, customClass: { popup: 'rounded-2xl' } });
 };
     
-    self.addToCart = function(code) { var product = null; for (var i = 0; i < products.length; i++) { if (products[i].item_code === code) { product = products[i]; break; } } if (!product) return; var existing = null; for (var j = 0; j < cart.length; j++) { if (cart[j].code === code) { existing = cart[j]; break; } } if (existing) existing.qty++; else cart.push({ code: product.item_code, name: product.name, price: Number(product.sales_price)||0, oldPrice: Number(product.old_price)||0, discountPercent: Number(product.discount_percent)||0, image: product.image_url||'', unit: product.unit||'حبة', qty: 1 }); self.refreshProductCards(); if (RW_UI.byId('cartPanel').classList.contains('open')) { self.renderCartItems(); } };
-    self.updateCart = function(code, delta) { for (var i = 0; i < cart.length; i++) { if (cart[i].code === code) { cart[i].qty += delta; if (cart[i].qty <= 0) cart.splice(i,1); break; } } self.refreshProductCards(); if (RW_UI.byId('cartPanel').classList.contains('open')) { self.renderCartItems(); } };
+    self.addToCart = function(code) {
+        var product = null;
+        for (var i = 0; i < products.length; i++) {
+            if (products[i].item_code === code) { product = products[i]; break; }
+        }
+        if (!product) return;
+        var existing = null;
+        for (var j = 0; j < cart.length; j++) {
+            if (cart[j].code === code) { existing = cart[j]; break; }
+        }
+        var currentQty = existing ? (Number(existing.qty) || 0) : 0;
+        var displayLimited = product.store_display_qty !== null && product.store_display_qty !== undefined && String(product.store_display_qty).trim() !== '';
+        var displayRemaining = Number(product.store_remaining_qty);
+        if (displayLimited && (!isFinite(displayRemaining) || currentQty >= displayRemaining)) {
+            Swal.fire({ icon: 'info', title: 'وصلت للكمية المتاحة', text: 'تم الوصول إلى كامل كمية العرض المتبقية لهذا الصنف.' });
+            return;
+        }
+        if (existing) existing.qty++;
+        else cart.push({ code: product.item_code, name: product.name, price: Number(product.sales_price)||0, oldPrice: Number(product.old_price)||0, discountPercent: Number(product.discount_percent)||0, image: product.image_url||'', unit: product.unit||'حبة', qty: 1 });
+        self.refreshProductCards();
+        if (RW_UI.byId('cartPanel').classList.contains('open')) self.renderCartItems();
+    };
+    self.updateCart = function(code, delta) {
+        var product = null;
+        for (var p = 0; p < products.length; p++) {
+            if (products[p].item_code === code) { product = products[p]; break; }
+        }
+        if (!product) return;
+        var currentQty = 0, cartIndex = -1;
+        for (var i = 0; i < cart.length; i++) {
+            if (cart[i].code === code) { currentQty = Number(cart[i].qty) || 0; cartIndex = i; break; }
+        }
+        var nextQty = currentQty + Number(delta || 0);
+        var displayLimited = product.store_display_qty !== null && product.store_display_qty !== undefined && String(product.store_display_qty).trim() !== '';
+        var displayRemaining = Number(product.store_remaining_qty);
+        if (Number(delta) > 0 && displayLimited && (!isFinite(displayRemaining) || nextQty > displayRemaining)) {
+            Swal.fire({ icon: 'info', title: 'وصلت للكمية المتاحة', text: 'لا يمكن تجاوز كمية العرض المتبقية لهذا الصنف.' });
+            return;
+        }
+        if (cartIndex >= 0) {
+            if (nextQty <= 0) cart.splice(cartIndex, 1);
+            else cart[cartIndex].qty = nextQty;
+        }
+        self.refreshProductCards();
+        if (RW_UI.byId('cartPanel').classList.contains('open')) self.renderCartItems();
+    };
     self.removeFromCart = function(code) { for (var i = 0; i < cart.length; i++) { if (cart[i].code === code) { cart.splice(i,1); break; } } self.refreshProductCards(); if (RW_UI.byId('cartPanel').classList.contains('open')) { self.renderCartItems(); } };
 
     self.clearCart = function() { if (!cart.length) return; Swal.fire({ title:'مسح السلة', text:'هل تريد مسح جميع المنتجات؟', icon:'warning', showCancelButton:true, confirmButtonText:'نعم', cancelButtonText:'لا' }).then(function(r) { if (r.isConfirmed) { cart=[]; couponCode=''; couponDiscount=0; RW_UI.byId('couponInput').value=''; RW_UI.byId('couponMsg').classList.add('hidden'); self.updateCartBadge(); currentPage = 0; self.loadPage(); self.renderCartItems(); } }); };
@@ -487,7 +535,12 @@ self.submitOrder = function(customer, total) {
                 couponCode = '';
                 couponDiscount = 0;
                 currentPage = 0;
-                self.loadPage();
+                self.loadSettings().then(function() {
+                    return self.syncProducts();
+                }).catch(function(err) {
+                    console.error('تعذر تحديث كتالوج المتجر بعد الطلب:', err);
+                    self.loadPage();
+                });
                 self.updateCartBadge();
                 self.closeCart();
             });
