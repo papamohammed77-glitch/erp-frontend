@@ -32,14 +32,20 @@
 
 <main class="flex-1 max-w-2xl mx-auto w-full p-4">
     <div class="card mb-4">
-        <label class="block text-xs font-bold text-gray-600 mb-2">رقم الطلب</label>
-        <div class="flex gap-2">
-            <input type="text" id="orderCodeInput" placeholder="مثلاً: ORD-12345" class="flex-1 p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-blue-600 outline-none font-bold text-sm">
-            <button onclick="Tracker.lookup()" class="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition">
-                <i class="fa-solid fa-search ml-1"></i> استعلام
-            </button>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+                <label for="orderCodeInput" class="block text-xs font-bold text-gray-600 mb-2">رقم الطلب</label>
+                <input type="text" id="orderCodeInput" autocomplete="off" placeholder="مثلاً: ORD-12345" class="w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-blue-600 outline-none font-bold text-sm">
+            </div>
+            <div>
+                <label for="customerPhoneInput" class="block text-xs font-bold text-gray-600 mb-2">رقم الهاتف المستخدم في الطلب</label>
+                <input type="tel" id="customerPhoneInput" inputmode="tel" autocomplete="tel" placeholder="رقم الهاتف عند الشراء" class="w-full p-3 bg-gray-50 rounded-xl border-2 border-gray-200 focus:border-blue-600 outline-none font-bold text-sm">
+            </div>
         </div>
-        <p class="text-xs text-gray-400 mt-2">أدخل رقم الطلب الذي وصلك عند إتمام الشراء</p>
+        <button type="button" onclick="Tracker.lookup()" class="mt-3 w-full bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-blue-700 transition">
+            <i class="fa-solid fa-search ml-1"></i> استعلام آمن عن الطلب
+        </button>
+        <p class="text-xs text-gray-400 mt-2">لخصوصيتك، أدخل رقم الطلب ورقم الهاتف المستخدم عند إتمام الشراء.</p>
     </div>
 
     <div id="resultContainer"></div>
@@ -56,35 +62,54 @@
 </footer>
 
 <script>
+    function escapeHtml(value) {
+    var entities = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    };
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (character) {
+        return entities[character];
+    });
+}
+
 var Tracker = {
-    lookup: function() {
+        lookup: function() {
         var orderCode = (document.getElementById('orderCodeInput').value || '').trim();
-        if (!orderCode) {
-            Swal.fire({ icon: 'warning', title: 'أدخل رقم الطلب' });
+        var customerPhone = (document.getElementById('customerPhoneInput').value || '').trim();
+
+        if (!orderCode || !customerPhone) {
+            Swal.fire({ icon: 'warning', title: 'أدخل رقم الطلب ورقم الهاتف المستخدم عند الشراء' });
             return;
         }
-        
+
         var container = document.getElementById('resultContainer');
         container.innerHTML = '<div class="card text-center py-8"><i class="fa-solid fa-spinner fa-spin text-2xl text-blue-600"></i><p class="mt-2 text-gray-500">جاري البحث...</p></div>';
-        
+
         var self = this;
-        Promise.all([
-            supabase.from('orders').select('*').eq('order_code', orderCode).maybeSingle(),
-            supabase.from('order_details').select('*').eq('order_code', orderCode)
-        ]).then(function(results) {
-            var orderRes = results[0], detailsRes = results[1];
-            if (!orderRes.data) {
-                container.innerHTML = '<div class="card text-center py-8"><i class="fa-solid fa-circle-xmark text-4xl text-red-400 mb-3"></i><p class="font-bold text-gray-700">الطلب غير موجود</p><p class="text-sm text-gray-400 mt-1">تأكد من رقم الطلب وحاول مرة أخرى</p></div>';
+        supabase.rpc('get_public_store_order_tracking', {
+            p_storefront_key: 'company-1',
+            p_order_code: orderCode,
+            p_customer_phone: customerPhone
+        }).then(function(result) {
+            if (result.error) throw result.error;
+
+            var payload = result.data;
+            if (!payload || payload.success !== true || !payload.order) {
+                container.innerHTML = '<div class="card text-center py-8"><i class="fa-solid fa-circle-xmark text-4xl text-red-400 mb-3"></i><p class="font-bold text-gray-700">تعذر العثور على الطلب بهذه البيانات</p><p class="text-sm text-gray-400 mt-1">راجع رقم الطلب ورقم الهاتف ثم حاول مرة أخرى.</p></div>';
                 return;
             }
-            self.showStatus(container, orderRes.data, detailsRes.data || []);
-        }).catch(function() {
-            container.innerHTML = '<div class="card text-center py-8"><i class="fa-solid fa-triangle-exclamation text-4xl text-red-400 mb-3"></i><p class="font-bold text-gray-700">فشل الاتصال</p><p class="text-sm text-gray-400 mt-1">تحقق من اتصالك بالإنترنت</p></div>';
+
+            self.showStatus(container, payload.order, Array.isArray(payload.items) ? payload.items : []);
+        }).catch(function(error) {
+            console.error('Order tracking RPC failed:', error);
+            container.innerHTML = '<div class="card text-center py-8"><i class="fa-solid fa-triangle-exclamation text-4xl text-red-400 mb-3"></i><p class="font-bold text-gray-700">تعذر الاستعلام عن الطلب الآن</p><p class="text-sm text-gray-400 mt-1">تحقق من الاتصال وحاول مرة أخرى.</p></div>';
         });
     },
-
     showStatus: function(container, order, details) {
-        var statusLabels = {
+                var statusLabels = {
             'Draft': 'قيد المراجعة',
             'Confirmed': 'تم التأكيد',
             'Pending': 'قيد الانتظار',
@@ -94,27 +119,32 @@ var Tracker = {
             'Loaded': 'تم التحميل',
             'Delivering': 'خارج للتوصيل',
             'Delivered': 'تم التسليم',
-            'Cancelled': 'ملغي'
+            'Partially Delivered': 'تم التسليم جزئيًا',
+            'Partially Returned': 'تم إرجاع جزء من الطلب',
+            'Cancelled': 'ملغي',
+            'Canceled': 'ملغي'
         };
-        var statusLabel = statusLabels[order.order_status] || order.order_status;
-        
+        var statusLabel = statusLabels[order.order_status] || (order.order_status || 'غير محدد');
+
         var steps = [
+            { key: 'Pending', label: 'قيد الانتظار', icon: 'fa-clock' },
             { key: 'Confirmed', label: 'تم التأكيد', icon: 'fa-check-circle' },
             { key: 'Picked', label: 'تم التجهيز', icon: 'fa-box' },
             { key: 'Loaded', label: 'تم التحميل', icon: 'fa-truck-loading' },
             { key: 'Delivering', label: 'خارج للتوصيل', icon: 'fa-truck-fast' },
             { key: 'Delivered', label: 'تم التسليم', icon: 'fa-home' }
         ];
-        
+
         var currentStep = 0;
-        if (order.order_status === 'Delivered') currentStep = 4;
-        else if (order.order_status === 'Delivering') currentStep = 3;
-        else if (order.order_status === 'Loaded') currentStep = 2;
-        else if (order.order_status === 'Picked' || order.order_status === 'Picking') currentStep = 1;
+        if (order.order_status === 'Delivered' || order.order_status === 'Partially Delivered' || order.order_status === 'Partially Returned') currentStep = 5;
+        else if (order.order_status === 'Delivering') currentStep = 4;
+        else if (order.order_status === 'Loaded' || order.order_status === 'Loading') currentStep = 3;
+        else if (order.order_status === 'Picked' || order.order_status === 'Picking') currentStep = 2;
+        else if (order.order_status === 'Confirmed') currentStep = 1;
         
         var progressHtml = '<div class="relative mb-6 px-2">';
         progressHtml += '<div class="absolute top-5 right-4 left-4 h-1.5 bg-gray-200 rounded-full z-0"></div>';
-        progressHtml += '<div class="absolute top-5 right-4 h-1.5 bg-green-500 rounded-full z-10 transition-all duration-700" style="width:' + (currentStep / 4 * 100) + '%"></div>';
+        progressHtml += '<div class="absolute top-5 right-4 h-1.5 bg-green-500 rounded-full z-10 transition-all duration-700" style="width:' + (currentStep / 5 * 100) + '%"></div>';
         progressHtml += '<div class="flex items-start justify-between relative z-20">';
         
         for (var s = 0; s < steps.length; s++) {
@@ -162,7 +192,7 @@ var Tracker = {
             for (var d = 0; d < details.length; d++) {
                 var lt = (Number(details[d].qty) || 0) * (Number(details[d].unit_price) || 0);
                 itemsTotal += lt;
-                itemsHtml += '<tr class="border-t"><td class="p-2 font-semibold">' + (details[d].item_name || '') + '</td><td class="p-2 text-center">' + details[d].qty + '</td><td class="p-2 text-center">' + Number(details[d].unit_price || 0).toFixed(2) + '</td><td class="p-2 text-center font-bold">' + lt.toFixed(2) + '</td></tr>';
+                itemsHtml += '<tr class="border-t"><td class="p-2 font-semibold">' + escapeHtml(details[d].item_name || '') + '</td><td class="p-2 text-center">' + details[d].qty + '</td><td class="p-2 text-center">' + Number(details[d].unit_price || 0).toFixed(2) + '</td><td class="p-2 text-center font-bold">' + lt.toFixed(2) + '</td></tr>';
             }
             itemsHtml += '</tbody></table></div>';
         }
@@ -170,13 +200,13 @@ var Tracker = {
         var html = '<div class="card">';
         html += '<div class="bg-blue-50 p-4 rounded-xl mb-4">';
         html += '<div class="flex justify-between items-start mb-2">';
-        html += '<div><p class="text-xs text-gray-500">رقم الطلب</p><p class="font-black text-lg text-gray-800">' + (order.order_code || '') + '</p></div>';
-        html += '<span class="px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + statusLabel + '</span>';
+        html += '<div><p class="text-xs text-gray-500">رقم الطلب</p><p class="font-black text-lg text-gray-800">' + escapeHtml(order.order_code || '') + '</p></div>';
+        html += '<span class="px-3 py-1 rounded-full text-xs font-bold ' + statusColor + '">' + escapeHtml(statusLabel) + '</span>';
         html += '</div>';
         html += '<div class="grid grid-cols-2 gap-2 text-sm">';
         html += '<div><p class="text-xs text-gray-500">التاريخ</p><p class="font-bold">' + (order.order_date ? new Date(order.order_date).toLocaleDateString('ar-EG') : '') + '</p></div>';
-        html += '<div><p class="text-xs text-gray-500">العميل</p><p class="font-bold">' + (order.customer_name || '') + '</p></div>';
-        html += '<div><p class="text-xs text-gray-500">المنطقة</p><p class="font-bold">' + (order.area || '') + '</p></div>';
+        html += '<div><p class="text-xs text-gray-500">العميل</p><p class="font-bold">' + escapeHtml(order.customer_name || '') + '</p></div>';
+        html += '<div><p class="text-xs text-gray-500">المنطقة</p><p class="font-bold">' + escapeHtml(order.area || '') + '</p></div>';
         html += '<div><p class="text-xs text-gray-500">الإجمالي</p><p class="font-black text-blue-600 text-lg">' + Number(order.total_amount || 0).toLocaleString() + '</p></div>';
         html += '</div></div>';
         html += progressHtml;
@@ -188,20 +218,22 @@ var Tracker = {
 };
 
 document.addEventListener('DOMContentLoaded', function() {
-    var input = document.getElementById('orderCodeInput');
-    if (input) {
-        input.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                Tracker.lookup();
-            }
-        });
+        var input = document.getElementById('orderCodeInput');
+    var phoneInput = document.getElementById('customerPhoneInput');
+    function submitOnEnter(event) {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            Tracker.lookup();
+        }
     }
+    if (input) input.addEventListener('keydown', submitOnEnter);
+    if (phoneInput) phoneInput.addEventListener('keydown', submitOnEnter);
     
     var params = new URLSearchParams(window.location.search);
     var orderFromUrl = params.get('order');
-    if (orderFromUrl) {
+    if (orderFromUrl && input) {
         input.value = orderFromUrl;
-        Tracker.lookup();
+        if (phoneInput) phoneInput.focus();
     }
 });
 
