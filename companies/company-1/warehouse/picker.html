@@ -680,8 +680,16 @@ self.openRunsheet(code);
             }
         }).then(function(r){
             if(r.isConfirmed){
+                if (self.session.items[index].qty_picked !== r.value.qty ||
+                self.session.items[index].notes !== r.value.notes) {
+                self.session.operation_id = null;
+                }
                 self.session.items[index].qty_picked = r.value.qty;
                 self.session.items[index].notes = r.value.notes;
+                db.session.put(self.session).catch(function(err){
+                    console.error('Picker draft persistence error:', err);
+                    toast('تعذر حفظ مسودة التحضير على هذا الجهاز', 'error');
+                });
                 self.renderActiveSession();
                 if(r.value.qty < it.qty_ordered && !r.value.notes){
                     Swal.fire({
@@ -697,6 +705,14 @@ self.openRunsheet(code);
 
     completePicking: function(){
         var self = this; if(!this.session) return; if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
+        if (!this.session.operation_id) {
+            if (!window.crypto || typeof window.crypto.randomUUID !== 'function') {
+                toast('المتصفح لا يدعم إنشاء مفتاح العملية. حدّث المتصفح ثم أعد المحاولة.', 'error');
+                return;
+            }
+            this.session.operation_id = window.crypto.randomUUID();
+        }
+        var operationId = this.session.operation_id;
         var items = []; var fullCount = 0, partialCount = 0, zeroCount = 0;
         for(var i = 0; i < this.session.items.length; i++){
             var it = this.session.items[i];
@@ -725,10 +741,23 @@ self.openRunsheet(code);
         }).then(function(result){
             if(!result.isConfirmed) return;
             Swal.fire({ title: 'جاري إنهاء التحضير...', allowOutsideClick: false, didOpen: function(){ Swal.showLoading(); } });
-            supabase.auth.getSession().then(function(sessionRes){
+            db.session.put(self.session).then(function(){
+            return supabase.auth.getSession();
+        }).then(function(sessionRes){
                 var token = sessionRes.data.session ? sessionRes.data.session.access_token : null;
                 if(!token){ Swal.close(); toast('انتهت الجلسة', 'error'); return; }
-                return fetch(SUPABASE_URL + '/functions/v1/complete-picking', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ runsheet_code: self.session.runsheet_code, items: items }) });
+                return fetch(SUPABASE_URL + '/functions/v1/complete-picking', { method: 'POST', 
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token,
+                    'Idempotency-Key': operationId
+                },
+        body: JSON.stringify({
+                runsheet_code: self.session.runsheet_code,
+                items: items,
+                operation_id: operationId
+            })
+        });
             }).then(function(res){
                 if(!res) return; if(!res.ok) return res.json().then(function(err){ throw new Error(err.msg || 'خطأ'); }); return res.json();
             }).then(function(json){
