@@ -685,7 +685,33 @@ self.openRunsheet(code);
             showCancelButton: true, confirmButtonText: 'حفظ', cancelButtonText: 'إلغاء',
             customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-indigo-600 !px-8', cancelButton: '!rounded-xl' },
             preConfirm: function(){
-                return { qty: Math.max(0, Math.min(parseInt(document.getElementById('swal-qty').value) || 0, it.qty_ordered)), notes: document.getElementById('swal-notes').value.trim() };
+                var qtyElement = document.getElementById('swal-qty');
+                var notesElement = document.getElementById('swal-notes');
+                var rawQty = qtyElement ? qtyElement.value.trim() : '';
+                var qty = rawQty === '' ? NaN : Number(rawQty);
+                var maxQty = Number(it.qty_ordered);
+
+                if (!Number.isFinite(qty) || !Number.isFinite(maxQty) || !Number.isInteger(qty)) {
+                    Swal.showValidationMessage('أدخل كمية صحيحة كعدد صحيح.');
+                    return false;
+                }
+
+                if (qty < 0) {
+                    Swal.showValidationMessage('لا يمكن أن تكون الكمية المحضّرة أقل من صفر.');
+                    return false;
+                }
+
+                if (qty > maxQty) {
+                    Swal.showValidationMessage(
+                        'الكمية المحضّرة (' + qty + ') أكبر من الكمية المطلوبة (' + maxQty + '). صحح الكمية قبل الحفظ.'
+                    );
+                    return false;
+                }
+
+                return {
+                    qty: qty,
+                    notes: notesElement ? notesElement.value.trim() : ''
+                };
             }
         }).then(function(r){
             if(r.isConfirmed){
