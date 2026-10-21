@@ -820,7 +820,25 @@ if (typeof RW_checkPendingReload === 'function') {
 }
 
 self.renderPendingTab();
-            }).catch(function(err){ Swal.close(); toast(err.message || 'فشل الاتصال', 'error'); });
+            }).catch(function(err){
+    Swal.close();
+    var message = err && err.message ? err.message : 'فشل الاتصال';
+    if (message.indexOf('insufficient available stock for reservation:') !== -1) {
+        var match = message.match(/item_code=([^,]+), requested=([^,]+), available=([^\s]+)/);
+        var detail = match
+            ? 'الصنف ' + match[1] + ' — المطلوب حجزه: ' + match[2] + ' — المتاح فعليًا: ' + match[3]
+            : message;
+        Swal.fire({
+            title: 'المخزون المتاح لا يكفي',
+            text: detail + '. سجّل الكمية المحضّرة الفعلية وسبب النقص، أو تأكد من وجود مخزون فعلي قبل إعادة المحاولة.',
+            icon: 'warning',
+            confirmButtonText: 'مراجعة الكميات',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6' }
+        });
+        return;
+    }
+    toast(message, 'error');
+});
         });
     },
 
