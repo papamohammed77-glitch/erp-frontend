@@ -15472,14 +15472,38 @@ if (pickerIds.length) {
         showLoader('جاري التحميل...');
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
 if (!companyId) { hideLoader(); showToast('سياق الشركة غير محدد', 'error'); return; }
-var rsRes = await supabase.from('runsheets')
-    .select('id')
+var rsRes = await supabase
+    .from('runsheets')
+    .select('id,status')
     .eq('company_id', companyId)
     .eq('runsheet_code', code)
     .maybeSingle();
-        var itemsRes = await supabase.from('run_sheet_details').select('*').eq('runsheet_id', rsRes.data?.id);
-        hideLoader();
-        var items = itemsRes.data || [];
+
+if (rsRes.error) {
+    hideLoader();
+    showToast('فشل قراءة الرانشيت: ' + rsRes.error.message, 'error');
+    return;
+}
+if (!rsRes.data || !rsRes.data.id) {
+    hideLoader();
+    showToast('الرانشيت غير موجود في الشركة الحالية', 'error');
+    return;
+}
+
+var itemsRes = await supabase
+    .from('run_sheet_details')
+    .select('item_code,item_name,unit,qty_ordered,qty_picked')
+    .eq('runsheet_id', rsRes.data.id)
+    .order('item_code');
+
+if (itemsRes.error) {
+    hideLoader();
+    showToast('فشل قراءة كميات التحضير: ' + itemsRes.error.message, 'error');
+    return;
+}
+
+hideLoader();
+var items = itemsRes.data || [];
         if (!items.length) { showToast('لا توجد أصناف', 'info'); return; }
         var h = '<div class="text-right"><table class="w-full border"><thead class="bg-slate-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">الكمية المطلوبة</th><th class="p-2 text-center">الكمية المحضرة</th></tr></thead><tbody>';
         items.forEach(it => { h += '<tr><td class="p-2 font-bold">' + (it.item_name||'') + '</td><td class="p-2 text-center">' + (it.qty_ordered||0) + '</td><td class="p-2 text-center font-bold text-purple-600">' + (it.qty_picked||0) + '</td></tr>'; });
