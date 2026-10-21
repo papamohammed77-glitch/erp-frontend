@@ -15286,32 +15286,190 @@ async function _openNewVoucherModal() {
         safeHTML(c, `<div class="p-4">
             <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="grid grid-cols-2 md:grid-cols-6 gap-2">
                 <input type="text" id="pk-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyPicking()">
-                <select id="pk-f-st" class="p-2 bg-slate-50 rounded text-sm" onchange="RW_Warehouse._applyPicking()"><option value="">كل الحالات</option><option value="Open">Open</option>
-<option value="Confirmed">Confirmed</option></select>
+                <select id="pk-f-st" class="p-2 bg-slate-50 rounded text-sm" onchange="RW_Warehouse._applyPicking()">
+				<option value="">كل الحالات</option>
+				<option value="Open">Open</option>
+				<option value="Confirmed">Confirmed</option>
+				<option value="Picking">Picking</option>
+				<option value="Picked">Picked</option>
+				</select>
                 <button onclick="RW_Warehouse._applyPicking()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
             </div></div>
-            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="pk-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh">
+  <table class="w-full">
+    <thead class="bg-gray-50 sticky top-0">
+      <tr>
+        <th class="p-3">الرانشيت</th>
+        <th class="p-3">التاريخ</th>
+        <th class="p-3">السائق</th>
+        <th class="p-3">الحالة</th>
+        <th class="p-3">مسؤول التحضير</th>
+        <th class="p-3">وقت بداية التحضير</th>
+        <th class="p-3">وقت الانتهاء</th>
+        <th class="p-3">ملاحظات التحضير</th>
+        <th class="p-3 text-center">عرض</th>
+      </tr>
+    </thead>
+    <tbody id="pk-table">
+      <tr><td colspan="9" class="text-center py-8">جاري التحميل...</td></tr>
+    </tbody>
+  </table>
+</div>
         </div>`);
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
-if (!companyId) { showToast('سياق الشركة غير محدد', 'error'); return; }
-var res = await supabase.from('runsheets')
-    .select('*')
-    .eq('company_id', companyId)
-    .in('status', ['Open', 'Confirmed']);
-        window._pickingData = res.data || [];
+if (!companyId) {
+    showToast('سياق الشركة غير محدد', 'error');
+    return;
+}
+
+try {
+    var res = await supabase
+        .from('runsheets')
+        .select('id,company_id,runsheet_code,run_date,driver_id,status,picker_id,picker_start,picker_end')
+        .eq('company_id', companyId)
+        .in('status', ['Open', 'Confirmed', 'Picking', 'Picked'])
+        .order('run_date', { ascending: false });
+
+    if (res.error) throw res.error;
+
+    var runsheets = res.data || [];
+    if (!runsheets.length) {
+        window._pickingData = [];
         _applyPicking();
+        return;
     }
-    function _applyPicking() {
-        var d = window._pickingData || [];
-        var id = (byId('pk-f-id')?.value||'').toLowerCase(), st = byId('pk-f-st')?.value;
-        if (id) d = d.filter(function(r) { return (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1; });
-        if (st) d = d.filter(function(r) { return r.status === st; });
-        var tb = byId('pk-table'); if (!tb) return;
-        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات محضّرة</td></tr>'); return; }
-        RW_Table.paginate('pk-table', d, 1, 50, function(r) {
-            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showPickingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">Picked</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+
+    var runsheetIds = runsheets.map(function(r) { return r.id; });
+    var pickerIds = Array.from(new Set(
+        runsheets.map(function(r) { return r.picker_id; }).filter(Boolean)
+    ));
+    var usersById = {};
+
+    if (pickerIds.length) {
+        var usersRes = await supabase
+            .from('users')
+            .select('id,company_id,name,email')
+            .eq('company_id', companyId)
+            .in('id', pickerIds);
+
+        if (usersRes.error) throw usersRes.error;
+
+        (usersRes.data || []).forEach(function(u) {
+            usersById[u.id] = u.name || u.email || '';
         });
     }
+
+    var ordersRes = await supabase
+        .from('orders')
+        .select('id,runsheet_id,order_code')
+        .eq('company_id', companyId)
+        .in('runsheet_id', runsheetIds);
+
+    if (ordersRes.error) throw ordersRes.error;
+
+    var ordersById = {};
+    var orderIds = [];
+    (ordersRes.data || []).forEach(function(o) {
+        ordersById[o.id] = o;
+        orderIds.push(o.id);
+    });
+
+    var notesByRunsheet = {};
+    if (orderIds.length) {
+        var notesRes = await supabase
+            .from('order_details')
+            .select('order_id,item_name,reason_picking')
+            .in('order_id', orderIds)
+            .not('reason_picking', 'is', null);
+
+        if (notesRes.error) throw notesRes.error;
+
+        (notesRes.data || []).forEach(function(d) {
+            var note = String(d.reason_picking || '').trim();
+            var order = ordersById[d.order_id];
+            if (!note || !order) return;
+
+            var entry = [
+                order.order_code || '',
+                d.item_name || ''
+            ].filter(Boolean).join(' / ') + ': ' + note;
+
+            if (!notesByRunsheet[order.runsheet_id]) {
+                notesByRunsheet[order.runsheet_id] = [];
+            }
+            notesByRunsheet[order.runsheet_id].push(entry);
+        });
+    }
+
+    window._pickingData = runsheets.map(function(r) {
+        return Object.assign({}, r, {
+            picker_name: r.picker_id ? (usersById[r.picker_id] || '') : '',
+            picking_notes: (notesByRunsheet[r.id] || []).join('، ')
+        });
+    });
+
+    _applyPicking();
+} catch (err) {
+    console.error('Parent picking list load failed:', err);
+    window._pickingData = [];
+    _applyPicking();
+    showToast('تعذر تحميل بيانات التحضير: ' + (err.message || 'خطأ غير معروف'), 'error');
+}
+    }
+    function _applyPicking() {
+    var d = window._pickingData || [];
+    var id = (byId('pk-f-id')?.value || '').toLowerCase();
+    var st = byId('pk-f-st')?.value;
+
+    if (id) {
+        d = d.filter(function(r) {
+            return (r.runsheet_code || '').toLowerCase().indexOf(id) !== -1;
+        });
+    }
+    if (st) {
+        d = d.filter(function(r) { return r.status === st; });
+    }
+
+    var tb = byId('pk-table');
+    if (!tb) return;
+
+    if (!d.length) {
+        safeHTML(tb, '<tr><td colspan="9" class="text-center py-8">لا توجد رانشيتات في الحالات المحددة</td></tr>');
+        return;
+    }
+
+    function fmtTime(value) {
+        if (!value) return '—';
+        var date = new Date(value);
+        return Number.isNaN(date.getTime()) ? esc(String(value)) : esc(date.toLocaleString('ar-EG'));
+    }
+
+    var statusLabels = {
+        Open: 'مفتوح',
+        Confirmed: 'مؤكد',
+        Picking: 'قيد التحضير',
+        Picked: 'اكتمل التحضير'
+    };
+
+    RW_Table.paginate('pk-table', d, 1, 50, function(r) {
+        var status = statusLabels[r.status] || r.status || '—';
+        var notes = r.picking_notes || '—';
+
+        return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showPickingDetails(\'' +
+            String(r.runsheet_code || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'") +
+            '\')">' +
+            '<td class="p-3 font-bold">' + esc(r.runsheet_code || '') + '</td>' +
+            '<td class="p-3">' + esc(r.run_date || '') + '</td>' +
+            '<td class="p-3">' + esc(r.driver_id || '—') + '</td>' +
+            '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-700">' + esc(status) + '</span></td>' +
+            '<td class="p-3">' + esc(r.picker_name || '—') + '</td>' +
+            '<td class="p-3 whitespace-nowrap">' + fmtTime(r.picker_start) + '</td>' +
+            '<td class="p-3 whitespace-nowrap">' + fmtTime(r.picker_end) + '</td>' +
+            '<td class="p-3 max-w-64"><span title="' + esc(notes) + '" class="block truncate">' + esc(notes) + '</span></td>' +
+            '<td class="p-3 text-center"><button class="text-blue-600" aria-label="عرض تفاصيل التحضير"><i class="fa-solid fa-eye"></i></button></td>' +
+            '</tr>';
+    });
+}
     async function _showPickingDetails(code) {
         showLoader('جاري التحميل...');
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
