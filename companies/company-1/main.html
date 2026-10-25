@@ -15513,36 +15513,137 @@ var items = itemsRes.data || [];
 
     // ==================== LOADING ====================
     async function loadLoading() {
-        var c = byId('rw-page-container'); if (!c) return;
+        var c = byId('rw-page-container');
+        if (!c) return;
         safeText(byId('rw-header-title'), 'التحميل (Loading)');
         safeHTML(c, `<div class="p-4">
             <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="grid grid-cols-2 md:grid-cols-6 gap-2">
                 <input type="text" id="ld-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyLoading()">
-                <select id="ld-f-st" class="p-2 bg-slate-50 rounded text-sm" onchange="RW_Warehouse._applyLoading()"><option value="">كل الحالات</option><option>Loaded</option></select>
+                <select id="ld-f-st" class="p-2 bg-slate-50 rounded text-sm" onchange="RW_Warehouse._applyLoading()"><option value="">كل الحالات</option><option value="Loaded">تم التحميل</option></select>
                 <button onclick="RW_Warehouse._applyLoading()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
             </div></div>
-            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="ld-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh">
+                <table class="w-full min-w-[1250px]">
+                    <thead class="bg-gray-50 sticky top-0"><tr>
+                        <th class="p-3">الرانشيت</th>
+                        <th class="p-3">التاريخ</th>
+                        <th class="p-3">السائق</th>
+                        <th class="p-3">الحالة</th>
+                        <th class="p-3">مسؤول التحميل</th>
+                        <th class="p-3">وقت بداية التحميل</th>
+                        <th class="p-3">وقت الانتهاء</th>
+                        <th class="p-3">ملاحظات التحميل</th>
+                        <th class="p-3 text-center">عرض</th>
+                    </tr></thead>
+                    <tbody id="ld-table"><tr><td colspan="9" class="text-center py-8">جاري التحميل...</td></tr></tbody>
+                </table>
+            </div>
         </div>`);
+
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
-if (!companyId) { showToast('سياق الشركة غير محدد', 'error'); return; }
-var res = await supabase.from('runsheets')
-    .select('*')
-    .eq('company_id', companyId)
-    .in('status', ['Loaded']);
-        window._loadingData = res.data || [];
-        _applyLoading();
+        if (!companyId) {
+            window._loadingData = [];
+            window._loadingUsersById = {};
+            showToast('سياق الشركة غير محدد', 'error');
+            _applyLoading();
+            return;
+        }
+
+        try {
+            var res = await supabase.from('runsheets')
+                .select('id,company_id,runsheet_code,run_date,driver_id,status,loader_id,loader_start,loader_end,notes')
+                .eq('company_id', companyId)
+                .eq('status', 'Loaded')
+                .order('run_date', { ascending: false });
+
+            if (res.error) throw res.error;
+            window._loadingData = res.data || [];
+            window._loadingUsersById = {};
+
+            var loaderIds = Array.from(new Set(window._loadingData.map(function(r) {
+                return r.loader_id;
+            }).filter(Boolean)));
+
+            if (loaderIds.length) {
+                var usersRes = await supabase.from('users')
+                    .select('id,company_id,name,email')
+                    .eq('company_id', companyId)
+                    .in('id', loaderIds);
+
+                if (usersRes.error) {
+                    console.error('Loading users lookup failed:', usersRes.error);
+                } else {
+                    (usersRes.data || []).forEach(function(u) {
+                        window._loadingUsersById[u.id] = u.name || u.email || '';
+                    });
+                }
+            }
+            _applyLoading();
+        } catch (err) {
+            console.error('Parent loading list load failed:', err);
+            window._loadingData = [];
+            window._loadingUsersById = {};
+            _applyLoading();
+            showToast('تعذر تحميل بيانات التحميل: ' + (err.message || 'خطأ غير معروف'), 'error');
+        }
     }
+
     function _applyLoading() {
-        var d = window._loadingData || [];
-        var id = (byId('ld-f-id')?.value||'').toLowerCase(), st = byId('ld-f-st')?.value;
-        if (id) d = d.filter(function(r) { return (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1; });
+        var d = (window._loadingData || []).slice();
+        var id = (byId('ld-f-id')?.value || '').trim().toLowerCase();
+        var st = byId('ld-f-st')?.value || '';
+
+        if (id) {
+            d = d.filter(function(r) {
+                return String(r.runsheet_code || '').toLowerCase().indexOf(id) !== -1;
+            });
+        }
         if (st) d = d.filter(function(r) { return r.status === st; });
-        var tb = byId('ld-table'); if (!tb) return;
-        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات محمّلة</td></tr>'); return; }
+
+        var tb = byId('ld-table');
+        if (!tb) return;
+        if (!d.length) {
+            safeHTML(tb, '<tr><td colspan="9" class="text-center py-8">لا توجد رانشيتات محمّلة في الفلاتر المحددة</td></tr>');
+            return;
+        }
+
+        function fmtTime(value) {
+            if (!value) return '—';
+            var date = new Date(value);
+            return Number.isNaN(date.getTime()) ? esc(String(value)) : esc(date.toLocaleString('ar-EG'));
+        }
+        function escAttr(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        var usersById = window._loadingUsersById || {};
         RW_Table.paginate('ld-table', d, 1, 50, function(r) {
-            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showLoadingDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-700">Loaded</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+            var code = String(r.runsheet_code || '');
+            var safeCode = code.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            var loaderName = r.loader_id ? (usersById[r.loader_id] || r.loader_id) : '—';
+            var notes = String(r.notes || '').trim();
+            var notesDisplay = notes || '—';
+            var statusLabel = r.status === 'Loaded' ? 'تم التحميل' : (r.status || '—');
+
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showLoadingDetails(\\'' + safeCode + '\\')">' +
+                '<td class="p-3 font-bold">' + esc(code) + '</td>' +
+                '<td class="p-3 whitespace-nowrap">' + esc(r.run_date || '—') + '</td>' +
+                '<td class="p-3">' + esc(r.driver_id || '—') + '</td>' +
+                '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-700">' + esc(statusLabel) + '</span></td>' +
+                '<td class="p-3">' + esc(loaderName) + '</td>' +
+                '<td class="p-3 whitespace-nowrap">' + fmtTime(r.loader_start) + '</td>' +
+                '<td class="p-3 whitespace-nowrap">' + fmtTime(r.loader_end) + '</td>' +
+                '<td class="p-3 max-w-64"><span title="' + escAttr(notesDisplay) + '" class="block truncate">' + esc(notesDisplay) + '</span></td>' +
+                '<td class="p-3 text-center"><button class="text-blue-600" aria-label="عرض تفاصيل التحميل"><i class="fa-solid fa-eye"></i></button></td>' +
+            '</tr>';
         });
     }
+
     async function _showLoadingDetails(code) {
         showLoader('جاري التحميل...');
 
