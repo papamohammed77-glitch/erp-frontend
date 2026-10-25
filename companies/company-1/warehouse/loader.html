@@ -66,6 +66,19 @@
 </div>
 
 <script>
+
+    var RW_LoaderDB = null;
+try {
+    if (typeof Dexie !== 'undefined') {
+        RW_LoaderDB = new Dexie('RW_Loader');
+        RW_LoaderDB.version(1).stores({
+            sessions: '[company_id+loader_id+runsheet_code], company_id, loader_id, runsheet_id, loading_cycle_id'
+        });
+    }
+} catch (loaderDbInitError) {
+    console.error('Loader local draft database initialization failed:', loaderDbInitError);
+}
+    
 var App = {
     currentUser: null, pubUserId: null, currentTab: 'pending',
     session: null, timerInterval: null, searchTimer: null,
@@ -283,9 +296,15 @@ _bindLoaderImageFallbacks: function(root) {
     }
 },
     _startSession: function(code, rs, items) {
-    this.session = {
+    var self = this;
+    var session = {
         runsheet_code: code,
+        company_id: rs.company_id,
+        loader_id: rs.loader_id,
         runsheet_id: rs.id,
+        vehicle_id: rs.vehicle_id || null,
+        loading_cycle_id: rs.loading_cycle_id || null,
+        loader_start: rs.loader_start || null,
         start_time: rs.loader_start || new Date().toISOString(),
         items: []
     };
@@ -295,7 +314,7 @@ _bindLoaderImageFallbacks: function(root) {
         var product = it.items || {};
         if (Array.isArray(product)) product = product[0] || {};
 
-        this.session.items.push({
+        session.items.push({
             item_code: it.item_code,
             item_name: it.item_name || product.name || '',
             unit: it.unit || product.unit || 'حبة',
@@ -309,7 +328,55 @@ _bindLoaderImageFallbacks: function(root) {
         });
     }
 
-    this.renderActiveSession();
+    function sameIdentity(saved) {
+        return !!saved &&
+            saved.runsheet_code === session.runsheet_code &&
+            saved.company_id === session.company_id &&
+            saved.loader_id === session.loader_id &&
+            saved.runsheet_id === session.runsheet_id &&
+            String(saved.vehicle_id || '') === String(session.vehicle_id || '') &&
+            String(saved.loading_cycle_id || '') === String(session.loading_cycle_id || '') &&
+            String(saved.loader_start || '') === String(session.loader_start || '');
+    }
+
+    if (!RW_LoaderDB) {
+        self.session = session;
+        RW_UI.toast('الحفظ المؤقت غير متاح على هذا الجهاز؛ ستظل التعديلات في الذاكرة الحالية فقط', 'warning');
+        self.renderActiveSession();
+        return;
+    }
+
+    RW_LoaderDB.sessions.get([session.company_id, session.loader_id, session.runsheet_code]).then(function(saved) {
+        if (sameIdentity(saved)) {
+            var byCode = {};
+            for (var i = 0; i < saved.items.length; i++) {
+                byCode[String(saved.items[i].item_code)] = saved.items[i];
+            }
+            for (var j = 0; j < session.items.length; j++) {
+                var current = session.items[j];
+                var previous = byCode[String(current.item_code)];
+                if (previous) {
+                    current.qty_loaded = Number(previous.qty_loaded) || 0;
+                    current.notes = previous.notes || '';
+                }
+            }
+        } else if (saved) {
+            return RW_LoaderDB.sessions.delete([session.company_id, session.loader_id, session.runsheet_code]).then(function() {
+                return null;
+            });
+        }
+        return null;
+    }).then(function() {
+        self.session = session;
+        return RW_LoaderDB.sessions.put(session);
+    }).then(function() {
+        self.renderActiveSession();
+    }).catch(function(err) {
+        console.error('Loader draft restore/save failed:', err);
+        self.session = session;
+        RW_UI.toast('تعذر استعادة الحفظ المؤقت. تم عرض بيانات الخادم دون ادعاء حفظ التعديلات المحلية.', 'error');
+        self.renderActiveSession();
+    });
 },
 
     _showPreviewModal: function(code, rs, items) {
@@ -708,7 +775,56 @@ _bindLoaderImageFallbacks: function(root) {
         });
     },
 
-    cancelLoading: function(code) { var s=this; RW_UI.showConfirm('إلغاء تحميل '+code+'؟',function(){ RW_UI.showLoader(); RW_API.call('cancel-loading',{runsheet_code:code},function(j){ RW_UI.hideLoader(); if(j.success){RW_UI.toast('تم الإلغاء','success');s.session=null;if(s.timerInterval)clearInterval(s.timerInterval);s.renderPendingTab();}else RW_UI.showError(j.msg); }); }); },
+pauseLoading: function() {
+    var s = this;
+    if (!s.session) return;
+    if (!RW_LoaderDB) {
+        RW_UI.showError('الحفظ المؤقت غير متاح؛ لن يتم إنهاء الجلسة أو مسح بياناتها.');
+        return;
+    }
+    RW_LoaderDB.sessions.put(s.session).then(function() {
+        if (s.timerInterval) clearInterval(s.timerInterval);
+        s.timerInterval = null;
+        s.session = null;
+        RW_UI.toast('تم حفظ التحميل مؤقتًا على هذا الجهاز', 'success');
+        s.renderPendingTab();
+    }).catch(function(err) {
+        console.error('Loader pause draft write failed:', err);
+        RW_UI.showError('تعذر حفظ الجلسة؛ بقيت الجلسة مفتوحة ولم يتم تغيير حالة الرانشيت.');
+    });
+},
+    
+    cancelLoading: function(code) {
+    var s = this;
+    var u = s.currentUser;
+    var draftKey = (u && u.company_id && u.id) ? [u.company_id, u.id, code] : null;
+    RW_UI.showConfirm('إلغاء تحميل ' + code + '؟ ستعود حالة الرانشيت إلى حالة Picked لتصبح جاهزة لبدء التحميل مجددًا.', function() {
+        RW_UI.showLoader();
+        RW_API.call('cancel-loading', { runsheet_code: code }, function(json) {
+            RW_UI.hideLoader();
+            if (json && json.success) {
+                function resetUi() {
+                    RW_UI.toast('تم الإلغاء', 'success');
+                    s.session = null;
+                    if (s.timerInterval) clearInterval(s.timerInterval);
+                    s.timerInterval = null;
+                    s.renderPendingTab();
+                }
+                if (RW_LoaderDB && draftKey) {
+                    RW_LoaderDB.sessions.delete(draftKey).then(resetUi).catch(function(err) {
+                        console.error('Loader cancelled draft cleanup failed:', err);
+                        resetUi();
+                        RW_UI.toast('أُلغيت العملية، لكن تعذر حذف المسودة المحلية القديمة', 'warning');
+                    });
+                } else {
+                    resetUi();
+                }
+            } else {
+                RW_UI.showError((json && json.msg) || 'تعذر تأكيد الإلغاء؛ احتُفظ بالمسودة المحلية.');
+            }
+        });
+    });
+},
 
     renderActiveSession: function() {
         var s=this; if(!this.session) { this.renderPendingTab(); return; }
@@ -719,8 +835,9 @@ _bindLoaderImageFallbacks: function(root) {
         var h = '<div class="bg-orange-50 rounded-3xl p-5 mb-6 slide-in"><div class="flex items-center justify-between mb-4"><span class="font-black text-2xl text-slate-800">'+ses.runsheet_code+'</span><span id="timerDisplay" class="bg-white text-orange-600 px-4 py-2 rounded-2xl text-sm font-black shadow-sm">⏱️ '+elapsed+'</span></div><div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex justify-between text-xs font-bold text-slate-400 mb-2"><span>تقدم التحميل</span><span>'+loaded+' / '+ses.items.length+' صنف</span></div><div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div class="progress-bar h-full bg-gradient-to-r from-orange-500 to-red-500 rounded-full" style="width:'+prog+'%"></div></div></div></div>';
         h += '<p class="text-sm text-slate-400 mb-4">اضغط على الصنف لإدخال الكمية المحمّلة</p>';
         for(var i=0;i<ses.items.length;i++) { var it=ses.items[i], done=it.qty_loaded>0;
-            h += '<div class="card mb-3 cursor-pointer slide-in '+(done?'border-r-4 border-orange-400':'')+'" onclick="App.editLoadedItem('+i+')"><div class="flex items-center justify-between"><div class="flex items-center gap-4">'+s._loaderImageHTML(it, 'w-14', 'h-14')+'<div><p class="font-bold text-slate-700">'+(it.item_name||'')+'</p><p class="text-xs text-slate-400 mt-0.5">محضّر: '+(it.qty_picked||0)+' | مطلوب: '+(it.qty_ordered||0)+' | <span class="font-bold '+(done?'text-orange-600':'text-slate-500')+'">محمّل: '+(it.qty_loaded||0)+'</span></p></div></div><i class="fa-solid fa-pen text-slate-300 text-sm"></i></div></div>'; }
+        h += '<div class="card mb-3 cursor-pointer slide-in '+(done?'border-r-4 border-orange-400':'')+'" onclick="App.editLoadedItem('+i+')"><div class="flex items-center justify-between"><div class="flex items-center gap-4">'+s._loaderImageHTML(it, 'w-14', 'h-14')+'<div><p class="font-bold text-slate-700">'+(it.item_name||'')+'</p><p class="text-xs text-slate-400 mt-0.5">محضّر: '+(it.qty_picked||0)+' | مطلوب: '+(it.qty_ordered||0)+' | <span class="font-bold '+(done?'text-orange-600':'text-slate-500')+'">محمّل: '+(it.qty_loaded||0)+'</span></p></div></div><i class="fa-solid fa-pen text-slate-300 text-sm"></i></div></div>'; }
         h += '<button onclick="App.completeLoading()" class="btn-primary mt-6"><i class="fa-solid fa-check ml-2"></i> إنهاء التحميل</button>';
+        h += '<button onclick="App.pauseLoading()" class="w-full mt-3 bg-amber-50 border border-amber-200 text-amber-700 py-3 rounded-2xl font-bold"><i class="fa-solid fa-pause ml-2"></i> حفظ مؤقت والعودة للقائمة</button>';
         h += '<button onclick="App.cancelLoading(\''+ses.runsheet_code+'\')" class="btn-danger w-full mt-3"><i class="fa-solid fa-xmark ml-1"></i> إلغاء التحميل</button>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'), h);
 
@@ -732,67 +849,294 @@ _bindLoaderImageFallbacks: function(root) {
     startTimer: function() { var s=this; if(this.timerInterval) clearInterval(this.timerInterval); this.timerInterval = setInterval(function() { if(s.session&&s.session.start_time) { var d=Math.floor((new Date()-new Date(s.session.start_time))/1000), m=Math.floor(d/60), sec=d%60; var td=document.getElementById('timerDisplay'); if(td) td.innerText='⏱️ '+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0'); } },1000); },
 
     editLoadedItem: function(idx, pre) {
-        var s=this, it=s.session.items[idx], cur=(typeof pre!=='undefined')?pre:it.qty_loaded;
-        Swal.fire({ title:'<span class="text-slate-800">'+it.item_name+'</span>', html:'<div class="text-center mb-3">' +
-    s._loaderImageHTML(it, 'w-full max-w-xs', 'h-72', 'object-contain') +
-'</div><div class="text-right text-sm space-y-2"><div class="flex justify-between"><span class="text-slate-400">محضّر</span><strong>'+it.qty_picked+'</strong></div><div class="flex justify-between"><span class="text-slate-400">مطلوب</span><strong>'+it.qty_ordered+'</strong></div>'+(it.unit?'<div class="flex justify-between"><span class="text-slate-400">الوحدة</span><strong>'+it.unit+'</strong></div>':'')+'</div><div class="mt-4 text-right"><label class="block text-xs font-bold text-slate-500 mb-2">الكمية المحمّلة</label><input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="'+cur+'" min="0" max="'+it.qty_ordered+'"><label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات</label><input id="swal-notes" class="swal2-input !rounded-xl" value="'+(it.notes||'')+'" placeholder="سبب النقص أو الزيادة..."></div>',
-            showCancelButton: true,
-            confirmButtonText: 'حفظ',
-            cancelButtonText: 'إلغاء',
-            customClass: {
-                popup: '!rounded-3xl',
-                confirmButton: '!rounded-xl !bg-orange-600 !px-8',
-                cancelButton: '!rounded-xl'
-            },
-            didOpen: function() {
-                var popup = Swal.getPopup();
-                s._bindLoaderImageFallbacks(popup);
-            },
-            preConfirm: function() {
-                var p = Swal.getPopup();
-                var qe = p ? p.querySelector('#swal-qty') : null;
-                var ne = p ? p.querySelector('#swal-notes') : null;
+    var s = this;
+    if (!s.session || !s.session.items[idx]) return;
+    var it = s.session.items[idx];
+    var cur = (typeof pre !== 'undefined') ? pre : it.qty_loaded;
 
-                return {
-                    qty: qe
-                        ? Math.max(0, Math.min(parseInt(qe.value) || 0, it.qty_ordered))
-                        : 0,
-                    notes: ne ? ne.value.trim() : ''
-                };
+    Swal.fire({
+        title: '<span class="text-slate-800">' + it.item_name + '</span>',
+        html: '<div class="text-center mb-3">' +
+            s._loaderImageHTML(it, 'w-full max-w-xs', 'h-72', 'object-contain') +
+            '</div><div class="text-right text-sm space-y-2">' +
+            '<div class="flex justify-between"><span class="text-slate-400">محضّر</span><strong>' + it.qty_picked + '</strong></div>' +
+            '<div class="flex justify-between"><span class="text-slate-400">مطلوب</span><strong>' + it.qty_ordered + '</strong></div>' +
+            (it.unit ? '<div class="flex justify-between"><span class="text-slate-400">الوحدة</span><strong>' + it.unit + '</strong></div>' : '') +
+            '</div><div class="mt-4 text-right">' +
+            '<label class="block text-xs font-bold text-slate-500 mb-2">الكمية المحمّلة</label>' +
+            '<input id="swal-qty" type="number" class="swal2-input !rounded-xl !text-center !font-bold !text-lg" value="' + cur + '" min="0" max="' + it.qty_picked + '">' +
+            '<label class="block text-xs font-bold text-slate-500 mb-2 mt-4">ملاحظات محلية</label>' +
+            '<input id="swal-notes" class="swal2-input !rounded-xl" value="' + (it.notes || '') + '" placeholder="سبب النقص (يحفظ محليًا فقط)"> </div>',
+        showCancelButton: true,
+        confirmButtonText: 'حفظ',
+        cancelButtonText: 'إلغاء',
+        customClass: {
+            popup: '!rounded-3xl',
+            confirmButton: '!rounded-xl !bg-orange-600 !px-8',
+            cancelButton: '!rounded-xl'
+        },
+        didOpen: function() {
+            s._bindLoaderImageFallbacks(Swal.getPopup());
+        },
+        preConfirm: function() {
+            var p = Swal.getPopup();
+            var qe = p ? p.querySelector('#swal-qty') : null;
+            var ne = p ? p.querySelector('#swal-notes') : null;
+            var value = qe ? Number(qe.value) : NaN;
+            if (!Number.isFinite(value) || value < 0 || value > Number(it.qty_picked)) {
+                Swal.showValidationMessage('الكمية يجب أن تكون بين صفر والكمية المحضّرة.');
+                return false;
             }
-        }).then(function(r) { if(r.isConfirmed) {
-            var nq=r.value.qty, nt=r.value.notes;
-            if(nq>it.qty_picked&&!nt) { Swal.fire({title:'تنبيه',text:'الكمية المحمّلة أكبر من المحضّرة. يجب ذكر السبب.',icon:'warning',showCancelButton:true,confirmButtonText:'إضافة سبب',cancelButtonText:'تخطي',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-amber-500 !px-6',cancelButton:'!rounded-xl'}}).then(function(r2){if(r2.isConfirmed)s.editLoadedItem(idx,nq);}); return; }
-            if(nq>it.qty_picked) nt = (nt?nt+' | ':'')+'عدّلها المحمّل';
-            s.session.items[idx].qty_loaded = nq;
-            s.session.items[idx].notes = nt;
+            return { qty: Math.floor(value), notes: ne ? ne.value.trim() : '' };
+        }
+    }).then(function(r) {
+        if (!r.isConfirmed) return;
+        var oldQty = it.qty_loaded;
+        var oldNotes = it.notes;
+        s.session.items[idx].qty_loaded = r.value.qty;
+        s.session.items[idx].notes = r.value.notes;
+
+        if (!RW_LoaderDB) {
             s.renderActiveSession();
-            if(nq<it.qty_picked&&!nt) { Swal.fire({title:'تنبيه',text:'الكمية المحمّلة أقل من المحضّرة. هل تريد إضافة سبب؟',icon:'question',showCancelButton:true,confirmButtonText:'إضافة سبب',cancelButtonText:'تخطي',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-amber-500 !px-6',cancelButton:'!rounded-xl'}}).then(function(r2){if(r2.isConfirmed)s.editLoadedItem(idx,nq);}); }
-        }});
-    },
+            RW_UI.toast('تم التعديل في الجلسة الحالية فقط؛ الحفظ الدائم المحلي غير متاح', 'warning');
+            return;
+        }
 
-    completeLoading: function() {
-        var s=this; if(!s.session) return; if(!navigator.onLine) { RW_UI.toast('غير متصل','warning'); return; }
-        var its=[], fc=0,pc=0,zc=0;
-        for(var i=0;i<s.session.items.length;i++) { var it=s.session.items[i]; its.push({itemCode:it.item_code,loadedQty:it.qty_loaded,notes:it.notes}); if(it.qty_loaded>=it.qty_ordered)fc++; else if(it.qty_loaded>0)pc++; else zc++; }
-        var sh='<div class="text-right text-sm"><p>أنت على وشك إنهاء تحميل الرانشيت <strong>'+s.session.runsheet_code+'</strong>.</p><div class="mt-3 space-y-1"><div>✅ <strong>'+fc+'</strong> أصناف مكتملة</div><div>⚠️ <strong>'+pc+'</strong> أصناف منقوصة</div><div>❌ <strong>'+zc+'</strong> أصناف لم تُحمّل</div></div>';
-        if(pc>0||zc>0) { sh+='<hr class="my-3"><p class="text-amber-600 font-bold text-xs">الأصناف الناقصة:</p><ul class="text-xs space-y-1 mt-1">'; for(var k=0;k<s.session.items.length;k++) { var itm=s.session.items[k]; if(itm.qty_loaded<itm.qty_ordered) sh+='<li>• '+itm.item_name+' ('+itm.qty_loaded+'/'+itm.qty_ordered+') '+(itm.notes?'– '+itm.notes:'<span class="text-red-400">بدون سبب</span>')+'</li>'; } sh+='</ul>'; }
-        sh+='</div>';
-        Swal.fire({title:'تأكيد إنهاء التحميل',html:sh,icon:'info',showCancelButton:true,confirmButtonText:'تأكيد',cancelButtonText:'إلغاء',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-orange-600 !px-8',cancelButton:'!rounded-xl'}}).then(function(r) { if(!r.isConfirmed) return;
-            var cb=document.querySelector('.swal2-confirm'); if(cb){cb.disabled=true;cb.innerText='جارٍ...';}
-            RW_UI.showLoader(); RW_API.call('complete-loading',{runsheet_code:s.session.runsheet_code,items:its},function(json) { RW_UI.hideLoader();
-                if(json.success) { var tq=0,tv=0; for(var j=0;j<its.length;j++){tq+=its[j].loadedQty; var pp=0; for(var x=0;x<s.session.items.length;x++){if(s.session.items[x].item_code===its[j].itemCode){pp=Number(s.session.items[x].unit_price)||0;break;}} tv+=its[j].loadedQty*pp; }
-                    Swal.fire({icon:'success',title:'✅ تم إنهاء التحميل',html:'<div class="text-right"><p>تم تحميل <strong>'+its.length+' صنف</strong></p><p>إجمالي الكمية: <strong>'+tq+' قطعة</strong></p><p>القيمة التقديرية: <strong>'+RW_UI.formatNumber(tv)+' EGP</strong></p></div>',confirmButtonText:'حسناً',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-orange-600'}});
-                    s.session=null; if(s.timerInterval)clearInterval(s.timerInterval); s.renderPendingTab();
-                } else RW_UI.showError(json.msg||'فشل');
-            });
+        RW_LoaderDB.sessions.put(s.session).then(function() {
+            s.renderActiveSession();
+            if (r.value.qty < it.qty_picked && !r.value.notes) {
+                Swal.fire({
+                    title: 'تنبيه',
+                    text: 'الكمية المحمّلة أقل من المحضّرة. هل تريد إضافة سبب؟',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'إضافة سبب',
+                    cancelButtonText: 'تخطي',
+                    customClass: {
+                        popup: '!rounded-3xl',
+                        confirmButton: '!rounded-xl !bg-amber-500 !px-6',
+                        cancelButton: '!rounded-xl'
+                    }
+                }).then(function(r2) {
+                    if (r2.isConfirmed) s.editLoadedItem(idx, r.value.qty);
+                });
+            }
+        }).catch(function(err) {
+            s.session.items[idx].qty_loaded = oldQty;
+            s.session.items[idx].notes = oldNotes;
+            console.error('Loader draft write failed:', err);
+            s.renderActiveSession();
+            RW_UI.showError('تعذر حفظ التعديل محليًا؛ أُعيدت القيمة السابقة.');
         });
-    },
+    });
+},
 
-    renderCompletedTab: function() { var s=this; RW_UI.showSkeleton('mainContent',1,'card'); supabase.from('runsheets').select('runsheet_code,run_date,status').eq('status','Loaded').eq('loader_id',this.currentUser.id||this.currentUser.email).order('run_date',{ascending:false}).limit(50).then(function(r){s.completedRunsheets=r.data||[];s.renderCompletedList(s.completedRunsheets);}).catch(function(){RW_UI.showEmptyState('mainContent','فشل','📡');}); },
+completeLoading: function() {
+    var s = this;
+    if (!s.session) return;
+    if (!navigator.onLine) {
+        RW_UI.toast('غير متصل', 'warning');
+        return;
+    }
+
+    var requestItems = [];
+    var fullCount = 0, partialCount = 0, zeroCount = 0;
+    var allItems = s.session.items;
+
+    for (var i = 0; i < allItems.length; i++) {
+        var it = allItems[i];
+        if (it.qty_loaded < 0 || it.qty_loaded > it.qty_picked) {
+            RW_UI.showError('الكمية المحمّلة يجب ألا تتجاوز الكمية المحضّرة.');
+            return;
+        }
+        if (it.qty_loaded > 0) {
+            requestItems.push({ itemCode: it.item_code, loadedQty: it.qty_loaded });
+        }
+        if (it.qty_loaded >= it.qty_ordered) fullCount++;
+        else if (it.qty_loaded > 0) partialCount++;
+        else zeroCount++;
+    }
+
+    if (!requestItems.length) {
+        RW_UI.showError('لا يمكن إنهاء التحميل دون كمية موجبة واحدة على الأقل. لم يتم إرسال أي طلب.');
+        return;
+    }
+
+    var summary = '<div class="text-right text-sm"><p>أنت على وشك إنهاء تحميل الرانشيت <strong>' +
+        s.session.runsheet_code + '</strong>.</p><div class="mt-3 space-y-1">' +
+        '<div>✅ <strong>' + fullCount + '</strong> أصناف مكتملة</div>' +
+        '<div>⚠️ <strong>' + partialCount + '</strong> أصناف محمّلة جزئيًا</div>' +
+        '<div>❌ <strong>' + zeroCount + '</strong> أصناف لم تُحمّل</div></div>' +
+        '<p class="text-xs text-amber-700 mt-3">ملاحظات النقص محلية ولا تُرسل إلى عقد التحميل الحالي.</p></div>';
+
+    Swal.fire({
+        title: 'تأكيد إنهاء التحميل',
+        html: summary,
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'تأكيد',
+        cancelButtonText: 'إلغاء',
+        customClass: {
+            popup: '!rounded-3xl',
+            confirmButton: '!rounded-xl !bg-orange-600 !px-8',
+            cancelButton: '!rounded-xl'
+        }
+    }).then(function(r) {
+        if (!r.isConfirmed) return;
+        var cb = document.querySelector('.swal2-confirm');
+        if (cb) {
+            cb.disabled = true;
+            cb.innerText = 'جارٍ...';
+        }
+        RW_UI.showLoader();
+        RW_API.call('complete-loading', {
+            runsheet_code: s.session.runsheet_code,
+            items: requestItems
+        }, function(json) {
+            RW_UI.hideLoader();
+            if (json && json.success) {
+                var tq = 0, tv = 0;
+                for (var j = 0; j < requestItems.length; j++) {
+                    tq += requestItems[j].loadedQty;
+                    for (var k = 0; k < allItems.length; k++) {
+                        if (allItems[k].item_code === requestItems[j].itemCode) {
+                            tv += requestItems[j].loadedQty * (Number(allItems[k].unit_price) || 0);
+                            break;
+                        }
+                    }
+                }
+                var code = s.session.runsheet_code;
+                var draftKey = [s.session.company_id, s.session.loader_id, code];
+                function finishUi() {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'تم إنهاء التحميل',
+                        html: '<div class="text-right"><p>تم تحميل <strong>' + requestItems.length +
+                            ' صنف</strong></p><p>إجمالي الكمية: <strong>' + tq +
+                            '</strong></p><p>القيمة التقديرية: <strong>' +
+                            RW_UI.formatNumber(tv) + ' EGP</strong></p></div>',
+                        confirmButtonText: 'حسنًا',
+                        customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-orange-600' }
+                    });
+                    s.session = null;
+                    if (s.timerInterval) clearInterval(s.timerInterval);
+                    s.timerInterval = null;
+                    s.renderPendingTab();
+                }
+                if (RW_LoaderDB) {
+                    RW_LoaderDB.sessions.delete(draftKey).then(finishUi).catch(function(err) {
+                        console.error('Loader completed draft cleanup failed:', err);
+                        finishUi();
+                        RW_UI.toast('اكتمل التحميل، لكن تعذر حذف المسودة المحلية القديمة', 'warning');
+                    });
+                } else {
+                    finishUi();
+                }
+            } else {
+                RW_UI.showError((json && json.msg) || 'فشل إنهاء التحميل. احتُفظ بالمسودة المحلية.');
+            }
+        });
+    });
+},
+
+    renderCompletedTab: function() {
+    var s = this;
+    var u = s.currentUser;
+    if (!u || !u.company_id || !u.id) {
+        RW_UI.showError('تعذر تحديد الشركة أو المستخدم الحالي.');
+        return;
+    }
+    RW_UI.showSkeleton('mainContent', 1, 'card');
+    supabase.from('runsheets')
+        .select('runsheet_code,run_date,status')
+        .eq('company_id', u.company_id)
+        .eq('status', 'Loaded')
+        .eq('loader_id', u.id)
+        .order('run_date', { ascending: false })
+        .limit(50)
+        .then(function(r) {
+            if (r.error) {
+                console.error('Loader completed runsheets query failed:', r.error);
+                RW_UI.showError('تعذر تحميل الرانشيتات المكتملة.');
+                return;
+            }
+            s.completedRunsheets = r.data || [];
+            s.renderCompletedList(s.completedRunsheets);
+        }).catch(function(err) {
+            console.error('Loader completed runsheets request failed:', err);
+            RW_UI.showError('تعذر تحميل الرانشيتات المكتملة.');
+        });
+},
+    
     renderCompletedList: function(l) { var h='<h2 class="text-lg font-black text-slate-800 mb-4">✅ الرانشيتات التي حمّلتها</h2><input type="text" id="searchCompleted" placeholder="🔍 ابحث..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-orange-400 outline-none font-semibold text-sm shadow-sm mb-4" oninput="App.searchCompleted(this.value)">'; if(!l.length) h+='<div class="text-center py-16"><div class="text-6xl mb-4">🏆</div><p class="text-slate-400 font-bold">لم تنهِ أي رانشيت بعد.</p></div>'; else { h+='<div>'; for(var i=0;i<l.length;i++){var rs=l[i];h+='<div class="card mb-3 slide-in"><div class="flex justify-between items-center"><div><span class="font-black text-base text-slate-800">'+rs.runsheet_code+'</span><p class="text-xs text-slate-400 mt-0.5">'+rs.run_date+'</p></div><button onclick="App.reopenLoading(\''+rs.runsheet_code+'\')" class="btn-reopen text-xs px-3 py-1.5"><i class="fa-solid fa-pen-to-square ml-1"></i> تعديل التحميل</button></div></div>';} h+='</div>'; } RW_UI.safeHTML(RW_UI.byId('mainContent'),h); },
     searchCompleted: function(q) { var f=this.completedRunsheets; if(q&&q.trim()){var ql=q.trim().toLowerCase();f=f.filter(function(r){return(r.runsheet_code||'').toLowerCase().indexOf(ql)!==-1;});} this.renderCompletedList(f); },
-    reopenLoading: function(code) { var s=this; supabase.from('runsheets').select('status').eq('runsheet_code',code).maybeSingle().then(function(r){if(!r.data||r.data.status!=='Loaded'){Swal.fire({title:'لا يمكن التعديل',text:'الرانشيت ليس محمّلاً',icon:'warning',customClass:{popup:'!rounded-3xl'}});s.renderCompletedTab();return;} RW_UI.showConfirm('إعادة فتح '+code+'؟',function(){RW_UI.showLoader();RW_API.call('reopen-loading',{runsheet_code:code},function(j){RW_UI.hideLoader();if(j.success){RW_UI.toast('تم','success');s.renderPendingTab();}else{RW_UI.showError(j.msg);s.renderCompletedTab();}});});}); },
+    
+    reopenLoading: function(code) {
+    var s = this;
+    var u = s.currentUser;
+    if (!u || !u.company_id || !u.id || !code) {
+        RW_UI.showError('تعذر تحديد الشركة أو المستخدم أو الرانشيت.');
+        return;
+    }
+
+    supabase.from('runsheets')
+        .select('status,runsheet_code,company_id,loader_id')
+        .eq('company_id', u.company_id)
+        .eq('runsheet_code', code)
+        .eq('loader_id', u.id)
+        .maybeSingle()
+        .then(function(r) {
+            if (r.error || !r.data || r.data.status !== 'Loaded') {
+                if (r.error) console.error('Loader reopen precheck failed:', r.error);
+                Swal.fire({
+                    title: 'لا يمكن إعادة الفتح',
+                    text: 'تعذر التحقق من أن الرانشيت مكتمل ويتبع حسابك الحالي.',
+                    icon: 'warning',
+                    customClass: { popup: '!rounded-3xl' }
+                });
+                s.renderCompletedTab();
+                return;
+            }
+
+            RW_UI.showConfirm('إعادة فتح ' + code + '؟ سيتم عكس حركة التحميل وفق Core.', function() {
+                var storageKey = 'rw-loader-reopen:' + u.company_id + ':' + u.id + ':' + code;
+                var operationId = '';
+                try {
+                    operationId = localStorage.getItem(storageKey) || '';
+                    if (!operationId) {
+                        operationId = crypto.randomUUID();
+                        localStorage.setItem(storageKey, operationId);
+                    }
+                } catch (storageError) {
+                    RW_UI.showError('تعذر حفظ معرف العملية لإعادة المحاولة بأمان؛ لم يتم إرسال الطلب.');
+                    return;
+                }
+
+                RW_UI.showLoader();
+                RW_API.call('reopen-loading', {
+                    runsheet_code: code,
+                    operation_id: operationId
+                }, function(j) {
+                    RW_UI.hideLoader();
+                    if (j && j.success) {
+                        try { localStorage.removeItem(storageKey); } catch (_) {}
+                        if (RW_LoaderDB) {
+                            RW_LoaderDB.sessions.delete([u.company_id, u.id, code]).catch(function(err) {
+                                console.error('Old Loader cycle draft cleanup failed:', err);
+                            });
+                        }
+                        RW_UI.toast('تمت إعادة فتح التحميل', 'success');
+                        s.renderPendingTab();
+                    } else {
+                        RW_UI.showError((j && j.msg) || 'فشلت إعادة الفتح؛ أُبقي معرف العملية لاستخدامه في إعادة المحاولة.');
+                    }
+                });
+            });
+        }).catch(function(err) {
+            console.error('Loader reopen precheck request failed:', err);
+            RW_UI.showError('تعذر التحقق من حالة الرانشيت.');
+        });
+},
 
     renderAccount: function() { var n=this.currentUser.name||'?'; var h='<div class="text-center mb-8 mt-4"><div class="w-20 h-20 bg-gradient-to-br from-orange-400 to-orange-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg mb-4">'+n.charAt(0)+'</div><h2 class="font-black text-xl">'+(this.currentUser.name||this.currentUser.email)+'</h2><p class="text-sm text-slate-400">محمّل</p></div><div class="card mb-3"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center"><i class="fa-solid fa-envelope"></i></div><div><p class="text-xs text-slate-400">البريد</p><p class="font-bold text-sm">'+this.currentUser.email+'</p></div></div></div><button onclick="doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button>'; RW_UI.safeHTML(RW_UI.byId('mainContent'),h); }
 };
