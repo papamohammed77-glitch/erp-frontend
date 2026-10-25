@@ -518,51 +518,193 @@ _bindLoaderImageFallbacks: function(root) {
     });
 },
 
-    _startLoadingFromPreview: function(code) {
-        Swal.close(); this.startLoading(code);
+        _loadEligibleVehicles: function(callback) {
+        var companyId = this.currentUser && this.currentUser.company_id;
+
+        if (!companyId) {
+            callback(null, 'تعذر تحديد الشركة الحالية؛ لم يتم تحميل المركبات.');
+            return;
+        }
+
+        supabase.from('vehicles')
+            .select('id,vehicle_code,model,license_plate,status,mobile_stock_enabled,mobile_branch_id')
+            .eq('company_id', companyId)
+            .eq('status', 'Active')
+            .eq('mobile_stock_enabled', true)
+            .order('vehicle_code', { ascending: true })
+            .then(function(res) {
+                if (res.error) {
+                    callback(null, 'تعذر تحميل المركبات: ' + res.error.message);
+                    return;
+                }
+                callback(res.data || [], null);
+            })
+            .catch(function(err) {
+                callback(null, 'تعذر تحميل المركبات: ' +
+                    (err && err.message || 'خطأ غير معروف'));
+            });
     },
 
-    _renderReadonly: function(code, items) {
-    var self = this;
+    _startLoadingFromPreview: function(code) {
+        var self = this;
+        var root = RW_UI.byId('mainContent');
+        var existing = RW_UI.byId('loaderVehicleSelectionPanel');
 
-    function esc(value) {
-        return String(value == null ? '' : value)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
+        if (!navigator.onLine) {
+            RW_UI.toast('أنت غير متصل', 'warning');
+            return;
+        }
 
-    var h = '<div class="flex items-center gap-3 mb-6">' +
-        '<button type="button" id="loaderReadonlyBack" class="w-10 h-10 bg-white rounded-2xl flex items-center justify-center text-orange-600 shadow-sm" aria-label="العودة إلى قائمة الرانشيتات"><i class="fa-solid fa-arrow-right"></i></button>' +
-        '<span class="font-black text-xl text-slate-800">' + esc(code) + ' | ' + items.length + ' صنف</span></div>';
+        if (!root) {
+            RW_UI.toast('تعذر عرض اختيار المركبة', 'error');
+            return;
+        }
 
-    for (var k = 0; k < items.length; k++) {
-        var it = items[k];
-        h += '<div class="card mb-2"><div class="flex items-center gap-4">' +
-            self._loaderImageHTML(it, 'w-14', 'h-14') +
-            '<div><p class="font-bold text-slate-700">' + esc(it.item_name || '') + '</p>' +
-            '<p class="text-xs text-slate-400">' + esc(it.item_code || '') +
-            ' | محضّر: <span class="font-bold text-slate-600">' +
-            esc(RW_UI.formatNumber(Number(it.qty_picked) || 0)) + '</span> ' +
-            esc(it.unit || 'حبة') + '</p></div></div></div>';
-    }
+        if (existing) {
+            existing.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return;
+        }
 
-    RW_UI.safeHTML(RW_UI.byId('mainContent'), h);
-    self._bindLoaderImageFallbacks(RW_UI.byId('mainContent'));
+        var startButton = RW_UI.byId('loaderPreviewStart');
+        if (startButton) startButton.disabled = true;
 
-    var back = RW_UI.byId('loaderReadonlyBack');
-    if (back) back.addEventListener('click', function() {
-        self.renderPendingTab();
-    });
-},
+        RW_UI.showLoader();
+        this._loadEligibleVehicles(function(vehicles, err) {
+            RW_UI.hideLoader();
 
-    startLoading: function(code) {
-        var self = this; if(!navigator.onLine) { RW_UI.toast('أنت غير متصل','warning'); return; }
-        RW_UI.showLoader(); RW_API.call('start-loading',{runsheet_code:code},function(json) { RW_UI.hideLoader();
-            if(json.success) { RW_UI.toast('تم بنجاح','success'); self.openRunsheet(code); }
-            else { if(json.msg&&json.msg.indexOf('لديك بالفعل')!==-1) Swal.fire({title:'تنبيه',text:json.msg,icon:'info',customClass:{popup:'!rounded-3xl'}}); else RW_UI.showError(json.msg||'فشل'); self.renderPendingTab(); }
+            if (err) {
+                if (startButton) startButton.disabled = false;
+                RW_UI.showError(err);
+                return;
+            }
+
+            if (!vehicles || !vehicles.length) {
+                if (startButton) startButton.disabled = false;
+                RW_UI.showError('لا توجد مركبة نشطة تدعم المخزون المتنقل ضمن الشركة الحالية.');
+                return;
+            }
+
+            function esc(value) {
+                return String(value == null ? '' : value)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            var html = '<section id="loaderVehicleSelectionPanel" ' +
+                'class="card border-2 border-orange-200 bg-orange-50 mb-5 slide-in" ' +
+                'aria-labelledby="loaderVehicleSelectionTitle">';
+            html += '<div class="flex items-start gap-3">';
+            html += '<div class="w-11 h-11 rounded-2xl bg-white text-orange-600 ' +
+                'flex items-center justify-center shadow-sm shrink-0">' +
+                '<i class="fa-solid fa-truck text-lg"></i></div>';
+            html += '<div class="min-w-0 flex-1">';
+            html += '<h3 id="loaderVehicleSelectionTitle" ' +
+                'class="font-black text-lg text-slate-800">اختيار مركبة التحميل</h3>';
+            html += '<p class="text-sm text-slate-600 mt-1">اختر المركبة التي ستستلم مخزون هذا الرانشيت. ' +
+                'لن يبدأ التحميل قبل تأكيد الاختيار.</p></div></div>';
+            html += '<label for="loaderVehicleSelect" ' +
+                'class="block text-sm font-bold text-slate-700 mt-4 mb-2">المركبة</label>';
+            html += '<select id="loaderVehicleSelect" ' +
+                'class="w-full p-3 bg-white rounded-xl border-2 border-orange-200 ' +
+                'focus:border-orange-500 outline-none font-bold">';
+            html += '<option value="">— اختر المركبة —</option>';
+
+            for (var i = 0; i < vehicles.length; i++) {
+                var v = vehicles[i];
+                var label = (v.vehicle_code || 'مركبة') +
+                    (v.license_plate ? ' — ' + v.license_plate : '') +
+                    (v.model ? ' — ' + v.model : '');
+                html += '<option value="' + esc(v.id) + '">' + esc(label) + '</option>';
+            }
+
+            html += '</select>';
+            html += '<p class="text-xs text-slate-500 mt-2">سيُتحقق الخادم مرة أخرى من الشركة، ' +
+                'وحالة المركبة، وفرع VAN قبل بدء دورة التحميل.</p>';
+            html += '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">';
+            html += '<button type="button" id="loaderConfirmVehicleStart" class="btn-primary">' +
+                '<i class="fa-solid fa-play ml-2"></i> تأكيد المركبة وبدء التحميل</button>';
+            html += '<button type="button" id="loaderCancelVehicleSelection" ' +
+                'class="w-full rounded-xl border border-slate-200 bg-white py-3 font-bold text-slate-600">' +
+                'إلغاء الاختيار</button></div></section>';
+
+            var wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            var panel = wrapper.firstElementChild;
+            root.insertBefore(panel, root.firstChild);
+            panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            var confirmButton = RW_UI.byId('loaderConfirmVehicleStart');
+            var cancelButton = RW_UI.byId('loaderCancelVehicleSelection');
+            var vehicleSelect = RW_UI.byId('loaderVehicleSelect');
+
+            if (confirmButton) {
+                confirmButton.addEventListener('click', function() {
+                    var vehicleId = vehicleSelect && vehicleSelect.value;
+                    if (!vehicleId) {
+                        RW_UI.toast('اختر المركبة أولاً قبل بدء التحميل', 'warning');
+                        if (vehicleSelect) vehicleSelect.focus();
+                        return;
+                    }
+
+                    confirmButton.disabled = true;
+                    confirmButton.innerHTML =
+                        '<i class="fa-solid fa-spinner fa-spin ml-2"></i> جارٍ بدء التحميل...';
+                    if (cancelButton) cancelButton.disabled = true;
+                    self.startLoading(code, vehicleId);
+                });
+            }
+
+            if (cancelButton) {
+                cancelButton.addEventListener('click', function() {
+                    panel.remove();
+                    if (startButton) startButton.disabled = false;
+                });
+            }
+        });
+    },
+
+        startLoading: function(code, vehicleId) {
+        var self = this;
+
+        if (!navigator.onLine) {
+            RW_UI.toast('أنت غير متصل', 'warning');
+            return;
+        }
+
+        if (!vehicleId) {
+            RW_UI.toast('اختر المركبة أولاً قبل بدء التحميل', 'warning');
+            var confirmButton = RW_UI.byId('loaderConfirmVehicleStart');
+            if (confirmButton) confirmButton.disabled = false;
+            return;
+        }
+
+        RW_UI.showLoader();
+        RW_API.call('start-loading', {
+            runsheet_code: code,
+            vehicle_id: vehicleId
+        }, function(json) {
+            RW_UI.hideLoader();
+
+            if (json && json.success) {
+                RW_UI.toast('تم إسناد المركبة وبدء التحميل بنجاح', 'success');
+                self.openRunsheet(code);
+                return;
+            }
+
+            var message = (json && json.msg) || 'فشل بدء التحميل';
+            RW_UI.showError(message);
+
+            var confirmButton = RW_UI.byId('loaderConfirmVehicleStart');
+            var cancelButton = RW_UI.byId('loaderCancelVehicleSelection');
+            if (confirmButton) {
+                confirmButton.disabled = false;
+                confirmButton.innerHTML =
+                    '<i class="fa-solid fa-play ml-2"></i> تأكيد المركبة وبدء التحميل';
+            }
+            if (cancelButton) cancelButton.disabled = false;
         });
     },
 
