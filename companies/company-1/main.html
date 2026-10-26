@@ -15327,7 +15327,7 @@ try {
         .from('runsheets')
         .select('id,company_id,runsheet_code,run_date,driver_id,status,picker_id,picker_start,picker_end')
         .eq('company_id', companyId)
-        .in('status', ['Open', 'Confirmed', 'Picking', 'Picked'])
+        .or('status.in.(Open,Confirmed,Picking,Picked),picker_id.not.is.null,picker_start.not.is.null,picker_end.not.is.null')
         .order('run_date', { ascending: false });
 
     if (res.error) throw res.error;
@@ -15519,7 +15519,12 @@ var items = itemsRes.data || [];
         safeHTML(c, `<div class="p-4">
             <div class="bg-white rounded-2xl shadow-sm border p-4 mb-4"><div class="grid grid-cols-2 md:grid-cols-6 gap-2">
                 <input type="text" id="ld-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyLoading()">
-                <select id="ld-f-st" class="p-2 bg-slate-50 rounded text-sm" onchange="RW_Warehouse._applyLoading()"><option value="">كل الحالات</option><option value="Loaded">تم التحميل</option></select>
+                <select id="ld-f-st" class="p-2 bg-slate-50 rounded text-sm" onchange="RW_Warehouse._applyLoading()">
+				<option value="">كل الحالات التاريخية</option>
+				<option value="Loaded">تم التحميل</option>
+				<option value="Delivered">تم التوصيل</option>
+				<option value="Returned">مرتجع</option>
+				</select>
                 <button onclick="RW_Warehouse._applyLoading()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
             </div></div>
             <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh">
@@ -15553,7 +15558,7 @@ var items = itemsRes.data || [];
             var res = await supabase.from('runsheets')
                 .select('id,company_id,runsheet_code,run_date,driver_id,status,loader_id,loader_start,loader_end,notes')
                 .eq('company_id', companyId)
-                .eq('status', 'Loaded')
+                .or('status.eq.Loaded,loader_id.not.is.null,loader_start.not.is.null,loader_end.not.is.null')
                 .order('run_date', { ascending: false });
 
             if (res.error) throw res.error;
@@ -15714,12 +15719,27 @@ var items = itemsRes.data || [];
         </div>`);
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
 if (!companyId) { showToast('سياق الشركة غير محدد', 'error'); return; }
-var res = await supabase.from('runsheets')
-    .select('*')
-    .eq('company_id', companyId)
-    .in('status', ['Delivered']);
-        window._deliveryData = res.data || [];
-        _applyDelivery();
+try {
+    var res = await supabase
+        .from('runsheets')
+        .select('*')
+        .eq('company_id', companyId)
+        .or('status.eq.Delivered,status.eq.Returned,deliverer_id.not.is.null,delivery_start.not.is.null,delivery_end.not.is.null')
+        .order('run_date', { ascending: false });
+
+    if (res.error) throw res.error;
+
+    window._deliveryData = res.data || [];
+    _applyDelivery();
+} catch (err) {
+    console.error('Parent delivery history load failed:', err);
+    window._deliveryData = [];
+    _applyDelivery();
+    showToast(
+        'تعذر تحميل سجل التوصيل: ' + (err.message || 'خطأ غير معروف'),
+        'error'
+    );
+}
     }
     function _applyDelivery() {
         var d = window._deliveryData || [];
@@ -15728,7 +15748,7 @@ var res = await supabase.from('runsheets')
         var tb = byId('dv-table'); if (!tb) return;
         if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات موصّلة</td></tr>'); return; }
         RW_Table.paginate('dv-table', d, 1, 50, function(r) {
-            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showDeliveryDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">Delivered</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showDeliveryDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">' + esc(r.status || '—') + '</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
         });
     }
     async function _showDeliveryDetails(code) {
@@ -15763,12 +15783,27 @@ if (!companyId) { hideLoader(); showToast('سياق الشركة غير محدد
         </div>`);
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
 if (!companyId) { showToast('سياق الشركة غير محدد', 'error'); return; }
-var res = await supabase.from('runsheets')
-    .select('*')
-    .eq('company_id', companyId)
-    .in('status', ['Returned']);
-        window._returnData = res.data || [];
-        _applyReturn();
+try {
+    var res = await supabase
+        .from('runsheets')
+        .select('*')
+        .eq('company_id', companyId)
+        .or('status.eq.Returned,return_handler_id.not.is.null,return_start.not.is.null,return_end.not.is.null')
+        .order('run_date', { ascending: false });
+
+    if (res.error) throw res.error;
+
+    window._returnData = res.data || [];
+    _applyReturn();
+} catch (err) {
+    console.error('Parent return history load failed:', err);
+    window._returnData = [];
+    _applyReturn();
+    showToast(
+        'تعذر تحميل سجل المرتجعات: ' + (err.message || 'خطأ غير معروف'),
+        'error'
+    );
+}
     }
     function _applyReturn() {
         var d = window._returnData || [];
@@ -15777,7 +15812,7 @@ var res = await supabase.from('runsheets')
         var tb = byId('rt-table'); if (!tb) return;
         if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات مرتجعة</td></tr>'); return; }
         RW_Table.paginate('rt-table', d, 1, 50, function(r) {
-            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showReturnDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-rose-100 text-rose-700">Returned</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
+            return '<tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="RW_Warehouse._showReturnDetails(\'' + r.runsheet_code + '\')"><td class="p-3 font-bold">' + (r.runsheet_code||'') + '</td><td class="p-3">' + (r.run_date||'') + '</td><td class="p-3">' + (r.driver_id||'---') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-rose-100 text-rose-700">' + esc(r.status || '—') + '</span></td><td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
         });
     }
     async function _showReturnDetails(code) {
