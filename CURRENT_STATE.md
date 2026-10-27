@@ -4,7 +4,7 @@
 
 - **النطاق:** ظهور إسنادات تطبيق مشرف التوصيل داخل النظام الأم: إدارة الشحن والتوصيل ← مناديب التوصيل.
 - **المستودع التشغيلي:** `papamohammed77-glitch/erp-frontend`.
-- **HEAD الحالي:** `229dffddb7983df014369d6dc94157d102c2749e` — `Document delivery supervisor parent integration correction and verification`.
+- **HEAD الحالي:** `587c03f018bb51be338747dce9fc133f16426669` — `Record latest delivery supervisor parent integration verification state`.
 - **مصدر النظام الأم:** `companies/company-1/main.html`; يحتوي المصدر الحالي على جدول منفصل لإسنادات الرانشيت من مشرف التوصيل. Blob SHA الظاهر في شجرة Git الحالية: `0c1745081e8d17480433ed527d77cac9f5292021`.
 - **تعديل الواجهة:** `cb62612a174f5b1a8d5aa5a41a4c3e5747bb73fc` — أضاف عرض `runsheet_assignments` إلى `RW_DeliveryLogistics.agents()`.
 - **تعديل عقد Production:** Migration `20261027_delivery_supervisor_parent_runsheet_assignments.sql` في commit `41475240d2685cb7a7919e372e1e9ba10539f3e6`.
