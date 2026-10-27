@@ -1,3 +1,21 @@
+# LATEST VERIFIED CHECKPOINT — 2026-10-27 — DELIVERY SUPERVISOR → PARENT ASSIGNMENTS
+
+## الحالة الحالية المثبتة في هذه الجلسة
+
+- **النطاق:** ظهور إسنادات تطبيق مشرف التوصيل داخل النظام الأم: إدارة الشحن والتوصيل ← مناديب التوصيل.
+- **المستودع التشغيلي:** `papamohammed77-glitch/erp-frontend`.
+- **HEAD الحالي:** `229dffddb7983df014369d6dc94157d102c2749e` — `Document delivery supervisor parent integration correction and verification`.
+- **مصدر النظام الأم:** `companies/company-1/main.html`; يحتوي المصدر الحالي على جدول منفصل لإسنادات الرانشيت من مشرف التوصيل. Blob SHA الظاهر في شجرة Git الحالية: `0c1745081e8d17480433ed527d77cac9f5292021`.
+- **تعديل الواجهة:** `cb62612a174f5b1a8d5aa5a41a4c3e5747bb73fc` — أضاف عرض `runsheet_assignments` إلى `RW_DeliveryLogistics.agents()`.
+- **تعديل عقد Production:** Migration `20261027_delivery_supervisor_parent_runsheet_assignments.sql` في commit `41475240d2685cb7a7919e372e1e9ba10539f3e6`.
+- **فحص Production المباشر في هذه الجلسة:** `delivery_logistics_query(..., 'agents', ...)` أعاد `success=true` و`registered_agent_rows=0` و`assigned_runsheet_rows=2` و`assigned_rows_with_name=2`. لم تُنشأ أو تُعدّل بيانات أعمال.
+- **السبب الجذري:** إسناد المشرف محفوظ في `runsheets.deliverer_id → users.id`، بينما سجل اللوجستيات المستقل محفوظ في `delivery_agents`. الواجهة القديمة كانت تعرض السجل الثاني فقط؛ لذلك لم تُظهر إسنادات الرانشيت إذا لم يوجد سجل لوجستيات مرتبط. الإصلاح يعرض الإسنادات من مصدرها التشغيلي دون اختلاق سجلات مندوبين.
+- **ما لم يُثبت بعد:** لم تتوفر في هذه الجلسة هوية نشر Cloudflare أو عنوان Production المنشور المؤكد، ولم يُنفّذ HTTP E2E من جلسة مستخدم فعلية. لذلك الحالة `CORRECTED — PRODUCTION UI VERIFICATION PENDING` وليست `100% CLOSED`.
+- **التقرير الكامل:** [DELIVERY_SUPERVISOR_PARENT_INTEGRATION_CLOSEOUT_20261027.md](doc/Draft/Reprots/DELIVERY_SUPERVISOR_PARENT_INTEGRATION_CLOSEOUT_20261027.md).
+- **الخطوة التالية الوحيدة:** مطابقة الملف المنشور فعليًا في Cloudflare مع مصدر Git الحالي، ثم فتح تبويب «مناديب التوصيل» بجلسة مصادق عليها والتأكد من ظهور الإسنادين. لا تُعدّل RPC أو بيانات Production ما لم يظهر Defect جديد مثبت.
+
+---
+
 # LATEST AUTHORITATIVE CHECKPOINT — 2026-09-23 18:05 UTC
 
 ## Current Mother Source
