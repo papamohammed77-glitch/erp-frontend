@@ -87,6 +87,9 @@
         <button onclick="App.switchTab('runsheets')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-runsheets">
             <i class="fa-solid fa-clipboard-list text-lg"></i><span>الرانشيتات</span>
         </button>
+        <button onclick="App.switchTab('complaints')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-complaints">
+            <i class="fa-solid fa-message text-lg"></i><span>الشكاوى</span>
+        </button>
         <button onclick="App.switchTab('account')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-account">
             <i class="fa-solid fa-user text-lg"></i><span>حسابي</span>
         </button>
@@ -124,85 +127,160 @@ var App = {
 
     switchTab: function(tab){
         this.currentTab=tab;
-        var tabs=['dashboard','team','runsheets','account'];
+        var tabs=['dashboard','team','runsheets','complaints','account'];
         for(var i=0;i<tabs.length;i++){var btn=RW_UI.byId('tab-'+tabs[i]);if(btn){btn.classList.remove('text-teal-600');btn.classList.add('text-slate-400');}}
         var act=RW_UI.byId('tab-'+tab);if(act){act.classList.add('text-teal-600');act.classList.remove('text-slate-400');}
-        if(tab==='dashboard')this.renderDashboard();else if(tab==='team')this.renderTeam();else if(tab==='runsheets')this.renderRunsheets();else if(tab==='account')this.renderAccount();
+        if(tab==='dashboard')this.renderDashboard();else if(tab==='team')this.renderTeam();else if(tab==='runsheets')this.renderRunsheets();else if(tab==='complaints')this.renderComplaints();else if(tab==='account')this.renderAccount();
     },
 
     renderDashboard: function(){
-        var self=this;
+        var self=this, companyId=this.currentUser&&this.currentUser.company_id;
         RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div><div class="skeleton h-48 w-full"></div></div>');
-        var today=new Date().toISOString().split('T')[0],firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
-        Promise.all([supabase.from('runsheets').select('status,total_amount').gte('run_date',firstDay).lte('run_date',today),supabase.from('users').select('email,name').filter('permissions','cs','["delivery"]').eq('status','Active')]).then(function(results){
-            var allRS=results[0].data||[],drivers=results[1].data||[];
-            var totalRS=allRS.length,totalValue=0,deliveredCount=0,deliveringCount=0,loadedCount=0;
-            for(var i=0;i<allRS.length;i++){totalValue+=Number(allRS[i].total_amount)||0;if(allRS[i].status==='Delivered')deliveredCount++;else if(allRS[i].status==='Delivering')deliveringCount++;else if(allRS[i].status==='Loaded')loadedCount++;}
-            var html='<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">📊 مؤشرات الأداء – الشهر الحالي</h2>';
-            html+='<div class="grid grid-cols-2 gap-3 mb-4"><div class="stat-card card"><p class="text-xs text-teal-400">إجمالي الرحلات</p><p class="text-2xl font-black text-teal-600">'+totalRS+'</p></div><div class="stat-card card"><p class="text-xs text-blue-400">قيمة الرحلات</p><p class="text-2xl font-black text-blue-600">'+fmtNum(totalValue)+' ج.م</p></div><div class="stat-card card"><p class="text-xs text-green-400">تم التوصيل</p><p class="text-2xl font-black text-green-600">'+deliveredCount+'</p></div><div class="stat-card card"><p class="text-xs text-amber-400">جاري / جاهز</p><p class="text-2xl font-black text-amber-600">'+(deliveringCount+loadedCount)+'</p></div></div>';
-            html+='<div class="card mb-4"><h3 class="font-bold text-slate-700 mb-3">نسبة الإنجاز</h3><div class="w-full h-48 relative"><canvas id="kpiChart"></canvas></div></div>';
-            html+='<div class="text-center text-sm text-slate-500">👥 عدد السائقين النشطين: <strong>'+drivers.length+'</strong></div></div>';
+        if(!companyId){RW_UI.showError('تعذر تحديد الشركة الحالية');return;}
+        supabase.rpc('delivery_supervisor_assignment_query',{p_company_id:companyId,p_view:'dashboard'}).then(function(res){
+            if(res.error) throw res.error;
+            var d=res.data||{}, total=Number(d.total_runsheets)||0, loaded=Number(d.loaded)||0, delivering=Number(d.delivering)||0, delivered=Number(d.delivered)||0, returning=Number(d.returning)||0;
+            var html='<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">📊 مؤشرات أداء التوصيل – الشهر الحالي</h2>';
+            html+='<div class="grid grid-cols-2 gap-3 mb-4"><div class="stat-card card"><p class="text-xs text-teal-500">إجمالي الرحلات</p><p class="text-2xl font-black text-teal-700">'+total+'</p></div>';
+            html+='<div class="stat-card card"><p class="text-xs text-blue-500">مندوبون نشطون</p><p class="text-2xl font-black text-blue-700">'+(Number(d.active_deliverers)||0)+'</p></div>';
+            html+='<div class="stat-card card"><p class="text-xs text-amber-500">محملة / جاهزة</p><p class="text-2xl font-black text-amber-700">'+loaded+'</p></div>';
+            html+='<div class="stat-card card"><p class="text-xs text-sky-500">جاري التوصيل</p><p class="text-2xl font-black text-sky-700">'+delivering+'</p></div>';
+            html+='<div class="stat-card card"><p class="text-xs text-green-500">تم التوصيل</p><p class="text-2xl font-black text-green-700">'+delivered+'</p></div>';
+            html+='<div class="stat-card card"><p class="text-xs text-red-500">مرتجعة / عائدة</p><p class="text-2xl font-black text-red-700">'+returning+'</p></div></div>';
+            html+='<p class="text-xs text-slate-400 text-center">تعرض المؤشرات بيانات الشركة الحالية فقط من عقد قاعدة البيانات المركزي.</p></div>';
             RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
-            setTimeout(function(){var ctx=RW_UI.byId('kpiChart');if(ctx){if(self.chartInstance)self.chartInstance.destroy();self.chartInstance=new Chart(ctx,{type:'doughnut',data:{labels:['تم التوصيل','جاري / جاهز'],datasets:[{data:[deliveredCount,totalRS-deliveredCount],backgroundColor:['#10b981','#f59e0b'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,padding:20}}}}});}},200);
-        });
+        }).catch(function(err){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-6 text-center text-red-600">تعذر تحميل مؤشرات التوصيل: '+self.escapeHTML(err.message||err)+'</div>');});
+    },
+
+    escapeHTML: function(value){
+        return String(value==null?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
     },
 
     renderTeam: function(){
-        var self=this;
+        var self=this, companyId=this.currentUser&&this.currentUser.company_id;
         RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-24 w-full mb-3"></div></div>');
-        var today=new Date().toISOString().split('T')[0],firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
-        Promise.all([supabase.from('users').select('id,email,name').filter('permissions','cs','["delivery"]').eq('status','Active'),supabase.from('runsheets').select('driver_id,status,total_amount').gte('run_date',firstDay).lte('run_date',today)]).then(function(results){
-            var drivers=results[0].data||[],runsheets=results[1].data||[],stats={};
-            for(var i=0;i<runsheets.length;i++){var rs=runsheets[i];var driver=rs.driver_id||'';if(!stats[driver])stats[driver]={count:0,total:0,delivered:0};stats[driver].count++;stats[driver].total+=Number(rs.total_amount)||0;if(rs.status==='Delivered')stats[driver].delivered++;}
+        if(!companyId){RW_UI.showError('تعذر تحديد الشركة الحالية');return;}
+        Promise.all([
+            supabase.rpc('delivery_supervisor_assignment_query',{p_company_id:companyId,p_view:'team'}),
+            supabase.rpc('delivery_supervisor_assignment_query',{p_company_id:companyId,p_view:'runsheets'})
+        ]).then(function(results){
+            if(results[0].error) throw results[0].error;
+            if(results[1].error) throw results[1].error;
+            var drivers=(results[0].data&&results[0].data.rows)||[], runsheets=(results[1].data&&results[1].data.rows)||[], stats={};
+            for(var i=0;i<runsheets.length;i++){
+                var rs=runsheets[i], key=rs.deliverer_id||'';
+                if(!stats[key])stats[key]={count:0,active:0,delivered:0,total:0};
+                stats[key].count++; stats[key].total+=Number(rs.total_amount)||0;
+                if(rs.status==='Loaded'||rs.status==='Delivering')stats[key].active++;
+                if(rs.status==='Delivered')stats[key].delivered++;
+            }
             self.driversList=drivers;
-            var html='<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">👥 فريقي</h2>';
-            if(!drivers.length){html+='<div class="text-center py-16"><div class="text-6xl mb-4">👥</div><p class="text-slate-400 font-bold">لا يوجد سائقين مسجلين.</p></div>';}
-            else{for(var j=0;j<drivers.length;j++){var driver=drivers[j],st=stats[driver.id]||{count:0,total:0,delivered:0},rate=st.count>0?Math.round((st.delivered/st.count)*100):0,has=st.count>0;
-                html+='<div class="card mb-3 '+(has?'':'opacity-70')+'"><div class="flex justify-between mb-2"><span class="font-bold">'+(driver.name||driver.email)+'</span>'+(has?'<span class="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-xs font-bold">🟢 نشط</span>':'<span class="px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full text-xs">⚪ غير نشط</span>')+'</div>';
-                html+='<div class="grid grid-cols-3 gap-2 text-center"><div><p class="text-xs text-gray-400">رحلات</p><p class="font-black">'+st.count+'</p></div><div><p class="text-xs text-gray-400">القيمة</p><p class="font-black text-teal-600">'+fmtNum(st.total)+'</p></div><div><p class="text-xs text-gray-400">توصيل</p><p class="font-black text-green-600">'+rate+'%</p></div></div>';
-                html+='<div class="w-full h-1.5 bg-gray-100 rounded-full mt-2"><div class="h-full bg-teal-500 rounded-full" style="width:'+rate+'%"></div></div>';
-                html+='<div class="mt-2 flex gap-2"><button onclick="App.openAssignModal(\''+driver.email+'\',\''+(driver.name||'').replace(/'/g,"\\'")+'\')" class="text-xs bg-teal-100 text-teal-700 px-3 py-1 rounded-full font-bold">تخصيص رانشيت</button></div></div>';}}
+            var html='<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">👥 مندوبي التوصيل</h2>';
+            if(!drivers.length){html+='<div class="text-center py-16"><div class="text-6xl mb-4">👥</div><p class="text-slate-400 font-bold">لا يوجد مندوبون نشطون مؤهلون للتوصيل.</p></div>';}
+            else for(var j=0;j<drivers.length;j++){
+                var person=drivers[j], st=stats[person.id]||{count:0,active:0,delivered:0,total:0}, rate=st.count?Math.round(st.delivered/st.count*100):0;
+                html+='<div class="card mb-3"><div class="flex justify-between mb-2"><span class="font-bold">'+self.escapeHTML(person.name||person.email)+'</span><span class="text-xs text-slate-500">'+st.active+' عملية نشطة</span></div>';
+                html+='<div class="grid grid-cols-3 gap-2 text-center"><div><p class="text-xs text-gray-400">العمليات</p><p class="font-black">'+st.count+'</p></div><div><p class="text-xs text-gray-400">القيمة</p><p class="font-black text-teal-600">'+fmtNum(st.total)+'</p></div><div><p class="text-xs text-gray-400">معدل الإنجاز</p><p class="font-black text-green-600">'+rate+'%</p></div></div>';
+                html+='<div class="mt-3"><button onclick="App.openAssignModal('+JSON.stringify(person.id)+','+JSON.stringify(person.name||person.email||'')+')" class="text-xs bg-teal-100 text-teal-700 px-3 py-2 rounded-full font-bold">تخصيص رانشيت لمندوب</button></div></div>';
+            }
             html+='</div>';RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
-        });
+        }).catch(function(err){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-6 text-center text-red-600">تعذر تحميل فريق التوصيل: '+self.escapeHTML(err.message||err)+'</div>');});
     },
 
-    openAssignModal: function(driverEmail,driverName){
-        var self=this;
-        supabase.from('runsheets').select('runsheet_code,run_date,total_amount').eq('status','Loaded').is('driver_id',null).order('run_date',{ascending:false}).then(function(res){
-            var loaded=res.data||[];if(loaded.length===0){Swal.fire({title:'لا توجد رانشيتات',text:'جميع الرانشيتات المحملة لها سائقين.',icon:'info',customClass:{popup:'!rounded-3xl'}});return;}
-            var options='';for(var i=0;i<loaded.length;i++){options+='<option value="'+loaded[i].runsheet_code+'">'+loaded[i].runsheet_code+' - '+loaded[i].run_date+' ('+fmtNum(loaded[i].total_amount)+' ج.م)</option>';}
-            Swal.fire({title:'تخصيص رانشيت لـ '+driverName,html:'<select id="swal-rs-select" class="swal2-input w-full text-right rounded-xl">'+options+'</select>',showCancelButton:true,confirmButtonText:'تخصيص',cancelButtonText:'إلغاء',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-teal-600 !px-8',cancelButton:'!rounded-xl'},preConfirm:function(){return document.getElementById('swal-rs-select').value;}}).then(function(result){if(result.isConfirmed&&result.value){self.assignDriver(result.value,driverEmail);}});
-        });
+    openAssignModal: function(delivererId,delivererName){
+        var self=this, companyId=this.currentUser&&this.currentUser.company_id;
+        supabase.rpc('delivery_supervisor_assignment_query',{p_company_id:companyId,p_view:'runsheets'}).then(function(res){
+            if(res.error)throw res.error;
+            var rows=(res.data&&res.data.rows)||[], loaded=rows.filter(function(r){return r.status==='Loaded'&&!r.deliverer_id;});
+            if(!loaded.length){Swal.fire({title:'لا توجد رانشيتات متاحة',text:'يلزم أن تكون الرانشيت محملة وغير مسندة إلى مندوب.',icon:'info'});return;}
+            var options='';for(var i=0;i<loaded.length;i++)options+='<option value="'+self.escapeHTML(loaded[i].runsheet_code)+'">'+self.escapeHTML(loaded[i].runsheet_code)+' - '+self.escapeHTML(loaded[i].run_date)+'</option>';
+            Swal.fire({title:'تخصيص لمندوب التوصيل: '+self.escapeHTML(delivererName),html:'<select id="swal-rs-select" class="swal2-input w-full text-right rounded-xl">'+options+'</select>',showCancelButton:true,confirmButtonText:'تخصيص',cancelButtonText:'إلغاء',preConfirm:function(){return document.getElementById('swal-rs-select').value;}}).then(function(result){if(result.isConfirmed&&result.value)self.assignDeliverer(result.value,delivererId);});
+        }).catch(function(err){Swal.fire({title:'خطأ',text:err.message||String(err),icon:'error'});});
     },
 
-    assignDriver: function(runsheetCode,driverEmail){
-        var self=this;Swal.showLoading();
-        supabase.from('users').select('id').eq('email',driverEmail).maybeSingle().then(function(userRes){if(!userRes.data){Swal.close();RW_UI.toast('السائق غير موجود','error');return;}return supabase.from('runsheets').update({driver_id:userRes.data.id}).eq('runsheet_code',runsheetCode);}).then(function(updateRes){Swal.close();if(updateRes&&updateRes.error){Swal.fire({title:'خطأ',text:updateRes.error.message,icon:'error',customClass:{popup:'!rounded-3xl'}});}else{RW_UI.toast('تم تعيين السائق بنجاح','success');self.renderTeam();}}).catch(function(err){Swal.close();RW_UI.toast(err.message,'error');});
+    assignDeliverer: function(runsheetCode,delivererId){
+        var self=this, companyId=this.currentUser&&this.currentUser.company_id;
+        var opId=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():('sup-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+        Swal.showLoading();
+        supabase.rpc('delivery_supervisor_assign_deliverer_atomic',{
+            p_company_id:companyId,p_runsheet_code:runsheetCode,p_deliverer_user_id:delivererId,p_operation_id:opId
+        }).then(function(res){
+            Swal.close();
+            if(res.error)throw res.error;
+            RW_UI.toast('تم إسناد مندوب التوصيل دون تغيير تعيين السائق أو المركبة.','success');
+            self.renderTeam();
+        }).catch(function(err){Swal.close();Swal.fire({title:'تعذر الإسناد',text:err.message||String(err),icon:'error'});});
     },
 
     unassignDriver: function(runsheetCode){
         var self=this;
-        Swal.fire({title:'تأكيد سحب التكليف',text:'سيتم إعادة الرانشيت '+runsheetCode+' إلى حالة "جاهز" بدون سائق.',icon:'warning',showCancelButton:true,confirmButtonText:'نعم، اسحب',cancelButtonText:'رجوع',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-red-500 !px-8',cancelButton:'!rounded-xl'}}).then(function(result){if(!result.isConfirmed)return;Swal.showLoading();supabase.from('runsheets').update({driver_id:null,status:'Loaded'}).eq('runsheet_code',runsheetCode).then(function(res){Swal.close();if(res.error){Swal.fire({title:'خطأ',text:res.error.message,icon:'error',customClass:{popup:'!rounded-3xl'}});}else{RW_UI.toast('تم سحب التكليف بنجاح','success');self.renderRunsheets();}});});
+        Swal.fire({title:'تأكيد فك إسناد المندوب',text:'سيتم فك إسناد مندوب التوصيل فقط، دون تغيير السائق أو المركبة.',icon:'warning',showCancelButton:true,confirmButtonText:'فك الإسناد',cancelButtonText:'إلغاء'}).then(function(result){
+            if(!result.isConfirmed)return;
+            var companyId=self.currentUser&&self.currentUser.company_id;
+            var opId=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():('sup-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+            supabase.rpc('delivery_supervisor_assign_deliverer_atomic',{p_company_id:companyId,p_runsheet_code:runsheetCode,p_deliverer_user_id:null,p_operation_id:opId}).then(function(res){
+                if(res.error)throw res.error;
+                RW_UI.toast('تم فك إسناد مندوب التوصيل.','success');self.renderRunsheets();
+            }).catch(function(err){Swal.fire({title:'تعذر فك الإسناد',text:err.message||String(err),icon:'error'});});
+        });
     },
 
     forceUnassign: function(runsheetCode){
-        var self=this;
-        Swal.fire({title:'🚨 تحذير: سحب اضطراري',html:'<div class="text-right text-sm space-y-3"><p class="font-bold text-red-600">⚠️ أنت على وشك سحب الرانشيت <strong>'+runsheetCode+'</strong> من المندوب أثناء التوصيل.</p><ul class="list-disc list-inside text-slate-600"><li>سيتم إلغاء جلسة التوصيل الحالية.</li><li>سيتم <strong>الاحتفاظ بالكميات المسلّمة</strong> التي سجلها المندوب.</li><li>سيعود الرانشيت إلى حالة <strong>جاهز (Loaded)</strong> لإعادة تعيينه.</li></ul><p class="text-red-500 font-bold">هل أنت متأكد تماماً؟ هذا الإجراء لا يمكن التراجع عنه.</p></div>',icon:'error',showCancelButton:true,confirmButtonText:'نعم، اسحب الرانشيت فوراً',cancelButtonText:'رجوع',confirmButtonColor:'#dc2626',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-red-600 !px-6',cancelButton:'!rounded-xl'}}).then(function(result){if(!result.isConfirmed)return;Swal.showLoading();supabase.auth.getSession().then(function(sessionRes){var token=sessionRes.data.session?sessionRes.data.session.access_token:null;if(!token){Swal.close();RW_UI.toast('انتهت الجلسة','error');return;}return fetch(SUPABASE_URL+'/functions/v1/force-unassign-runsheet',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({runsheet_code:runsheetCode,reason:'سحب اضطراري من المشرف'})});}).then(function(res){return res.json();}).then(function(json){Swal.close();if(json&&json.success){RW_UI.toast('تم سحب الرانشيت بنجاح','success');self.renderRunsheets();}else{RW_UI.toast((json&&json.msg)||'فشل السحب','error');}}).catch(function(err){Swal.close();RW_UI.toast(err.message,'error');});});
+        Swal.fire({title:'لا يمكن فك الإسناد اضطراريًا من هذه الشاشة',text:'الرانشيت بدأت دورة التوصيل. يلزم إتمام إجراء تشغيلي معتمد يحافظ على سجل التسليم والمسؤولية.',icon:'warning'});
     },
 
     renderRunsheets: function(){
-        var self=this;
+        var self=this, companyId=this.currentUser&&this.currentUser.company_id;
         RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-4"><div class="skeleton h-16 w-full mb-4"></div><div class="skeleton h-32 w-full mb-3"></div></div>');
-        supabase.from('runsheets').select('runsheet_code,run_date,status,total_amount,driver_id').in('status',['Loaded','Delivering','Delivered','Returning']).order('run_date',{ascending:false}).limit(30).then(function(res){self.loadedRunsheets=res.data||[];self.renderRunsheetList();});
+        if(!companyId){RW_UI.showError('تعذر تحديد الشركة الحالية');return;}
+        Promise.all([
+            supabase.rpc('delivery_supervisor_assignment_query',{p_company_id:companyId,p_view:'runsheets'}),
+            supabase.rpc('delivery_supervisor_assignment_query',{p_company_id:companyId,p_view:'team'})
+        ]).then(function(results){
+            if(results[0].error)throw results[0].error;if(results[1].error)throw results[1].error;
+            self.loadedRunsheets=(results[0].data&&results[0].data.rows)||[];
+            self.deliverersList=(results[1].data&&results[1].data.rows)||[];
+            self.renderRunsheetList();
+        }).catch(function(err){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-6 text-center text-red-600">تعذر تحميل الرانشيتات: '+self.escapeHTML(err.message||err)+'</div>');});
     },
 
     renderRunsheetList: function(){
-        var html='<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">📋 جميع الرحلات</h2>';
-        if(!this.loadedRunsheets.length){html+='<div class="text-center py-16"><div class="text-6xl mb-4">📋</div><p class="text-slate-400 font-bold">لا توجد رحلات حتى الآن.</p></div>';}
-        else{for(var i=0;i<this.loadedRunsheets.length;i++){var rs=this.loadedRunsheets[i],statusBadge='';if(rs.status==='Loaded')statusBadge='<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-xs">📦 محملة</span>';else if(rs.status==='Delivering')statusBadge='<span class="bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full text-xs">🟢 جاري</span>';else if(rs.status==='Delivered')statusBadge='<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs">✅ تم</span>';else if(rs.status==='Returning')statusBadge='<span class="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs">↩️ مرتجعات</span>';
-            html+='<div class="card mb-3 slide-in"><div class="flex justify-between items-center mb-2"><span class="font-bold text-lg">'+rs.runsheet_code+'</span>'+statusBadge+'</div><p class="text-xs text-slate-400">'+rs.run_date+' | '+fmtNum(rs.total_amount)+' ج.م</p>';
-            html+='<div class="mt-2 flex gap-2">';if(rs.status==='Loaded'){html+='<button onclick="App.unassignDriver(\''+rs.runsheet_code+'\')" class="text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full font-bold">سحب التكليف</button>';}else if(rs.status==='Delivering'){html+='<button onclick="App.forceUnassign(\''+rs.runsheet_code+'\')" class="btn-emergency"><i class="fa-solid fa-triangle-exclamation ml-1"></i> سحب اضطراري</button>';}html+='</div></div>';}}
+        var self=this, html='<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">📋 الرانشيتات والتكليفات</h2>';
+        if(!this.loadedRunsheets.length)html+='<div class="text-center py-16"><div class="text-6xl mb-4">📋</div><p class="text-slate-400 font-bold">لا توجد رانشيتات ضمن حالات المتابعة.</p></div>';
+        else for(var i=0;i<this.loadedRunsheets.length;i++){
+            var rs=this.loadedRunsheets[i], person=null;
+            for(var j=0;j<(this.deliverersList||[]).length;j++)if(this.deliverersList[j].id===rs.deliverer_id){person=this.deliverersList[j];break;}
+            var statusLabel=rs.status==='Loaded'?'محملة':rs.status==='Delivering'?'جاري التوصيل':rs.status==='Delivered'?'تم التوصيل':'عائدة/مرتجعة';
+            html+='<div class="card mb-3"><div class="flex justify-between items-center mb-2"><span class="font-bold text-lg">'+self.escapeHTML(rs.runsheet_code)+'</span><span class="text-xs bg-slate-100 px-2 py-1 rounded-full">'+statusLabel+'</span></div>';
+            html+='<p class="text-xs text-slate-400">'+self.escapeHTML(rs.run_date)+' | '+fmtNum(rs.total_amount)+' ج.م</p>';
+            html+='<p class="text-sm mt-2">مندوب التوصيل: <strong>'+self.escapeHTML(person?(person.name||person.email):'غير مسند')+'</strong></p>';
+            html+='<p class="text-sm">السائق: <strong>'+self.escapeHTML(rs.driver_id||'غير مسجل')+'</strong> | المركبة: <strong>'+self.escapeHTML(rs.vehicle_id||'غير مسجلة')+'</strong></p>';
+            if(rs.status==='Loaded'&&rs.deliverer_id)html+='<button onclick="App.unassignDriver('+JSON.stringify(rs.runsheet_code)+')" class="mt-2 text-xs bg-red-100 text-red-700 px-3 py-2 rounded-full font-bold">فك إسناد المندوب</button>';
+            html+='</div>';
+        }
         html+='</div>';RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+    },
+
+    renderComplaints: function(){
+        var self=this, companyId=this.currentUser&&this.currentUser.company_id;
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-4"><div class="skeleton h-24 w-full mb-3"></div><div class="skeleton h-24 w-full mb-3"></div></div>');
+        if(!companyId){RW_UI.showError('تعذر تحديد الشركة الحالية');return;}
+        supabase.rpc('delivery_supervisor_complaints_query',{p_company_id:companyId}).then(function(res){
+            if(res.error)throw res.error;
+            var rows=(res.data&&res.data.rows)||[], html='<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">📝 شكاوى وبلاغات التوصيل</h2>';
+            if(!rows.length)html+='<div class="card text-center text-slate-500">لا توجد شكاوى مسجلة للشركة الحالية.</div>';
+            for(var i=0;i<rows.length;i++){
+                var c=rows[i];
+                html+='<div class="card mb-3"><div class="flex justify-between gap-2"><strong>'+self.escapeHTML(c.complaint_code)+'</strong><span class="text-xs rounded-full bg-amber-50 text-amber-700 px-2 py-1">'+self.escapeHTML(c.status)+'</span></div>';
+                html+='<p class="text-sm mt-2">'+self.escapeHTML(c.complaint_type||'شكوى عامة')+' · المصدر: '+self.escapeHTML(c.source_type||'غير محدد')+'</p>';
+                html+='<p class="text-sm">الموظف المعني: '+self.escapeHTML(c.employee_name||c.employee_email||'غير محدد')+'</p>';
+                html+='<p class="text-xs text-slate-500">رانشيت: '+self.escapeHTML(c.runsheet_code||'—')+' | طلب: '+self.escapeHTML(c.order_code||'—')+'</p>';
+                html+='<p class="text-sm mt-2 whitespace-pre-wrap">'+self.escapeHTML(c.description||'لا يوجد وصف')+'</p>';
+                if(c.resolution)html+='<p class="text-xs text-green-700 mt-2">المعالجة: '+self.escapeHTML(c.resolution)+'</p>';
+                html+='<p class="text-xs text-slate-400 mt-2">'+self.escapeHTML(c.created_at||'')+'</p></div>';
+            }
+            html+='</div>';RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+        }).catch(function(err){RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-6 text-center text-red-600">تعذر تحميل الشكاوى: '+self.escapeHTML(err.message||err)+'</div>');});
     },
 
     renderAccount: function(){
