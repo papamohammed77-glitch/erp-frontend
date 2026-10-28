@@ -3,7 +3,7 @@ export async function onRequest(context) {
   if (context.request.method !== 'GET') return response;
 
   const url = new URL(context.request.url);
-  if (url.pathname !== '/companies/company-1/main.html') return response;
+  if (url.pathname !== '/companies/company-1/main.html' && url.pathname !== '/companies/company-1/main') return response;
 
   const contentType = response.headers.get('content-type') || '';
   if (!contentType.toLowerCase().includes('text/html')) return response;
@@ -40,6 +40,7 @@ export async function onRequest(context) {
   headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   headers.set('CDN-Cache-Control', 'no-store');
   headers.set('Pragma', 'no-cache');
+  headers.set('X-RAWAEA-MAIN-ROUTE', 'main-clean-path-v1');
 
   if (ambiguous) {
     headers.set('X-RAWAEA-HR-SHELL', 'ambiguous-rw-hr-syntax');

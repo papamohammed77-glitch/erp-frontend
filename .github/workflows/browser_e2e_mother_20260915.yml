@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       published_url:
-        description: 'Optional deployed URL of companies/company-1/main.html; leave blank to test exact current Git source locally'
+        description: 'Optional deployed URL (prefer https://rawaea-erp.pages.dev/companies/company-1/main); leave blank to test current Git source locally'
         required: false
         type: string
   push:
@@ -108,6 +108,8 @@ jobs:
             const title = await page.title();
             const html = await page.locator('html').innerText().catch(()=> '');
             const source = await page.content();
+            const deliveryAssignmentSourcePresent = source.includes('تعيينات الرانشيت من مشرف التوصيل') && source.includes('d.runsheet_assignments');
+            const routeMarker = response ? (response.headers()['x-rawaea-main-route'] || '') : '';
             const formCount = await page.locator('form').count();
             const passwordInputs = await page.locator('input[type="password"]').count();
             const buttons = await page.locator('button:visible').count();
@@ -125,8 +127,12 @@ jobs:
             console.log('PLACEHOLDER_MARKERS='+JSON.stringify(['قيد التطوير','جاري التطوير','TODO','FIXME'].filter(x=>source.includes(x))));
             console.log('CONSOLE_ERRORS='+JSON.stringify(consoleErrors));
             console.log('PAGE_ERRORS='+JSON.stringify(pageErrors));
+            console.log('DELIVERY_ASSIGNMENT_SOURCE='+deliveryAssignmentSourcePresent);
+            console.log('MAIN_ROUTE_MARKER='+routeMarker);
             if (!response || !response.ok()) throw new Error('MAIN_HTML_HTTP_LOAD_FAILED');
             if (!source.includes('</html>')) throw new Error('MAIN_HTML_DOM_END_MISSING');
+            if (!deliveryAssignmentSourcePresent) throw new Error('DELIVERY_ASSIGNMENT_UI_MISSING_FROM_SERVED_HTML');
+            if (process.env.PUBLISHED_URL && routeMarker !== 'main-clean-path-v1') throw new Error('MAIN_CLEAN_ROUTE_MIDDLEWARE_NOT_APPLIED');
             if (['قيد التطوير','جاري التطوير','TODO','FIXME'].some(x=>source.includes(x))) throw new Error('INCOMPLETE_MARKER_FOUND');
             if (consoleErrors.length) throw new Error('BROWSER_CONSOLE_ERRORS_PRESENT');
             if (pageErrors.length) throw new Error('BROWSER_PAGEERROR_PRESENT');
