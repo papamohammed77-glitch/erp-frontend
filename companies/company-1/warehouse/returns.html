@@ -179,9 +179,15 @@ var App = {
     loadRunsheets: function(){
         var self = this;
         RW_UI.showSkeleton('mainContent', 3, 'card');
-        var p1 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, return_handler_id, run_sheet_details(count)').eq('status', 'Returning').eq('return_handler_id', this.currentUser.id || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
-        var p2 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, run_sheet_details(count)').eq('status', 'Delivered').order('run_date', { ascending: false }).limit(50);
+        var p1 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, return_handler_id').eq('status', 'Returning').eq('return_handler_id', this.currentUser.id || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
+        var p2 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id').eq('status', 'Delivered').order('run_date', { ascending: false }).limit(50);
         Promise.all([p1, p2]).then(function(results) {
+            var primaryError = (results[0] && results[0].error) || (results[1] && results[1].error);
+            if (primaryError) {
+                console.error('[RW_Returns] runsheet list query failed:', primaryError);
+                RW_UI.showEmptyState('mainContent', 'تعذر تحميل قائمة المرتجعات. راجع الاتصال والصلاحيات ثم أعد المحاولة.', '⚠️');
+                return;
+            }
             var myActive = results[0].data || [];
             var available = results[1].data || [];
             self.allRunsheets = myActive.concat(available);
@@ -193,9 +199,18 @@ var App = {
             }
             
             var driverPromise = driverIds.length > 0 ? supabase.from('users').select('id, name').in('id', driverIds) : Promise.resolve({ data: [] });
-            var remainingPromise = rsIds.length > 0 ? supabase.from('run_sheet_details').select('runsheet_id, qty_loaded, qty_delivered').in('runsheet_id', rsIds) : Promise.resolve({ data: [] });
+            var remainingPromise = rsIds.length > 0 ? supabase.from('run_sheet_details').select('runsheet_id, qty_loaded, qty_delivered, qty_returned').in('runsheet_id', rsIds) : Promise.resolve({ data: [] });
             
             return Promise.all([driverPromise, remainingPromise]).then(function(extraResults) {
+                var remainingError = extraResults[1] && extraResults[1].error;
+                if (remainingError) {
+                    console.error('[RW_Returns] remaining quantities query failed:', remainingError);
+                    RW_UI.showEmptyState('mainContent', 'تعذر تحميل الكميات المتبقية للمرتجعات. لا تبدأ المرتجع قبل التحقق من الكميات.', '⚠️');
+                    return;
+                }
+                if (extraResults[0] && extraResults[0].error) {
+                    console.warn('[RW_Returns] driver names query failed:', extraResults[0].error);
+                }
                 var userMap = {};
                 var users = extraResults[0].data || [];
                 for (var ui = 0; ui < users.length; ui++) { userMap[users[ui].id] = users[ui].name; }
@@ -207,15 +222,22 @@ var App = {
                     var det = details[di];
                     var loaded = Number(det.qty_loaded) || 0;
                     var delivered = Number(det.qty_delivered) || 0;
-                    if (loaded > delivered) {
+                    var returned = Number(det.qty_returned) || 0;
+                    if (loaded - delivered - returned > 0) {
                         remainingMap[det.runsheet_id] = (remainingMap[det.runsheet_id] || 0) + 1;
                     }
                 }
                 self._remainingMap = remainingMap;
+                // Keep assigned in-progress returns visible; show Delivered runsheets only when
+                // at least one item still needs to be returned to the warehouse.
+                available = available.filter(function(rs) {
+                    return (remainingMap[rs.id] || 0) > 0;
+                });
                 self.renderRunsheetGrid(myActive, available);
             });
-        }).catch(function() {
-            RW_UI.showEmptyState('mainContent', 'فشل تحميل البيانات. تأكد من الاتصال.', '📡');
+        }).catch(function(error) {
+            console.error('[RW_Returns] unexpected runsheet load failure:', error);
+            RW_UI.showEmptyState('mainContent', 'حدث خطأ غير متوقع أثناء تحميل المرتجعات. راجع Console ثم أعد المحاولة.', '📡');
         });
     },
 
@@ -288,8 +310,44 @@ var App = {
             return;
         }
         this.searchTimer = setTimeout(function() {
-            supabase.from('runsheets').select('runsheet_code, status, run_date, driver_id, run_sheet_details(count)').in('status', ['Delivered', 'Returning']).ilike('runsheet_code', '%' + query.trim() + '%').limit(10).then(function(res) {
-                self.searchResults = res.data || [];
+            supabase.from('runsheets').select('id, runsheet_code, status, run_date, driver_id').in('status', ['Delivered', 'Returning']).ilike('runsheet_code', '%' + query.trim() + '%').limit(10).then(function(res) {
+                if (res.error) {
+                    console.error('[RW_Returns] runsheet search query failed:', res.error);
+                    self.searchResults = [];
+                    self.renderSearchDropdown();
+                    return;
+                }
+                var rows = res.data || [];
+                var rowIds = rows.map(function(rs) { return rs.id; });
+                if (!rowIds.length) {
+                    self.searchResults = [];
+                    self.renderSearchDropdown();
+                    return;
+                }
+                supabase.from('run_sheet_details').select('runsheet_id, item_code, qty_loaded, qty_delivered, qty_returned').in('runsheet_id', rowIds).then(function(detailsRes) {
+                    if (detailsRes.error) {
+                        console.error('[RW_Returns] runsheet search details query failed:', detailsRes.error);
+                        self.searchResults = [];
+                        self.renderSearchDropdown();
+                        return;
+                    }
+                    var pending = {}, counts = {};
+                    (detailsRes.data || []).forEach(function(det) {
+                        counts[det.runsheet_id] = (counts[det.runsheet_id] || 0) + 1;
+                        var remaining = (Number(det.qty_loaded) || 0) - (Number(det.qty_delivered) || 0) - (Number(det.qty_returned) || 0);
+                        if (remaining > 0) pending[det.runsheet_id] = true;
+                    });
+                    self.searchResults = rows.filter(function(rs) {
+                        return rs.status !== 'Delivered' || pending[rs.id] === true;
+                    }).map(function(rs) {
+                        rs.detail_count = counts[rs.id] || 0;
+                        return rs;
+                    });
+                    self.renderSearchDropdown();
+                });
+            }).catch(function(error) {
+                console.error('[RW_Returns] unexpected runsheet search failure:', error);
+                self.searchResults = [];
                 self.renderSearchDropdown();
             });
         }, 300);
@@ -306,7 +364,7 @@ var App = {
         var html = '';
         for (var i = 0; i < this.searchResults.length; i++) {
             var rs = this.searchResults[i];
-            var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
+            var itemCount = Number(rs.detail_count) || 0;
             var statusLabel = rs.status === 'Returning' ? '🔄 قيد العمل' : '📦 جاهز';
             html += '<div onclick="App.openReturn(\'' + rs.runsheet_code + '\')" class="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex justify-between items-center">';
             html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><br><span class="text-xs text-slate-400">' + itemCount + ' صنف</span></div>';
@@ -375,7 +433,7 @@ var App = {
         var sortedItems = [];
         for (var k = 0; k < items.length; k++) {
             var it = items[k];
-            var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
+            var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0) - (Number(it.qty_returned) || 0);
             sortedItems.push({ item: it, remaining: remaining });
             if (remaining > 0) remainingCount++;
         }
