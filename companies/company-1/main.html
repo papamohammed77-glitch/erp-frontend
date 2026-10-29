@@ -30630,7 +30630,53 @@ var RW_DeliveryLogistics = (function() {
     }).join('');
     var table='<div style="overflow:auto"><table class="w-full"><thead><tr>'+['الخطة','الحالة','مندوب التوصيل','المركبة','المحطات','المسافة/الزمن المخطط','التحصيل','إدارة'].map(function(h){return '<th class="p-3 text-right">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
       (rows||'<tr><td colspan="8" class="text-center p-8 text-slate-400">لا توجد خطط توصيل</td></tr>')+'</tbody></table></div>';
-    set(shell(card('الرحلات والمسارات','خطة مقابل تنفيذ ومحصلة مالية',table)));
+    var assignmentData = null;
+var assignments = [];
+var assignmentLoadError = '';
+try {
+  assignmentData = await q('agents',{search:'',status:'Active',limit:200,offset:0});
+  assignments = Array.isArray(assignmentData.runsheet_assignments)
+    ? assignmentData.runsheet_assignments : [];
+} catch (e) {
+  assignmentLoadError = e && e.message ? e.message : 'تعذر تحميل التكليفات الفعلية';
+}
+var assignmentRows = assignments.map(function(a) {
+  var labels = {
+    Loaded:'محملة',
+    Delivering:'جاري التوصيل',
+    Delivered:'تم التوصيل',
+    Returning:'عائدة/مرتجعة'
+  };
+  var agentLink = a.delivery_agent_code
+    ? esc(a.delivery_agent_code)
+    : 'غير مرتبط بسجل مناديب اللوجستيات';
+  return '<tr style="border-top:1px solid #eef2f7">' +
+    '<td class="p-3"><b>'+esc(a.runsheet_code)+'</b></td>' +
+    '<td class="p-3">'+date(a.run_date)+'</td>' +
+    '<td class="p-3">'+esc(a.deliverer_name || ('مستخدم '+a.deliverer_user_id))+'</td>' +
+    '<td class="p-3">'+badge(labels[a.status] || a.status,'info')+'</td>' +
+    '<td class="p-3">'+agentLink+'</td></tr>';
+}).join('');
+var assignmentEmptyMessage = assignmentLoadError
+  ? 'تعذر تحميل التكليفات: '+esc(assignmentLoadError)
+  : 'لا توجد رانشيتات مسندة إلى مندوبي التوصيل في الحالات المعروضة.';
+var assignmentTable =
+  '<div style="overflow:auto"><table class="w-full"><thead><tr>' +
+  ['الرانشيت','التاريخ','مندوب التوصيل المسند فعليًا','الحالة','ربط سجل اللوجستيات']
+    .map(function(h) { return '<th class="p-3 text-right">'+h+'</th>'; }).join('') +
+  '</tr></thead><tbody>' +
+  (assignmentRows ||
+    '<tr><td colspan="5" class="text-center p-8 text-slate-400">' +
+    assignmentEmptyMessage + '</td></tr>') +
+  '</tbody></table></div>';
+set(shell(
+  card('الرحلات والمسارات','خطة مقابل تنفيذ ومحصلة مالية',table) +
+  card(
+    'تكليفات الرانشيت من مشرف التوصيل',
+    'التكليف الفعلي محفوظ في runsheets.deliverer_id؛ يُعرض مستقلًا عن خطط المسارات.',
+    assignmentTable
+  )
+));
   }
 
   async function openRoute(id){
