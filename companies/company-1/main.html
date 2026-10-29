@@ -30613,70 +30613,148 @@ var RW_DeliveryLogistics = (function() {
 
   function closePlanModal(){try{Swal.close();}catch(e){}}
 
-  async function routes(){
-    var d=await q('routes',{from_date:new Date(Date.now()-86400000*30).toISOString().slice(0,10),to_date:new Date(Date.now()+86400000*14).toISOString().slice(0,10),limit:200,offset:0});
+    async function routes(){
+    var fromDate=new Date(Date.now()-86400000*30).toISOString().slice(0,10);
+    var toDate=new Date(Date.now()+86400000*14).toISOString().slice(0,10);
+    var d=await q('routes',{from_date:fromDate,to_date:toDate,limit:200,offset:0});
     S.cache.routes=d.rows||[];
+
+    var assignmentData=null,assignments=[],assignmentLoadError='';
+    try{
+      assignmentData=await q('agents',{search:'',status:'',limit:500,offset:0});
+      assignments=Array.isArray(assignmentData.runsheet_assignments)?assignmentData.runsheet_assignments:[];
+    }catch(e){
+      assignmentLoadError=e&&e.message?e.message:'تعذر تحميل التكليفات الفعلية';
+    }
+    assignments=assignments.filter(function(a){
+      return a.run_date&&a.run_date>=fromDate&&a.run_date<=toDate;
+    });
+
+    var agentIndex=Object.create(null);
+    (assignmentData&&Array.isArray(assignmentData.rows)?assignmentData.rows:[]).forEach(function(a){
+      if(a&&a.id)agentIndex[String(a.id)]=a;
+    });
     var rows=S.cache.routes.map(function(x){
-      var st=x.status==='Completed'?'ok':x.status==='Cancelled'?'bad':x.status==='InProgress'?'warn':'info';
-      return '<tr style="border-top:1px solid #eef2f7"><td class="p-3"><b>'+esc(x.plan_code)+'</b><div style="font-size:11px;color:#94a3b8">'+esc(x.runsheet_code)+'</div></td>'+
-        '<td class="p-3">'+badge(x.status,st)+'</td><td class="p-3">'+(x.delivery_agent_name?esc(x.delivery_agent_name):badge('غير مسند','warn'))+'</td>'+
-        '<td class="p-3">'+(x.vehicle_code?esc(x.vehicle_code):'—')+'</td><td class="p-3">'+esc(x.stop_count)+'</td>'+
-        '<td class="p-3">'+money(x.planned_total_km)+' كم<div style="font-size:11px;color:#94a3b8">'+money(x.planned_duration_minutes)+' د</div></td>'+
-        '<td class="p-3">'+money(x.collected_amount||0)+' EGP</td>'+
-        '<td class="p-3"><div style="display:flex;gap:6px;flex-wrap:wrap">'+
-        btn('فتح','route-open:'+esc(x.id),'px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold')+
-        (canManage()?btn('تحسين','route-opt:'+esc(x.id),'px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold'):'')+
-        '</div></td></tr>';
+      var row=Object.assign({},x);
+      row.record_type='route_plan';
+      row.assignment=row.status==='Cancelled'?null:
+        assignments.find(function(a){return a.runsheet_code===row.runsheet_code;})||null;
+      return row;
+    });
+    var activePlanByRunsheet=Object.create(null);
+    rows.forEach(function(x){
+      if(x.runsheet_code&&x.status!=='Cancelled')activePlanByRunsheet[x.runsheet_code]=true;
+    });
+    assignments.forEach(function(a){
+      if(activePlanByRunsheet[a.runsheet_code])return;
+      rows.push({
+        id:a.runsheet_id,
+        plan_code:null,
+        status:a.status,
+        runsheet_status:a.status,
+        runsheet_code:a.runsheet_code,
+        run_date:a.run_date,
+        vehicle_id:a.vehicle_id||null,
+        driver_id:a.driver_id||null,
+        vehicle_code:null,
+        delivery_agent_id:null,
+        delivery_agent_name:null,
+        stop_count:null,
+        planned_total_km:null,
+        planned_duration_minutes:null,
+        collected_amount:null,
+        created_at:null,
+        record_type:'assignment',
+        assignment:a
+      });
+    });
+    rows.sort(function(a,b){
+      var ad=String(a.run_date||''),bd=String(b.run_date||'');
+      if(ad!==bd)return bd.localeCompare(ad);
+      return String(b.created_at||'').localeCompare(String(a.created_at||''));
+    });
+
+    var statusLabels={
+      Draft:'مسودة',Planned:'مخططة',InProgress:'جارية',Completed:'مكتملة',Cancelled:'ملغاة',
+      Loaded:'محملة',Delivering:'جاري التوصيل',Delivered:'تم التوصيل',Returning:'عائدة/مرتجعة'
+    };
+    var bodyRows=rows.map(function(x){
+      var isAssignment=x.record_type==='assignment';
+      var a=x.assignment||null;
+      var runStatus=a?a.status:(x.runsheet_status||'');
+      var planStatus=x.status||'';
+      var shownStatus=isAssignment?runStatus:planStatus;
+      var statusTone=shownStatus==='Completed'||shownStatus==='Delivered'?'ok':
+        (shownStatus==='Cancelled'?'bad':
+        (shownStatus==='Loaded'||shownStatus==='Delivering'||shownStatus==='Returning'||shownStatus==='InProgress'?'warn':'info'));
+      var statusCell=isAssignment
+        ?badge(statusLabels[shownStatus]||shownStatus,statusTone)+'<div style="margin-top:4px">'+badge('تكليف فعلي — بلا خطة مسار','warn')+'</div>'
+        :badge(statusLabels[planStatus]||planStatus,statusTone);
+      if(!isAssignment&&a){
+        statusCell+='<div style="font-size:11px;color:#64748b;margin-top:4px">حالة الرانشيت: '+esc(statusLabels[runStatus]||runStatus)+'</div>';
+        if(planStatus!==runStatus){
+          statusCell+='<div style="font-size:11px;margin-top:4px">'+badge('حالة الخطة والرانشيت مختلفة','warn')+'</div>';
+        }
+      }
+
+      var planAgent=x.delivery_agent_name||'';
+      var planAgentRow=x.delivery_agent_id?agentIndex[String(x.delivery_agent_id)]:null;
+      var planAgentUserId=planAgentRow&&planAgentRow.user_id?String(planAgentRow.user_id):'';
+      var assignedName=a&&a.deliverer_name?a.deliverer_name:'';
+      var assignedUserId=a&&a.deliverer_user_id?String(a.deliverer_user_id):'';
+      var agentCell='';
+      if(isAssignment){
+        agentCell='<div><b>'+esc(assignedName||('مستخدم '+(a.deliverer_user_id||'')))+'</b></div>';
+        agentCell+='<div style="font-size:11px;margin-top:4px">'+badge(a.delivery_agent_code?'مرتبط بسجل لوجستي':'حساب غير مرتبط بسجل لوجستي',a.delivery_agent_code?'ok':'warn')+'</div>';
+      }else if(planAgent&&assignedName){
+        if(planAgentUserId&&assignedUserId&&planAgentUserId===assignedUserId){
+          agentCell='<div><b>'+esc(planAgent)+'</b></div><div style="font-size:11px;margin-top:4px">'+badge('إسناد الخطة والرانشيت متطابق','ok')+'</div>';
+        }else{
+          agentCell='<div><b>مندوب الخطة:</b> '+esc(planAgent)+'</div><div style="margin-top:4px"><b>تكليف الرانشيت:</b> '+esc(assignedName)+'</div>';
+          agentCell+='<div style="margin-top:4px">'+badge(planAgentUserId&&assignedUserId?'تعارض مصدر الإسناد':'تعذر إثبات تطابق الهوية',planAgentUserId&&assignedUserId?'bad':'warn')+'</div>';
+        }
+      }else if(planAgent){
+        agentCell='<div><b>'+esc(planAgent)+'</b></div><div style="font-size:11px;margin-top:4px">'+badge(a?'لا توجد هوية مشتركة مثبتة':'مندوب خطة المسار',a?'warn':'info')+'</div>';
+      }else if(assignedName){
+        agentCell='<div><b>'+esc(assignedName)+'</b></div><div style="font-size:11px;margin-top:4px">'+badge(a&&a.delivery_agent_code?'تكليف مرتبط بسجل لوجستي':'تكليف الرانشيت غير مرتبط بسجل لوجستي',a&&a.delivery_agent_code?'ok':'warn')+'</div>';
+      }else{
+        agentCell=badge('غير مسند','warn');
+      }
+
+      var firstCell=isAssignment
+        ?'<b>'+esc(x.runsheet_code)+'</b><div style="font-size:11px;color:#b45309;margin-top:4px">تكليف محفوظ على الرانشيت</div>'
+        :'<b>'+esc(x.plan_code||'خطة توصيل')+'</b><div style="font-size:11px;color:#94a3b8">'+esc(x.runsheet_code)+'</div>'+
+          (x.status==='Cancelled'&&assignments.some(function(z){return z.runsheet_code===x.runsheet_code;})?'<div style="font-size:11px;margin-top:4px">'+badge('خطة ملغاة؛ التكليف الحالي معروض في صف مستقل','warn')+'</div>':'');
+      var vehicleCell=x.vehicle_code?esc(x.vehicle_code):(x.vehicle_id?badge('مركبة مرتبطة','info'):'—');
+      var stopsCell=isAssignment?badge('لا توجد محطات بخطة مسار','warn'):(x.stop_count==null?'—':esc(x.stop_count));
+      var distanceCell=isAssignment?badge('لم تُحدد بعد','warn'):
+        (x.planned_total_km==null?'—':money(x.planned_total_km)+' كم'+
+         '<div style="font-size:11px;color:#94a3b8">'+(x.planned_duration_minutes==null?'—':money(x.planned_duration_minutes)+' د')+'</div>');
+      var collectedCell=isAssignment?'—':(x.collected_amount==null?'—':money(x.collected_amount)+' EGP');
+      var actions=isAssignment
+        ?(canManage()&&shownStatus==='Loaded'
+          ?btn('إنشاء خطة مسار','plan-new:'+esc(x.runsheet_code),'px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold')
+          :badge('لا توجد خطة مسار','warn'))
+        :('<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+          btn('فتح','route-open:'+esc(x.id),'px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold')+
+          (canManage()&&x.status!=='Cancelled'?btn('تحسين','route-opt:'+esc(x.id),'px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold'):'')+
+          '</div>');
+      return '<tr style="border-top:1px solid #eef2f7"><td class="p-3">'+firstCell+'</td>'+
+        '<td class="p-3">'+statusCell+'</td><td class="p-3">'+agentCell+'</td>'+
+        '<td class="p-3">'+vehicleCell+'</td><td class="p-3">'+stopsCell+'</td>'+
+        '<td class="p-3">'+distanceCell+'</td><td class="p-3">'+collectedCell+'</td>'+
+        '<td class="p-3">'+actions+'</td></tr>';
     }).join('');
-    var table='<div style="overflow:auto"><table class="w-full"><thead><tr>'+['الخطة','الحالة','مندوب التوصيل','المركبة','المحطات','المسافة/الزمن المخطط','التحصيل','إدارة'].map(function(h){return '<th class="p-3 text-right">'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
-      (rows||'<tr><td colspan="8" class="text-center p-8 text-slate-400">لا توجد خطط توصيل</td></tr>')+'</tbody></table></div>';
-    var assignmentData = null;
-var assignments = [];
-var assignmentLoadError = '';
-try {
-  assignmentData = await q('agents',{search:'',status:'Active',limit:200,offset:0});
-  assignments = Array.isArray(assignmentData.runsheet_assignments)
-    ? assignmentData.runsheet_assignments : [];
-} catch (e) {
-  assignmentLoadError = e && e.message ? e.message : 'تعذر تحميل التكليفات الفعلية';
-}
-var assignmentRows = assignments.map(function(a) {
-  var labels = {
-    Loaded:'محملة',
-    Delivering:'جاري التوصيل',
-    Delivered:'تم التوصيل',
-    Returning:'عائدة/مرتجعة'
-  };
-  var agentLink = a.delivery_agent_code
-    ? esc(a.delivery_agent_code)
-    : 'غير مرتبط بسجل مناديب اللوجستيات';
-  return '<tr style="border-top:1px solid #eef2f7">' +
-    '<td class="p-3"><b>'+esc(a.runsheet_code)+'</b></td>' +
-    '<td class="p-3">'+date(a.run_date)+'</td>' +
-    '<td class="p-3">'+esc(a.deliverer_name || ('مستخدم '+a.deliverer_user_id))+'</td>' +
-    '<td class="p-3">'+badge(labels[a.status] || a.status,'info')+'</td>' +
-    '<td class="p-3">'+agentLink+'</td></tr>';
-}).join('');
-var assignmentEmptyMessage = assignmentLoadError
-  ? 'تعذر تحميل التكليفات: '+esc(assignmentLoadError)
-  : 'لا توجد رانشيتات مسندة إلى مندوبي التوصيل في الحالات المعروضة.';
-var assignmentTable =
-  '<div style="overflow:auto"><table class="w-full"><thead><tr>' +
-  ['الرانشيت','التاريخ','مندوب التوصيل المسند فعليًا','الحالة','ربط سجل اللوجستيات']
-    .map(function(h) { return '<th class="p-3 text-right">'+h+'</th>'; }).join('') +
-  '</tr></thead><tbody>' +
-  (assignmentRows ||
-    '<tr><td colspan="5" class="text-center p-8 text-slate-400">' +
-    assignmentEmptyMessage + '</td></tr>') +
-  '</tbody></table></div>';
-set(shell(
-  card('الرحلات والمسارات','خطة مقابل تنفيذ ومحصلة مالية',table) +
-  card(
-    'تكليفات الرانشيت من مشرف التوصيل',
-    'التكليف الفعلي محفوظ في runsheets.deliverer_id؛ يُعرض مستقلًا عن خطط المسارات.',
-    assignmentTable
-  )
-));
+    var table='<div style="overflow:auto"><table class="w-full"><thead><tr>'+
+      ['الخطة / الرانشيت','الحالة التشغيلية','مصدر الإسناد والمندوب','المركبة','المحطات','المسافة / الزمن المخطط','التحصيل','إدارة'].map(function(h){return '<th class="p-3 text-right">'+h+'</th>';}).join('')+
+      '</tr></thead><tbody>'+
+      (bodyRows||'<tr><td colspan="8" class="text-center p-8 text-slate-400">لا توجد خطط أو تكليفات توصيل في الفترة المعروضة</td></tr>')+
+      '</tbody></table></div>';
+    var note='<div style="padding:10px 12px;border-radius:14px;background:#f8fafc;border:1px solid #eef2f7;color:#475569;font-size:12px;font-weight:700;margin-bottom:12px">'+
+      'يعرض الجدول خطط المسارات والتكليفات الفعلية معًا. لا تُنشأ خطة أو محطة تلقائيًا. إذا اختلف مندوب الخطة عن مستخدم الرانشيت يظهر المصدران والتنبيه بدل إخفاء الاختلاف.'+
+      '</div>';
+    if(assignmentLoadError)note+='<div style="padding:10px 12px;border-radius:12px;background:#fff7ed;color:#9a3412;margin-bottom:12px">تعذر تحميل تكليفات الرانشيت؛ صفوف خطط المسار معروضة من المصدر الحالي، لكن لا يمكن تأكيد تكليفاتها: '+esc(assignmentLoadError)+'</div>';
+    set(shell(card('الرحلات والمسارات','عرض موحد للتكليف الفعلي وخطة التوصيل والتنفيذ والتحصيل',note+table)));
   }
 
   async function openRoute(id){
@@ -30711,15 +30789,38 @@ set(shell(
     set(shell(body));
   }
 
-  async function agents(){
+    async function agents(){
     var d=await q('agents',{search:S.search,status:'Active',limit:200,offset:0});
     S.cache.agents=d.rows||[];
     var assignments=Array.isArray(d.runsheet_assignments)?d.runsheet_assignments:[];
-    var rows=S.cache.agents.map(function(a){
-      return '<tr style="border-top:1px solid #eef2f7"><td class="p-3"><b>'+esc(a.agent_code)+'</b></td><td class="p-3">'+esc(a.full_name)+'</td>'+
-        '<td class="p-3">'+esc(a.phone||'—')+'</td><td class="p-3">'+esc(a.employment_type)+'</td><td class="p-3">'+(a.user_id?badge('حساب ميداني مرتبط','ok'):badge('بدون حساب','warn'))+'</td>'+
-        '<td class="p-3">'+esc(a.active_routes)+'</td><td class="p-3">'+esc(a.stops_delivered)+' / '+esc(a.stops_total)+'</td><td class="p-3">'+money(a.collected_amount||0)+' EGP</td></tr>';
+    var userLinkContractAvailable=Array.isArray(d.unregistered_delivery_users);
+    var unregisteredUsers=userLinkContractAvailable?d.unregistered_delivery_users:[];
+    S.cache.unregisteredDeliveryUsers=unregisteredUsers;
+    var registeredRows=S.cache.agents.map(function(a){
+      return '<tr style="border-top:1px solid #eef2f7"><td class="p-3"><b>'+esc(a.agent_code||'—')+'</b></td>'+
+        '<td class="p-3">'+esc(a.full_name||'—')+'</td><td class="p-3">'+esc(a.phone||'—')+'</td>'+
+        '<td class="p-3">'+esc(a.email||'—')+'</td><td class="p-3">'+esc(a.employment_type||'—')+'</td>'+
+        '<td class="p-3">'+esc(a.active_routes==null?'—':a.active_routes)+'</td>'+
+        '<td class="p-3">'+(a.stops_delivered==null?'—':esc(a.stops_delivered))+' / '+(a.stops_total==null?'—':esc(a.stops_total))+'</td>'+
+        '<td class="p-3">'+(a.collected_amount==null?'—':money(a.collected_amount)+' EGP')+'</td>'+
+        '<td class="p-3">'+badge(a.user_id?'سجل لوجستي مرتبط بحساب':'سجل لوجستي مستقل',a.user_id?'ok':'warn')+'</td></tr>';
     }).join('');
+    var unregisteredRows=unregisteredUsers.map(function(u){
+      return '<tr style="border-top:1px solid #eef2f7"><td class="p-3"><b>—</b><div style="font-size:11px;color:#64748b;margin-top:3px">حساب فقط</div></td>'+
+        '<td class="p-3">'+esc(u.name||'—')+'</td><td class="p-3">'+esc(u.phone||'—')+'</td>'+
+        '<td class="p-3">'+esc(u.email||'—')+'</td><td class="p-3">'+badge('حساب مستخدم بلا سجل لوجستي','warn')+'</td>'+
+        '<td class="p-3">—</td><td class="p-3">—</td><td class="p-3">—</td><td class="p-3">'+
+        (canManage()?btn('استكمال التسجيل','agent-register-user:'+esc(u.user_id),'px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold'):'—')+
+        '</td></tr>';
+    }).join('');
+    var unregisteredEmpty=userLinkContractAvailable
+      ?'لا توجد حسابات نشطة بدور مندوب توصيل تنتظر استكمال التسجيل.'
+      :'عقد بيانات التوصيل لم يعِد قائمة الحسابات غير المرتبطة؛ لا يمكن اعتبار القائمة خالية حتى يُراجع عقد RPC المنشور.';
+    var rows=registeredRows+unregisteredRows;
+    var agentsTable='<div style="overflow:auto"><table class="w-full"><thead><tr>'+
+      ['الكود / الحساب','المندوب / المستخدم','الهاتف','البريد الإلكتروني','نوع السجل','الرحلات النشطة','التوصيلات','التحصيل','إجراء'].map(function(h){return '<th class="p-3 text-right">'+h+'</th>';}).join('')+
+      '</tr></thead><tbody>'+(rows||'<tr><td colspan="9" class="text-center p-8 text-slate-400">'+esc(unregisteredEmpty)+'</td></tr>')+
+      '</tbody></table></div>';
     var assignmentRows=assignments.map(function(a){
       var statusLabels={Loaded:'محملة',Delivering:'جاري التوصيل',Delivered:'تم التوصيل',Returning:'عائدة/مرتجعة'};
       var agentLink=a.delivery_agent_code?esc(a.delivery_agent_code):'غير مرتبط بسجل مناديب اللوجستيات';
@@ -30731,34 +30832,33 @@ set(shell(
       ['الرانشيت','التاريخ','مندوب التوصيل المسند فعليًا','حالة الرانشيت','ربط سجل اللوجستيات'].map(function(h){return '<th class="p-3 text-right">'+h+'</th>';}).join('')+
       '</tr></thead><tbody>'+(assignmentRows||'<tr><td colspan="5" class="text-center p-8 text-slate-400">لا توجد رانشيتات مسندة إلى مندوبي التوصيل في الحالات المعروضة.</td></tr>')+
       '</tbody></table></div>';
-    var agentsTable='<div style="overflow:auto"><table class="w-full"><thead><tr>'+
-      ['الكود','الاسم','الهاتف','نوع التعاقد','ربط التطبيق','الرحلات النشطة','التوصيلات','التحصيل'].map(function(h){return '<th class="p-3 text-right">'+h+'</th>';}).join('')+
-      '</tr></thead><tbody>'+(rows||'<tr><td colspan="8" class="text-center p-8 text-slate-400">لا يوجد مناديب مسجلون</td></tr>')+
-      '</tbody></table></div>';
     set(shell(
-      card('تعيينات الرانشيت من مشرف التوصيل','التكليف الفعلي محفوظ في runsheets.deliverer_id؛ يُعرض مستقلًا عن سجل مندوب اللوجستيات.',assignmentTable)+
-      card('مناديب التوصيل المسجلون','سجل المندوبين التشغيلي والتعاقدي',input('dl-agent-search','بحث','','text','style="max-width:340px;margin-bottom:12px"')+agentsTable)
+      card('مناديب التوصيل المسجلون','سجل المندوبين التشغيلي، مع إظهار حسابات التوصيل التي تحتاج إلى استكمال ربطها بسجل لوجستي.',input('dl-agent-search','بحث',S.search||'','text','style="max-width:340px;margin-bottom:12px"')+agentsTable)+
+      card('تعيينات الرانشيت من مشرف التوصيل','التكليف الفعلي محفوظ في runsheets.deliverer_id ويظل ظاهرًا مستقلًا عن سجل المندوب اللوجستي.',assignmentTable)
     ));
-    var s=E('dl-agent-search'); if(s)s.oninput=function(){S.search=this.value;setTimeout(function(){agents().catch(function(e){toast(e.message,'error');})},180)};
+    var search=E('dl-agent-search');
+    if(search)search.oninput=function(){S.search=this.value;setTimeout(function(){agents().catch(function(e){toast(e.message,'error');})},180)};
   }
 
-  async function openAgentForm(){
-    await modal('تسجيل مندوب توصيل',
-      input('da-code','كود المندوب','')+
-      input('da-name','الاسم الكامل','')+
-      input('da-phone','الهاتف','')+
-      input('da-email','البريد الإلكتروني','')+
+    async function openAgentForm(existingUser){
+    var selectedUser=existingUser||null;
+    await modal(selectedUser?'استكمال التسجيل التشغيلي لحساب موجود':'تسجيل مندوب توصيل',
+      input('da-code','كود المندوب المعتمد','')+
+      input('da-name','الاسم الكامل',selectedUser?selectedUser.name:'')+
+      input('da-phone','الهاتف',selectedUser?selectedUser.phone:'')+
+      input('da-email','البريد الإلكتروني',selectedUser?selectedUser.email:'')+
       select('da-emp','نوع التعاقد','Employee',[['Employee','موظف'],['Contractor','متعاقد'],['Outsourced','شركة خارجية'],['PerTrip','بالنقلة'],['Monthly','بالشهر'],['Other','أخرى']])+
       select('da-status','الحالة','Active',[['Active','نشط'],['Inactive','غير نشط'],['Suspended','موقوف']])+
-      input('da-user','User UUID — اختياري','','text','placeholder="اربط حسابًا ميدانيًا موجودًا فقط"')+
+      input('da-user',selectedUser?'حساب المستخدم المرتبط':'User UUID — اختياري',selectedUser?selectedUser.user_id:'','text',selectedUser?'readonly':'placeholder="اربط حسابًا موجودًا فقط"')+
       input('da-branch','الفرع الافتراضي UUID — اختياري','','text'),
       async function(){
-        if(!val('da-code')||!val('da-name'))throw new Error('الكود والاسم مطلوبان');
+        if(!val('da-code')||!val('da-name'))throw new Error('كود واسم مندوب التوصيل مطلوبان');
+        if(selectedUser&&val('da-user')!==selectedUser.user_id)throw new Error('تعذر مطابقة هوية المستخدم المختار');
         await c('AGENT_CREATE',{
           agent_code:val('da-code'),full_name:val('da-name'),phone:val('da-phone')||null,email:val('da-email')||null,
           employment_type:val('da-emp'),status:val('da-status'),user_id:val('da-user')||null,default_branch_id:val('da-branch')||null
         },'agent-create:'+val('da-code'));
-        Swal.close();await refresh();toast('تم تسجيل مندوب التوصيل وربطه بهوية مستقلة','success');
+        Swal.close();S.tab='agents';S.search='';await refresh();toast('تم تسجيل المندوب وربطه بحساب المستخدم المحدد','success');
       });
   }
 
@@ -30846,6 +30946,16 @@ set(shell(
     try{
       if(k==='refresh'){return refresh();}
       if(k==='agent-new'){return openAgentForm();}
+      if(k==='agent-register-user'){
+        var selected=(S.cache.unregisteredDeliveryUsers||[]).find(function(u){return u.user_id===id;});
+        if(!selected){
+          var fresh=await q('agents',{search:'',status:'Active',limit:200,offset:0});
+          S.cache.unregisteredDeliveryUsers=Array.isArray(fresh.unregistered_delivery_users)?fresh.unregistered_delivery_users:[];
+          selected=S.cache.unregisteredDeliveryUsers.find(function(u){return u.user_id===id;});
+        }
+        if(!selected)throw new Error('حساب التوصيل لم يعد ضمن قائمة الحسابات غير المرتبطة؛ حدّث الشاشة');
+        return openAgentForm(selected);
+      }
       if(k==='plan-new'){return openPlanCreate(id);}
       if(k==='route-open'){return openRoute(id);}
       if(k==='route-opt'){
