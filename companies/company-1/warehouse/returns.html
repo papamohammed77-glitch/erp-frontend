@@ -179,9 +179,15 @@ var App = {
     loadRunsheets: function(){
         var self = this;
         RW_UI.showSkeleton('mainContent', 3, 'card');
-        var p1 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, return_handler_id, run_sheet_details(count)').eq('status', 'Returning').eq('return_handler_id', this.currentUser.id || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
-        var p2 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, run_sheet_details(count)').eq('status', 'Delivered').order('run_date', { ascending: false }).limit(50);
+        var p1 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, return_handler_id').eq('status', 'Returning').eq('return_handler_id', this.currentUser.id || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
+        var p2 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id').eq('status', 'Delivered').order('run_date', { ascending: false }).limit(50);
         Promise.all([p1, p2]).then(function(results) {
+            var primaryError = (results[0] && results[0].error) || (results[1] && results[1].error);
+            if (primaryError) {
+                console.error('[RW_Returns] runsheet list query failed:', primaryError);
+                RW_UI.showEmptyState('mainContent', 'تعذر تحميل قائمة المرتجعات. راجع الاتصال والصلاحيات ثم أعد المحاولة.', '⚠️');
+                return;
+            }
             var myActive = results[0].data || [];
             var available = results[1].data || [];
             self.allRunsheets = myActive.concat(available);
@@ -196,6 +202,15 @@ var App = {
             var remainingPromise = rsIds.length > 0 ? supabase.from('run_sheet_details').select('runsheet_id, qty_loaded, qty_delivered').in('runsheet_id', rsIds) : Promise.resolve({ data: [] });
             
             return Promise.all([driverPromise, remainingPromise]).then(function(extraResults) {
+                var remainingError = extraResults[1] && extraResults[1].error;
+                if (remainingError) {
+                    console.error('[RW_Returns] remaining quantities query failed:', remainingError);
+                    RW_UI.showEmptyState('mainContent', 'تم تحميل الرانشيتات لكن تعذر تحميل الكميات المتبقية. لا تبدأ المرتجع قبل التحقق من الكميات.', '⚠️');
+                    return;
+                }
+                if (extraResults[0] && extraResults[0].error) {
+                    console.warn('[RW_Returns] driver names query failed:', extraResults[0].error);
+                }
                 var userMap = {};
                 var users = extraResults[0].data || [];
                 for (var ui = 0; ui < users.length; ui++) { userMap[users[ui].id] = users[ui].name; }
@@ -214,8 +229,9 @@ var App = {
                 self._remainingMap = remainingMap;
                 self.renderRunsheetGrid(myActive, available);
             });
-        }).catch(function() {
-            RW_UI.showEmptyState('mainContent', 'فشل تحميل البيانات. تأكد من الاتصال.', '📡');
+        }).catch(function(error) {
+            console.error('[RW_Returns] unexpected runsheet load failure:', error);
+            RW_UI.showEmptyState('mainContent', 'حدث خطأ غير متوقع أثناء تحميل المرتجعات. راجع Console ثم أعد المحاولة.', '📡');
         });
     },
 
