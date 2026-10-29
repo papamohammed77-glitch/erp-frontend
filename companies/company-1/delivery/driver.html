@@ -379,7 +379,7 @@ renderDashboardView: function(rs) {
             return [lat, lng];
         }
         if (statusEl) safeHTML(statusEl, '<p class="font-bold">جارٍ تحميل مواقع عملاء الرانشيت…</p>');
-        supabase.from('orders').select('order_code, customer_name, customer_phone, area, total_amount, order_status, latitude, longitude, shipping_address, customers(location_lat, location_lng, address, location, area)').eq('runsheet_id', runsheetId).neq('order_status', 'Cancelled').then(function(res) {
+        supabase.from('orders').select('id, order_code, customer_id, customer_name, customer_phone, area, total_amount, order_status, latitude, longitude, shipping_address, customers(location_lat, location_lng, address, location, area)').eq('runsheet_id', runsheetId).neq('order_status', 'Cancelled').then(function(res) {
             if (res.error) {
                 console.error('[Driver Map] Failed to load assigned customer locations', { code: res.error.code, message: res.error.message });
                 if (statusEl) safeHTML(statusEl, '<div class="text-red-600 font-bold">تعذر تحميل مواقع العملاء. قد تكون هناك مشكلة في صلاحيات القراءة أو اتصال البيانات؛ لم يتم اعتبار الخطأ قائمة فارغة.</div>');
@@ -399,7 +399,7 @@ renderDashboardView: function(rs) {
                     var shipping = o.shipping_address;
                     if (shipping && typeof shipping === 'object') shipping = JSON.stringify(shipping);
                     var searchText = [cust.address, shipping, o.area || cust.area, cust.location].filter(function(v) { return v != null && String(v).trim() !== ''; }).join(' ');
-                    missing.push({ order_code: o.order_code || '', name: o.customer_name || cust.name || 'عميل بلا اسم', area: o.area || cust.area || '', search: searchText });
+                    missing.push({ order_id: o.id || null, order_code: o.order_code || '', name: o.customer_name || cust.name || 'عميل بلا اسم', area: o.area || cust.area || '', search: searchText });
                 }
             }
             if (bounds.length && self.mapObj) self.mapObj.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
@@ -410,14 +410,99 @@ renderDashboardView: function(rs) {
                 summary += '<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 mb-2"><div class="font-bold text-amber-800">هناك ' + missing.length + ' أوردرات بلا إحداثيات دقيقة مسجلة.</div><div class="text-xs text-amber-700 mt-1">لا يمكن وضع علامة صحيحة على الخريطة قبل حفظ إحداثيات العميل. روابط البحث التالية تقريبية وليست موقعًا مؤكدًا.</div></div><div class="space-y-2">';
                 for (var m = 0; m < missing.length; m++) {
                     var item = missing[m], query = item.search || '';
-                    summary += '<div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-2"><div class="min-w-0"><div class="font-bold text-slate-700">' + esc(item.name) + '</div><div class="text-xs text-slate-500">' + esc(item.order_code) + (item.area ? ' · ' + esc(item.area) : '') + '</div></div>' + (query ? '<a rel="noopener noreferrer" target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(query) + '" class="shrink-0 bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-bold">بحث تقريبي</a>' : '<span class="text-xs text-slate-400">أكمل عنوان العميل</span>') + '</div>';
+                    var searchAction = query ? '<a rel="noopener noreferrer" target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(query) + '" class="shrink-0 bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-bold">بحث تقريبي</a>' : '<span class="text-xs text-slate-400">لا يوجد عنوان موثوق مسجل</span>';
+                    var canCaptureLocation = !!item.order_id && !!self.activeRunsheet && self.activeRunsheet.id === runsheetId && self.activeRunsheet.status === 'Delivering';
+                    var captureAction = canCaptureLocation ? '<button type="button" class="js-capture-order-location shrink-0 bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-bold" data-order-id="' + esc(item.order_id) + '" data-runsheet-id="' + esc(runsheetId) + '">📍 تسجيل موقع التسليم عند الوصول</button>' : '';
+                    summary += '<div class="border-b border-slate-100 pb-2"><div class="flex items-center justify-between gap-3"><div class="min-w-0"><div class="font-bold text-slate-700">' + esc(item.name) + '</div><div class="text-xs text-slate-500">' + esc(item.order_code) + (item.area ? ' · ' + esc(item.area) : '') + '</div></div></div><div class="mt-2 flex flex-wrap items-center gap-2">' + searchAction + captureAction + '</div></div>';
                 }
                 summary += '</div>';
             }
-            if (statusEl) safeHTML(statusEl, summary);
+            if (statusEl) {
+                safeHTML(statusEl, summary);
+                var captureButtons = statusEl.querySelectorAll('.js-capture-order-location');
+                for (var b = 0; b < captureButtons.length; b++) {
+                    captureButtons[b].addEventListener('click', function() {
+                        self.captureOrderLocation(this.getAttribute('data-order-id'), this.getAttribute('data-runsheet-id'));
+                    });
+                }
+            }
         }).catch(function(err) {
             console.error('[Driver Map] Unexpected location query failure', err);
             if (statusEl) safeHTML(statusEl, '<div class="text-red-600 font-bold">حدث خطأ أثناء تحميل مواقع العملاء. لم يتم إخفاء الخطأ باعتباره عدم وجود مواقع.</div>');
+        });
+    },
+
+    captureOrderLocation: function(orderId, runsheetId) {
+        var self = this;
+        if (!orderId || !runsheetId || !this.activeRunsheet || this.activeRunsheet.id !== runsheetId || this.activeRunsheet.status !== 'Delivering') {
+            Swal.fire({ title: 'لا يمكن تسجيل الموقع', text: 'يمكن تسجيل GPS فقط لأوردر ضمن رانشيتك الجاري توصيله.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
+            return;
+        }
+        if (!navigator.geolocation) {
+            Swal.fire({ title: 'GPS غير متاح', text: 'المتصفح لا يدعم تحديد الموقع. افتح التطبيق على جهاز يدعم GPS.', icon: 'error', customClass: { popup: '!rounded-3xl' } });
+            return;
+        }
+        Swal.fire({
+            title: 'تأكيد موقع التسليم',
+            html: '<div class="text-right text-sm"><p class="font-bold mb-2">لا تتابع إلا إذا كنت واقفًا فعليًا عند عنوان تسليم هذا الأوردر.</p><p class="text-slate-600">سيُحفظ موقع GPS على الأوردر نفسه، ولن تُستخدم أسماء العملاء أو المنطقة لتخمين الموقع.</p><p class="text-amber-700 mt-2">يشترط أن تكون دقة GPS نحو 50 مترًا أو أفضل.</p></div>',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'أنا عند موقع التسليم',
+            cancelButtonText: 'إلغاء',
+            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600', cancelButton: '!rounded-xl' }
+        }).then(function(confirmation) {
+            if (!confirmation.isConfirmed) return;
+            Swal.fire({ title: 'جارٍ تحديد موقع GPS', text: 'انتظر لحظة للحصول على قراءة دقيقة…', allowOutsideClick: false, allowEscapeKey: false, showConfirmButton: false, didOpen: function() { Swal.showLoading(); }, customClass: { popup: '!rounded-3xl' } });
+            navigator.geolocation.getCurrentPosition(function(position) {
+                var coords = position && position.coords ? position.coords : {};
+                var lat = Number(coords.latitude), lng = Number(coords.longitude), accuracy = Number(coords.accuracy);
+                if (!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0)) {
+                    Swal.close();
+                    Swal.fire({ title: 'إحداثيات غير صالحة', text: 'لم يتم حفظ موقع. حاول مرة أخرى عند الوصول إلى العميل.', icon: 'error', customClass: { popup: '!rounded-3xl' } });
+                    return;
+                }
+                if (!isFinite(accuracy) || accuracy < 0 || accuracy > 50) {
+                    Swal.close();
+                    Swal.fire({ title: 'دقة GPS غير كافية', text: 'الدقة الحالية ' + (isFinite(accuracy) ? Math.round(accuracy) + ' متر' : 'غير معروفة') + '. لم يتم حفظ أي إحداثيات. حاول مجددًا في مكان مفتوح حتى تصل الدقة إلى 50 مترًا أو أفضل.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
+                    return;
+                }
+                supabase.rpc('capture_assigned_delivery_order_location', {
+                    p_runsheet_id: runsheetId,
+                    p_order_id: orderId,
+                    p_latitude: lat,
+                    p_longitude: lng,
+                    p_accuracy_m: accuracy
+                }).then(function(res) {
+                    Swal.close();
+                    if (res.error) {
+                        console.error('[Driver Map] Delivery-stop GPS capture rejected', { code: res.error.code, message: res.error.message });
+                        Swal.fire({ title: 'تعذر حفظ الموقع', text: res.error.message || 'تعذر حفظ إحداثيات هذا الأوردر. لم يتم تغيير بيانات أخرى.', icon: 'error', customClass: { popup: '!rounded-3xl' } });
+                        return;
+                    }
+                    var result = res.data || {};
+                    if (result.success !== true) {
+                        Swal.fire({ title: 'لم يتم حفظ الموقع', text: result.msg || 'لم يؤكد الخادم حفظ إحداثيات الأوردر.', icon: 'error', customClass: { popup: '!rounded-3xl' } });
+                        return;
+                    }
+                    var alreadySet = result.updated === false && result.code === 'LOCATION_ALREADY_SET';
+                    Swal.fire({
+                        title: alreadySet ? 'الموقع مسجل بالفعل' : 'تم تسجيل موقع التسليم',
+                        text: alreadySet ? 'حُفظ سابقًا موقع صالح لهذا الأوردر ولم يتم استبداله.' : 'تم حفظ GPS لهذا الأوردر بعد التحقق من ملكية الرانشيت ودقة الموقع.',
+                        icon: alreadySet ? 'info' : 'success',
+                        customClass: { popup: '!rounded-3xl' }
+                    }).then(function() {
+                        if (self.activeRunsheet && self.activeRunsheet.id === runsheetId) self.initMap();
+                    });
+                }).catch(function(err) {
+                    Swal.close();
+                    console.error('[Driver Map] GPS save failed', err);
+                    Swal.fire({ title: 'فشل حفظ الموقع', text: 'حدث خطأ أثناء حفظ GPS. لم يتم اعتبار الموقع محفوظًا.', icon: 'error', customClass: { popup: '!rounded-3xl' } });
+                });
+            }, function(err) {
+                Swal.close();
+                var reason = err && err.code === 1 ? 'لم تسمح بإذن الموقع.' : (err && err.code === 3 ? 'انتهت مهلة تحديد الموقع.' : 'تعذر الحصول على موقع GPS من الجهاز.');
+                Swal.fire({ title: 'تعذر تحديد الموقع', text: reason + ' لم يتم حفظ أي إحداثيات.', icon: 'error', customClass: { popup: '!rounded-3xl' } });
+            }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
         });
     },
 
