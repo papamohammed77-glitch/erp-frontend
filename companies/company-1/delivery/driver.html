@@ -398,7 +398,7 @@ renderDashboardView: function(rs) {
                 } else {
                     var shipping = o.shipping_address;
                     if (shipping && typeof shipping === 'object') shipping = JSON.stringify(shipping);
-                    var searchText = [o.customer_name || cust.name, cust.address, shipping, o.area || cust.area, cust.location].filter(function(v) { return v != null && String(v).trim() !== ''; }).join(' ');
+                    var searchText = [cust.address, shipping, o.area || cust.area, cust.location].filter(function(v) { return v != null && String(v).trim() !== ''; }).join(' ');
                     missing.push({ order_code: o.order_code || '', name: o.customer_name || cust.name || 'عميل بلا اسم', area: o.area || cust.area || '', search: searchText });
                 }
             }
@@ -409,7 +409,7 @@ renderDashboardView: function(rs) {
             if (missing.length) {
                 summary += '<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 mb-2"><div class="font-bold text-amber-800">هناك ' + missing.length + ' أوردرات بلا إحداثيات دقيقة مسجلة.</div><div class="text-xs text-amber-700 mt-1">لا يمكن وضع علامة صحيحة على الخريطة قبل حفظ إحداثيات العميل. روابط البحث التالية تقريبية وليست موقعًا مؤكدًا.</div></div><div class="space-y-2">';
                 for (var m = 0; m < missing.length; m++) {
-                    var item = missing[m], query = item.search || (item.name + ' ' + item.area);
+                    var item = missing[m], query = item.search || '';
                     summary += '<div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-2"><div class="min-w-0"><div class="font-bold text-slate-700">' + esc(item.name) + '</div><div class="text-xs text-slate-500">' + esc(item.order_code) + (item.area ? ' · ' + esc(item.area) : '') + '</div></div>' + (query ? '<a rel="noopener noreferrer" target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(query) + '" class="shrink-0 bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-bold">بحث تقريبي</a>' : '<span class="text-xs text-slate-400">أكمل عنوان العميل</span>') + '</div>';
                 }
                 summary += '</div>';
@@ -1127,7 +1127,7 @@ renderBalance: function() {
                 var paymentType = String(order.payment_type || '').trim().toLowerCase();
                 var isCash = paymentType === 'نقدي' || paymentType === 'نقدى' || paymentType === 'cash';
                 var isCredit = paymentType === 'آجل' || paymentType === 'اجل' || paymentType === 'credit' || paymentType === 'on account';
-                var orderFee = deliveredValue > 0 ? deliveryFeeSetting : 0;
+                var orderFee = deliveredValue > 0 ? Math.max(0, Number(order.delivery_fee) || 0) : 0;
                 var orderTax = (deliveredValue + orderFee) * taxRate / 100;
                 var cashValue = isCash ? deliveredValue + orderFee + orderTax : 0;
                 if (isCash) cashToSubmit += cashValue;
