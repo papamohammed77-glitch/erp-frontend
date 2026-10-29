@@ -354,35 +354,70 @@ renderDashboardView: function(rs) {
         var self = this;
         safeHTML(byId('mainContent'), '<div class="h-full flex flex-col"><div class="skeleton h-64 w-full mb-4"></div></div>');
         if (!this.activeRunsheet) { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط.</div>'); return; }
-        var html = '<div class="relative h-full flex flex-col"><div id="leafletMap" class="flex-1 w-full" style="min-height:300px;"></div></div>';
-        safeHTML(byId('mainContent'), html); setTimeout(function() { self.initMap(); }, 300);
+        var html = '<div class="relative h-full flex flex-col"><div id="leafletMap" class="flex-1 w-full" style="min-height:300px;"></div><div id="mapOrdersStatus" class="p-3 bg-white border-t border-slate-100 text-sm text-slate-600"></div></div>';
+        safeHTML(byId('mainContent'), html);
+        setTimeout(function() { self.initMap(); }, 300);
     },
-
     initMap: function() {
-        var self = this; var mapEl = byId('leafletMap'); if (!mapEl) return;
-        if (this.mapObj) { this.mapObj.remove(); this.mapObj = null; } this.mapMarkers = [];
-        this.mapObj = L.map('leafletMap', { attributionControl: false, zoomControl: false }).setView([30.0444, 31.2357], 12);
+        var self = this, mapEl = byId('leafletMap');
+        if (!mapEl || typeof L === 'undefined') { safeHTML(byId('mapOrdersStatus'), '<div class="text-red-600 font-bold">تعذر تحميل مكتبة الخريطة. حدّث التطبيق وتحقق من الاتصال.</div>'); return; }
+        if (this.mapObj) { this.mapObj.remove(); this.mapObj = null; }
+        this.mapMarkers = [];
+        this.mapObj = L.map('leafletMap', { attributionControl: false, zoomControl: false }).setView([26.8, 30.8], 6);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.mapObj);
         L.control.zoom({ position: 'bottomright' }).addTo(this.mapObj);
-        if (this.activeRunsheet) { this.loadOrdersForMap(this.activeRunsheet.id); }
+        if (this.activeRunsheet) this.loadOrdersForMap(this.activeRunsheet.id);
         setTimeout(function() { if (self.mapObj) self.mapObj.invalidateSize(); }, 500);
     },
-
     loadOrdersForMap: function(runsheetId) {
-        var self = this;
-        supabase.from('orders').select('order_code, customer_name, customer_phone, area, total_amount, order_status, customers(location_lat, location_lng)').eq('runsheet_id', runsheetId).neq('order_status', 'Cancelled').then(function(res) {
-            var orders = res.data || [], bounds = [];
+        var self = this, statusEl = byId('mapOrdersStatus');
+        function esc(value) { return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]; }); }
+        function coordinates(latValue, lngValue) {
+            if (latValue == null || lngValue == null || String(latValue).trim() === '' || String(lngValue).trim() === '') return null;
+            var lat = Number(latValue), lng = Number(lngValue);
+            if (!isFinite(lat) || !isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0)) return null;
+            return [lat, lng];
+        }
+        if (statusEl) safeHTML(statusEl, '<p class="font-bold">جارٍ تحميل مواقع عملاء الرانشيت…</p>');
+        supabase.from('orders').select('order_code, customer_name, customer_phone, area, total_amount, order_status, latitude, longitude, shipping_address, customers(location_lat, location_lng, address, location, area)').eq('runsheet_id', runsheetId).neq('order_status', 'Cancelled').then(function(res) {
+            if (res.error) {
+                console.error('[Driver Map] Failed to load assigned customer locations', { code: res.error.code, message: res.error.message });
+                if (statusEl) safeHTML(statusEl, '<div class="text-red-600 font-bold">تعذر تحميل مواقع العملاء. قد تكون هناك مشكلة في صلاحيات القراءة أو اتصال البيانات؛ لم يتم اعتبار الخطأ قائمة فارغة.</div>');
+                return;
+            }
+            var orders = res.data || [], bounds = [], missing = [];
             for (var i = 0; i < orders.length; i++) {
-                var o = orders[i], cust = o.customers || {}, lat = Number(cust.location_lat) || null, lng = Number(cust.location_lng) || null;
-                if (lat && lng) {
-                    var isDone = o.order_status === 'Delivered', isActive = o.order_status === 'Delivering';
+                var o = orders[i], cust = Array.isArray(o.customers) ? (o.customers[0] || {}) : (o.customers || {});
+                var coords = coordinates(o.latitude, o.longitude) || coordinates(cust.location_lat, cust.location_lng);
+                if (coords) {
+                    var isDone = o.order_status === 'Delivered', isActive = o.order_status === 'Delivering' || o.order_status === 'Partially Delivered';
                     var icon = L.divIcon({ className: '', html: '<div class="map-pin ' + (isDone ? 'done' : (isActive ? 'active' : '')) + '"></div>', iconSize: [isActive ? 16 : 12, isActive ? 16 : 12], iconAnchor: [isActive ? 8 : 6, isActive ? 8 : 6] });
-                    var marker = L.marker([lat, lng], { icon: icon }).addTo(self.mapObj);
-                    marker.bindPopup('<div class="text-right"><strong>' + o.customer_name + '</strong><br><span class="text-xs">' + o.order_code + ' | ' + fmtNum(o.total_amount) + ' ج.م</span><br><a href="tel:' + (o.customer_phone || '') + '" class="text-sky-600 text-xs">📞</a></div>');
-                    self.mapMarkers.push(marker); bounds.push([lat, lng]);
+                    var marker = L.marker(coords, { icon: icon }).addTo(self.mapObj);
+                    var popup = '<div class="text-right"><strong>' + esc(o.customer_name || cust.name || 'عميل') + '</strong><br><span class="text-xs">' + esc(o.order_code) + ' | ' + fmtNum(o.total_amount) + ' ج.م</span><br><span class="text-xs">' + esc(o.area || cust.area || cust.address || cust.location || '') + '</span>' + (o.customer_phone ? '<br><a href="tel:' + esc(o.customer_phone) + '" class="text-sky-600 text-xs">📞 اتصال</a>' : '') + '</div>';
+                    marker.bindPopup(popup); self.mapMarkers.push(marker); bounds.push(coords);
+                } else {
+                    var shipping = o.shipping_address;
+                    if (shipping && typeof shipping === 'object') shipping = JSON.stringify(shipping);
+                    var searchText = [o.customer_name || cust.name, cust.address, shipping, o.area || cust.area, cust.location].filter(function(v) { return v != null && String(v).trim() !== ''; }).join(' ');
+                    missing.push({ order_code: o.order_code || '', name: o.customer_name || cust.name || 'عميل بلا اسم', area: o.area || cust.area || '', search: searchText });
                 }
             }
-            if (bounds.length > 0 && self.mapObj) { self.mapObj.fitBounds(bounds, { padding: [50, 50] }); }
+            if (bounds.length && self.mapObj) self.mapObj.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
+            else if (self.mapObj) self.mapObj.setView([26.8, 30.8], 6);
+            var summary = '<div class="font-bold mb-2">مواقع العملاء: تم تحديد ' + bounds.length + ' من ' + orders.length + ' أوردر.</div>';
+            if (!orders.length) summary += '<div class="text-slate-500">لا توجد أوردرات غير ملغاة مرتبطة بهذا الرانشيت.</div>';
+            if (missing.length) {
+                summary += '<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 mb-2"><div class="font-bold text-amber-800">هناك ' + missing.length + ' أوردرات بلا إحداثيات دقيقة مسجلة.</div><div class="text-xs text-amber-700 mt-1">لا يمكن وضع علامة صحيحة على الخريطة قبل حفظ إحداثيات العميل. روابط البحث التالية تقريبية وليست موقعًا مؤكدًا.</div></div><div class="space-y-2">';
+                for (var m = 0; m < missing.length; m++) {
+                    var item = missing[m], query = item.search || (item.name + ' ' + item.area);
+                    summary += '<div class="flex items-center justify-between gap-3 border-b border-slate-100 pb-2"><div class="min-w-0"><div class="font-bold text-slate-700">' + esc(item.name) + '</div><div class="text-xs text-slate-500">' + esc(item.order_code) + (item.area ? ' · ' + esc(item.area) : '') + '</div></div>' + (query ? '<a rel="noopener noreferrer" target="_blank" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(query) + '" class="shrink-0 bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-bold">بحث تقريبي</a>' : '<span class="text-xs text-slate-400">أكمل عنوان العميل</span>') + '</div>';
+                }
+                summary += '</div>';
+            }
+            if (statusEl) safeHTML(statusEl, summary);
+        }).catch(function(err) {
+            console.error('[Driver Map] Unexpected location query failure', err);
+            if (statusEl) safeHTML(statusEl, '<div class="text-red-600 font-bold">حدث خطأ أثناء تحميل مواقع العملاء. لم يتم إخفاء الخطأ باعتباره عدم وجود مواقع.</div>');
         });
     },
 
@@ -1066,209 +1101,81 @@ renderStockView: function(items) {
 renderBalance: function() {
     var self = this;
     safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
-    
-    if (!this.pubUserId) {
-        safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">تعذر تحميل الحساب</div>');
-        return;
-    }
-    
-    var today = new Date().toISOString().split('T')[0];
-    var firstDay = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-    
-    var runsheetId = null;
-    if (self.session && self.session.runsheet_id) {
-        runsheetId = self.session.runsheet_id;
-    } else if (self.activeRunsheet && self.activeRunsheet.id) {
-        runsheetId = self.activeRunsheet.id;
-    }
-    
-    var promises = [];
-    
-    promises.push(
-        supabase.from('runsheets')
-            .select('runsheet_code, total_amount, status')
-            .eq('deliverer_id', self.pubUserId)
-            .in('status', ['Loaded', 'Delivering', 'Delivered', 'Returning', 'Returned'])
-            .gte('run_date', firstDay)
-            .lte('run_date', today)
-    );
-    
-    if (runsheetId) {
-        promises.push(
-            supabase.from('run_sheet_details')
-                .select('item_code, item_name, qty_loaded, qty_delivered, qty_returned, unit_price')
-                .eq('runsheet_id', runsheetId)
-        );
-    } else {
-        promises.push(Promise.resolve({ data: [] }));
-    }
-    
-    if (runsheetId) {
-        promises.push(
-            supabase.from('orders')
-                .select('order_code, customer_name, total_amount, original_total_amount, order_status, order_date')
-                .eq('runsheet_id', runsheetId)
-                .neq('order_status', 'Cancelled')
-        );
-    } else {
-        promises.push(Promise.resolve({ data: [] }));
-    }
-    
-    Promise.all(promises).then(function(results) {
-        var runsheets = results[0].data || [];
-        var stockItems = results[1].data || [];
-        var allOrders = results[2].data || [];
-        
-        // ✅ إجمالي الرانشيت قبل التسليم = مجموع original_total_amount
-        var totalRunsheetValue = 0;
+    if (!this.pubUserId) { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">تعذر تحميل الحساب</div>'); return; }
+    var runsheetId = self.session && self.session.runsheet_id ? self.session.runsheet_id : (self.activeRunsheet && self.activeRunsheet.id ? self.activeRunsheet.id : null);
+    if (!runsheetId) { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت مرتبط بالجلسة لاحتساب الرصيد.</div>'); return; }
+    supabase.from('orders').select('id, order_code, customer_name, total_amount, original_total_amount, amount_paid, order_status, order_date, payment_type, delivery_fee, order_details(item_code, item_name, qty_loaded, qty_delivered, qty_returned, unit_price)').eq('runsheet_id', runsheetId).neq('order_status', 'Cancelled').then(function(res) {
+        if (res.error) {
+            console.error('[Driver Balance] Failed to load order/detail values', { code: res.error.code, message: res.error.message });
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-500 font-bold">تعذر حساب الرصيد من بيانات التسليم. حدّث التطبيق أو تواصل مع الدعم؛ لم يتم عرض أرقام تقديرية بدل البيانات المفقودة.</div>');
+            return;
+        }
+        var allOrders = res.data || [], totalLoadedValue = 0, totalDeliveredValue = 0, totalReturnedValue = 0, cashToSubmit = 0, creditDeliveredValue = 0, unknownPaymentValue = 0, deliveredOrders = [];
+        var deliveryFeeSetting = Math.max(0, Number(self.settings && self.settings.delivery_fee) || 0);
+        var taxRate = Math.max(0, Number(self.settings && self.settings.tax_rate) || 0);
         for (var i = 0; i < allOrders.length; i++) {
-            var originalVal = Number(allOrders[i].original_total_amount) || Number(allOrders[i].total_amount) || 0;
-            totalRunsheetValue += originalVal;
-        }
-        
-        // ✅ تم تحصيله = مجموع total_amount للمسلّمة فقط
-        var totalDeliveredValue = 0;
-        var deliveredOrders = [];
-        for (var j = 0; j < allOrders.length; j++) {
-            if (allOrders[j].order_status === 'Delivered') {
-                totalDeliveredValue += Number(allOrders[j].total_amount) || 0;
-                deliveredOrders.push(allOrders[j]);
+            var order = allOrders[i], details = Array.isArray(order.order_details) ? order.order_details : [];
+            var loadedValue = 0, deliveredValue = 0, returnedValue = 0;
+            for (var j = 0; j < details.length; j++) {
+                var line = details[j], unitPrice = Math.max(0, Number(line.unit_price) || 0);
+                loadedValue += Math.max(0, Number(line.qty_loaded) || 0) * unitPrice;
+                deliveredValue += Math.max(0, Number(line.qty_delivered) || 0) * unitPrice;
+                returnedValue += Math.max(0, Number(line.qty_returned) || 0) * unitPrice;
+            }
+            totalLoadedValue += loadedValue; totalDeliveredValue += deliveredValue; totalReturnedValue += returnedValue;
+            if (deliveredValue > 0) {
+                var paymentType = String(order.payment_type || '').trim().toLowerCase();
+                var isCash = paymentType === 'نقدي' || paymentType === 'نقدى' || paymentType === 'cash';
+                var isCredit = paymentType === 'آجل' || paymentType === 'اجل' || paymentType === 'credit' || paymentType === 'on account';
+                var orderFee = deliveredValue > 0 ? deliveryFeeSetting : 0;
+                var orderTax = (deliveredValue + orderFee) * taxRate / 100;
+                var cashValue = isCash ? deliveredValue + orderFee + orderTax : 0;
+                if (isCash) cashToSubmit += cashValue;
+                else if (isCredit) creditDeliveredValue += deliveredValue;
+                else unknownPaymentValue += deliveredValue;
+                deliveredOrders.push({ order_code: order.order_code, customer_name: order.customer_name, delivered_value: deliveredValue, cash_value: cashValue, payment_type: order.payment_type || 'غير محدد' });
             }
         }
-        
-        var totalReturnedValue = 0;
-        var totalRemainingValue = 0;
-        
-        for (var k = 0; k < stockItems.length; k++) {
-            var it = stockItems[k];
-            var loaded = Number(it.qty_loaded) || 0;
-            var delivered = Number(it.qty_delivered) || 0;
-            var returned = Number(it.qty_returned) || 0;
-            var price = Number(it.unit_price) || 0;
-            
-            totalReturnedValue += returned * price;
-            
-            var remaining = loaded - delivered - returned;
-            if (remaining > 0) {
-                totalRemainingValue += remaining * price;
-            }
-        }
-        
-        self.renderBalanceView(
-            totalRunsheetValue,
-            totalDeliveredValue,
-            totalReturnedValue,
-            deliveredOrders
-        );
-        
-    }).catch(function() {
-        safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل البيانات</div>');
+        var unsettledGoodsValue = totalLoadedValue - totalDeliveredValue - totalReturnedValue;
+        var status = self.activeRunsheet ? self.activeRunsheet.status : 'Delivering';
+        self.renderBalanceView(totalLoadedValue, totalDeliveredValue, totalReturnedValue, cashToSubmit, deliveredOrders, unsettledGoodsValue, status === 'Returned', creditDeliveredValue, unknownPaymentValue);
+    }).catch(function(err) {
+        console.error('[Driver Balance] Unexpected calculation failure', err);
+        safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-500">فشل تحميل بيانات الرصيد.</div>');
     });
 },
-
-renderBalanceView: function(totalRunsheetValue, totalDeliveredValue, totalReturnedValue, deliveredOrders) {
-    // المطلوب توريده = تم تحصيله
-    var requiredToSubmit = totalDeliveredValue;
-    // العجز = إجمالي الرحلة - تم تحصيله - المرتجع
-    var shortage = totalRunsheetValue - totalDeliveredValue - totalReturnedValue;
-    
-    // تحديد حالة الرانشيت للملحوظة
-    var statusNote = '';
-    var status = App.activeRunsheet ? App.activeRunsheet.status : 'Delivering';
-    
-    if (status === 'Delivering') {
-        statusNote = '⚠️ هذه القيمة غير نهائية. ستتأكد بعد المرتجعات.';
-    } else if (status === 'Delivered') {
-        statusNote = '✅ هذا المبلغ مطلوب توريده للحسابات.';
-    } else if (status === 'Returned') {
-        statusNote = '✅ هذا المبلغ مطلوب توريده للحسابات.';
-    }
-    
-    var html = '<div class="p-4">';
-    html += '<h2 class="text-lg font-black text-slate-800 mb-4">⚖️ لوحة القيادة المالية</h2>';
-    
-    // 🆕 الصف الأول: بطاقتان رئيسيتان (إجمالي الرحلة | المطلوب توريده)
+renderBalanceView: function(totalLoadedValue, totalDeliveredValue, totalReturnedValue, cashToSubmit, deliveredOrders, unsettledGoodsValue, isFinalized, creditDeliveredValue, unknownPaymentValue) {
+    var status = App.activeRunsheet ? App.activeRunsheet.status : 'Delivering', statusNote = '';
+    if (status === 'Delivering') statusNote = 'أثناء التوصيل، قيمة البضاعة غير المسوّاة ليست عجزًا نهائيًا؛ قد تكون أصنافًا ما زالت معك أو بانتظار المرتجعات.';
+    else if (status === 'Delivered' || status === 'Returning') statusNote = 'انتهى التوصيل أو بدأت المرتجعات، لكن فرق البضاعة لا يصبح نهائيًا إلا بعد إتمام إجراء المرتجعات.';
+    else if (status === 'Returned') statusNote = 'اكتملت المرتجعات. فرق قيمة البضاعة يعكس الآن الفرق بين المحمّل والمسلم والمرتجع على أساس سعر البيع.';
+    var html = '<div class="p-4"><h2 class="text-lg font-black text-slate-800 mb-4">⚖️ لوحة القيادة المالية</h2>';
     html += '<div class="grid grid-cols-2 gap-3 mb-3">';
-    
-    // بطاقة إجمالي الرحلة (زرقاء)
-    html += '<div class="bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg shadow-sky-200">';
-    html += '<p class="text-xs font-bold text-sky-100 mb-1">💰 إجمالي الرحلة</p>';
-    html += '<p class="text-2xl font-black">' + fmtNum(totalRunsheetValue) + '</p>';
-    html += '<p class="text-xs text-sky-100 mt-1">قيمة الأوردرات المحمّلة</p>';
-    html += '</div>';
-    
-    // بطاقة المطلوب توريده (حمراء)
-    var submitBg = requiredToSubmit > 0 ? 'from-red-500 to-rose-600' : 'from-emerald-500 to-teal-600';
-    var submitShadow = requiredToSubmit > 0 ? 'shadow-red-200' : 'shadow-emerald-200';
-    html += '<div class="bg-gradient-to-br ' + submitBg + ' rounded-2xl p-4 text-white shadow-lg ' + submitShadow + '">';
-    html += '<p class="text-xs font-bold text-rose-100 mb-1">🔴 المطلوب توريده</p>';
-    html += '<p class="text-2xl font-black">' + fmtNum(requiredToSubmit) + '</p>';
-    html += '<p class="text-xs text-rose-100 mt-1">' + (requiredToSubmit > 0 ? 'يُسلّم للحسابات' : 'لا يوجد') + '</p>';
-    html += '</div>';
-    html += '</div>';
-    
-    // 🆕 الصف الثاني: ثلاث بطاقات تفصيلية (المسلّم | المرتجع | العجز)
+    html += '<div class="bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl p-4 text-white shadow-lg shadow-sky-200"><p class="text-xs font-bold text-sky-100 mb-1">📦 قيمة البضاعة المحمّلة</p><p class="text-2xl font-black">' + fmtNum(totalLoadedValue) + '</p><p class="text-xs text-sky-100 mt-1">الكميات المحمّلة × سعر بيع الصنف</p></div>';
+    html += '<div class="bg-gradient-to-br from-red-500 to-rose-600 rounded-2xl p-4 text-white shadow-lg shadow-red-200"><p class="text-xs font-bold text-rose-100 mb-1">💵 النقد المطلوب توريده</p><p class="text-2xl font-black">' + fmtNum(cashToSubmit) + '</p><p class="text-xs text-rose-100 mt-1">قيمة الأصناف المسلّمة في الأوردرات النقدية مع الرسوم والضريبة</p></div></div>';
     html += '<div class="grid grid-cols-3 gap-2 mb-3">';
-    
-    // تم تحصيله (أخضر)
-    html += '<div class="bg-white rounded-2xl p-3 border border-green-200 shadow-sm text-center">';
-    html += '<p class="text-xs text-green-500 font-bold mb-1">💵 المسلّم</p>';
-    html += '<p class="text-lg font-black text-green-600">' + fmtNum(totalDeliveredValue) + '</p>';
-    html += '<p class="text-[10px] text-green-400">' + deliveredOrders.length + ' أوردر</p>';
-    html += '</div>';
-    
-    // المرتجع (بنفسجي)
-    html += '<div class="bg-white rounded-2xl p-3 border border-purple-200 shadow-sm text-center">';
-    html += '<p class="text-xs text-purple-500 font-bold mb-1">📦 المرتجع</p>';
-    html += '<p class="text-lg font-black text-purple-600">' + fmtNum(totalReturnedValue) + '</p>';
-    html += '<p class="text-[10px] text-purple-400">تبرأ ذمتك منه</p>';
-    html += '</div>';
-    
-    // العجز (أحمر أو رمادي)
-    var shortageBg = shortage > 0 ? 'border-red-200' : 'border-slate-200';
-    var shortageText = shortage > 0 ? 'text-red-600' : 'text-slate-400';
-    var shortageLabel = shortage > 0 ? 'عجز' : 'لا يوجد';
-    html += '<div class="bg-white rounded-2xl p-3 border ' + shortageBg + ' shadow-sm text-center">';
-    html += '<p class="text-xs text-slate-500 font-bold mb-1">⚠️ العجز</p>';
-    html += '<p class="text-lg font-black ' + shortageText + '">' + fmtNum(shortage) + '</p>';
-    html += '<p class="text-[10px] text-slate-400">' + shortageLabel + '</p>';
-    html += '</div>';
-    html += '</div>';
-    
-    // 🆕 صافي العهدة (بطاقة كبيرة)
-    var netBalance = requiredToSubmit - totalReturnedValue;
-    var netBg = netBalance > 0 ? 'from-amber-500 to-orange-600' : 'from-green-500 to-emerald-600';
-    var netLabel = netBalance > 0 ? 'صافي المطلوب توريده' : 'صافي المتاح';
-    var netIcon = netBalance > 0 ? '🔴' : '🟢';
-    html += '<div class="bg-gradient-to-br ' + netBg + ' rounded-2xl p-4 text-white shadow-lg mb-3 text-center">';
-    html += '<p class="text-xs font-bold text-amber-100 mb-1">' + netIcon + ' ' + netLabel + '</p>';
-    html += '<p class="text-3xl font-black">' + fmtNum(Math.abs(netBalance)) + '</p>';
-    html += '</div>';
-    
-    // الملحوظة حسب حالة الرانشيت
+    html += '<div class="bg-white rounded-2xl p-3 border border-green-200 shadow-sm text-center"><p class="text-xs text-green-500 font-bold mb-1">📦 قيمة المسلّم</p><p class="text-lg font-black text-green-600">' + fmtNum(totalDeliveredValue) + '</p><p class="text-[10px] text-green-400">حسب الكميات المسلّمة</p></div>';
+    html += '<div class="bg-white rounded-2xl p-3 border border-purple-200 shadow-sm text-center"><p class="text-xs text-purple-500 font-bold mb-1">↩️ قيمة المرتجع</p><p class="text-lg font-black text-purple-600">' + fmtNum(totalReturnedValue) + '</p><p class="text-[10px] text-purple-400">حسب كميات المرتجعات المسجلة</p></div>';
+    var differenceLabel = isFinalized ? (unsettledGoodsValue > 0.005 ? 'عجز بضاعة' : (unsettledGoodsValue < -0.005 ? 'زيادة/تعارض بيانات' : 'متوازن')) : 'بضاعة غير مسوّاة';
+    var differenceBorder = isFinalized && unsettledGoodsValue > 0.005 ? 'border-red-200' : (isFinalized && unsettledGoodsValue < -0.005 ? 'border-amber-200' : 'border-slate-200');
+    var differenceText = isFinalized && unsettledGoodsValue > 0.005 ? 'text-red-600' : (isFinalized && unsettledGoodsValue < -0.005 ? 'text-amber-600' : 'text-slate-600');
+    html += '<div class="bg-white rounded-2xl p-3 border ' + differenceBorder + ' shadow-sm text-center"><p class="text-xs text-slate-500 font-bold mb-1">⚖️ ' + differenceLabel + '</p><p class="text-lg font-black ' + differenceText + '">' + fmtNum(Math.abs(unsettledGoodsValue)) + '</p><p class="text-[10px] text-slate-400">' + (isFinalized ? 'فرق نهائي بعد المرتجعات' : 'ليس عجزًا نهائيًا') + '</p></div></div>';
     if (statusNote) {
-        var noteBg = status === 'Delivering' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-green-50 border-green-200 text-green-700';
-        html += '<div class="mb-4 p-3 rounded-xl text-center text-sm font-bold ' + noteBg + '">' + statusNote + '</div>';
+        var noteTone = status === 'Returned' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700';
+        html += '<div class="mb-3 p-3 rounded-xl border text-center text-sm font-bold ' + noteTone + '">' + statusNote + '</div>';
     }
-    
-    // آخر الأوردرات المسلّمة
-    html += '<h3 class="font-bold text-slate-700 mb-3">📊 آخر الأوردرات المسلّمة</h3>';
-    html += '<div class="space-y-2 max-h-60 overflow-y-auto">';
-    if (deliveredOrders.length === 0) {
-        html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد أوردرات مسلّمة بعد</p>';
-    } else {
+    if (creditDeliveredValue > 0) html += '<div class="mb-3 p-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 text-sm"><b>مبيعات آجلة مسلّمة:</b> ' + fmtNum(creditDeliveredValue) + ' ج.م — لا تدخل في النقد المطلوب توريده ما لم يُسجّل تحصيل مستقل.</div>';
+    if (unknownPaymentValue > 0) html += '<div class="mb-3 p-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 text-sm"><b>تنبيه:</b> توجد قيمة مسلّمة ' + fmtNum(unknownPaymentValue) + ' ج.م بنوع دفع غير معروف؛ لم أضمّها إلى النقد المطلوب توريده حتى لا أفترض أنها نقدية.</div>';
+    html += '<div class="mb-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">الحساب مبني على تفاصيل الأوردر: الكمية المحمّلة أو المسلّمة أو المرتجعة × سعر بيع الصنف. قيمة البضاعة المرتجعة لا تُخصم من النقد المستحق عن مبيعات نقدية تم تسليمها؛ فهما تسويتان مختلفتان.</div>';
+    html += '<h3 class="font-bold text-slate-700 mb-3">📊 الأوردرات التي تم تسليم أصناف منها</h3><div class="space-y-2 max-h-60 overflow-y-auto">';
+    if (!deliveredOrders.length) html += '<p class="text-center text-slate-400 text-sm py-6">لا توجد أصناف مسلّمة مسجلة حتى الآن</p>';
+    else {
         for (var m = 0; m < Math.min(deliveredOrders.length, 10); m++) {
             var ord = deliveredOrders[m];
-            html += '<div class="flex justify-between p-2 bg-slate-50 rounded-lg">';
-            html += '<span class="text-xs text-slate-400">' + (ord.order_code || '') + '</span>';
-            html += '<span class="font-bold text-sm">' + (ord.customer_name || '') + '</span>';
-            html += '<span class="font-bold text-green-600">' + fmtNum(ord.total_amount) + ' ج.م</span>';
-            html += '</div>';
+            html += '<div class="flex justify-between items-center gap-2 p-2 bg-slate-50 rounded-lg"><span class="text-xs text-slate-400">' + String(ord.order_code || '') + '</span><span class="font-bold text-sm">' + String(ord.customer_name || '') + '</span><span class="font-bold text-green-600">' + fmtNum(ord.delivered_value) + ' ج.م</span><span class="text-[10px] text-slate-400">' + String(ord.payment_type || 'غير محدد') + '</span></div>';
         }
     }
-    html += '</div>';
-    
-    html += '</div>';
+    html += '</div></div>';
     safeHTML(byId('mainContent'), html);
 },
       // ==================== تقديم شكوى ====================
