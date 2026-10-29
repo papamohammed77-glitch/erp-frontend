@@ -542,7 +542,7 @@ completeDeliveryWithMeter: function(code, meterReading) {
         if (!this.activeRunsheet) { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-slate-400">لا يوجد رانشيت نشط.</div>'); return; }
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
         var rs = this.activeRunsheet;
-        supabase.from('orders').select('id, order_code, customer_name, customer_phone, area, total_amount, order_status').eq('runsheet_id', rs.id).neq('order_status', 'Cancelled').then(function(res) {
+        supabase.from('orders').select('id, order_code, customer_name, customer_phone, area, total_amount, delivery_fee, order_status').eq('runsheet_id', rs.id).neq('order_status', 'Cancelled').then(function(res) {
             if (res.error) {
                 console.error('[Driver] Failed to load orders for assigned runsheet', {
                     runsheet_code: rs.runsheet_code,
@@ -668,6 +668,7 @@ openOrder: function(orderCode) {
                 customer_phone: order.customer_phone || '',
                 area: order.area || '',
                 total_amount: order.total_amount || 0,
+                delivery_fee: Math.max(0, Number(order.delivery_fee) || 0),
                 order_status: order.order_status || 'Pending',
                 items: items,
                 isDelivery: false,
@@ -958,7 +959,7 @@ startOrderDelivery: function() {
 
     onDeliveryInput: function(index) { var it = this.orderSession.items[index]; var delEl = byId('del_qty_' + index), refEl = byId('ref_qty_' + index); if (!delEl || !refEl) return; var loaded = Number(it.qty_loaded) || 0; var delivered = parseInt(delEl.value) || 0; if (delivered < 0) delivered = 0; if (delivered > loaded) delivered = loaded; delEl.value = delivered; var refused = loaded - delivered; refEl.textContent = refused; it.qty_delivered = delivered; var summaryEl = byId('liveInvoiceSummary'); if (summaryEl) summaryEl.innerHTML = this._calculateInvoiceHTML(); var reasonEl = byId('reason_' + index); if (reasonEl) { if (refused > 0) reasonEl.parentElement.classList.remove('hidden'); else reasonEl.parentElement.classList.add('hidden'); } },
 
-    _calculateInvoiceHTML: function() { var items = this.orderSession.items, subtotal = 0; for (var i = 0; i < items.length; i++) { subtotal += (Number(items[i].qty_delivered) || 0) * (Number(items[i].unit_price) || 0); } var deliveryFee = subtotal > 0 ? this.settings.delivery_fee : 0; var taxAmount = (subtotal + deliveryFee) * (this.settings.tax_rate / 100); var grandTotal = subtotal + deliveryFee + taxAmount; this.orderSession.summary = { subtotal: subtotal, delivery_fee: deliveryFee, tax_amount: taxAmount, grand_total: grandTotal }; var html = '<h3 class="font-bold text-slate-700 mb-3">💰 المبلغ الحي</h3>'; html += '<div class="flex justify-between text-sm"><span>قيمة البضاعة</span><span class="font-bold">' + fmtNum(subtotal) + ' ' + this.settings.currency + '</span></div>'; html += '<div class="flex justify-between text-sm"><span>رسوم التوصيل</span><span class="font-bold">' + fmtNum(deliveryFee) + ' ' + this.settings.currency + '</span></div>'; html += '<div class="flex justify-between text-sm"><span>الضريبة</span><span class="font-bold">' + fmtNum(taxAmount) + ' ' + this.settings.currency + '</span></div>'; html += '<div class="flex justify-between text-base font-black text-sky-700 mt-2 pt-2 border-t"><span>الإجمالي المطلوب</span><span>' + fmtNum(grandTotal) + ' ' + this.settings.currency + '</span></div>'; return html; },
+    _calculateInvoiceHTML: function() { var items = this.orderSession.items, subtotal = 0; for (var i = 0; i < items.length; i++) { subtotal += (Number(items[i].qty_delivered) || 0) * (Number(items[i].unit_price) || 0); } var deliveryFee = subtotal > 0 ? Math.max(0, Number(this.orderSession.delivery_fee) || 0) : 0; var taxAmount = (subtotal + deliveryFee) * (this.settings.tax_rate / 100); var grandTotal = subtotal + deliveryFee + taxAmount; this.orderSession.summary = { subtotal: subtotal, delivery_fee: deliveryFee, tax_amount: taxAmount, grand_total: grandTotal }; var html = '<h3 class="font-bold text-slate-700 mb-3">💰 المبلغ الحي</h3>'; html += '<div class="flex justify-between text-sm"><span>قيمة البضاعة</span><span class="font-bold">' + fmtNum(subtotal) + ' ' + this.settings.currency + '</span></div>'; html += '<div class="flex justify-between text-sm"><span>رسوم التوصيل</span><span class="font-bold">' + fmtNum(deliveryFee) + ' ' + this.settings.currency + '</span></div>'; html += '<div class="flex justify-between text-sm"><span>الضريبة</span><span class="font-bold">' + fmtNum(taxAmount) + ' ' + this.settings.currency + '</span></div>'; html += '<div class="flex justify-between text-base font-black text-sky-700 mt-2 pt-2 border-t"><span>الإجمالي المطلوب</span><span>' + fmtNum(grandTotal) + ' ' + this.settings.currency + '</span></div>'; return html; },
 
 finishOrderDelivery: function() {
     var self = this;
