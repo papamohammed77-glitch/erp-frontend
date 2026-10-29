@@ -423,10 +423,24 @@ completeDeliveryWithMeter: function(code, meterReading) {
         safeHTML(byId('mainContent'), '<div class="p-4"><div class="skeleton h-32 w-full mb-4"></div></div>');
         var rs = this.activeRunsheet;
         supabase.from('orders').select('id, order_code, customer_name, customer_phone, area, total_amount, order_status').eq('runsheet_id', rs.id).neq('order_status', 'Cancelled').then(function(res) {
+            if (res.error) {
+                console.error('[Driver] Failed to load orders for assigned runsheet', {
+                    runsheet_code: rs.runsheet_code,
+                    code: res.error.code,
+                    message: res.error.message,
+                    details: res.error.details,
+                    hint: res.error.hint
+                });
+                safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-500"><p class="font-bold">تعذر تحميل أوردرات الرانشيت.</p><p class="text-sm mt-2">يرجى تحديث التطبيق، وإذا استمرت المشكلة تواصل مع الدعم.</p></div>');
+                return;
+            }
             var orders = res.data || [];
             self.session = { runsheet_code: rs.runsheet_code, runsheet_id: rs.id, start_time: rs.delivery_start || new Date().toISOString(), orders: orders };
             self.renderOrdersListView(rs, orders);
-        }).catch(function() { safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-400">فشل تحميل الأوردرات</div>'); });
+        }).catch(function(err) {
+            console.error('[Driver] Unexpected orders query failure', err);
+            safeHTML(byId('mainContent'), '<div class="p-4 text-center py-20 text-red-500">فشل تحميل الأوردرات. يرجى تحديث التطبيق أو التواصل مع الدعم.</div>');
+        });
     },
 
 renderOrdersListView: function(rs, orders) {
