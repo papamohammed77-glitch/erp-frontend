@@ -318,26 +318,30 @@ var App = {
                     return;
                 }
                 var rows = res.data || [];
-                var deliveredIds = rows.filter(function(rs) { return rs.status === 'Delivered'; }).map(function(rs) { return rs.id; });
-                if (!deliveredIds.length) {
-                    self.searchResults = rows;
+                var rowIds = rows.map(function(rs) { return rs.id; });
+                if (!rowIds.length) {
+                    self.searchResults = [];
                     self.renderSearchDropdown();
                     return;
                 }
-                supabase.from('run_sheet_details').select('runsheet_id, qty_loaded, qty_delivered, qty_returned').in('runsheet_id', deliveredIds).then(function(detailsRes) {
+                supabase.from('run_sheet_details').select('runsheet_id, item_code, qty_loaded, qty_delivered, qty_returned').in('runsheet_id', rowIds).then(function(detailsRes) {
                     if (detailsRes.error) {
-                        console.error('[RW_Returns] runsheet search remaining query failed:', detailsRes.error);
+                        console.error('[RW_Returns] runsheet search details query failed:', detailsRes.error);
                         self.searchResults = [];
                         self.renderSearchDropdown();
                         return;
                     }
-                    var pending = {};
+                    var pending = {}, counts = {};
                     (detailsRes.data || []).forEach(function(det) {
+                        counts[det.runsheet_id] = (counts[det.runsheet_id] || 0) + 1;
                         var remaining = (Number(det.qty_loaded) || 0) - (Number(det.qty_delivered) || 0) - (Number(det.qty_returned) || 0);
                         if (remaining > 0) pending[det.runsheet_id] = true;
                     });
                     self.searchResults = rows.filter(function(rs) {
                         return rs.status !== 'Delivered' || pending[rs.id] === true;
+                    }).map(function(rs) {
+                        rs.detail_count = counts[rs.id] || 0;
+                        return rs;
                     });
                     self.renderSearchDropdown();
                 });
@@ -360,7 +364,7 @@ var App = {
         var html = '';
         for (var i = 0; i < this.searchResults.length; i++) {
             var rs = this.searchResults[i];
-            var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
+            var itemCount = Number(rs.detail_count) || 0;
             var statusLabel = rs.status === 'Returning' ? '🔄 قيد العمل' : '📦 جاهز';
             html += '<div onclick="App.openReturn(\'' + rs.runsheet_code + '\')" class="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex justify-between items-center">';
             html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><br><span class="text-xs text-slate-400">' + itemCount + ' صنف</span></div>';
