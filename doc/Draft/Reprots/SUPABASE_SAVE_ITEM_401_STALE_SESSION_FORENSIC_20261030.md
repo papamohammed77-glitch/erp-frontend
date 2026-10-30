@@ -98,3 +98,9 @@ The connected local browser was not available in this execution context, so no b
 7. Update this report and `CURRENT_STATE.md` with the actual deployment and E2E evidence.
 
 **Closure decision:** Root cause is confirmed and the shared-source correction is committed to `main`; the incident is **not operationally closed** until deployment and authenticated browser verification pass.
+
+## 9. Repository workflow result after documentation checkpoint
+
+A GitHub Actions run was triggered by the later `CURRENT_STATE.md` documentation commit (run **41057760629**, workflow `inventory_mother_forensic_e2e_20260916.yml`). Its static inventory audit failed because the existing `companies/company-1/main.html` contains two strings matched by that workflow's broad `TODO|FIXME` placeholder scan. The failure is in the unrelated Mother Inventory audit, not in `core.js`; the workflow skipped its browser smoke stage. This run does not constitute an auth test and must not be represented as a failure of the auth patch.
+
+No auth-specific GitHub Actions test or browser E2E result is available.
