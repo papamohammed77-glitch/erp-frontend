@@ -79,8 +79,54 @@
 var db = new Dexie('RW_Returns');
 db.version(3).stores({ session: 'runsheet_code', localChanges: '++id,runsheet_code,item_code', meta: 'key', returnReasons: 'reason_code' });
 
-var ALL_ITEMS_LIST = [];
 var RETURN_REASONS_LIST = [];
+
+function returnItemImageHTML(item, widthClass, heightClass) {
+    var product = item && item.items ? item.items : {};
+    if (Array.isArray(product)) product = product[0] || {};
+
+    var rawUrl = String(
+        (product && product.image_url) ||
+        (item && item.image_url) ||
+        ''
+    ).trim();
+
+    function escapeAttr(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    var validUrl = /^https?:\/\/[^\s"'<>]+$/i.test(rawUrl) ||
+        /^\/(?!\/)[^\s"'<>]*$/.test(rawUrl);
+
+    var w = widthClass || 'w-14';
+    var h = heightClass || 'h-14';
+
+    var placeholder = '<div class="' + w + ' ' + h +
+        ' bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl ' +
+        'flex items-center justify-center text-slate-400">' +
+        '<i class="fa-solid fa-box"></i></div>';
+
+    if (!validUrl) return placeholder;
+
+    var itemName = (item && item.item_name) ||
+        (product && product.name) || '';
+
+    return '<img src="' + escapeAttr(rawUrl) +
+        '" alt="' + escapeAttr(itemName) +
+        '" class="' + w + ' ' + h +
+        ' rounded-2xl object-cover border-2 border-white shadow-sm" ' +
+        'onerror="this.onerror=null;this.classList.add(\'hidden\');' +
+        'this.nextElementSibling.classList.remove(\'hidden\')">' +
+        '<div class="hidden ' + w + ' ' + h +
+        ' bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl ' +
+        'flex items-center justify-center text-slate-400">' +
+        '<i class="fa-solid fa-box"></i></div>';
+}
 
 var App = {
     currentUser: null, pubUserId: null, currentTab: 'pending',
@@ -130,16 +176,7 @@ var App = {
             RW_UI.byId('loginScreen').classList.add('hidden');
             RW_UI.byId('mainApp').classList.remove('hidden');
             
-            // تحميل البيانات الأساسية
-            supabase.from('items').select('item_code, name, unit, image_url, description').then(function(r) {
-                ALL_ITEMS_LIST = r.data || [];
-                for(var i = 0; i < ALL_ITEMS_LIST.length; i++) {
-                    if(ALL_ITEMS_LIST[i].item_code) {
-                        RW_ImageCache._cache = RW_ImageCache._cache || {};
-                        RW_ImageCache._cache[ALL_ITEMS_LIST[i].item_code] = ALL_ITEMS_LIST[i].image_url || '';
-                    }
-                }
-            });
+            
             supabase.from('return_reasons').select('*').eq('is_active', true).then(function(r) {
                 RETURN_REASONS_LIST = r.data || [];
             });
@@ -179,9 +216,22 @@ var App = {
     loadRunsheets: function(){
         var self = this;
         RW_UI.showSkeleton('mainContent', 3, 'card');
-        var p1 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, return_handler_id, run_sheet_details(count)').eq('status', 'Returning').eq('return_handler_id', this.currentUser.id || this.currentUser.email).order('run_date', { ascending: false }).limit(20);
+        var p1 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, return_handler_id, run_sheet_details(count)').eq('status', 'Returning').eq('return_handler_id', this.currentUser.id).order('run_date', { ascending: false }).limit(20);
         var p2 = supabase.from('runsheets').select('id, runsheet_code, run_date, status, driver_id, run_sheet_details(count)').eq('status', 'Delivered').order('run_date', { ascending: false }).limit(50);
         Promise.all([p1, p2]).then(function(results) {
+            var listError =
+    (results[0] && results[0].error) ||
+    (results[1] && results[1].error);
+
+if (listError) {
+    console.error('[RW_Returns] runsheet list query failed:', listError);
+    RW_UI.showEmptyState(
+        'mainContent',
+        'تعذر تحميل قائمة المرتجعات. أعد المحاولة بعد التحقق من الاتصال والصلاحيات.',
+        '⚠️'
+    );
+    return;
+}
             var myActive = results[0].data || [];
             var available = results[1].data || [];
             self.allRunsheets = myActive.concat(available);
@@ -196,6 +246,19 @@ var App = {
             var remainingPromise = rsIds.length > 0 ? supabase.from('run_sheet_details').select('runsheet_id, qty_loaded, qty_delivered, qty_returned').in('runsheet_id', rsIds) : Promise.resolve({ data: [] });
             
             return Promise.all([driverPromise, remainingPromise]).then(function(extraResults) {
+                if (extraResults[1] && extraResults[1].error) {
+    console.error('[RW_Returns] remaining details query failed:', extraResults[1].error);
+    RW_UI.showEmptyState(
+        'mainContent',
+        'تعذر التحقق من الكميات المتبقية. لم يتم عرض مهام غير متحقق من أهليتها.',
+        '⚠️'
+    );
+    return;
+}
+
+if (extraResults[0] && extraResults[0].error) {
+    console.warn('[RW_Returns] driver names query failed:', extraResults[0].error);
+}
                 var userMap = {};
                 var users = extraResults[0].data || [];
                 for (var ui = 0; ui < users.length; ui++) { userMap[users[ui].id] = users[ui].name; }
@@ -292,10 +355,91 @@ var App = {
             return;
         }
         this.searchTimer = setTimeout(function() {
-            supabase.from('runsheets').select('runsheet_code, status, run_date, driver_id, return_handler_id, run_sheet_details(count)').in('status', ['Delivered', 'Returning']).ilike('runsheet_code', '%' + query.trim() + '%').limit(10).then(function(res) {
-                self.searchResults = res.data || [];
+            supabase.from('runsheets')
+    .select('id, runsheet_code, status, run_date, driver_id, return_handler_id')
+    .in('status', ['Delivered', 'Returning'])
+    .ilike('runsheet_code', '%' + query.trim() + '%')
+    .order('run_date', { ascending: false })
+    .limit(50)
+    .then(function(res) {
+
+        if (res.error) {
+            console.error('[RW_Returns] runsheet search failed:', res.error);
+            self.searchResults = [];
+            self.renderSearchDropdown();
+            return;
+        }
+
+        var rows = res.data || [];
+        var rsIds = [];
+
+        for (var i = 0; i < rows.length; i++) {
+            if (rows[i].id) rsIds.push(rows[i].id);
+        }
+
+        if (rsIds.length === 0) {
+            self.searchResults = [];
+            self.renderSearchDropdown();
+            return;
+        }
+
+        return supabase.from('run_sheet_details')
+            .select('runsheet_id, qty_loaded, qty_delivered, qty_returned')
+            .in('runsheet_id', rsIds)
+            .then(function(detailsRes) {
+
+                if (detailsRes.error) {
+                    console.error('[RW_Returns] search details failed:', detailsRes.error);
+                    self.searchResults = [];
+                    self.renderSearchDropdown();
+                    return;
+                }
+
+                var pendingCount = {};
+                var details = detailsRes.data || [];
+
+                for (var j = 0; j < details.length; j++) {
+                    var det = details[j];
+
+                    var remaining = Math.max(
+                        0,
+                        (Number(det.qty_loaded) || 0) -
+                        (Number(det.qty_delivered) || 0) -
+                        (Number(det.qty_returned) || 0)
+                    );
+
+                    if (remaining > 0) {
+                        pendingCount[det.runsheet_id] =
+                            (pendingCount[det.runsheet_id] || 0) + 1;
+                    }
+                }
+
+                self.searchResults = rows.filter(function(rs) {
+
+                    var itemCount = pendingCount[rs.id] || 0;
+                    rs.returnable_item_count = itemCount;
+
+                    if (rs.status === 'Delivered') {
+                        return itemCount > 0;
+                    }
+
+                    if (rs.status === 'Returning') {
+                        return !!self.currentUser &&
+                            !!self.currentUser.id &&
+                            rs.return_handler_id === self.currentUser.id;
+                    }
+
+                    return false;
+                });
+
                 self.renderSearchDropdown();
             });
+
+    }).catch(function(error) {
+        console.error('[RW_Returns] unexpected search failure:', error);
+        self.searchResults = [];
+        self.renderSearchDropdown();
+    });
         }, 300);
     },
 
@@ -310,7 +454,7 @@ var App = {
         var html = '';
         for (var i = 0; i < this.searchResults.length; i++) {
             var rs = this.searchResults[i];
-            var itemCount = (rs.run_sheet_details && rs.run_sheet_details.length > 0) ? rs.run_sheet_details[0].count : 0;
+            var itemCount = Number(rs.returnable_item_count) || 0;
             var statusLabel = rs.status === 'Returning' ? '🔄 قيد العمل' : '📦 جاهز';
             html += '<div onclick="App.openReturn(\'' + rs.runsheet_code + '\')" class="p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex justify-between items-center">';
             html += '<div><span class="font-bold text-slate-700">' + rs.runsheet_code + '</span><br><span class="text-xs text-slate-400">' + itemCount + ' صنف</span></div>';
@@ -330,9 +474,19 @@ var App = {
         supabase.from('runsheets').select('*').eq('runsheet_code', code).maybeSingle().then(function(rsRes) {
             if (!rsRes.data) { RW_UI.toast('الرانشيت غير موجود', 'error'); self.loadRunsheets(); return; }
             var rs = rsRes.data;
-            supabase.from('run_sheet_details').select('*').eq('runsheet_id', rs.id).then(function(detRes) {
-                var items = detRes.data || [];
-                var isActive = (rs.status === 'Returning' && (rs.return_handler_id === self.currentUser.id || rs.return_handler_id === self.currentUser.email));
+            supabase.from('run_sheet_details')
+    .select('*, items!run_sheet_details_item_id_fkey(image_url)')
+    .eq('runsheet_id', rs.id)
+    .then(function(detRes) {
+
+        if (detRes.error) {
+            console.error('[RW_Returns] runsheet details/images load failed:', detRes.error);
+            RW_UI.showError('تعذر تحميل تفاصيل الأصناف وصورها. لم يتم فتح المرتجعات.');
+            return;
+        }
+
+        var items = detRes.data || [];
+                var isActive = (rs.status === 'Returning' && rs.return_handler_id === self.currentUser.id);
                 
                 if (isActive) {
                     // بدء الجلسة النشطة
@@ -346,9 +500,12 @@ var App = {
                     };
                     for (var i = 0; i < items.length; i++) {
                         var it = items[i];
+                        var productImage = it.items;
+                        if (Array.isArray(productImage)) productImage = productImage[0] || {};
                         self.session.items.push({
                             item_code: it.item_code,
                             item_name: it.item_name || '',
+                            image_url: (productImage && productImage.image_url) || '',
                             unit: it.unit || 'حبة',
                             qty_ordered: Number(it.qty_ordered) || 0,
                             qty_loaded: Number(it.qty_loaded) || 0,
@@ -378,11 +535,23 @@ var App = {
         var remainingCount = 0;
         var sortedItems = [];
         for (var k = 0; k < items.length; k++) {
-            var it = items[k];
-            var remaining = (Number(it.qty_loaded) || 0) - (Number(it.qty_delivered) || 0);
-            sortedItems.push({ item: it, remaining: remaining });
-            if (remaining > 0) remainingCount++;
-        }
+    var it = items[k];
+
+    var remaining = Math.max(
+        0,
+        (Number(it.qty_loaded) || 0) -
+        (Number(it.qty_delivered) || 0) -
+        (Number(it.qty_returned) || 0)
+    );
+
+    if (remaining > 0) {
+        sortedItems.push({
+            item: it,
+            remaining: remaining
+        });
+        remainingCount++;
+    }
+}
         sortedItems.sort(function(a, b) { if (a.remaining > 0 && b.remaining === 0) return -1; if (a.remaining === 0 && b.remaining > 0) return 1; return 0; });
         
         var html = '';
@@ -407,7 +576,7 @@ var App = {
             var cardClass = 'card cursor-pointer active:scale-[0.98] border-2 ' + (isCompleted ? 'border-green-200 bg-green-50/20' : 'border-blue-200 hover:border-blue-400');
             var badge = isCompleted ? '<span class="text-[10px] font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded-full">✅ مسلّم بالكامل</span>' : '<span class="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">' + remaining2 + ' متبقي</span>';
             html += '<div class="' + cardClass + '" onclick="App.showItemDetail(\'' + (it2.item_code || '') + '\', \'' + (it2.item_name || '').replace(/'/g, "\\'") + '\', \'' + (it2.unit || 'حبة') + '\', ' + (it2.qty_loaded || 0) + ', ' + (it2.qty_delivered || 0) + ', ' + remaining2 + ')">';
-            html += '<div class="flex flex-col items-center text-center">' + RW_ImageCache.getImageHTML(it2.item_code, 'w-28', 'h-28') + '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it2.item_name || '').substring(0, 25) + '</p>';
+            html += '<div class="flex flex-col items-center text-center">' + returnItemImageHTML(it2, 'w-28', 'h-28') + '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it2.item_name || '').substring(0, 25) + '</p>';
             html += '<p class="text-xs text-slate-400 mt-0.5">' + (it2.unit || 'حبة') + '</p>';
             html += '<div class="mt-1.5 flex flex-wrap items-center justify-center gap-1"><span class="text-xs text-slate-500">محمّل: <strong>' + (it2.qty_loaded || 0) + '</strong></span><span class="text-xs text-slate-500">مسلّم: <strong>' + (it2.qty_delivered || 0) + '</strong></span></div>';
             html += '<div class="mt-1.5">' + badge + '</div></div></div>';
@@ -418,7 +587,20 @@ var App = {
     },
 
     showItemDetail: function(code, name, unit, loaded, delivered, remaining){
-        var imgHtml = RW_ImageCache.getImageHTML(code, 'w-full', 'h-280');
+        var imageItem = null;
+
+for (var i = 0; this._previewItems && i < this._previewItems.length; i++) {
+    if (this._previewItems[i].item_code === code) {
+        imageItem = this._previewItems[i];
+        break;
+    }
+}
+
+var imgHtml = returnItemImageHTML(
+    imageItem || { item_code: code },
+    'w-full',
+    'h-280'
+);
         var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">' + imgHtml;
         html += '<h3 style="font-size:20px;font-weight:800;color:#1e293b;margin-top:16px;margin-bottom:4px">' + name + '</h3>';
         html += '<p style="font-size:13px;color:#64748b;margin-bottom:12px">الكود: ' + code + ' | الوحدة: ' + unit + '</p>';
@@ -580,7 +762,7 @@ var App = {
             
             html += '<div class="card cursor-pointer active:scale-[0.98] border-2 ' + borderColor + ' ' + bgColor + '" id="return-card-' + j + '" onclick="App.editReturnItem(' + j + ')">';
             html += '<div class="flex flex-col items-center text-center">';
-            html += RW_ImageCache.getImageHTML(it2.item_code, 'w-24', 'h-24');
+            html += returnItemImageHTML(it2, 'w-24', 'h-24');
             html += '<p class="font-bold text-sm text-slate-700 mt-2 line-clamp-2">' + (it2.item_name || '').substring(0, 25) + '</p>';
             html += '<p class="text-xs text-slate-400 mt-0.5">' + (it2.unit || 'حبة') + '</p>';
             html += '<div class="mt-1 text-xs text-slate-500">متبقي: <strong class="text-blue-600">' + remaining2 + '</strong> | مرتجع: <strong class="' + (it2.qty_returned > 0 ? 'text-amber-600' : 'text-slate-400') + '">' + it2.qty_returned + '</strong></div>';
@@ -682,7 +864,7 @@ var App = {
         if (!container) return;
         
         var html = '<div class="bg-white rounded-2xl p-4 shadow-lg border-2 border-blue-400 cursor-pointer active:scale-[0.98] transition highlight-pulse" onclick="App._openHighlightedItem(' + index + ')">';
-        html += '<div class="flex items-center gap-4">' + RW_ImageCache.getImageHTML(item.item_code, 'w-14', 'h-14') + '<div class="flex-1"><p class="font-black text-slate-800">' + (item.item_name || '') + '</p>';
+        html += '<div class="flex items-center gap-4">' + returnItemImageHTML(item, 'w-14', 'h-14') + '<div class="flex-1"><p class="font-black text-slate-800">' + (item.item_name || '') + '</p>';
         html += '<p class="text-xs text-slate-400">الكود: ' + (item.item_code || '') + '</p>';
         html += '<p class="text-xs text-slate-500 mt-0.5">متبقي: <strong class="text-blue-600">' + remaining + '</strong> | مرتجع: <strong>' + (item.qty_returned || 0) + '</strong></p></div>';
         html += '<i class="fa-solid fa-hand-pointer text-blue-500 text-lg animate-pulse"></i></div>';
@@ -788,7 +970,7 @@ var App = {
             reasonsOptionsHtml += '<option value="' + reasonItem.reason_code + '"' + selected + '>' + icon + ' ' + reasonItem.reason_name + '</option>';
         }
         
-        var html = '<div class="text-right">' + RW_ImageCache.getImageHTML(it.item_code, 'w-full', 'h-280');
+        var html = '<div class="text-right">' + returnItemImageHTML(it, 'w-full', 'h-280');
         html += '<h3 class="font-black text-xl mt-3">' + (it.item_name || '') + '</h3>';
         html += '<p class="text-sm text-slate-500">الكود: ' + (it.item_code || '') + ' | الوحدة: ' + (it.unit || 'حبة') + '</p>';
         html += '<div class="bg-slate-50 rounded-xl p-3 mt-3 grid grid-cols-3 gap-2 text-center">';
@@ -1035,7 +1217,7 @@ var App = {
     loadCompleted: function(){
         var self = this;
         RW_UI.showSkeleton('mainContent', 3, 'card');
-        supabase.from('runsheets').select('runsheet_code, run_date, status, driver_id').eq('status', 'Returned').eq('return_handler_id', this.currentUser.id || this.currentUser.email).order('run_date', { ascending: false }).limit(50).then(function(res) {
+        supabase.from('runsheets').select('runsheet_code, run_date, status, driver_id').eq('status', 'Returned').eq('return_handler_id', this.currentUser.id).order('run_date', { ascending: false }).limit(50).then(function(res) {
             self.completedRunsheets = res.data || [];
             self.renderCompletedList(self.completedRunsheets);
         }).catch(function() {
