@@ -193,7 +193,7 @@ var App = {
             }
             
             var driverPromise = driverIds.length > 0 ? supabase.from('users').select('id, name').in('id', driverIds) : Promise.resolve({ data: [] });
-            var remainingPromise = rsIds.length > 0 ? supabase.from('run_sheet_details').select('runsheet_id, qty_loaded, qty_delivered').in('runsheet_id', rsIds) : Promise.resolve({ data: [] });
+            var remainingPromise = rsIds.length > 0 ? supabase.from('run_sheet_details').select('runsheet_id, qty_loaded, qty_delivered, qty_returned').in('runsheet_id', rsIds) : Promise.resolve({ data: [] });
             
             return Promise.all([driverPromise, remainingPromise]).then(function(extraResults) {
                 var userMap = {};
@@ -207,11 +207,15 @@ var App = {
                     var det = details[di];
                     var loaded = Number(det.qty_loaded) || 0;
                     var delivered = Number(det.qty_delivered) || 0;
-                    if (loaded > delivered) {
+                    var returned = Number(det.qty_returned) || 0;
+                    if (Math.max(0, loaded - delivered - returned) > 0) {
                         remainingMap[det.runsheet_id] = (remainingMap[det.runsheet_id] || 0) + 1;
                     }
                 }
                 self._remainingMap = remainingMap;
+                available = available.filter(function(rs) {
+                return (remainingMap[rs.id] || 0) > 0;
+                });
                 self.renderRunsheetGrid(myActive, available);
             });
         }).catch(function() {
