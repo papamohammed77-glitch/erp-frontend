@@ -42,6 +42,23 @@ var RW_Auth = (function() {
         pubUserId = null;
     }
 
+    // Keep the shared auth snapshot synchronized with Supabase token refreshes.
+    // The callback is intentionally synchronous: do not call Supabase auth APIs here.
+    if (supabase && supabase.auth && typeof supabase.auth.onAuthStateChange === 'function') {
+        supabase.auth.onAuthStateChange(function(event, session) {
+            if (session) {
+                if (currentUser && session.user && currentUser.id !== session.user.id) {
+                    currentProfile = null;
+                    pubUserId = null;
+                }
+                currentSession = session;
+                currentUser = session.user || null;
+            } else if (event === 'SIGNED_OUT') {
+                clearState();
+            }
+        });
+    }
+
     function toClientUser(profile) {
         var p = profile || currentProfile || {};
         return {
@@ -339,6 +356,7 @@ function getDB(appName) {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'apikey': SUPABASE_KEY,
                             'Authorization': 'Bearer ' + token
                         },
                         body: JSON.stringify(bodyData)
@@ -446,6 +464,7 @@ var RW_API = (function() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'apikey': SUPABASE_KEY,
                 'Authorization': 'Bearer ' + token
             },
             body: JSON.stringify(body || {})
