@@ -1,3 +1,35 @@
+# LATEST VERIFIED CHECKPOINT — 2026-10-30 — SAVE-ITEM 401 / SHARED AUTH SESSION
+
+## الحالة المثبتة حتى الآن
+
+- **النطاق:** إصلاح خطأ `401 UNAUTHORIZED_ASYMMETRIC_JWT` عند استدعاء `save-item` من تطبيق مدخل بيانات الأصناف.
+- **المستودع والفرع:** `papamohammed77-glitch/erp-frontend` / `main` فقط.
+- **السبب الجذري المؤكد:** `RW_Auth.getToken()` كان يعيد access token قديمًا من `currentSession` بعد انتهاء صلاحيته، لأن `core.js` لم يكن يزامن النسخة المحلية مع حدث `TOKEN_REFRESHED` من Supabase.
+- **دليل Production:** الرمز نفسه (ES256) نجح قبل انتهاء صلاحيته عند 11:31 و11:37 و11:41 UTC، وانتهت صلاحيته عند 12:20:08 UTC، ثم فشلت طلبات 12:31 و12:34 و12:35 UTC بـ401 و`UNAUTHORIZED_ASYMMETRIC_JWT`. ظهر طلب تجديد جلسة ناجح 200 عند 12:42:26 UTC. هذا يثبت أن ES256 ليس سببًا بحد ذاته.
+- **تصحيح المصدر:** أضيف مستمع `supabase.auth.onAuthStateChange` مركزي داخل `RW_Auth` في `companies/company-1/core.js` لتحديث `currentSession/currentUser` عند وصول أحداث الجلسة، ومسح الحالة عند `SIGNED_OUT`.
+- **Commit main:** `260dd402ffa527dd6b5dc0980e523846f00172de`.
+- **Core blob بعد التعديل:** `3cf992d8179a374b60622faba9e60dde43c9a21e`.
+- **التحقق الساكن:** إعادة جلب الملف من `main` PASS؛ وجود listener في موضعه PASS؛ تحليل JavaScript كاملًا PASS؛ التغيير محصور في `core.js`.
+- **ما لم يتغير:** `warehouse/data.html`، وEdge Function `save-item`، و`verify_jwt=true)، وRLS وقاعدة البيانات والصلاحيات.
+- **ملاحظة تصحيحية:** لا يوجد دليل أن غياب `apikey` تسبب في هذه الواقعة؛ الطلبات الناجحة والفاشلة في عينة السجلات أظهرت غياب بيانات apikey نفسها. لا تُكرر تعديل apikey كحل مزعوم دون دليل مستقل.
+- **حالة Cloudflare/Production:** هوية الملف المنشور بعد commit غير متحققة؛ لا يوجد تأكيد أن Pages قد نشرت التعديل.
+- **حالة E2E:** لم يتوفر اتصال المتصفح المحلي في سياق التنفيذ؛ اختبار `TOKEN_REFRESHED` ثم طلب Edge مصادق عليه وإعادة القراءة ما زال PENDING. لا تعتبر المشكلة مغلقة تشغيليًا.
+- **Edge Function:** `save-item` ما زالت ACTIVE version 16 و`verify_jwt=true`. لا تغيّرها ولا تعطل التحقق.
+- **التقرير:** `doc/Draft/Reprots/SUPABASE_SAVE_ITEM_401_STALE_SESSION_FORENSIC_20261030.md`.
+
+## الخطوة التالية الإلزامية
+
+1. إثبات أن Cloudflare Pages تخدم نسخة `core.js` التي تحتوي listener الجديد.
+2. فتح تطبيق مدخل البيانات بجلسة مستخدم مصادق عليها.
+3. التحقق من أن `TOKEN_REFRESHED` يحدّث `RW_Auth.getToken()` دون كشف قيمة JWT.
+4. تنفيذ طلب قراءة فقط عبر مسار Edge المركزي بعد التجديد.
+5. بعد موافقة/اعتماد سجل اختبار آمن فقط، اختبار `save-item` ثم إعادة قراءة السجل.
+6. مراجعة سجلات Supabase للطلب نفسه، ثم تحديث هذا الملف والتقرير بالنتائج الفعلية.
+
+**حالة الإغلاق:** ROOT CAUSE CONFIRMED · MAIN SOURCE PATCH COMMITTED · DEPLOYMENT/E2E PENDING.
+
+---
+
 # LATEST VERIFIED CHECKPOINT — 2026-10-27 — DELIVERY SUPERVISOR → PARENT ASSIGNMENTS
 
 ## الحالة الحالية المثبتة في هذه الجلسة
