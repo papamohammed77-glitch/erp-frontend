@@ -42,6 +42,22 @@ var RW_Auth = (function() {
         pubUserId = null;
     }
 
+    // Keep the shared session snapshot current when supabase-js refreshes the access token.
+    // This callback must remain synchronous; do not call Supabase auth methods from it.
+    if (supabase && supabase.auth && typeof supabase.auth.onAuthStateChange === 'function') {
+        supabase.auth.onAuthStateChange(function(event, session) {
+            if (session) {
+                if (currentUser && session.user && currentUser.id !== session.user.id) {
+                    currentProfile = null;
+                    pubUserId = null;
+                }
+                currentSession = session;
+                currentUser = session.user || null;
+            } else if (event === 'SIGNED_OUT') {
+                clearState();
+            }
+        });
+    }
     function toClientUser(profile) {
         var p = profile || currentProfile || {};
         return {
