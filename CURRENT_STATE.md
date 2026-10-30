@@ -10,7 +10,8 @@
 - **Commit main:** `260dd402ffa527dd6b5dc0980e523846f00172de`.
 - **Core blob بعد التعديل:** `3cf992d8179a374b60622faba9e60dde43c9a21e`.
 - **التحقق الساكن:** إعادة جلب الملف من `main` PASS؛ وجود listener في موضعه PASS؛ تحليل JavaScript كاملًا PASS؛ التغيير محصور في `core.js`.
-- **ما لم يتغير:** `warehouse/data.html`، وEdge Function `save-item`، و`verify_jwt=true)، وRLS وقاعدة البيانات والصلاحيات.
+- **GitHub Actions:** شُغّل workflow رقم `41057760629` عند commit التوثيق؛ فشل فحص Inventory static audit بسبب علامتي `TODO` موجودتين في `companies/company-1/main.html`، وهي خارج نطاق التعديل، وتخطى اختبار المتصفح. لا يُعد ذلك اختبارًا أو فشلًا لإصلاح المصادقة.
+- **ما لم يتغير:** `warehouse/data.html`، وEdge Function `save-item`، و`verify_jwt=true`، وRLS وقاعدة البيانات والصلاحيات.
 - **ملاحظة تصحيحية:** لا يوجد دليل أن غياب `apikey` تسبب في هذه الواقعة؛ الطلبات الناجحة والفاشلة في عينة السجلات أظهرت غياب بيانات apikey نفسها. لا تُكرر تعديل apikey كحل مزعوم دون دليل مستقل.
 - **حالة Cloudflare/Production:** هوية الملف المنشور بعد commit غير متحققة؛ لا يوجد تأكيد أن Pages قد نشرت التعديل.
 - **حالة E2E:** لم يتوفر اتصال المتصفح المحلي في سياق التنفيذ؛ اختبار `TOKEN_REFRESHED` ثم طلب Edge مصادق عليه وإعادة القراءة ما زال PENDING. لا تعتبر المشكلة مغلقة تشغيليًا.
