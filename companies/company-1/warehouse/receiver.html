@@ -78,6 +78,7 @@ var App = {
     currentTab: 'pending',
     purchaseOrders: [],
     activeTimers: {},
+    realtimeKey: null,
 
     togglePass: function(){
         var p = RW_UI.byId('loginPass');
@@ -133,9 +134,47 @@ var App = {
         window.addEventListener('online', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
         window.addEventListener('offline', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
         this.switchTab('pending');
+        this.startRealtime();
+    },
+
+    startRealtime: function(){
+        var self = this;
+        if (!this.currentUser || !this.currentUser.company_id || typeof RW_Realtime === 'undefined') {
+            console.error('[Receiver] Realtime not started: verified company profile is unavailable.');
+            return;
+        }
+        if (this.realtimeKey) RW_Realtime.stop(this.realtimeKey);
+        this.realtimeKey = RW_Realtime.start({
+            appId: 'warehouse-receiver',
+            companyId: this.currentUser.company_id,
+            tables: ['purchase_orders'],
+            debounceMs: 500,
+            reconcileMs: 60000,
+            onEvent: function(event){
+                if (event.table !== 'purchase_orders') return;
+                if (self.currentTab === 'pending') self.loadPurchaseOrders();
+                else if (self.currentTab === 'completed') self.renderCompleted();
+            },
+            onReconcile: function(){
+                if (self.currentTab === 'pending') self.loadPurchaseOrders();
+                else if (self.currentTab === 'completed') self.renderCompleted();
+            },
+            onStatus: function(status){
+                console.log('[Receiver] Realtime:', status.status);
+            }
+        });
+        if (!this.realtimeKey) console.error('[Receiver] Realtime subscription rejected; check authenticated company scope.');
+    },
+
+    stopRealtime: function(){
+        if (this.realtimeKey && typeof RW_Realtime !== 'undefined') {
+            RW_Realtime.stop(this.realtimeKey);
+            this.realtimeKey = null;
+        }
     },
 
     doLogout: function(){
+        this.stopRealtime();
         RW_Auth.doLogout(function() {
             RW_UI.byId('mainApp').classList.add('hidden');
             RW_UI.byId('loginScreen').classList.remove('hidden');
