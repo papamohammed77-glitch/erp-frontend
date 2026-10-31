@@ -299,3 +299,15 @@ Current baseline:
 6. Verify Console/Network and `purchase_rep` persistence.
 7. Fresh Production snapshot.
 8. Update CURRENT_STATE.
+
+## PHASE 2 IN PROGRESS — RUNTIME/BOOTSTRAP TRACE — 2026-10-31
+
+- Phase 2 findings appended to `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md`.
+- Shared `RW_Realtime` contract reviewed: verified-profile company guard, company_id filters by default, debounced event delivery, initial/reconnect/periodic/visibility reconciliation.
+- Warehouse Vouchers uses a direct channel; `stock_voucher_details` subscription currently has no explicit company filter and requires authenticated RLS/event-scope verification. Do not assume it is equivalent to shared engine.
+- Parent `main.html` could not be retrieved by either bounded file fetch or raw-content fetch due response-size limits. Parent runtime status remains UNKNOWN, not defective.
+- Do not add broad subscriptions to all 23 pages without classifying their actual freshness requirements.
+- Next: retrieve parent source through a bounded Git blob/range or local checkout, complete per-app freshness matrix, then test authenticated tenant isolation.
+- Latest phase 2 report commit: `dc42fd54e09c95796aff5c17975fe0460d78cf11`.
+
+---
