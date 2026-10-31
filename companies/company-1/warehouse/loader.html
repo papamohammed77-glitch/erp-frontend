@@ -81,7 +81,7 @@ try {
     
 var App = {
     currentUser: null, pubUserId: null, currentTab: 'pending',
-    session: null, timerInterval: null, searchTimer: null,
+    session: null, timerInterval: null, searchTimer: null, realtimeKey: null,
     allRunsheets: [], searchResults: [], completedRunsheets: [],
 
     init: function() {
@@ -94,8 +94,33 @@ var App = {
             if (!isOwner && user.activeWarehouseRole !== 'تحميل') { RW_UI.showError('دورك النشط هو "' + (user.activeWarehouseRole || 'غير محدد') + '"', function() { RW_Auth.doLogout(); }); return; }
             RW_UI.safeText(RW_UI.byId('headerUserName'), user.name);
             RW_UI.byId('loginScreen').classList.add('hidden'); RW_UI.byId('mainApp').classList.remove('hidden');
-            RW_ImageCache.loadAll(); self.switchTab('pending');
+            RW_ImageCache.loadAll(); self.switchTab('pending'); self.startRealtime();
         });
+    },
+
+    startRealtime: function() {
+        var self = this;
+        if (!this.currentUser || !this.currentUser.company_id || typeof RW_Realtime === 'undefined') return;
+        if (this.realtimeKey) RW_Realtime.stop(this.realtimeKey);
+        this.realtimeKey = RW_Realtime.start({
+            appId: 'warehouse-loader',
+            companyId: this.currentUser.company_id,
+            tables: ['runsheets'],
+            debounceMs: 500,
+            reconcileMs: 60000,
+            onEvent: function(event) {
+                if (event.table !== 'runsheets' || self.session) return;
+                if (self.currentTab === 'pending') self.renderPendingTab();
+                else if (self.currentTab === 'completed') self.renderCompletedTab();
+            },
+            onReconcile: function() {
+                if (self.session) return;
+                if (self.currentTab === 'pending') self.renderPendingTab();
+                else if (self.currentTab === 'completed') self.renderCompletedTab();
+            },
+            onStatus: function(status) { console.log('[Loader] Realtime:', status.status); }
+        });
+        if (!this.realtimeKey) console.error('[Loader] Realtime rejected: verified company scope unavailable.');
     },
 
     switchTab: function(tab) {
