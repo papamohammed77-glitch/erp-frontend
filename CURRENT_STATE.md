@@ -1,3 +1,19 @@
+# LATEST VERIFIED CHECKPOINT — 2026-10-31 — REALTIME SYNCHRONIZATION CONTINUATION
+
+- Detailed execution record: `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md`.
+- Supabase Production `supabase_realtime` publication count: **81 tables**, directly queried at 2026-10-31 16:53:54 UTC.
+- Current shared core `companies/company-1/core.js` contains `RW_Realtime`; blob SHA: `a95ee6b29ff54b4a240ce4b81f9a535aa87686db`.
+- Latest source before this checkpoint: `0b511d04ff9574b722f7531148dab2f6529a1eee`, wiring warehouse Loader to tenant-scoped Realtime.
+- Confirmed/fixed defect: warehouse Supervisor handled `stock_vouchers` events but subscribed only to `purchase_orders`. Production confirms both tables are published and both contain `company_id`. Surgical source correction adds `stock_vouchers` to the subscription.
+- Fix commit: `1ac88d795eaa6dbe9b6720b497cd4e1684e32651`; file readback PASS.
+- Documentation commit: `1399e75379c5a7f98b08f2a333f1f094eceb0141`.
+- No Supabase schema/data change was made. The commit status endpoint returned no status records; do not report CI PASS.
+- RLS is enabled on `branches`, `customers`, `items`, and `stock_branches`; policy expressions and authenticated cross-company behavior remain to be audited.
+- All-app consumer census, Cloudflare served-artifact parity, authenticated browser E2E, and formal test A–E mapping remain OPEN. Do not claim full synchronization.
+- Next: continue app-by-app source census and policy inspection, then authenticated cross-company E2E and Cloudflare parity verification. Preserve the verified company scope guard in `RW_Realtime.start`.
+
+---
+
 # LATEST VERIFIED CHECKPOINT — 2026-10-30 — SAVE-ITEM 401 / SHARED AUTH SESSION
 
 ## الحالة المثبتة حتى الآن
