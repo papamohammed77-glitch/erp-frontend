@@ -85,6 +85,7 @@ serve(async (req) => {
       const table = String(p.table || "");
       if (table === "treasury") requireAny(["finance"]);
       else if (table === "suppliers") requireAny(["purchases", "suppliers"]);
+      else if (table === "stock_branches") requireAny(["purchases", "warehouse"]);
       else requireAny(["purchases", "finance"]);
     } else if (op === "SAVE_SUPPLIER") {
       requireAny(["purchases", "suppliers"]);
@@ -270,6 +271,7 @@ serve(async (req) => {
         "purchase_attachments",
         "purchase_document_links",
         "purchase_settings",
+        "stock_branches",
         "suppliers",
         "items",
         "branches",
@@ -283,7 +285,8 @@ serve(async (req) => {
         purchase_quotation_details: { parent: "purchase_quotations", foreignKey: "quotation_id" },
         purchase_order_details: { parent: "purchase_orders", foreignKey: "po_id" },
         purchase_invoice_details: { parent: "purchase_invoices", foreignKey: "invoice_id" },
-        purchase_return_details: { parent: "purchase_returns", foreignKey: "return_id" }
+        purchase_return_details: { parent: "purchase_returns", foreignKey: "return_id" },
+        stock_branches: { parent: "branches", foreignKey: "branch_id" }
       };
       const rowLimit = Math.min(Number(p.limit || 300), 500);
       let r: any;
