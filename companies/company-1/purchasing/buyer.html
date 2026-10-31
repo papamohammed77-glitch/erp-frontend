@@ -206,8 +206,10 @@ var App = {
             this.data('suppliers'),
             this.data('items'),
             this.data('stock_branches'),
-            this.data('branches')
+            this.data('branches'),
+            this.data('purchase_settings')
         ]);
+        this.currency=(results[8][0]&&results[8][0].default_currency)||this.currency||'SAR';
         var summary=results[0]||{},requests=results[1],orders=results[2],invoices=results[3],suppliers=results[4],items=results[5],stock=results[6],branches=results[7];
         var itemIndex={},critical=0;
         items.forEach(function(it){itemIndex[it.id]=it;});
@@ -298,7 +300,8 @@ var App = {
                 '<h4 class="font-black border-t pt-3">آخر أوامر الشراء</h4><div>'+(orders.slice(0,5).map(function(o){return '<p class="text-xs py-1">'+buyerEsc(o.po_code)+' · '+buyerDate(o.po_date)+' · '+buyerMoney(o.total_amount,self.currency)+'</p>';}).join('')||'<p class="text-xs text-slate-400">لا توجد أوامر مسجلة</p>')+'</div>'+
                 '<h4 class="font-black border-t pt-3">آخر أسعار فواتير المورد</h4><div>'+(prices.map(function(d){return '<p class="text-xs py-1">'+buyerEsc(d.item_name||d.item_code)+' · '+buyerMoney(d.unit_price,self.currency)+' / '+buyerEsc(d.unit||'')+'</p>';}).join('')||'<p class="text-xs text-slate-400">لا توجد تفاصيل فواتير كافية</p>')+'</div>'+
                 '<p class="text-xs text-amber-700 border-t pt-3">الزيارات الميدانية والتقييم التفصيلي غير موصولين بعقد تخزين معتمد بعد.</p></div>';
-            await Swal.fire({title:s.name,html:html,width:800,showCancelButton:true,showDenyButton:true,confirmButtonText:'تعديل',denyButtonText:'إغلاق',cancelButtonText:'إغلاق',preConfirm:function(){return self.supplierForm(id);}});
+            var action=await Swal.fire({title:s.name,html:html,width:800,showCancelButton:true,confirmButtonText:'تعديل',cancelButtonText:'إغلاق'});
+            if(action.isConfirmed)await self.supplierForm(id);
         }catch(e){this.notifyError(e);}
     },
     renderRequests:async function(){
@@ -365,12 +368,13 @@ var App = {
         this.pageLoading('تحميل أوامر الشراء');
         var results=await Promise.all([this.data('purchase_orders'),this.data('purchase_quotations')]);
         var rows=results[0].sort(function(a,b){return String(b.po_date||'').localeCompare(String(a.po_date||''));});
+        var currency=this.currency||'SAR';
         var accepted=results[1].filter(function(q){return q.status==='Accepted';});
         var html='<div class="mb-4"><h2 class="text-xl font-black">أوامر الشراء / PO</h2><p class="text-xs text-slate-500">متابعة أوامر الشراء الصادرة من دورة عروض الأسعار والاستلام</p></div>';
         html+='<div class="card mb-3"><h3 class="font-black mb-2">عروض مقبولة جاهزة للتحويل إلى PO</h3>';
-        html+=accepted.map(function(q){return '<div class="flex flex-wrap justify-between items-center gap-2 border-t py-2"><div><b>'+buyerEsc(q.quotation_code)+'</b><p class="text-xs text-slate-400">'+buyerDate(q.quotation_date)+' · '+buyerMoney(q.total_amount,'SAR')+'</p></div><button onclick="App.convertQuote(\''+buyerEsc(q.id)+'\')" class="bg-indigo-700 text-white rounded-lg px-3 py-2 text-xs font-bold">تحويل إلى PO</button></div>';}).join('')||'<p class="text-xs text-slate-400">لا توجد عروض مقبولة تنتظر التحويل</p>';
+        html+=accepted.map(function(q){return '<div class="flex flex-wrap justify-between items-center gap-2 border-t py-2"><div><b>'+buyerEsc(q.quotation_code)+'</b><p class="text-xs text-slate-400">'+buyerDate(q.quotation_date)+' · '+buyerMoney(q.total_amount,currency)+'</p></div><button onclick="App.convertQuote(\''+buyerEsc(q.id)+'\')" class="bg-indigo-700 text-white rounded-lg px-3 py-2 text-xs font-bold">تحويل إلى PO</button></div>';}).join('')||'<p class="text-xs text-slate-400">لا توجد عروض مقبولة تنتظر التحويل</p>';
         html+='</div><div class="overflow-x-auto bg-white rounded-2xl"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-right">رقم PO</th><th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">المورد</th><th class="p-3 text-right">الحالة</th><th class="p-3 text-right">القيمة</th><th class="p-3">التفاصيل</th></tr></thead><tbody>';
-        html+=rows.map(function(o){return '<tr class="border-t"><td class="p-3 font-bold">'+buyerEsc(o.po_code)+'</td><td class="p-3">'+buyerDate(o.po_date)+'</td><td class="p-3">'+buyerEsc(o.supplier_name||'—')+'</td><td class="p-3">'+buyerStatus(o.status)+'</td><td class="p-3">'+buyerMoney(o.total_amount,'SAR')+'</td><td class="p-3"><button onclick="App.openPO(\''+buyerEsc(o.id)+'\')" class="text-purple-700 font-bold">فتح</button></td></tr>';}).join('')||'<tr><td colspan="6" class="p-8 text-center text-slate-400">لا توجد أوامر شراء</td></tr>';
+        html+=rows.map(function(o){return '<tr class="border-t"><td class="p-3 font-bold">'+buyerEsc(o.po_code)+'</td><td class="p-3">'+buyerDate(o.po_date)+'</td><td class="p-3">'+buyerEsc(o.supplier_name||'—')+'</td><td class="p-3">'+buyerStatus(o.status)+'</td><td class="p-3">'+buyerMoney(o.total_amount,currency)+'</td><td class="p-3"><button onclick="App.openPO(\''+buyerEsc(o.id)+'\')" class="text-purple-700 font-bold">فتح</button></td></tr>';}).join('')||'<tr><td colspan="6" class="p-8 text-center text-slate-400">لا توجد أوامر شراء</td></tr>';
         html+='</tbody></table></div><p class="text-xs text-amber-700 mt-3">الإنشاء اليدوي المباشر وإرسال PO عبر البريد/واتساب غير متاحين في عقد Edge الحالي؛ المسار المتاح هو تحويل عرض مقبول. لا يظهر زر إرسال وهمي.</p>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
