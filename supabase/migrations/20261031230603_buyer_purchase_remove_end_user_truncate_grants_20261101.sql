@@ -1,0 +1,21 @@
+REVOKE TRUNCATE ON TABLE
+  public.purchase_attachments,
+  public.purchase_document_links,
+  public.purchase_invoice_details,
+  public.purchase_invoices,
+  public.purchase_payment_allocations,
+  public.purchase_payments,
+  public.purchase_quotation_details,
+  public.purchase_quotations,
+  public.purchase_request_details,
+  public.purchase_return_details,
+  public.purchase_returns,
+  public.purchase_rfq_details,
+  public.purchase_rfq_suppliers,
+  public.purchase_rfqs,
+  public.purchase_settings,
+  public.purchase_status_history,
+  public.purchase_supplier_balance,
+  public.purchase_invoice_aging,
+  public.purchase_quotation_comparison
+FROM anon, authenticated;
