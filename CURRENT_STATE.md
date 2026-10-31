@@ -1,6 +1,45 @@
 # CURRENT EXECUTION HANDOFF — REALTIME SYNCHRONIZATION — 2026-10-31
 
 ## Current status
+- **Active work:** Phase 3 — tenant-safety and Realtime channel compatibility remediation design, starting with `inventory_counts`.
+- **Phase 1:** COMPLETE only for the source census and selected RLS definition review; its earlier 29-page count is corrected to 30 in Phase 2 because `index.html` was omitted.
+- **Phase 2:** Parent source/bootstrap trace COMPLETE; complete page freshness classification and authenticated runtime proof PARTIAL/OPEN.
+- **Overall mission:** OPEN. Do not claim all-app synchronization, cross-company runtime isolation, Cloudflare parity, or E2E completion.
+
+## Latest verified checkpoint
+- Detailed Phase 2 report: `doc/Draft/Reprots/REALTIME_SYNC_PHASE2_PARENT_BOOTSTRAP_20261031.md`.
+- Master execution log: `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md`.
+- Phase 2 report commit: `43fdbba23b2368c71bfc96c1cdbd111a99c12c0f`.
+- Master log update commit: `88f458779888b7cc7e60409bcd9804f774f0ef8a`.
+- Parent source retrieved completely from Git blob: `companies/company-1/main.html`, blob `53b5a9e9d0433a785c3d5471a9c0d68c25497882`, 33,358 lines. Parent has its own Supabase client and 8 direct Realtime channels; it does not load `core.js` or call `RW_Realtime.start`.
+- Current HTML inventory: 30 files under `companies/company-1/`; 6 explicitly call `RW_Realtime.start`, 24 do not. The 24 must not be treated as defects by absence alone.
+- Standalone direct-channel exceptions: `sales/manager.html` and `warehouse/vouchers.html`.
+- **P0 confirmed Production policy defect:** `inventory_counts` has RLS enabled but its only policy is `allow_all_inventory_counts` FOR ALL with only `auth.role()='authenticated'`; no company predicate, despite company_id. Authenticated has all CRUD grants. `warehouse/counter.html` line 137 reads latest rows without company filter. Table had 0 rows at audit, so no actual disclosure was observed, but future rows would be exposed across tenants by this policy. Parent direct read is line 17437 and Realtime listener line 18274.
+- Parent `inventory_control` RPC checks authenticated actor/company/permissions; `inventory_count_engine` is not directly executable by authenticated. Preserve this guarded path.
+- Parent subscriptions that are incompatible with current DB setup: Sales Decision (not published and direct access denied), Loyalty (not published and direct access denied), Customer Payments and Commission (service_role-only RLS policies while browser client is authenticated). Do not add these tables to publication or weaken RLS merely to make channels subscribe.
+- Sales Targets, Purchasing Gold, and HR channels have publication membership and RLS policies; HR and other direct channels rely on RLS without explicit company filters. Runtime proof remains open.
+- Production `inventory_counts` had zero rows; active auth-linked users were found for only one company. Two-company E2E is BLOCKED until a separate test tenant/user is available.
+- No application code, Production schema/data/policy, publication, or Cloudflare deployment was changed during Phase 2.
+
+## Next executable actions — do not restart
+1. Inspect the existing `save-inventory-count` Edge Function contract and all caller paths; confirm whether any client requires direct table writes.
+2. Confirm Counter and van-sales count-role semantics. Design a company-and-role-scoped SELECT policy for `inventory_counts`; remove direct write grants only after caller inventory proves all writes use the guarded function/RPC path.
+3. Make a minimal, reversible RLS correction and add the missing company filter to `warehouse/counter.html`; verify read isolation, intended count roles, and write path before declaring fixed.
+4. Reconcile parent direct channels with incompatible publication/RLS settings; retain data privacy and use only an already-authorized API/refresh path.
+5. Finish per-page freshness classification for all 30 HTML files, then authenticated two-company Realtime E2E in an isolated test environment.
+6. Verify Cloudflare served artifacts separately from Git commits; finish the remaining app integration and E2E phases.
+7. Append a standalone report and update this file after every completed phase or material checkpoint.
+
+## Handoff contract
+Read section 8 of `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md` and the independent Phase 2 report before continuing. Record exact evidence, timestamps, source SHAs, findings classification, change/test ledger, cleanup/rollback, blockers, and next action.
+
+**Truth rule:** reports are navigation/history, not truth. Re-query mutable Production and deployed Cloudflare state before claims. A commit is not deployment; a subscription declaration is not proof of event delivery. Do not modify RLS/publication until the intended role/company contract is established.
+
+---
+
+# CURRENT EXECUTION HANDOFF — REALTIME SYNCHRONIZATION — 2026-10-31
+
+## Current status
 - **Active phase:** Phase 2 — parent/router bootstrap and per-application freshness trace.
 - **Phase 1:** COMPLETE for the 29-entry-point source census and selected Production RLS policy-definition review only. This does NOT prove authenticated tenant isolation.
 - **Phase 2:** PARTIAL. Shared `RW_Realtime` contract reviewed; Warehouse Vouchers direct-channel exception identified. Parent `main.html` remains UNVERIFIED because connector content retrieval failed due file size. This is a tooling blocker, not proof of a source defect.
