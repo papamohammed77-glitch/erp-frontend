@@ -664,11 +664,16 @@ var App = {
         if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم إرسال المستند إلى الإدارة المالية','success');}
     },
     viewCustodyDocument:async function(path){
+        var preview=window.open('about:blank','_blank');
         try{
             var result=await supabase.storage.from('employee-documents').createSignedUrl(path,300);
             if(result.error)throw result.error;
-            window.open(result.data.signedUrl,'_blank','noopener');
-        }catch(e){this.notifyError(e);}
+            if(preview){preview.opener=null;preview.location.href=result.data.signedUrl;}
+            else{window.location.assign(result.data.signedUrl);}
+        }catch(e){
+            if(preview&&!preview.closed)preview.close();
+            this.notifyError(e);
+        }
     },
     reviewCustodyExpense:async function(expenseId,decision){
         var decisionText=decision==='Approved'?'اعتماد المستند':'رفض المستند';
