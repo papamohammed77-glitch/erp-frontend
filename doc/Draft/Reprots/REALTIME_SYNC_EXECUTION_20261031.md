@@ -244,3 +244,41 @@ The active-user inventory query returned active auth-linked users for only one c
 - Overall Realtime synchronization: OPEN.
 
 Next priority is the `inventory_counts` tenant-safety repair design, followed by reconciliation of parent channels whose publication/RLS settings cannot deliver events to authenticated clients. See the independent report for evidence and exact file locations.
+
+
+## 10. Phase 3 subtask — inventory_counts tenant boundary repair (2026-10-31)
+
+Independent report: `doc/Draft/Reprots/REALTIME_SYNC_PHASE3_INVENTORY_COUNTS_20261031.md`.
+
+### Production migration applied
+- Migration: `harden_inventory_counts_tenant_read_boundary_20261031`
+- Version: `20261031171715`
+- Result: SUCCESS.
+- Removed the permissive `allow_all_inventory_counts` policy.
+- Replaced it with SELECT-only `inventory_counts_select_company_authorized`, scoped to `app_private.current_user_company_id()` and an active user with approved inventory/warehouse/report role or permission.
+- Revoked all table privileges from `anon` and `authenticated`, then granted SELECT only to authenticated.
+- `service_role` retains its server-side privileges; authenticated retains EXECUTE on guarded `inventory_control` and cannot directly execute `inventory_count_engine`.
+
+### Client source correction
+- `companies/company-1/warehouse/counter.html`: added a missing-company guard and `.eq('company_id', companyId)` to the completed-count history query.
+- Commit: `2ddab280b9e0fc362e96f28acd897a2a3b6e1150`.
+- GitHub readback verified; Cloudflare deployment not verified.
+
+### Verification
+- Authenticated SELECT: allowed.
+- Authenticated INSERT/UPDATE/DELETE: denied by grants.
+- anon SELECT/INSERT: denied by grants.
+- service_role INSERT/UPDATE: retained.
+- `inventory_control` execute: retained; direct authenticated `inventory_count_engine` execute: denied.
+- Simulated JWT for authorized warehouse user: same-company temporary row visible; other-company temporary row invisible.
+- Simulated JWT for active same-company user without count/warehouse/report scope: same-company row invisible.
+- All tests ran in a transaction and were rolled back; follow-up count confirmed zero remaining test rows.
+- Supabase Security Advisor rerun: no `inventory_counts` finding; unrelated findings remain (24 RLS-enabled/no-policy tables, 3 SECURITY DEFINER views, 3 mutable-search-path functions, 20 anon-executable and 121 authenticated-executable SECURITY DEFINER functions, leaked-password protection disabled).
+
+### Remaining gates
+- No active user currently has `active_warehouse_role='جرد'`; Counter browser E2E remains untested.
+- Production has active auth-linked users for only one company; real two-company browser E2E remains blocked.
+- Counter's legacy `general` count sends `entityId='MAIN'`, while Edge Function expects a branch UUID or null; investigate/fix separately.
+- Overall Realtime remains OPEN; no publication broadening or Cloudflare deployment was done.
+
+Phase 3 inventory_counts tenant-boundary subtask: **COMPLETE for SQL policy/grant boundary and source query hardening; runtime browser/Counter E2E remains OPEN.**
