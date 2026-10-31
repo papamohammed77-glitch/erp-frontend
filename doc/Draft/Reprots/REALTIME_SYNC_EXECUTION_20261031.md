@@ -117,3 +117,29 @@ Not established:
 **All-app Realtime integration: OPEN.**
 
 No further subscription was added during this phase. The next priority is tracing the parent/router bootstrap and classifying each of the 23 pages by actual data freshness requirement, then performing authenticated two-company isolation tests before broadening subscriptions.
+
+
+## 7. Phase 2 — Runtime/bootstrap trace: findings and remaining gates
+
+### Confirmed architecture
+
+- `core.js` creates one shared Supabase client and `RW_Auth` hydrates the verified public profile through `get_my_effective_profile`.
+- `RW_Realtime.start` rejects a missing appId/companyId/callback and rejects a companyId that differs from `RW_Auth.getUser().company_id`. This is a useful tenant guard and must be preserved.
+- The engine defaults each table subscription to a `company_id=eq.<verified company>` filter, debounces events, reconciles after initial subscription/reconnection, periodically reconciles, and reconciles after a hidden page becomes visible.
+- The engine currently normalizes each table's event list to `INSERT` and `UPDATE`; this checkpoint does not change that behavior. DELETE support needs a separate tenant-safe design review before implementation.
+- Warehouse Vouchers (`warehouse/vouchers.html`) implements its own direct Supabase Realtime channels rather than calling `RW_Realtime.start`. Its channel filters `stock_vouchers` by company_id, listens to `stock_voucher_details` without a company filter, and filters `stock_branches` by branch_id. The detail/stock event scope must be verified against RLS and authenticated sessions before it is accepted as equivalent to the shared engine.
+
+### Runtime/bootstrap trace limitation
+
+- `app.html` redirects authenticated users to the parent `main.html` or a standalone app based on profile/metadata and role permissions.
+- GitHub's file-content response for the very large `companies/company-1/main.html` returned an empty content body in this inspection, so the parent runtime's internal module/bootstrap path is **NOT VERIFIED**. Do not infer that parent has or lacks Realtime based on this failed read.
+- Some non-subscribing pages have explicit focus/visibility/manual refresh behavior (e.g. POS and Warehouse Vouchers); others require individual inspection. No blanket "all 23 need Realtime" change is authorized.
+
+### Phase 2 status
+
+**Shared engine contract review: COMPLETE.**  
+**Direct-channel exception identified: Warehouse Vouchers.**  
+**Parent bootstrap trace: BLOCKED by unavailable large-file content response.**  
+**Classification of all 23 non-explicit subscribers by operational freshness requirement: OPEN.**
+
+Next: retrieve the parent source via a bounded raw/blob read, map each app's data dependencies to its actual refresh path (Realtime, focus/visibility, polling, explicit user refresh, or static/read-only), and test direct-channel event scoping. No broad subscription edits until this matrix is complete.
