@@ -1,0 +1,48 @@
+name: Buyer Tailwind Production CSS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'companies/company-1/purchasing/buyer.html'
+      - 'companies/company-1/purchasing/tailwind.input.css'
+      - '.github/workflows/buyer-tailwind-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: buyer-tailwind-css
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Compile production CSS
+        run: >-
+          npm exec --yes --package=tailwindcss@3.4.17 -- tailwindcss
+          -i companies/company-1/purchasing/tailwind.input.css
+          -o companies/company-1/purchasing/buyer.tailwind.css
+          --content companies/company-1/purchasing/buyer.html
+          --minify
+      - name: Commit compiled CSS
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add companies/company-1/purchasing/buyer.tailwind.css
+          if git diff --cached --quiet; then
+            echo "Compiled CSS is already current."
+            exit 0
+          fi
+          git commit -m "build: compile Buyer Tailwind CSS"
+          git push
