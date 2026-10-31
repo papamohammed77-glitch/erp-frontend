@@ -1,3 +1,35 @@
+# CURRENT EXECUTION HANDOFF — REALTIME SYNCHRONIZATION — 2026-10-31
+
+## Current status
+- **Active phase:** Phase 2 — parent/router bootstrap and per-application freshness trace.
+- **Phase 1:** COMPLETE for the 29-entry-point source census and selected Production RLS policy-definition review only. This does NOT prove authenticated tenant isolation.
+- **Phase 2:** PARTIAL. Shared `RW_Realtime` contract reviewed; Warehouse Vouchers direct-channel exception identified. Parent `main.html` remains UNVERIFIED because connector content retrieval failed due file size. This is a tooling blocker, not proof of a source defect.
+- **Overall mission:** OPEN. Do not claim all-app synchronization, Cloudflare parity, or end-to-end completion.
+
+## Last verified event
+- The latest Phase 2 report and mandatory handoff protocol were committed to `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md`.
+- Report commit: `fa2b9ef19dbcc209f0456df4915b63dfbf3919f2`.
+- Phase 1 census: 29 HTML entry points; 6 explicit shared-engine starters; 23 without explicit `RW_Realtime.start` in their own source. The 23 are not automatically defects.
+- Shared engine guard: `RW_Realtime.start` checks requested company against `RW_Auth.getUser().company_id`; preserve this guard.
+- Direct-channel exception: `warehouse/vouchers.html` listens to `stock_voucher_details` without explicit company filter; verify effective RLS and authenticated event behavior before changing it.
+- Production publication: 81 tables, as recorded in the earlier timestamped Production query. Refresh this fact before relying on it.
+
+## Required next actions — do not restart
+1. Obtain `companies/company-1/main.html` through a bounded Git blob/API read or a local repository checkout; previous connector whole-file and raw-content reads failed due size.
+2. Trace the parent/router bootstrap and identify how it loads shared core and each app.
+3. Build the 29-entry-point freshness matrix: shared Realtime / direct Realtime / polling / focus-visibility refresh / explicit manual refresh / read-only-static / UNKNOWN. Cite file/function/line or blob SHA for each classification.
+4. Inspect all direct Realtime channels and their table filters; validate company scope and RLS.
+5. Run authenticated two-company tests before broadening subscriptions.
+6. Only then make minimal app-specific changes; verify Git readback, deployment parity, and browser E2E separately.
+7. Append a phase report and update this file after EVERY completed phase or material checkpoint.
+
+## Handoff contract
+Read the mandatory phase-by-phase protocol in `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md`, section 8. Each phase record must include exact evidence sources and timestamps, inspected inventory, CONFIRMED/UNKNOWN/CONFLICT/UNVERIFIED findings, change ledger, test ledger, rollback/cleanup, exit decision, blockers, and next executable action.
+
+**Truth rule:** reports are navigation and history, not the source of truth. Re-query mutable Production and deployed Cloudflare state at the time of any final claim. Never equate a commit with deployment or a subscription with proven synchronization.
+
+---
+
 # PHASE 1 COMPLETE — REALTIME CONSUMER CENSUS & RLS REVIEW — 2026-10-31
 
 - Detailed record: `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md` (Phase 1, section 6).
