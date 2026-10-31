@@ -148,3 +148,58 @@ Next: retrieve the parent source via a bounded raw/blob read, map each app's dat
 ### Additional Phase 2 retrieval attempt
 
 A second read attempt through the repository's raw-content endpoint also failed because the parent `main.html` exceeds the connector's supported response size. This confirms a tooling/read-size blocker, not a source-code defect. The next retrieval method must be a bounded Git blob/range extraction or local repository checkout; no parent-code conclusion is drawn.
+
+
+## 8. Mandatory phase-by-phase handoff and continuation protocol
+
+This section is binding for every subsequent assistant/CTO continuing the Realtime synchronization mission.
+
+### Required record for EVERY phase
+
+A phase is not reportable as complete until its report records all of the following:
+
+1. **Phase identity:** phase number, title, start/update time (Africa/Cairo), scope, and explicit exit criteria.
+2. **Truth sources:** exact GitHub repository/branch/commit/blob SHA; exact Production Supabase project and query time; exact Cloudflare URL/deployment identifier and observation time when applicable. Distinguish source code, deployed artifact, database state, and browser runtime.
+3. **Inspection inventory:** every file, function, table, policy, trigger, publication, subscription, and consumer actually inspected. Record exclusions and why they were excluded.
+4. **Findings classification:** CONFIRMED / UNKNOWN / CONFLICT / UNVERIFIED. Every material claim must point to a reproducible query, file path/line or blob SHA, runtime observation, or test result.
+5. **Change ledger:** exact before/after behavior, file and function, minimal diff, commit SHA, migration/RPC/Edge Function identifier if applicable, and whether Production was changed. Never imply a Git commit is deployed.
+6. **Test ledger:** test ID, setup, tenant/user role, action, expected result, actual result, evidence, cleanup/rollback result. Record PASS/FAIL/BLOCKED separately; a missing result is not PASS.
+7. **Safety and recovery:** baseline, data impact, idempotency, concurrency implications, rollback procedure, and confirmation that test fixtures were removed/restored.
+8. **Exit decision:** COMPLETE / OPEN / BLOCKED, exact evidence supporting the decision, unresolved risks, and next executable action with owner/tool prerequisite.
+
+### Handoff header required in CURRENT_STATE.md
+
+Every phase update must put the latest checkpoint at the top of CURRENT_STATE.md and include:
+- current phase and exact status;
+- last verified event and timestamp;
+- latest report path and commit;
+- current Git commit/branch and any known deployment parity status;
+- Production facts with query timestamps;
+- confirmed changes versus merely inspected facts;
+- open blockers and risks;
+- next action in executable order;
+- explicit instruction not to repeat completed work or trust historical reports over current source/Production.
+
+### Continuation rules
+
+- Read this checkpoint and the linked detailed report first; then independently refresh current GitHub and Production evidence before any new change.
+- Do not trust this report as a substitute for re-verification of mutable Production or deployment state.
+- Do not infer a defect from absence of an explicit Realtime call until router/bootstrap, polling, focus/visibility refresh, and user-triggered refresh have been inspected.
+- Do not broaden Realtime subscriptions without validating table publication, RLS, tenant filter semantics, event payload behavior, and the consumer's reconciliation callback.
+- Preserve `RW_Realtime.start` verified-profile tenant guard. Never trust caller-supplied company metadata as the authority.
+- Do not mark a phase complete because documentation was written. Code change, deployment, and runtime proof are separate states.
+- Never claim Cloudflare parity, authenticated E2E, or full synchronization without direct evidence from the relevant environment.
+
+### Phase ledger at this update
+
+| Phase | Scope | Status | Evidence / blocker |
+|---|---|---|---|
+| 1 | 29-page consumer census and selected Production RLS policy-definition review | COMPLETE (source/policy-definition scope only) | Section 6; tenant runtime isolation remains open |
+| 2 | Shared engine contract and app bootstrap/freshness trace | IN PROGRESS / PARTIAL | Section 7; parent main.html retrieval blocked by connector size limit; bounded Git blob/local checkout required |
+| 3 | Close tenant isolation and direct-channel scoping gaps | NOT STARTED | Requires authenticated two-company tests and direct-channel policy/event proof |
+| 4 | App-by-app freshness matrix and surgical Realtime integration | NOT STARTED | Must follow parent/router trace and classify each consumer |
+| 5 | Authenticated end-to-end synchronization tests | NOT STARTED | Requires test identities/roles and controlled fixtures |
+| 6 | Cloudflare artifact/deployment parity | NOT STARTED | Requires deployed URL/version and served-source evidence |
+| 7 | Final closure, residual debt register, and handoff | NOT STARTED | Depends on phases 3–6 |
+
+This ledger is a handoff map, not a claim that future phases have been executed.
