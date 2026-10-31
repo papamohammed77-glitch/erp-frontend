@@ -130,3 +130,19 @@ Migration:
 2. اختبار Edge Function وRPC بهوية تشغيلية مصرح بها في بيئة اختبار.
 3. معالجة اشتراكات النظام الأم غير المتوافقة مع publication/RLS دون تخفيف عزل البيانات.
 4. استكمال freshness matrix ثم E2E وCloudflare parity.
+
+
+## 9. Counter general-count payload compatibility correction (2026-10-31)
+
+A source/contract comparison found a second Counter defect:
+- The UI permits an empty entity for `type='general'`, but sent `entityId='MAIN'`.
+- The existing `save-inventory-count` Edge Function treats a non-null entityId as a branch UUID. It only resolves `app_settings.main_branch_id` when entityId is null.
+- Production check confirmed one app_settings row for the active company, its main_branch_id is configured, resolves to an existing branch in the same company, and has no broken mapping.
+
+Surgical source correction:
+- Changed only the payload expression in `warehouse/counter.html` from `entityId:entity||'MAIN'` to `entityId:entity||null`.
+- Commit: `204b36d7518a4fc88732f990ad3dfa0cec105124`.
+- GitHub readback confirms the new expression and absence of the old sentinel.
+- No Edge Function code, SQL data, or schema changed for this correction.
+
+**Status:** SOURCE CONTRACT CORRECTED / READBACK PASS / EDGE FUNCTION RUNTIME TEST OPEN. No active user currently has `active_warehouse_role='جرد'`, so a real Counter submission was not executed. The configured main branch is verified in Production, but the complete general-count workflow must still be tested with an authorized Counter identity.
