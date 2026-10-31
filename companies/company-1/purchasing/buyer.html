@@ -76,6 +76,8 @@ var App = {
     currentTab:'today',
     realtimeKey:null,
     needsLiveRefresh:false,
+    liveRefreshObserver:null,
+    custodySnapshot:null,
     search:'',
     cache:{},
     cacheAt:{},
@@ -145,33 +147,49 @@ var App = {
     startRealtime:function(){
         var self=this;
         if(!this.currentUser||!this.currentUser.company_id||typeof RW_Realtime==='undefined')return;
+        this.ensureLiveRefreshObserver();
         if(this.realtimeKey)RW_Realtime.stop(this.realtimeKey);
         this.realtimeKey=RW_Realtime.start({
             appId:'buyer',
             companyId:this.currentUser.company_id,
             tables:[
                 'purchase_requests',
+                {name:'purchase_request_details',companyColumn:false},
                 'purchase_rfqs',
+                {name:'purchase_rfq_details',companyColumn:false},
+                {name:'purchase_rfq_suppliers',companyColumn:false},
                 'purchase_quotations',
+                {name:'purchase_quotation_details',companyColumn:false},
                 'purchase_orders',
                 {name:'purchase_order_details',companyColumn:false},
                 'purchase_invoices',
+                {name:'purchase_invoice_details',companyColumn:false},
                 'purchase_payments',
+                'purchase_payment_allocations',
                 'purchase_returns',
+                {name:'purchase_return_details',companyColumn:false},
+                'purchase_status_history',
+                'purchase_attachments',
+                'purchase_document_links',
+                'purchase_settings',
+                'buyer_custodies',
+                'buyer_custody_expenses',
+                'buyer_custody_settlements',
                 'suppliers',
                 'items',
                 'branches',
                 {name:'stock_branches',companyColumn:false}
             ],
-            debounceMs:500,
-            reconcileMs:30000,
+            debounceMs:400,
+            reconcileMs:15000,
             onEvent:function(event){
                 self.invalidate();
                 var targets={
-                    suppliers:['suppliers','purchase_invoices','purchase_payments','purchase_returns'],
-                    requests:['purchase_requests','purchase_rfqs'],
-                    orders:['purchase_quotations','purchase_orders','purchase_order_details'],
-                    account:['purchase_invoices','purchase_payments','purchase_returns','suppliers']
+                    suppliers:['suppliers','purchase_invoices','purchase_invoice_details','purchase_payments','purchase_payment_allocations','purchase_returns','purchase_return_details'],
+                    requests:['purchase_requests','purchase_request_details','purchase_rfqs','purchase_rfq_details','purchase_rfq_suppliers','purchase_quotations','purchase_quotation_details','purchase_status_history'],
+                    orders:['purchase_quotations','purchase_quotation_details','purchase_orders','purchase_order_details','purchase_status_history','purchase_attachments','purchase_document_links'],
+                    account:['purchase_invoices','purchase_invoice_details','purchase_payments','purchase_payment_allocations','purchase_returns','purchase_return_details','suppliers'],
+                    custody:['buyer_custodies','buyer_custody_expenses','buyer_custody_settlements']
                 };
                 var relevant=self.currentTab==='today'||
                     (targets[self.currentTab]||[]).indexOf(event.table)!==-1;
@@ -207,6 +225,8 @@ var App = {
     },
     stopRealtime:function(){
         if(this.realtimeKey&&typeof RW_Realtime!=='undefined'){RW_Realtime.stop(this.realtimeKey);this.realtimeKey=null;}
+        if(this.liveRefreshObserver){this.liveRefreshObserver.disconnect();this.liveRefreshObserver=null;}
+        this.needsLiveRefresh=false;
     },
     doLogout:function(){
         this.stopRealtime();
@@ -227,9 +247,30 @@ var App = {
         this.renderCurrent();
     },
     renderCurrent:function(){
+        var self=this;
         var map={today:'renderToday',suppliers:'renderSuppliers',requests:'renderRequests',orders:'renderOrders',custody:'renderCustody',account:'renderAccount'};
         var fn=this[map[this.currentTab]];
-        if(typeof fn==='function')fn.call(this).catch(this.notifyError);
+        if(typeof fn!=='function')return;
+        Promise.resolve().then(function(){return fn.call(self);}).catch(function(error){self.showPageError(error);});
+    },
+    showPageError:function(error){
+        var message=error&&error.message?error.message:'تعذر تحميل بيانات الصفحة';
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),
+            '<div class="card border border-red-200"><div class="flex items-center gap-2 text-red-700 font-black"><i class="fa-solid fa-triangle-exclamation"></i> تعذر تحميل بيانات المشتريات</div>'+
+            '<p class="text-sm text-slate-600 mt-2">'+buyerEsc(message)+'</p>'+
+            '<button type="button" onclick="App.retryCurrent()" class="mt-4 px-4 py-2 rounded-xl bg-purple-700 text-white font-bold">إعادة المحاولة</button></div>');
+    },
+    retryCurrent:function(){this.invalidate();this.renderCurrent();},
+    ensureLiveRefreshObserver:function(){
+        if(this.liveRefreshObserver||typeof MutationObserver==='undefined'||!document.body)return;
+        var self=this;
+        this.liveRefreshObserver=new MutationObserver(function(){
+            if(!self.needsLiveRefresh||(typeof Swal!=='undefined'&&Swal.isVisible()))return;
+            self.needsLiveRefresh=false;
+            self.invalidate();
+            self.renderCurrent();
+        });
+        this.liveRefreshObserver.observe(document.body,{childList:true,subtree:true});
     },
     pageLoading:function(title){
         RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-12 text-purple-700"><i class="fa-solid fa-spinner fa-spin text-2xl"></i><p class="mt-3 font-bold">'+buyerEsc(title||'جاري التحميل')+'</p></div>');
@@ -512,10 +553,139 @@ var App = {
         html+='<div class="text-left font-black border-t pt-2">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div>';
         RW_UI.safeHTML(box,html);
     },
-    renderCustody:function(){
-        var html='<div class="mb-4"><h2 class="text-xl font-black">عهدتي</h2><p class="text-xs text-slate-500">رصيد العهدة والوارد والصرف والتسوية</p></div><div class="card border border-amber-200"><div class="text-amber-800 font-black mb-2">العقد المالي غير مكتمل — لا توجد شاشة تسجيل فعالة بعد</div><p class="text-sm text-slate-600">تم العثور على خزائن ومصروفات وسداد موردين، لكنها لا تمثل دفتر عهدة موظف مشتريات مستقلًا بمستلم ومسؤول عهدة ووارد وصرف ومرفقات واعتماد وتسوية. لن أستخدم treasury أو cash_box كبديل؛ لأن ذلك يخلط عهدة الموظف بحسابات خزينة الشركة.</p><p class="text-xs text-slate-400 mt-3">لا يوجد رصيد عهدة شخصي يمكن عرضه أو تعديله بأمان من العقد الحالي.</p></div>';
+    canFinanceCustody:function(){
+        var p=this.currentUser||{},perms=Array.isArray(p.permissions)?p.permissions:[];
+        return p.isOwner===true||perms.indexOf('*')!==-1||perms.indexOf('finance')!==-1;
+    },
+    renderCustody:async function(){
+        this.pageLoading('تحميل دفتر عهدتي');
+        var data=await this.api('GET_CUSTODY',{});
+        this.custodySnapshot=data||{};
+        var custodies=Array.isArray(data.custodies)?data.custodies:[],
+            expenses=Array.isArray(data.expenses)?data.expenses:[],
+            settlements=Array.isArray(data.settlements)?data.settlements:[],
+            finance=!!data.is_finance;
+        var issued=custodies.filter(function(c){return c.status!=='Settled'&&c.status!=='Closed';}).reduce(function(n,c){return n+Number(c.issued_amount||0);},0);
+        var pending=expenses.filter(function(e){return e.status==='Submitted';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
+        var approved=expenses.filter(function(e){return e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
+        var html='<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-black">عهدتي</h2><p class="text-xs text-slate-500 mt-1">سجل مستقل لعهد الموظفين والمستندات ومراجعة الإدارة المالية والتسوية اليدوية</p></div>'+
+            (finance?'<button type="button" onclick="App.issueCustody()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-hand-holding-dollar ml-2"></i>تسجيل تسليم عهدة</button>':'')+'</div>';
+        html+='<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">'+
+            '<div class="card"><small class="text-slate-500">العهد المفتوحة</small><b class="block text-xl mt-1">'+custodies.filter(function(c){return c.status!=='Settled'&&c.status!=='Closed';}).length+'</b></div>'+
+            '<div class="card"><small class="text-slate-500">إجمالي المبالغ المسلمة</small><b class="block text-lg mt-1">'+buyerMoney(issued,this.currency)+'</b></div>'+
+            '<div class="card"><small class="text-slate-500">مستندات قيد المراجعة</small><b class="block text-lg mt-1">'+buyerMoney(pending,this.currency)+'</b></div>'+
+            '<div class="card"><small class="text-slate-500">مصروفات معتمدة</small><b class="block text-lg mt-1">'+buyerMoney(approved,this.currency)+'</b></div></div>';
+        html+='<div class="p-3 rounded-xl bg-blue-50 text-blue-800 text-xs mb-4">التسجيل هنا توثيقي مستقل: المالية تسجل يدويًا مبلغ العهدة المسلّم، والموظف يرفع الفواتير/المستندات، والمالية تعتمد البنود وتسجل المبلغ النقدي المرتجع. لا يحدث ترحيل تلقائي للخزينة أو القيود المحاسبية.</div>';
+        if(!custodies.length)html+='<div class="card text-center py-10"><i class="fa-solid fa-wallet text-3xl text-slate-300"></i><p class="font-bold mt-3">لا توجد عهد مسجلة</p><p class="text-xs text-slate-400 mt-1">'+(finance?'ابدأ بتسجيل عهدة تم تسليمها يدويًا إلى الموظف.':'ستظهر هنا العهد المسجلة باسمك من الإدارة المالية.')+'</p></div>';
+        custodies.forEach(function(c){
+            var lines=expenses.filter(function(e){return e.custody_id===c.id;});
+            var approvedTotal=lines.filter(function(e){return e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
+            var pendingCount=lines.filter(function(e){return e.status==='Submitted';}).length;
+            var settlement=settlements.find(function(x){return x.custody_id===c.id;});
+            html+='<section class="card mb-3 border border-slate-100"><div class="flex flex-wrap justify-between gap-2"><div><b class="text-purple-800">'+buyerEsc(c.custody_code)+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(c.employee_name||'')+' · '+buyerDate(c.issued_date)+'</p></div><span class="px-3 py-1 rounded-full bg-slate-100 text-xs font-bold">'+buyerStatus(c.status)+'</span></div>'+
+                '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-sm"><div><small class="text-slate-400">المبلغ المسلّم</small><b class="block">'+buyerMoney(c.issued_amount,c.currency)+'</b></div><div><small class="text-slate-400">مصروفات معتمدة</small><b class="block">'+buyerMoney(approvedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مستندات معلقة</small><b class="block">'+pendingCount+'</b></div><div><small class="text-slate-400">الغرض</small><b class="block">'+buyerEsc(c.purpose)+'</b></div></div>'+
+                (c.received_reference?'<p class="text-xs text-slate-500 mt-2">مرجع التسليم اليدوي: '+buyerEsc(c.received_reference)+'</p>':'')+
+                '<div class="flex flex-wrap gap-2 mt-3">'+
+                (!finance&&c.status==='Issued'&&!c.acknowledged_at?'<button onclick="App.acknowledgeCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">تأكيد استلام المبلغ</button>':'')+
+                (!finance&&c.status!=='Settled'&&c.status!=='Closed'?'<button onclick="App.submitCustodyExpense(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-purple-700 text-white text-xs font-bold">تقديم فاتورة / مستند</button>':'')+
+                (finance&&c.status!=='Settled'&&c.status!=='Closed'&&pendingCount===0?'<button onclick="App.settleCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold">إقفال التسوية</button>':'')+
+                '</div>';
+            if(lines.length){
+                html+='<div class="mt-4 border-t pt-3"><h4 class="font-black text-sm mb-2">المستندات والمصروفات</h4><div class="space-y-2">';
+                lines.forEach(function(e){
+                    html+='<div class="p-3 rounded-xl bg-slate-50"><div class="flex flex-wrap justify-between gap-2"><b class="text-sm">'+buyerEsc(e.description)+'</b><b>'+buyerMoney(e.amount,e.currency)+'</b></div>'+
+                        '<p class="text-xs text-slate-500 mt-1">'+buyerEsc(e.supplier_name||'')+' '+(e.invoice_number?'· فاتورة '+buyerEsc(e.invoice_number):'')+' · '+buyerDate(e.expense_date)+'</p>'+
+                        '<div class="flex flex-wrap items-center gap-2 mt-2"><span class="text-xs font-bold">'+buyerStatus(e.status)+'</span><button onclick="App.viewCustodyDocument(\''+buyerEsc(e.document_path)+'\')" class="text-xs text-blue-700 underline">عرض المستند</button>'+
+                        (finance&&e.status==='Submitted'?'<button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Approved\')" class="text-xs text-emerald-700 font-bold">اعتماد</button><button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Rejected\')" class="text-xs text-red-700 font-bold">رفض</button>':'')+
+                        (e.review_note?'<p class="w-full text-xs text-slate-500">'+buyerEsc(e.review_note)+'</p>':'')+'</div></div>';
+                });
+                html+='</div></div>';
+            }
+            if(settlement)html+='<div class="mt-3 p-3 rounded-xl bg-emerald-50 text-emerald-800 text-xs">تمت التسوية · المصروفات المعتمدة: '+buyerMoney(settlement.approved_expense_total,c.currency)+' · النقد المرتجع: '+buyerMoney(settlement.cash_returned,c.currency)+' · مستحق الموظف: '+buyerMoney(settlement.amount_due_employee,c.currency)+' · المتبقي للشركة: '+buyerMoney(settlement.balance_due_company,c.currency)+'</div>';
+            html+='</section>';
+        });
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
-        return Promise.resolve();
+    },
+    issueCustody:async function(){
+        try{
+            var snapshot=this.custodySnapshot||await this.api('GET_CUSTODY',{});
+            var employees=snapshot.employees||[],branches=await this.data('branches');
+            if(!employees.length)throw new Error('لا يوجد موظفون نشطون مسجلون في الشركة');
+            var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">الموظف<select id="bc-employee" class="swal2-select w-full">'+employees.map(function(e){return '<option value="'+buyerEsc(e.id)+'">'+buyerEsc(e.name)+' · '+buyerEsc(e.email)+'</option>';}).join('')+'</select></label>'+
+                '<label class="block text-xs font-bold">الغرض<input id="bc-purpose" class="swal2-input" placeholder="مثال: مشتريات تشغيلية / مصروفات موردين"></label>'+
+                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bc-amount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="0.00"></label><label class="text-xs font-bold">العملة<input id="bc-currency" class="swal2-input" value="'+buyerEsc(this.currency||'SAR')+'"></label></div>'+
+                '<label class="block text-xs font-bold">الفرع<select id="bc-branch" class="swal2-select w-full"><option value="">بدون تحديد</option>'+branches.map(function(b){return '<option value="'+buyerEsc(b.id)+'">'+buyerEsc(b.name)+'</option>';}).join('')+'</select></label>'+
+                '<label class="block text-xs font-bold">مرجع التسليم اليدوي<input id="bc-reference" class="swal2-input" placeholder="رقم سند/إيصال الصرف أو مرجع داخلي"></label>'+
+                '<label class="block text-xs font-bold">ملاحظات<textarea id="bc-notes" class="swal2-textarea"></textarea></label>'+
+                '<p class="text-xs text-amber-700">تسجيل العهدة لا ينشئ حركة خزينة أو قيدًا محاسبيًا؛ يسجل فقط أن الإدارة المالية سلّمت المبلغ يدويًا.</p></div>';
+            var self=this;
+            var result=await Swal.fire({title:'تسجيل عهدة مسلّمة يدويًا',html:html,width:650,showCancelButton:true,confirmButtonText:'تسجيل التسليم',cancelButtonText:'إلغاء',preConfirm:async function(){
+                var amount=Number(RW_UI.byId('bc-amount').value||0),purpose=RW_UI.byId('bc-purpose').value.trim();
+                if(!purpose||amount<=0){Swal.showValidationMessage('أدخل الغرض ومبلغًا أكبر من صفر');return false;}
+                try{return await self.api('ISSUE_CUSTODY',{employee_id:RW_UI.byId('bc-employee').value,branch_id:RW_UI.byId('bc-branch').value||null,purpose:purpose,amount:amount,currency:RW_UI.byId('bc-currency').value.trim()||'SAR',received_reference:RW_UI.byId('bc-reference').value.trim()||null,notes:RW_UI.byId('bc-notes').value.trim()||null});}
+                catch(e){Swal.showValidationMessage(e.message);return false;}
+            }});
+            if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تسجيل العهدة يدويًا','success');}
+        }catch(e){this.notifyError(e);}
+    },
+    acknowledgeCustody:async function(id){
+        try{await this.api('ACKNOWLEDGE_CUSTODY',{custody_id:id});this.invalidate();await this.renderCustody();RW_UI.toast('تم تأكيد استلام العهدة','success');}
+        catch(e){this.notifyError(e);}
+    },
+    submitCustodyExpense:async function(custodyId){
+        var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">وصف المصروف<input id="bce-description" class="swal2-input" placeholder="سبب الصرف أو نوع المشتريات"></label>'+
+            '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bce-amount" type="number" min="0.01" step="0.01" class="swal2-input"></label><label class="text-xs font-bold">التاريخ<input id="bce-date" type="date" class="swal2-input" value="'+new Date().toISOString().slice(0,10)+'"></label></div>'+
+            '<label class="block text-xs font-bold">المورد<input id="bce-supplier" class="swal2-input"></label><label class="block text-xs font-bold">رقم الفاتورة<input id="bce-invoice" class="swal2-input"></label>'+
+            '<label class="block text-xs font-bold">صورة الفاتورة أو المستند (PDF / صورة)<input id="bce-file" type="file" accept="application/pdf,image/*" class="swal2-file"></label><p class="text-xs text-slate-400">الحد الأقصى 10 ميجابايت. يتم حفظ الملف في مساحة المستندات الخاصة بالشركة.</p></div>';
+        var self=this;
+        var result=await Swal.fire({title:'تقديم مستند للتسوية',html:html,width:650,showCancelButton:true,confirmButtonText:'إرسال للمالية',cancelButtonText:'إلغاء',preConfirm:async function(){
+            var file=RW_UI.byId('bce-file').files[0],amount=Number(RW_UI.byId('bce-amount').value||0),description=RW_UI.byId('bce-description').value.trim();
+            if(!file||!description||amount<=0){Swal.showValidationMessage('أدخل الوصف والمبلغ وارفق المستند');return false;}
+            if(file.size>10*1024*1024||!(file.type==='application/pdf'||file.type.indexOf('image/')===0)){Swal.showValidationMessage('يسمح بملف PDF أو صورة لا تتجاوز 10 ميجابايت');return false;}
+            var safeName=file.name.replace(/[^A-Za-z0-9._-]/g,'_').slice(-80)||'document';
+            var path=self.currentUser.company_id+'/'+self.currentUser.id+'/buyer-custody/'+custodyId+'/'+Date.now()+'_'+safeName;
+            var uploaded=await supabase.storage.from('employee-documents').upload(path,file,{cacheControl:'3600',upsert:false,contentType:file.type});
+            if(uploaded.error){Swal.showValidationMessage('تعذر رفع المستند: '+uploaded.error.message);return false;}
+            try{
+                return await self.api('SUBMIT_CUSTODY_EXPENSE',{custody_id:custodyId,expense_date:RW_UI.byId('bce-date').value||null,supplier_name:RW_UI.byId('bce-supplier').value.trim()||null,invoice_number:RW_UI.byId('bce-invoice').value.trim()||null,description:description,amount:amount,currency:self.currency||'SAR',document_name:file.name,document_path:path,mime_type:file.type});
+            }catch(e){
+                await supabase.storage.from('employee-documents').remove([path]);
+                Swal.showValidationMessage(e.message);return false;
+            }
+        }});
+        if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم إرسال المستند إلى الإدارة المالية','success');}
+    },
+    viewCustodyDocument:async function(path){
+        try{
+            var result=await supabase.storage.from('employee-documents').createSignedUrl(path,300);
+            if(result.error)throw result.error;
+            window.open(result.data.signedUrl,'_blank','noopener');
+        }catch(e){this.notifyError(e);}
+    },
+    reviewCustodyExpense:async function(expenseId,decision){
+        var decisionText=decision==='Approved'?'اعتماد المستند':'رفض المستند';
+        var result=await Swal.fire({title:decisionText,input:'textarea',inputLabel:'ملاحظة المراجعة',inputPlaceholder:'سبب الاعتماد أو الرفض (اختياري)',showCancelButton:true,confirmButtonText:'تأكيد',cancelButtonText:'إلغاء'});
+        if(!result.isConfirmed)return;
+        try{await this.api('REVIEW_CUSTODY_EXPENSE',{expense_id:expenseId,decision:decision,review_note:result.value||null});this.invalidate();await this.renderCustody();RW_UI.toast('تم تحديث مراجعة المستند','success');}
+        catch(e){this.notifyError(e);}
+    },
+    settleCustody:async function(custodyId){
+        var custody=(this.custodySnapshot&&this.custodySnapshot.custodies||[]).find(function(c){return c.id===custodyId;});
+        var lines=(this.custodySnapshot&&this.custodySnapshot.expenses||[]).filter(function(e){return e.custody_id===custodyId&&e.status==='Approved';});
+        var approved=lines.reduce(function(n,e){return n+Number(e.amount||0);},0);
+        if(!custody)return;
+        var maxReturn=Math.max(0,Number(custody.issued_amount||0)-approved);
+        var result=await Swal.fire({title:'تسوية العهدة '+buyerEsc(custody.custody_code),html:'<div class="text-right text-sm mb-3">المبلغ المسلّم: <b>'+buyerMoney(custody.issued_amount,custody.currency)+'</b><br>المصروفات المعتمدة: <b>'+buyerMoney(approved,custody.currency)+'</b><br>الحد الأقصى للنقد المرتجع: <b>'+buyerMoney(maxReturn,custody.currency)+'</b></div><label class="block text-xs font-bold text-right">النقد المرتجع فعليًا<input id="bcs-return" type="number" min="0" max="'+maxReturn+'" step="0.01" class="swal2-input" value="0"></label><label class="block text-xs font-bold text-right">مرجع استلام النقد المرتجع<input id="bcs-reference" class="swal2-input"></label><label class="block text-xs font-bold text-right">ملاحظات<textarea id="bcs-notes" class="swal2-textarea"></textarea></label>',showCancelButton:true,confirmButtonText:'تسجيل التسوية',cancelButtonText:'إلغاء',preConfirm:function(){
+            var returned=Number(RW_UI.byId('bcs-return').value||0);
+            if(returned<0||returned>maxReturn){Swal.showValidationMessage('قيمة النقد المرتجع خارج الحد المسموح');return false;}
+            return {cash_returned:returned,finance_reference:RW_UI.byId('bcs-reference').value.trim()||null,notes:RW_UI.byId('bcs-notes').value.trim()||null};
+        }});
+        if(!result.isConfirmed)return;
+        try{
+            var settled=await this.api('SETTLE_CUSTODY',{custody_id:custodyId,cash_returned:result.value.cash_returned,finance_reference:result.value.finance_reference,notes:result.value.notes});
+            this.invalidate();await this.renderCustody();
+            RW_UI.toast('تمت التسوية · مستحق الموظف: '+buyerMoney(settled.amount_due_employee,custody.currency)+' · المتبقي للشركة: '+buyerMoney(settled.balance_due_company,custody.currency),'success');
+        }catch(e){this.notifyError(e);}
     },
     renderAccount:async function(){
         this.pageLoading('تحميل ملف المشتري');
