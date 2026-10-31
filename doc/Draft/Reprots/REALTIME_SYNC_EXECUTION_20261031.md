@@ -282,3 +282,13 @@ Independent report: `doc/Draft/Reprots/REALTIME_SYNC_PHASE3_INVENTORY_COUNTS_202
 - Overall Realtime remains OPEN; no publication broadening or Cloudflare deployment was done.
 
 Phase 3 inventory_counts tenant-boundary subtask: **COMPLETE for SQL policy/grant boundary and source query hardening; runtime browser/Counter E2E remains OPEN.**
+
+
+## 11. Counter general-count payload correction
+
+- Independent report updated: `doc/Draft/Reprots/REALTIME_SYNC_PHASE3_INVENTORY_COUNTS_20261031.md`.
+- Confirmed mismatch: Counter sent `entityId='MAIN'` for an empty general-count entity; Edge Function expects null to resolve `app_settings.main_branch_id`.
+- Production main branch configuration is present and maps to a branch in the same company.
+- Corrected the single payload expression to `entityId:entity||null`.
+- Commit: `204b36d7518a4fc88732f990ad3dfa0cec105124`; GitHub readback PASS.
+- Edge Function runtime submission remains OPEN because there is no active Counter-role user to run a real submission.
