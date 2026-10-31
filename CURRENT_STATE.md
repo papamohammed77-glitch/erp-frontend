@@ -1,3 +1,16 @@
+# PHASE 1 COMPLETE — REALTIME CONSUMER CENSUS & RLS REVIEW — 2026-10-31
+
+- Detailed record: `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md` (Phase 1, section 6).
+- Repository census: 29 HTML entry points; 6 explicitly call `RW_Realtime.start`; 23 do not explicitly start it in their own source. Do not call the 23 defects until router/bootstrap and freshness requirements are traced.
+- Current explicit subscribers: Purchasing Buyer (`purchase_orders`), Purchasing Supervisor (`purchase_orders`), Warehouse Loader (`runsheets`), Warehouse Manager (`stock_vouchers,purchase_orders`), Warehouse Receiver (`purchase_orders`), Warehouse Supervisor (`purchase_orders,stock_vouchers`).
+- Production RLS definitions inspected for branches, customers, items, stock_branches, purchase_orders, stock_vouchers, runsheets. Tenant company predicates exist in the inspected policies; stock_branches is scoped through the owning branch relation.
+- Runtime two-company isolation, all mutation policy completeness, and Realtime delivery under authenticated JWTs remain OPEN.
+- Phase 1 source census/policy-definition review: COMPLETE. Overall synchronization: OPEN.
+- Next priority: trace parent/router bootstrap, classify all 23 non-explicit subscribers by freshness requirement, then run authenticated cross-company isolation tests before adding more subscriptions.
+- Phase 1 report commit: `ec88aff753672a5de49018fddaef2e47d360ee01`.
+
+---
+
 # LATEST VERIFIED CHECKPOINT — 2026-10-31 — REALTIME SYNCHRONIZATION CONTINUATION
 
 - Detailed execution record: `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md`.
