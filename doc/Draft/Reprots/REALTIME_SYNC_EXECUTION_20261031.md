@@ -143,3 +143,8 @@ No further subscription was added during this phase. The next priority is tracin
 **Classification of all 23 non-explicit subscribers by operational freshness requirement: OPEN.**
 
 Next: retrieve the parent source via a bounded raw/blob read, map each app's data dependencies to its actual refresh path (Realtime, focus/visibility, polling, explicit user refresh, or static/read-only), and test direct-channel event scoping. No broad subscription edits until this matrix is complete.
+
+
+### Additional Phase 2 retrieval attempt
+
+A second read attempt through the repository's raw-content endpoint also failed because the parent `main.html` exceeds the connector's supported response size. This confirms a tooling/read-size blocker, not a source-code defect. The next retrieval method must be a bounded Git blob/range extraction or local repository checkout; no parent-code conclusion is drawn.
