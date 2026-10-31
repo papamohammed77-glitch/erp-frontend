@@ -53,13 +53,14 @@ serve(async (req) => {
     }
     const effectivePermissions = Array.isArray(profile.permissions) ? profile.permissions.map((x: any) => String(x)) : [];
     const isOwner = profile.isOwner === true;
+    const hasPermission = (key: string) => isOwner || effectivePermissions.includes("*") || effectivePermissions.includes(key);
     const requireAny = (keys: string[]) => {
-      if (!isOwner && !keys.some((key) => effectivePermissions.includes(key))) {
+      if (!keys.some(hasPermission)) {
         throw new Error("لا تملك صلاحية تنفيذ عملية المشتريات المطلوبة");
       }
     };
     const requireAll = (keys: string[]) => {
-      if (!isOwner && !keys.every((key) => effectivePermissions.includes(key))) {
+      if (!keys.every(hasPermission)) {
         throw new Error("تتطلب هذه العملية صلاحيات المشتريات والمالية");
       }
     };
