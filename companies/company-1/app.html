@@ -131,17 +131,21 @@ var App = {
     },
 
     redirectAfterLogin: function() {
-        supabase.auth.getSession().then(function(res) {
-            var user = res.data.session ? res.data.session.user : null;
-            if (!user) return;
-            var meta = user.user_metadata || {};
-            var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-            var perms = meta.permissions || [];
-
-            supabase.from('users').select('active_warehouse_role').eq('email', user.email).single().then(function(r) {
-                var activeWarehouseRole = (r.data && r.data.active_warehouse_role) ? r.data.active_warehouse_role : '';
-                App._doRedirect(isOwner, perms, activeWarehouseRole);
-            });
+        supabase.rpc('get_my_effective_profile').then(function(result) {
+            if (result.error) throw result.error;
+            var profile = result.data;
+            if (!profile || !profile.company_id || !Array.isArray(profile.permissions)) {
+                throw new Error('تعذر تحميل ملف المستخدم وصلاحياته الفعالة');
+            }
+            App._doRedirect(
+                profile.isOwner === true,
+                profile.permissions,
+                profile.active_warehouse_role || ''
+            );
+        }).catch(function(err) {
+            console.error('[Auth] Effective profile load failed:', err);
+            byId('loginMsg').innerText = 'تعذر تحميل صلاحياتك الفعالة. أعد المحاولة أو تواصل مع مسؤول النظام.';
+            byId('loginMsg').classList.remove('hidden');
         });
     },
 
