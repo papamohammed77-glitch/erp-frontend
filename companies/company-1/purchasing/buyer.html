@@ -565,6 +565,7 @@ var App = {
             expenses=Array.isArray(data.expenses)?data.expenses:[],
             settlements=Array.isArray(data.settlements)?data.settlements:[],
             finance=!!data.is_finance;
+        var currentEmployeeId=(this.currentUser||{}).id;
         var issued=custodies.filter(function(c){return c.status!=='Settled'&&c.status!=='Closed';}).reduce(function(n,c){return n+Number(c.issued_amount||0);},0);
         var pending=expenses.filter(function(e){return e.status==='Submitted';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
         var approved=expenses.filter(function(e){return e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
@@ -586,9 +587,9 @@ var App = {
                 '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-sm"><div><small class="text-slate-400">المبلغ المسلّم</small><b class="block">'+buyerMoney(c.issued_amount,c.currency)+'</b></div><div><small class="text-slate-400">مصروفات معتمدة</small><b class="block">'+buyerMoney(approvedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مستندات معلقة</small><b class="block">'+pendingCount+'</b></div><div><small class="text-slate-400">الغرض</small><b class="block">'+buyerEsc(c.purpose)+'</b></div></div>'+
                 (c.received_reference?'<p class="text-xs text-slate-500 mt-2">مرجع التسليم اليدوي: '+buyerEsc(c.received_reference)+'</p>':'')+
                 '<div class="flex flex-wrap gap-2 mt-3">'+
-                (!finance&&c.status==='Issued'&&!c.acknowledged_at?'<button onclick="App.acknowledgeCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">تأكيد استلام المبلغ</button>':'')+
-                (!finance&&c.status!=='Settled'&&c.status!=='Closed'?'<button onclick="App.submitCustodyExpense(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-purple-700 text-white text-xs font-bold">تقديم فاتورة / مستند</button>':'')+
-                (finance&&c.status!=='Settled'&&c.status!=='Closed'&&pendingCount===0?'<button onclick="App.settleCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold">إقفال التسوية</button>':'')+
+                (c.employee_id===currentEmployeeId&&c.status==='Issued'&&!c.acknowledged_at?'<button onclick="App.acknowledgeCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">تأكيد استلام المبلغ</button>':'')+
+                (c.employee_id===currentEmployeeId&&c.status!=='Settled'&&c.status!=='Closed'?'<button onclick="App.submitCustodyExpense(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-purple-700 text-white text-xs font-bold">تقديم فاتورة / مستند</button>':'')+
+                (finance&&c.employee_id!==currentEmployeeId&&c.status!=='Settled'&&c.status!=='Closed'&&pendingCount===0?'<button onclick="App.settleCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold">إقفال التسوية</button>':'')+
                 '</div>';
             if(lines.length){
                 html+='<div class="mt-4 border-t pt-3"><h4 class="font-black text-sm mb-2">المستندات والمصروفات</h4><div class="space-y-2">';
@@ -596,7 +597,7 @@ var App = {
                     html+='<div class="p-3 rounded-xl bg-slate-50"><div class="flex flex-wrap justify-between gap-2"><b class="text-sm">'+buyerEsc(e.description)+'</b><b>'+buyerMoney(e.amount,e.currency)+'</b></div>'+
                         '<p class="text-xs text-slate-500 mt-1">'+buyerEsc(e.supplier_name||'')+' '+(e.invoice_number?'· فاتورة '+buyerEsc(e.invoice_number):'')+' · '+buyerDate(e.expense_date)+'</p>'+
                         '<div class="flex flex-wrap items-center gap-2 mt-2"><span class="text-xs font-bold">'+buyerStatus(e.status)+'</span><button onclick="App.viewCustodyDocument(\''+buyerEsc(e.document_path)+'\')" class="text-xs text-blue-700 underline">عرض المستند</button>'+
-                        (finance&&e.status==='Submitted'?'<button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Approved\')" class="text-xs text-emerald-700 font-bold">اعتماد</button><button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Rejected\')" class="text-xs text-red-700 font-bold">رفض</button>':'')+
+                        (finance&&e.employee_id!==currentEmployeeId&&e.status==='Submitted'?'<button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Approved\')" class="text-xs text-emerald-700 font-bold">اعتماد</button><button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Rejected\')" class="text-xs text-red-700 font-bold">رفض</button>':'')+
                         (e.review_note?'<p class="w-full text-xs text-slate-500">'+buyerEsc(e.review_note)+'</p>':'')+'</div></div>';
                 });
                 html+='</div></div>';
