@@ -78,7 +78,7 @@ serve(async (req) => {
     } else if (["ISSUE_CUSTODY", "REVIEW_CUSTODY_EXPENSE", "SETTLE_CUSTODY"].includes(op)) {
       requireAny(["finance", "finance_manager"]);
     } else if (["SUBMIT_CUSTODY_EXPENSE", "ACKNOWLEDGE_CUSTODY"].includes(op)) {
-      requireAny(["purchases", "finance"]);
+      requireAny(["purchases", "finance", "finance_manager"]);
     } else if (op === "GET_CUSTODY") {
       requireAny(["purchases", "finance"]);
     } else if (op === "GET_DATA") {
