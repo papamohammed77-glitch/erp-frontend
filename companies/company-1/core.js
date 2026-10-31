@@ -785,4 +785,217 @@ function esc(s) {
 }
 
 console.log('✅ core.js – النواة المشتركة للروائع ERP – تم التحميل بنجاح');
-console.log('   RW_Auth | RW_DB | RW_API | RW_UI | RW_ImageCache | RW_SW');
+
+// ============================================================
+// الوحدة ٧: RW_Realtime – محرك أحداث موحد للتطبيقات التشغيلية
+// مصدره العقد المعتمد في Current/PWA/core.js؛ نطاق الشركة يتحقق من RW_Auth.
+// ============================================================
+// الوحدة ٧: RW_Realtime – محرك أحداث موحد للتطبيقات التشغيلية
+// لا يقرأ الحدث كحقيقة أعمال؛ كل مستهلك يعيد الجلب عبر RLS.
+// ============================================================
+var RW_Realtime = (function() {
+    var active = {};
+    var serial = 0;
+    var authListener = null;
+
+    function safePart(value) {
+        return String(value || '').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 48);
+    }
+
+    function notifyStatus(state, status, error) {
+        state.status = status;
+        if (typeof state.onStatus === 'function') {
+            try { state.onStatus({ appId: state.appId, status: status, error: error || null }); }
+            catch (e) { console.error('[RW_Realtime] onStatus failed:', e); }
+        }
+    }
+
+    function reconcile(state, reason) {
+        if (state.stopped || typeof state.onReconcile !== 'function') return;
+        try {
+            Promise.resolve(state.onReconcile({ source: reason || 'reconcile', appId: state.appId }))
+                .catch(function(e) { console.error('[RW_Realtime] reconciliation failed:', e); });
+        } catch (e) {
+            console.error('[RW_Realtime] reconciliation failed:', e);
+        }
+    }
+
+    function queueEvent(state, table, eventName, payload) {
+        if (state.stopped) return;
+        if (typeof document !== 'undefined' && document.hidden) {
+            state.needsReconcile = true;
+            return;
+        }
+        if (state.pending[table]) clearTimeout(state.pending[table]);
+        state.pending[table] = setTimeout(function() {
+            delete state.pending[table];
+            if (state.stopped || typeof state.onEvent !== 'function') return;
+            try {
+                state.onEvent({
+                    table: table,
+                    event: eventName,
+                    commitTimestamp: payload && payload.commit_timestamp ? payload.commit_timestamp : null,
+                    source: 'realtime',
+                    appId: state.appId
+                });
+            } catch (e) {
+                console.error('[RW_Realtime] event consumer failed:', table, e);
+            }
+        }, state.debounceMs);
+    }
+
+    function normalizeTables(tables) {
+        var result = [];
+        var seen = {};
+        (tables || []).forEach(function(entry) {
+            var spec = typeof entry === 'string' ? { name: entry } : entry;
+            if (!spec || !/^[a-z][a-z0-9_]*$/.test(spec.name || '') || seen[spec.name]) return;
+            seen[spec.name] = true;
+            result.push({
+                name: spec.name,
+                companyColumn: spec.companyColumn !== false,
+                events: ['INSERT', 'UPDATE']
+            });
+        });
+        return result;
+    }
+
+    function start(config) {
+        config = config || {};
+        if (!supabase || typeof supabase.channel !== 'function') return false;
+        if (!config.appId || !config.companyId || typeof config.onEvent !== 'function') return false;
+        // Tenant scope must come from the verified public profile, never caller metadata.
+        var verifiedUser = (typeof RW_Auth !== 'undefined' && RW_Auth && typeof RW_Auth.getUser === 'function')
+            ? RW_Auth.getUser() : null;
+        if (!verifiedUser || !verifiedUser.company_id ||
+            String(verifiedUser.company_id) !== String(config.companyId)) return false;
+
+        var tables = normalizeTables(config.tables);
+        if (!tables.length) return false;
+
+        var key = safePart(config.appId) + ':' + safePart(config.companyId);
+        if (active[key]) stop(key);
+
+        var state = {
+            key: key,
+            appId: String(config.appId),
+            companyId: String(config.companyId),
+            tables: tables,
+            onEvent: config.onEvent,
+            onStatus: config.onStatus,
+            onReconcile: config.onReconcile,
+            debounceMs: Math.max(100, Number(config.debounceMs) || 350),
+            reconcileMs: Math.max(15000, Number(config.reconcileMs) || 60000),
+            pending: {},
+            channel: null,
+            status: 'CONNECTING',
+            wasSubscribed: false,
+            needsReconcile: false,
+            stopped: false
+        };
+
+        if (!authListener && supabase.auth && typeof supabase.auth.onAuthStateChange === 'function') {
+            authListener = supabase.auth.onAuthStateChange(function(event, session) {
+                if (session && session.access_token && supabase.realtime &&
+                    typeof supabase.realtime.setAuth === 'function') {
+                    supabase.realtime.setAuth(session.access_token);
+                }
+                if (event === 'SIGNED_OUT') stopAll();
+            });
+        }
+
+        var channelName = 'rw-core-' + safePart(state.appId) + '-' +
+            safePart(state.companyId) + '-' + (++serial);
+        var channel = supabase.channel(channelName);
+
+        tables.forEach(function(spec) {
+            spec.events.forEach(function(eventName) {
+                var filter = {
+                    event: eventName,
+                    schema: 'public',
+                    table: spec.name
+                };
+                if (spec.companyColumn) {
+                    filter.filter = 'company_id=eq.' + state.companyId;
+                }
+                channel.on('postgres_changes', filter, function(payload) {
+                    queueEvent(state, spec.name, eventName, payload);
+                });
+            });
+        });
+
+        state.channel = channel;
+        active[key] = state;
+        channel.subscribe(function(status, error) {
+            if (state.stopped) return;
+            notifyStatus(state, status, error);
+            if (status === 'SUBSCRIBED') {
+                if (state.wasSubscribed || state.needsReconcile) reconcile(state, 'reconnected');
+                state.wasSubscribed = true;
+                state.needsReconcile = false;
+            }
+        });
+
+        if (typeof state.onReconcile === 'function') {
+            state.reconcileTimer = setInterval(function() {
+                if (!state.stopped && !(typeof document !== 'undefined' && document.hidden)) {
+                    reconcile(state, 'periodic');
+                } else {
+                    state.needsReconcile = true;
+                }
+            }, state.reconcileMs);
+        }
+
+        if (typeof document !== 'undefined' && !state.visibilityHandler) {
+            state.visibilityHandler = function() {
+                if (!document.hidden && state.needsReconcile) {
+                    state.needsReconcile = false;
+                    reconcile(state, 'visibility');
+                }
+            };
+            document.addEventListener('visibilitychange', state.visibilityHandler);
+        }
+
+        return key;
+    }
+
+    function stop(key) {
+        var state = active[key];
+        if (!state) return false;
+        state.stopped = true;
+        Object.keys(state.pending).forEach(function(table) {
+            clearTimeout(state.pending[table]);
+        });
+        if (state.reconcileTimer) clearInterval(state.reconcileTimer);
+        if (state.visibilityHandler && typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', state.visibilityHandler);
+        }
+        delete active[key];
+        try {
+            if (state.channel && supabase && typeof supabase.removeChannel === 'function') {
+                supabase.removeChannel(state.channel);
+            }
+        } catch (e) {
+            console.warn('[RW_Realtime] channel cleanup failed:', e);
+        }
+        return true;
+    }
+
+    function stopAll() {
+        Object.keys(active).forEach(function(key) { stop(key); });
+    }
+
+    function getStatus(key) {
+        return active[key] ? active[key].status : 'STOPPED';
+    }
+
+    return {
+        start: start,
+        stop: stop,
+        stopAll: stopAll,
+        getStatus: getStatus
+    };
+})();
+
+
+console.log('   RW_Auth | RW_DB | RW_API | RW_UI | RW_ImageCache | RW_SW | RW_Realtime');
