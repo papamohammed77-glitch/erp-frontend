@@ -639,6 +639,8 @@ var App = {
         catch(e){this.notifyError(e);}
     },
     submitCustodyExpense:async function(custodyId){
+        var custodyRecord=(this.custodySnapshot&&this.custodySnapshot.custodies||[]).find(function(c){return c.id===custodyId;});
+        var custodyCurrency=custodyRecord&&custodyRecord.currency?custodyRecord.currency:(this.currency||'SAR');
         var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">وصف المصروف<input id="bce-description" class="swal2-input" placeholder="سبب الصرف أو نوع المشتريات"></label>'+
             '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bce-amount" type="number" min="0.01" step="0.01" class="swal2-input"></label><label class="text-xs font-bold">التاريخ<input id="bce-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label></div>'+
             '<label class="block text-xs font-bold">المورد<input id="bce-supplier" class="swal2-input"></label><label class="block text-xs font-bold">رقم الفاتورة<input id="bce-invoice" class="swal2-input"></label>'+
@@ -653,7 +655,7 @@ var App = {
             var uploaded=await supabase.storage.from('employee-documents').upload(path,file,{cacheControl:'3600',upsert:false,contentType:file.type});
             if(uploaded.error){Swal.showValidationMessage('تعذر رفع المستند: '+uploaded.error.message);return false;}
             try{
-                return await self.api('SUBMIT_CUSTODY_EXPENSE',{custody_id:custodyId,expense_date:RW_UI.byId('bce-date').value||null,supplier_name:RW_UI.byId('bce-supplier').value.trim()||null,invoice_number:RW_UI.byId('bce-invoice').value.trim()||null,description:description,amount:amount,currency:self.currency||'SAR',document_name:file.name,document_path:path,mime_type:file.type});
+                return await self.api('SUBMIT_CUSTODY_EXPENSE',{custody_id:custodyId,expense_date:RW_UI.byId('bce-date').value||null,supplier_name:RW_UI.byId('bce-supplier').value.trim()||null,invoice_number:RW_UI.byId('bce-invoice').value.trim()||null,description:description,amount:amount,currency:custodyCurrency,document_name:file.name,document_path:path,mime_type:file.type});
             }catch(e){
                 await supabase.storage.from('employee-documents').remove([path]);
                 Swal.showValidationMessage(e.message);return false;
@@ -681,9 +683,9 @@ var App = {
         var approved=lines.reduce(function(n,e){return n+Number(e.amount||0);},0);
         if(!custody)return;
         var maxReturn=Math.max(0,Number(custody.issued_amount||0)-approved);
-        var result=await Swal.fire({title:'تسوية العهدة '+buyerEsc(custody.custody_code),html:'<div class="text-right text-sm mb-3">المبلغ المسلّم: <b>'+buyerMoney(custody.issued_amount,custody.currency)+'</b><br>المصروفات المعتمدة: <b>'+buyerMoney(approved,custody.currency)+'</b><br>الحد الأقصى للنقد المرتجع: <b>'+buyerMoney(maxReturn,custody.currency)+'</b></div><label class="block text-xs font-bold text-right">النقد المرتجع فعليًا<input id="bcs-return" type="number" min="0" max="'+maxReturn+'" step="0.01" class="swal2-input" value="0"></label><label class="block text-xs font-bold text-right">مرجع استلام النقد المرتجع<input id="bcs-reference" class="swal2-input"></label><label class="block text-xs font-bold text-right">ملاحظات<textarea id="bcs-notes" class="swal2-textarea"></textarea></label>',showCancelButton:true,confirmButtonText:'تسجيل التسوية',cancelButtonText:'إلغاء',preConfirm:function(){
+        var result=await Swal.fire({title:'تسوية العهدة '+buyerEsc(custody.custody_code),html:'<div class="text-right text-sm mb-3">المبلغ المسلّم: <b>'+buyerMoney(custody.issued_amount,custody.currency)+'</b><br>المصروفات المعتمدة: <b>'+buyerMoney(approved,custody.currency)+'</b><br>النقد المطلوب استلامه لإغلاق العهدة: <b>'+buyerMoney(maxReturn,custody.currency)+'</b></div><label class="block text-xs font-bold text-right">النقد المرتجع فعليًا<input id="bcs-return" type="number" min="0" max="'+maxReturn+'" step="0.01" class="swal2-input" value="'+maxReturn.toFixed(2)+'"></label><label class="block text-xs font-bold text-right">مرجع استلام النقد المرتجع<input id="bcs-reference" class="swal2-input"></label><label class="block text-xs font-bold text-right">ملاحظات<textarea id="bcs-notes" class="swal2-textarea"></textarea></label>',showCancelButton:true,confirmButtonText:'تسجيل التسوية',cancelButtonText:'إلغاء',preConfirm:function(){
             var returned=Number(RW_UI.byId('bcs-return').value||0);
-            if(returned<0||returned>maxReturn){Swal.showValidationMessage('قيمة النقد المرتجع خارج الحد المسموح');return false;}
+            if(returned<0||Math.abs(returned-maxReturn)>0.005){Swal.showValidationMessage('لا يمكن إقفال العهدة قبل استلام كامل الرصيد النقدي غير المصروف. المبلغ المطلوب استلامه: '+buyerMoney(maxReturn,custody.currency));return false;}
             return {cash_returned:returned,finance_reference:RW_UI.byId('bcs-reference').value.trim()||null,notes:RW_UI.byId('bcs-notes').value.trim()||null};
         }});
         if(!result.isConfirmed)return;
