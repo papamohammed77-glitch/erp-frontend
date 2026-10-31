@@ -73,3 +73,47 @@ Reason: the existing `onEvent` handler explicitly reacts to both tables, while t
 - Overall synchronization mission: **OPEN — NOT CLOSED**
 
 No claim of full synchronization or 100% completion is authorized by this checkpoint.
+
+
+## 6. Phase 1 — Application consumer census and RLS policy inspection (2026-10-31)
+
+### Application entry-point census
+
+Repository tree query returned 29 HTML entry points under `companies/company-1/`. Each file was fetched from `main` and scanned for shared-core loading and explicit `RW_Realtime.start` usage.
+
+**Six entry points explicitly start Realtime:**
+
+| Application | Subscribed tables |
+|---|---|
+| Purchasing Buyer | `purchase_orders` |
+| Purchasing Supervisor | `purchase_orders` |
+| Warehouse Loader | `runsheets` |
+| Warehouse Manager | `stock_vouchers`, `purchase_orders` |
+| Warehouse Receiver | `purchase_orders` |
+| Warehouse Supervisor | `purchase_orders`, `stock_vouchers` |
+
+**23 other HTML entry points do not contain an explicit `RW_Realtime.start` call in their current source.** This is a confirmed source observation, not yet a defect classification. Some may be intentionally read-only, router-driven, or use another refresh mechanism. The parent `main.html` and `app.html` also do not directly contain the scanned core/Realtime identifiers; their runtime loading path must be traced through the router/bootstrap before classification.
+
+### RLS policy inspection
+
+Production `pg_policies` definitions were queried for `branches`, `customers`, `items`, `stock_branches`, `purchase_orders`, `stock_vouchers`, and `runsheets`.
+
+Confirmed:
+- `branches`, `customers`, `items`, `purchase_orders`, `stock_vouchers`, and `runsheets` have company predicates in the inspected policies.
+- `stock_branches` SELECT policies scope rows through an `EXISTS` lookup to `branches` where `branches.company_id = app_private.current_user_company_id()`; other specialized policies additionally constrain branch assignment/mobile branch.
+- `customers` and `items` include specialized delivery and sales-entry policies; these require role-context E2E verification because policy permissiveness combines multiple SELECT policies.
+- `purchase_orders` and `stock_vouchers` SELECT policies inspected here use `company_id = app_private.current_user_company_id()`.
+
+Not established:
+- Effective behavior under real authenticated JWTs for two separate companies.
+- INSERT/UPDATE/DELETE policy completeness for every operational table.
+- Realtime event delivery/visibility under authenticated tenant contexts.
+- Whether any router or service worker injects refresh behavior for the 23 pages without explicit subscriptions.
+
+### Phase 1 decision
+
+**Phase 1 source census and policy-definition review: COMPLETE.**  
+**Tenant isolation runtime proof: OPEN.**  
+**All-app Realtime integration: OPEN.**
+
+No further subscription was added during this phase. The next priority is tracing the parent/router bootstrap and classifying each of the 23 pages by actual data freshness requirement, then performing authenticated two-company isolation tests before broadening subscriptions.
