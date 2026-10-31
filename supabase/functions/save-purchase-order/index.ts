@@ -76,7 +76,7 @@ serve(async (req) => {
     } else if (op === "SAVE_SUPPLIER") {
       requireAny(["purchases", "suppliers"]);
     } else if (["ISSUE_CUSTODY", "REVIEW_CUSTODY_EXPENSE", "SETTLE_CUSTODY"].includes(op)) {
-      requireAny(["finance"]);
+      requireAny(["finance", "finance_manager"]);
     } else if (["SUBMIT_CUSTODY_EXPENSE", "ACKNOWLEDGE_CUSTODY"].includes(op)) {
       requireAny(["purchases", "finance"]);
     } else if (op === "GET_CUSTODY") {
@@ -288,7 +288,7 @@ serve(async (req) => {
         p_finance_reference: p.finance_reference || null, p_notes: p.notes || null
       }));
     } else if (op === "GET_CUSTODY") {
-      const financeView = hasPermission("finance");
+      const financeView = hasPermission("finance") || hasPermission("finance_manager");
       let custodyQuery = sb.from("buyer_custodies").select("*").eq("company_id", companyId)
         .order("issued_date", { ascending: false }).limit(200);
       if (!financeView) custodyQuery = custodyQuery.eq("employee_id", profile.id);
