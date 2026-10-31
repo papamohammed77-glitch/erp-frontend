@@ -930,7 +930,8 @@ var RW_Realtime = (function() {
             if (state.stopped) return;
             notifyStatus(state, status, error);
             if (status === 'SUBSCRIBED') {
-                if (state.wasSubscribed || state.needsReconcile) reconcile(state, 'reconnected');
+                // Reconcile once after the initial channel is live to close the fetch/subscribe race.
+                reconcile(state, state.wasSubscribed || state.needsReconcile ? 'reconnected' : 'initial');
                 state.wasSubscribed = true;
                 state.needsReconcile = false;
             }
