@@ -223,9 +223,9 @@ var App = {
         var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">مركز عمل المشتريات</h2><p class="text-xs text-slate-500 mt-1">ملخص من عقود المشتريات الحالية في قاعدة البيانات</p></div><button onclick="App.quickPurchase()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-bolt ml-2"></i>شراء عاجل / فاتورة مسودة</button></div>';
         html+='<div class="grid grid-cols-2 xl:grid-cols-4 gap-3">';
         html+=this.card('نواقص حرجة',critical,'حسب reorder_point والمخزون المتاح',"App.switchTab('orders')",'fa-triangle-exclamation');
-        html+=this.card('أوامر مفتوحة',openOrders,'لا يمكن تصنيفها متأخرة دون موعد توريد مسجل',"App.switchTab('orders')",'fa-truck-ramp-box');
-        html+=this.card('طلبات تنتظر إجراء',pending,'طلبات مرسلة أو بانتظار الاعتماد',"App.switchTab('requests')",'fa-file-circle-check');
-        html+=this.card('مستحقات الموردين',buyerMoney(outstanding,this.currency),'رصيد الفواتير المفتوحة من سجل الفواتير',"App.switchTab('suppliers')",'fa-wallet');
+        html+=this.card('أوامر متأخرة','غير محسوب','موعد التسليم المتوقع غير مخزن في PO',"App.switchTab('orders')",'fa-truck-ramp-box');
+        html+=this.card('زيارات اليوم','غير متاح','لا يوجد سجل زيارات موردين مرتبط بالمحرك',"App.switchTab('suppliers')",'fa-location-dot');
+        html+=this.card('رصيد عهدتي','غير متاح','لا يوجد دفتر عهدة مشتريات مستقل',"App.switchTab('custody')",'fa-wallet');
         html+='</div>';
         html+='<div class="grid md:grid-cols-2 gap-3 mt-4">';
         html+='<div class="card"><h3 class="font-black mb-3">تنبيهات يجب عدم إخفائها</h3><div class="space-y-3 text-sm">';
@@ -426,7 +426,8 @@ var App = {
         q=String(q||'').trim().toLowerCase();
         if(!q){RW_UI.safeHTML(box,'');return;}
         var matches=items.filter(function(it){return [it.name,it.item_code,it.barcode].join(' ').toLowerCase().indexOf(q)!==-1;}).slice(0,20);
-        RW_UI.safeHTML(box,matches.map(function(it){var idx=items.indexOf(it);return '<button type="button" onclick="App.quickAddItem('+idx+')" class="w-full text-right p-2 border-b hover:bg-purple-50 text-xs"><b>'+buyerEsc(it.name)+'</b><span class="text-slate-400"> · '+buyerEsc(it.item_code)+' · '+buyerEsc(it.barcode||'')+'</span><span class="block text-purple-700">'+buyerMoney(it.cost_price,'SAR')+' / '+buyerEsc(it.unit||'')+'</span></button>';}).join('')||'<p class="p-2 text-xs text-slate-400">لا توجد نتائج</p>');
+        var currency=this.currency||'SAR';
+        RW_UI.safeHTML(box,matches.map(function(it){var idx=items.indexOf(it);return '<button type="button" onclick="App.quickAddItem('+idx+')" class="w-full text-right p-2 border-b hover:bg-purple-50 text-xs"><b>'+buyerEsc(it.name)+'</b><span class="text-slate-400"> · '+buyerEsc(it.item_code)+' · '+buyerEsc(it.barcode||'')+'</span><span class="block text-purple-700">'+buyerMoney(it.cost_price,currency)+' / '+buyerEsc(it.unit||'')+'</span></button>';}).join('')||'<p class="p-2 text-xs text-slate-400">لا توجد نتائج</p>');
     },
     quickAddItem:function(index){
         var items=this.cache.items||[],it=items[index];if(!it)return;
@@ -445,9 +446,9 @@ var App = {
     renderQuickCart:function(){
         var box=RW_UI.byId('bq-cart');if(!box)return;
         if(!this.quickCart.length){RW_UI.safeHTML(box,'<p class="text-center text-xs text-slate-400 p-3">لم تتم إضافة أصناف بعد</p>');return;}
-        var total=0,html='<h4 class="font-black py-2">الأصناف المختارة</h4>';
-        html+=this.quickCart.map(function(x,i){var line=Number(x.qty)*Number(x.unit_price);total+=line;return '<div class="grid grid-cols-12 gap-1 items-center border-t py-2 text-xs"><div class="col-span-4"><b>'+buyerEsc(x.name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></div><input class="col-span-2 border rounded p-2" type="number" min="0.001" step="0.001" value="'+buyerEsc(x.qty)+'" onchange="App.quickUpdate('+i+',\'qty\',this.value)"><input class="col-span-3 border rounded p-2" type="number" min="0" step="0.01" value="'+buyerEsc(x.unit_price)+'" onchange="App.quickUpdate('+i+',\'unit_price\',this.value)"><div class="col-span-2 font-bold">'+buyerMoney(line,'SAR')+'</div><button class="col-span-1 text-red-600" onclick="App.quickRemove('+i+')">×</button></div>';}).join('');
-        html+='<div class="text-left font-black border-t pt-2">الإجمالي التقديري: '+buyerMoney(total,'SAR')+'</div>';
+        var total=0,currency=this.currency||'SAR',html='<h4 class="font-black py-2">الأصناف المختارة</h4>';
+        html+=this.quickCart.map(function(x,i){var line=Number(x.qty)*Number(x.unit_price);total+=line;return '<div class="grid grid-cols-12 gap-1 items-center border-t py-2 text-xs"><div class="col-span-4"><b>'+buyerEsc(x.name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></div><input class="col-span-2 border rounded p-2" type="number" min="0.001" step="0.001" value="'+buyerEsc(x.qty)+'" onchange="App.quickUpdate('+i+',\'qty\',this.value)"><input class="col-span-3 border rounded p-2" type="number" min="0" step="0.01" value="'+buyerEsc(x.unit_price)+'" onchange="App.quickUpdate('+i+',\'unit_price\',this.value)"><div class="col-span-2 font-bold">'+buyerMoney(line,currency)+'</div><button class="col-span-1 text-red-600" onclick="App.quickRemove('+i+')">×</button></div>';}).join('');
+        html+='<div class="text-left font-black border-t pt-2">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div>';
         RW_UI.safeHTML(box,html);
     },
     renderCustody:function(){
