@@ -203,3 +203,44 @@ Every phase update must put the latest checkpoint at the top of CURRENT_STATE.md
 | 7 | Final closure, residual debt register, and handoff | NOT STARTED | Depends on phases 3–6 |
 
 This ledger is a handoff map, not a claim that future phases have been executed.
+
+
+## 9. Phase 2 parent bootstrap trace — completed source retrieval and critical findings (2026-10-31)
+
+Detailed independent report: `doc/Draft/Reprots/REALTIME_SYNC_PHASE2_PARENT_BOOTSTRAP_20261031.md`.
+
+### Corrected source inventory
+A fresh recursive Git tree query returned **30 HTML files** under `companies/company-1/`, not 29 as stated in section 6. The earlier census omitted `companies/company-1/index.html`, the actual landing page linking to `app.html` and `main.html`. There are 6 explicit `RW_Realtime.start` consumers and 24 other HTML files without that explicit call. This correction supersedes the earlier count; it does not imply all 24 need Realtime.
+
+### Parent source now inspected
+- `main.html` blob SHA: `53b5a9e9d0433a785c3d5471a9c0d68c25497882`; 33,358 lines; 1,892,593 bytes in Git tree.
+- The parent creates its own Supabase client and does not load `core.js` or invoke `RW_Realtime.start`.
+- Parent authentication obtains company_id and permissions from the `users` row matched by auth_id, then enters the parent shell.
+- Eight direct parent Realtime channels are mapped in the independent report. Several are incompatible with current publication/RLS configuration; others depend on RLS without explicit company filters.
+
+### Critical Production finding: inventory_counts
+Production shows `inventory_counts` has RLS enabled but its only policy is `allow_all_inventory_counts`, FOR ALL / role public, with `USING (auth.role() = 'authenticated')` and no company predicate. Authenticated has SELECT/INSERT/UPDATE/DELETE grants. The table has `company_id`.
+- Parent reads it with a client-side company filter (line 17437) and subscribes without a company filter (line 18274).
+- Warehouse Counter reads the latest 30 rows with no company filter (`warehouse/counter.html`, line 137).
+- Parent writes through the guarded `inventory_control` RPC; the internal `inventory_count_engine` is not directly executable by authenticated.
+- The table had zero rows at inspection; therefore no current row disclosure was observed, but the policy is a confirmed tenant-isolation defect and direct write bypass risk once data exists.
+- Do not patch this policy blindly. First confirm the Counter/van-sales Edge Function contract and authorized count roles; then implement company-and-role-scoped SELECT and remove unnecessary direct write grants while preserving the validated RPC path.
+
+### Realtime channel compatibility findings
+- Sales Decision (3 tables) and Loyalty (4 tables): not in `supabase_realtime`; their RLS policies deny direct anon/authenticated access.
+- Customer Payments (2 tables) and Commission (4 tables): published, but the inspected policies are service_role-only while the parent subscribes from an authenticated client.
+- Sales Targets (4 tables), Purchasing Gold (6 tables), and HR (24 tables): published with RLS policies; HR and some other direct channels rely on RLS without explicit company filters.
+- Warehouse Vouchers direct channel filters `stock_vouchers`, but not `stock_voucher_details`; the latter's RLS policy scopes through its parent voucher. Runtime proof remains open.
+
+### Runtime isolation blocker
+The active-user inventory query returned active auth-linked users for only one company; `inventory_counts` had zero rows. Therefore two-company authenticated E2E and observed cross-tenant Realtime tests remain BLOCKED, not PASS.
+
+### Phase 2 decision
+- Parent source/bootstrap trace: COMPLETE.
+- Full 30-page behavioral freshness classification: PARTIAL.
+- Authenticated Realtime delivery and tenant-isolation runtime proof: OPEN/BLOCKED.
+- No application code, schema, data, publication, or Cloudflare deployment was changed in this phase.
+- Independent Phase 2 report commit: `43fdbba23b2368c71bfc96c1cdbd111a99c12c0f`.
+- Overall Realtime synchronization: OPEN.
+
+Next priority is the `inventory_counts` tenant-safety repair design, followed by reconciliation of parent channels whose publication/RLS settings cannot deliver events to authenticated clients. See the independent report for evidence and exact file locations.
