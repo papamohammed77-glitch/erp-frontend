@@ -851,10 +851,16 @@ var RW_Realtime = (function() {
             var spec = typeof entry === 'string' ? { name: entry } : entry;
             if (!spec || !/^[a-z][a-z0-9_]*$/.test(spec.name || '') || seen[spec.name]) return;
             seen[spec.name] = true;
+            var events = Array.isArray(spec.events) && spec.events.length
+                ? spec.events.filter(function(eventName) {
+                    return ['INSERT', 'UPDATE'].indexOf(eventName) !== -1;
+                })
+                : ['INSERT', 'UPDATE'];
+            if (!events.length) events = ['INSERT', 'UPDATE'];
             result.push({
                 name: spec.name,
                 companyColumn: spec.companyColumn !== false,
-                events: ['INSERT', 'UPDATE']
+                events: events
             });
         });
         return result;
