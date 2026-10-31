@@ -266,15 +266,44 @@ serve(async (req) => {
         "purchase_supplier_balance",
         "purchase_invoice_aging",
         "purchase_quotation_comparison",
+        "purchase_status_history",
+        "purchase_attachments",
+        "purchase_document_links",
+        "purchase_settings",
         "suppliers",
         "items",
         "branches",
         "treasury"
       ];
       if (!allowed.includes(table)) throw new Error("جدول غير مدعوم");
-      const r = await sb.from(table).select("*").eq("company_id", companyId).limit(Math.min(Number(p.limit || 300), 500));
-      if (r.error) throw r.error;
-      data = { success: true, items: r.data || [], table };
+      const detailScope: Record<string, { parent: string; foreignKey: string }> = {
+        purchase_request_details: { parent: "purchase_requests", foreignKey: "request_id" },
+        purchase_rfq_details: { parent: "purchase_rfqs", foreignKey: "rfq_id" },
+        purchase_rfq_suppliers: { parent: "purchase_rfqs", foreignKey: "rfq_id" },
+        purchase_quotation_details: { parent: "purchase_quotations", foreignKey: "quotation_id" },
+        purchase_order_details: { parent: "purchase_orders", foreignKey: "po_id" },
+        purchase_invoice_details: { parent: "purchase_invoices", foreignKey: "invoice_id" },
+        purchase_return_details: { parent: "purchase_returns", foreignKey: "return_id" }
+      };
+      const rowLimit = Math.min(Number(p.limit || 300), 500);
+      let r: any;
+      if (detailScope[table]) {
+        const scope = detailScope[table];
+        const parents = await sb.from(scope.parent).select("id").eq("company_id", companyId).limit(500);
+        if (parents.error) throw parents.error;
+        const parentIds = (parents.data || []).map((row: any) => row.id).filter(Boolean);
+        if (!parentIds.length) {
+          data = { success: true, items: [], table };
+        } else {
+          r = await sb.from(table).select("*").in(scope.foreignKey, parentIds).limit(rowLimit);
+          if (r.error) throw r.error;
+          data = { success: true, items: r.data || [], table };
+        }
+      } else {
+        r = await sb.from(table).select("*").eq("company_id", companyId).limit(rowLimit);
+        if (r.error) throw r.error;
+        data = { success: true, items: r.data || [], table };
+      }
     } else {
       throw new Error("عملية مشتريات غير مدعومة: " + op);
     }
