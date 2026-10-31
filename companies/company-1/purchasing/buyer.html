@@ -38,6 +38,7 @@
 <div id="mainApp" class="hidden flex flex-col h-full">
     <header class="bg-purple-700 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
         <span class="font-black text-sm">📦 مسؤول المشتريات</span>
+        <span id="buyerRealtimeStatus" class="text-[10px] font-bold rounded-lg px-2 py-1 bg-white/10">جارٍ الاتصال المباشر...</span>
         <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
     </header>
     <div class="grid grid-cols-3 md:grid-cols-6 gap-1 p-2 bg-white border-b flex-shrink-0">
@@ -74,6 +75,7 @@ var App = {
     currentUser:null,
     currentTab:'today',
     realtimeKey:null,
+    needsLiveRefresh:false,
     search:'',
     cache:{},
     cacheAt:{},
@@ -147,22 +149,61 @@ var App = {
         this.realtimeKey=RW_Realtime.start({
             appId:'buyer',
             companyId:this.currentUser.company_id,
-            tables:['purchase_orders'],
+            tables:[
+                'purchase_requests',
+                'purchase_rfqs',
+                'purchase_quotations',
+                'purchase_orders',
+                {name:'purchase_order_details',companyColumn:false},
+                'purchase_invoices',
+                'purchase_payments',
+                'purchase_returns',
+                'suppliers',
+                'items',
+                'branches',
+                {name:'stock_branches',companyColumn:false}
+            ],
             debounceMs:500,
-            reconcileMs:60000,
+            reconcileMs:30000,
             onEvent:function(event){
-                if(event.table==='purchase_orders'){
-                    self.invalidate();
-                    if(self.currentTab==='orders'||self.currentTab==='today')self.renderCurrent();
+                self.invalidate();
+                var targets={
+                    suppliers:['suppliers'],
+                    requests:['purchase_requests','purchase_rfqs'],
+                    orders:['purchase_quotations','purchase_orders','purchase_order_details'],
+                    account:['purchase_invoices','purchase_payments','purchase_returns']
+                };
+                var relevant=self.currentTab==='today'||
+                    (targets[self.currentTab]||[]).indexOf(event.table)!==-1;
+                if(!relevant)return;
+                if(typeof Swal!=='undefined'&&Swal.isVisible()){
+                    self.needsLiveRefresh=true;
+                    return;
                 }
+                self.needsLiveRefresh=false;
+                self.renderCurrent();
             },
             onReconcile:function(){
                 self.invalidate();
-                if(self.currentTab==='orders'||self.currentTab==='today')self.renderCurrent();
+                if(typeof Swal!=='undefined'&&Swal.isVisible()){
+                    self.needsLiveRefresh=true;
+                    return;
+                }
+                self.needsLiveRefresh=false;
+                self.renderCurrent();
             },
-            onStatus:function(status){console.log('[Buyer] Realtime:',status.status);}
+            onStatus:function(status){
+                var el=RW_UI.byId('buyerRealtimeStatus');
+                var connected=status.status==='SUBSCRIBED';
+                if(el){
+                    el.textContent=connected?'قناة المزامنة متصلة':'المزامنة عبر إعادة التحقق';
+                    el.className='text-[10px] font-bold rounded-lg px-2 py-1 '+(connected?'bg-emerald-500/25 text-white':'bg-amber-400/25 text-white');
+                }
+                if(!connected)console.warn('[Buyer] Realtime status:',status.status,status.error||'');
+                else console.log('[Buyer] Realtime connected.');
+            }
         });
-        if(!this.realtimeKey)console.error('[Buyer] Realtime refused: company scope unavailable.');
+        if(!this.realtimeKey)console.error('[Buyer] Realtime refused: verified company scope unavailable.');
     },
     stopRealtime:function(){
         if(this.realtimeKey&&typeof RW_Realtime!=='undefined'){RW_Realtime.stop(this.realtimeKey);this.realtimeKey=null;}
