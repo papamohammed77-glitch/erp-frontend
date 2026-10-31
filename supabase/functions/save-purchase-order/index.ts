@@ -83,51 +83,35 @@ serve(async (req) => {
       requireAny(["purchases", "finance"]);
     } else if (op === "ISSUE_CUSTODY") {
       ({ data, error } = await profileClient.rpc("buyer_custody_issue_atomic", {
-        p_company_id: companyId,
-        p_employee_id: p.employee_id,
-        p_branch_id: p.branch_id || null,
-        p_purpose: p.purpose,
-        p_currency: p.currency || "SAR",
-        p_amount: Number(p.amount || 0),
+        p_company_id: companyId, p_employee_id: p.employee_id, p_branch_id: p.branch_id || null,
+        p_purpose: p.purpose, p_currency: p.currency || "SAR", p_amount: Number(p.amount || 0),
         p_issued_date: p.issued_date || new Date().toISOString().slice(0, 10),
-        p_received_reference: p.received_reference || null,
-        p_notes: p.notes || null,
+        p_received_reference: p.received_reference || null, p_notes: p.notes || null,
         p_operation_id: operationId
       }));
     } else if (op === "ACKNOWLEDGE_CUSTODY") {
       ({ data, error } = await profileClient.rpc("buyer_custody_acknowledge_atomic", {
-        p_company_id: companyId,
-        p_custody_id: p.custody_id
+        p_company_id: companyId, p_custody_id: p.custody_id
       }));
     } else if (op === "SUBMIT_CUSTODY_EXPENSE") {
       ({ data, error } = await profileClient.rpc("buyer_custody_submit_expense_atomic", {
-        p_company_id: companyId,
-        p_custody_id: p.custody_id,
+        p_company_id: companyId, p_custody_id: p.custody_id,
         p_expense_date: p.expense_date || new Date().toISOString().slice(0, 10),
-        p_supplier_name: p.supplier_name || null,
-        p_invoice_number: p.invoice_number || null,
-        p_description: p.description,
-        p_amount: Number(p.amount || 0),
-        p_currency: p.currency || "SAR",
-        p_document_name: p.document_name,
-        p_document_path: p.document_path,
-        p_mime_type: p.mime_type || null,
-        p_operation_id: operationId
+        p_supplier_name: p.supplier_name || null, p_invoice_number: p.invoice_number || null,
+        p_description: p.description, p_amount: Number(p.amount || 0), p_currency: p.currency || "SAR",
+        p_document_name: p.document_name, p_document_path: p.document_path,
+        p_mime_type: p.mime_type || null, p_operation_id: operationId
       }));
     } else if (op === "REVIEW_CUSTODY_EXPENSE") {
       ({ data, error } = await profileClient.rpc("buyer_custody_review_expense_atomic", {
-        p_company_id: companyId,
-        p_expense_id: p.expense_id,
-        p_decision: p.decision,
-        p_review_note: p.review_note || null
+        p_company_id: companyId, p_expense_id: p.expense_id,
+        p_decision: p.decision, p_review_note: p.review_note || null
       }));
     } else if (op === "SETTLE_CUSTODY") {
       ({ data, error } = await profileClient.rpc("buyer_custody_settle_atomic", {
-        p_company_id: companyId,
-        p_custody_id: p.custody_id,
+        p_company_id: companyId, p_custody_id: p.custody_id,
         p_cash_returned: Number(p.cash_returned || 0),
-        p_finance_reference: p.finance_reference || null,
-        p_notes: p.notes || null
+        p_finance_reference: p.finance_reference || null, p_notes: p.notes || null
       }));
     } else if (op === "GET_CUSTODY") {
       const financeView = hasPermission("finance");
