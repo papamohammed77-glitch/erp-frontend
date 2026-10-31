@@ -75,6 +75,92 @@ serve(async (req) => {
       requireAny(["purchases", "finance", "reports"]);
     } else if (op === "SAVE_SUPPLIER") {
       requireAny(["purchases", "suppliers"]);
+    } else if (["ISSUE_CUSTODY", "REVIEW_CUSTODY_EXPENSE", "SETTLE_CUSTODY"].includes(op)) {
+      requireAny(["finance"]);
+    } else if (["SUBMIT_CUSTODY_EXPENSE", "ACKNOWLEDGE_CUSTODY"].includes(op)) {
+      requireAny(["purchases"]);
+    } else if (op === "GET_CUSTODY") {
+      requireAny(["purchases", "finance"]);
+    } else if (op === "ISSUE_CUSTODY") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_issue_atomic", {
+        p_company_id: companyId,
+        p_employee_id: p.employee_id,
+        p_branch_id: p.branch_id || null,
+        p_purpose: p.purpose,
+        p_currency: p.currency || "SAR",
+        p_amount: Number(p.amount || 0),
+        p_issued_date: p.issued_date || new Date().toISOString().slice(0, 10),
+        p_received_reference: p.received_reference || null,
+        p_notes: p.notes || null,
+        p_operation_id: operationId
+      }));
+    } else if (op === "ACKNOWLEDGE_CUSTODY") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_acknowledge_atomic", {
+        p_company_id: companyId,
+        p_custody_id: p.custody_id
+      }));
+    } else if (op === "SUBMIT_CUSTODY_EXPENSE") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_submit_expense_atomic", {
+        p_company_id: companyId,
+        p_custody_id: p.custody_id,
+        p_expense_date: p.expense_date || new Date().toISOString().slice(0, 10),
+        p_supplier_name: p.supplier_name || null,
+        p_invoice_number: p.invoice_number || null,
+        p_description: p.description,
+        p_amount: Number(p.amount || 0),
+        p_currency: p.currency || "SAR",
+        p_document_name: p.document_name,
+        p_document_path: p.document_path,
+        p_mime_type: p.mime_type || null,
+        p_operation_id: operationId
+      }));
+    } else if (op === "REVIEW_CUSTODY_EXPENSE") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_review_expense_atomic", {
+        p_company_id: companyId,
+        p_expense_id: p.expense_id,
+        p_decision: p.decision,
+        p_review_note: p.review_note || null
+      }));
+    } else if (op === "SETTLE_CUSTODY") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_settle_atomic", {
+        p_company_id: companyId,
+        p_custody_id: p.custody_id,
+        p_cash_returned: Number(p.cash_returned || 0),
+        p_finance_reference: p.finance_reference || null,
+        p_notes: p.notes || null
+      }));
+    } else if (op === "GET_CUSTODY") {
+      const financeView = hasPermission("finance");
+      let custodyQuery = sb.from("buyer_custodies").select("*").eq("company_id", companyId)
+        .order("issued_date", { ascending: false }).limit(200);
+      if (!financeView) custodyQuery = custodyQuery.eq("employee_id", profile.id);
+      const custodyResult = await custodyQuery;
+      if (custodyResult.error) throw custodyResult.error;
+      const custodyRows = custodyResult.data || [];
+      const custodyIds = custodyRows.map((row: any) => row.id).filter(Boolean);
+      let expenseRows: any[] = [];
+      let settlementRows: any[] = [];
+      if (custodyIds.length) {
+        const [expenseResult, settlementResult] = await Promise.all([
+          sb.from("buyer_custody_expenses").select("*").eq("company_id", companyId)
+            .in("custody_id", custodyIds).order("expense_date", { ascending: false }).limit(500),
+          sb.from("buyer_custody_settlements").select("*").eq("company_id", companyId)
+            .in("custody_id", custodyIds).limit(200)
+        ]);
+        if (expenseResult.error) throw expenseResult.error;
+        if (settlementResult.error) throw settlementResult.error;
+        expenseRows = expenseResult.data || [];
+        settlementRows = settlementResult.data || [];
+      }
+      let employeeRows: any[] = [];
+      if (financeView) {
+        const employeeResult = await sb.from("users").select("id,name,email,employee_id,default_branch_id")
+          .eq("company_id", companyId).eq("status", "Active").order("name").limit(500);
+        if (employeeResult.error) throw employeeResult.error;
+        employeeRows = employeeResult.data || [];
+      }
+      data = { success: true, custodies: custodyRows, expenses: expenseRows,
+        settlements: settlementRows, employees: employeeRows, is_finance: financeView };
     } else if (op === "GET_DATA") {
       const table = String(p.table || "");
       if (table === "treasury") requireAny(["finance"]);
@@ -233,7 +319,9 @@ serve(async (req) => {
         p_reason: p.reason || null
       }));
     } else if (op === "GET_SUMMARY") {
-      ({ data, error } = await call("purchase_get_dashboard", {
+      // Preserve the authenticated caller JWT: purchase_get_dashboard validates auth.uid(),
+      // company scope and effective permissions. Do not invoke it through service_role.
+      ({ data, error } = await profileClient.rpc("purchase_get_dashboard", {
         p_company_id: companyId
       }));
     } else if (op === "GET_REPORTS") {
