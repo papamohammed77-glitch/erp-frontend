@@ -1,6 +1,49 @@
 # CURRENT EXECUTION HANDOFF — REALTIME SYNCHRONIZATION — 2026-10-31
 
 ## Current status
+- **Active work:** Phase 3 — resolve remaining parent Realtime channel incompatibilities and complete freshness classification; first P0 tenant-boundary subtask is closed.
+- **Phase 1:** COMPLETE only for source census / selected RLS definition review. The earlier 29-page count is corrected to 30 in Phase 2.
+- **Phase 2:** Parent source/bootstrap trace COMPLETE; complete page freshness classification and authenticated runtime proof remain OPEN.
+- **Phase 3 inventory_counts subtask:** COMPLETE for Production RLS/grant correction and source query hardening; Counter/browser E2E remains OPEN.
+- **Overall mission:** OPEN. Do not claim all-app synchronization, two-company browser isolation, Cloudflare parity, or E2E completion.
+
+## Latest verified checkpoint
+- Phase 2 report: `doc/Draft/Reprots/REALTIME_SYNC_PHASE2_PARENT_BOOTSTRAP_20261031.md`.
+- Phase 3 inventory-counts report: `doc/Draft/Reprots/REALTIME_SYNC_PHASE3_INVENTORY_COUNTS_20261031.md`.
+- Master execution log: `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md`.
+- Phase 3 report commit: `c7346670ec996760426cf4218f535855c205605c`.
+- Master log update commit: `dba3c08c7a1d6376dd5e9f6f944e22dd725bc06d`.
+- Production migration `harden_inventory_counts_tenant_read_boundary_20261031`, version `20261031171715`: applied successfully.
+- `inventory_counts`: old permissive FOR ALL policy removed; new SELECT-only policy `inventory_counts_select_company_authorized` scopes by verified company and authorized active role/permissions. anon and authenticated direct writes revoked; authenticated SELECT retained; service_role writes retained.
+- Verified privileges: anon SELECT/INSERT false; authenticated SELECT true and INSERT/UPDATE/DELETE false; service_role INSERT/UPDATE true; authenticated `inventory_control` EXECUTE true; direct authenticated `inventory_count_engine` EXECUTE false.
+- SQL transaction test with simulated JWT: authorized warehouse user sees same-company test row and not other-company row; unauthorized same-company user sees zero rows. All fixtures rolled back; final residue count zero.
+- Supabase Security Advisor rerun has no `inventory_counts` finding; separate security backlog remains (24 RLS-enabled tables without policies, 3 SECURITY DEFINER views, 3 mutable-search-path functions, 20 anon and 121 authenticated executable SECURITY DEFINER functions, leaked-password protection disabled).
+- GitHub source patch: `companies/company-1/warehouse/counter.html` adds missing company guard and company filter to count-history query. Commit `2ddab280b9e0fc362e96f28acd897a2a3b6e1150`; readback PASS. **Cloudflare deployment not verified.**
+- Edge Function `save-inventory-count`: ACTIVE v5, JWT required, uses service_role, resolves company from auth_id, and routes count writes through `inventory_count_engine`. Parent writes use guarded `inventory_control`.
+- Open Counter issue: no active user currently has `active_warehouse_role='جرد'`; Counter browser E2E cannot be run. Its legacy general-count caller sends `entityId='MAIN'` although the Edge Function expects a branch UUID or null; investigate before closing the Counter workflow.
+- Parent direct channel incompatibilities: Sales Decision (not in publication and direct RLS denied), Loyalty (same), Customer Payments and Commission (service_role-only policies with authenticated browser client). Do not weaken RLS or add publication membership without proving an authorized read model.
+- Parent source blob: `53b5a9e9d0433a785c3d5471a9c0d68c25497882`; 33,358 lines; parent uses its own Supabase client and 8 direct channels.
+- Current HTML inventory: 30 files; 6 explicit `RW_Realtime.start`, 24 without explicit start. Do not treat absence as a defect.
+- Production has active auth-linked users for only one company; true two-company browser E2E remains BLOCKED.
+
+## Next executable actions — do not restart
+1. Resolve the Counter general-count payload mismatch and verify the expected active Counter role/permission contract; do not invent a user or production fixture.
+2. Inspect and classify parent channels for Sales Decision, Loyalty, Customer Payments, and Commission. Preserve server-side-only access; use authorized refresh/read APIs rather than exposing their tables.
+3. Finish the 30-page freshness matrix by tracing actual timer callbacks, focus/visibility handlers, router bootstrap, and manual refresh paths.
+4. Test HR, Inventory, Sales Targets, Purchasing, and Warehouse Vouchers Realtime under authenticated JWTs. Use two real tenant identities in isolated test environment before claiming cross-company isolation.
+5. Verify Cloudflare served artifact separately from GitHub commit, then run browser E2E.
+6. Write an independent report and update this file after each completed phase or material checkpoint.
+
+## Handoff contract
+Read section 8 of `doc/Draft/Reprots/REALTIME_SYNC_EXECUTION_20261031.md` and the independent Phase 2/Phase 3 reports before continuing. Each phase must include exact evidence, timestamps, source SHAs, CONFIRMED/UNKNOWN/CONFLICT/UNVERIFIED findings, change/test ledger, rollback/cleanup, blockers, and next executable action.
+
+**Truth rule:** reports are navigation/history, not truth. Re-query mutable Production and Cloudflare before claims. A commit is not deployment; a subscription declaration is not proof of event delivery. Do not weaken RLS to make a channel appear to work.
+
+---
+
+# CURRENT EXECUTION HANDOFF — REALTIME SYNCHRONIZATION — 2026-10-31
+
+## Current status
 - **Active work:** Phase 3 — tenant-safety and Realtime channel compatibility remediation design, starting with `inventory_counts`.
 - **Phase 1:** COMPLETE only for the source census and selected RLS definition review; its earlier 29-page count is corrected to 30 in Phase 2 because `index.html` was omitted.
 - **Phase 2:** Parent source/bootstrap trace COMPLETE; complete page freshness classification and authenticated runtime proof PARTIAL/OPEN.
