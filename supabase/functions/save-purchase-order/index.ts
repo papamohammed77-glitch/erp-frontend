@@ -72,7 +72,7 @@ serve(async (req) => {
     } else if (op === "CANCEL_DOCUMENT" && ["PurchaseInvoice", "PurchasePayment", "PurchaseReturn"].includes(String(p.document_type || ""))) {
       requireAll(["purchases", "finance"]);
     } else if (op === "GET_SUMMARY" || op === "GET_REPORTS") {
-      requireAny(["purchases", "finance", "reports"]);
+      requireAny(["purchases", "finance", "finance_manager", "reports"]);
     } else if (op === "SAVE_SUPPLIER") {
       requireAny(["purchases", "suppliers"]);
     } else if (["ISSUE_CUSTODY", "REVIEW_CUSTODY_EXPENSE", "SETTLE_CUSTODY"].includes(op)) {
@@ -83,10 +83,10 @@ serve(async (req) => {
       requireAny(["purchases", "finance"]);
     } else if (op === "GET_DATA") {
       const table = String(p.table || "");
-      if (table === "treasury") requireAny(["finance"]);
-      else if (table === "suppliers") requireAny(["purchases", "suppliers"]);
-      else if (table === "stock_branches") requireAny(["purchases", "warehouse"]);
-      else requireAny(["purchases", "finance"]);
+      if (table === "treasury") requireAny(["finance", "finance_manager"]);
+      else if (table === "suppliers") requireAny(["purchases", "suppliers", "finance", "finance_manager"]);
+      else if (table === "stock_branches") requireAny(["purchases", "warehouse", "finance", "finance_manager"]);
+      else requireAny(["purchases", "finance", "finance_manager"]);
     } else {
       requireAny(["purchases"]);
     }
