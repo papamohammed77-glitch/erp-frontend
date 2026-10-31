@@ -273,7 +273,7 @@ var App = {
         rows.forEach(function(s){
             html+='<button onclick="App.openSupplier(\''+buyerEsc(s.id)+'\')" class="card w-full text-right mb-2 border border-slate-100"><div class="flex justify-between gap-3"><div><b>'+buyerEsc(s.name)+'</b><p class="text-xs text-slate-400 mt-1">'+buyerEsc(s.supplier_code)+' · '+buyerEsc(s.phone||'لا يوجد هاتف')+'</p><p class="text-xs text-slate-400">'+buyerEsc(s.area||s.address||'لا يوجد عنوان مسجل')+'</p></div><div class="text-left"><b class="text-purple-700">'+buyerMoney(s.accounts_payable,this.currency)+'</b><p class="text-[11px] text-slate-400">رصيد المورد</p><span class="text-xs '+(s.is_active===false?'text-red-600':'text-emerald-600')+'">'+(s.is_active===false?'معلق':'نشط')+'</span></div></div></button>';
         },this);
-        html+='<p class="text-[11px] text-slate-400 mt-3">تصنيف A/B/C والتقييم والزيارات غير متاحة حاليًا؛ لم تُخترع قيم بديلة لها.</p>';
+        html+='<p class="text-[11px] text-slate-400 mt-3">تصنيف A/B/C والتقييم والزيارات غير متاحة حاليًا. القائمة محدودة بحد 500 سجل حتى إضافة pagination/بحث خادمي.</p>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     supplierForm:async function(id){
@@ -326,11 +326,11 @@ var App = {
     renderRequests:async function(){
         this.pageLoading('تحميل طلبات الشراء');
         var rows=await this.data('purchase_requests'),q=this.search.toLowerCase();
-        rows=rows.filter(function(r){return !q||[r.request_code,r.title,r.requested_by,r.status].join(' ').toLowerCase().indexOf(q)!==-1;}).sort(function(a,b){return String(b.request_date||b.created_at||'').localeCompare(String(a.request_date||a.created_at||''));});
+        rows=rows.filter(function(r){return !q||[r.request_code,r.title,r.requested_by,r.status,r.request_date,r.required_by].join(' ').toLowerCase().indexOf(q)!==-1;}).sort(function(a,b){return String(b.request_date||b.created_at||'').localeCompare(String(a.request_date||a.created_at||''));});
         var html='<div class="mb-4"><h2 class="text-xl font-black">طلبات الشراء المعتمدة / PR</h2><p class="text-xs text-slate-500">متابعة طلبات الإدارات وسجل حالتها قبل دورة عروض الأسعار</p></div><input class="w-full p-3 rounded-xl border mb-3" placeholder="بحث برقم PR أو التاريخ أو الحالة أو مقدم الطلب" value="'+buyerEsc(this.search)+'" oninput="App.search=this.value;App.renderRequests()">';
         html+='<div class="overflow-x-auto bg-white rounded-2xl"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-right">رقم PR</th><th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">مقدم الطلب</th><th class="p-3 text-right">الحالة</th><th class="p-3 text-right">الإجراء</th></tr></thead><tbody>';
         html+=rows.map(function(r){return '<tr class="border-t"><td class="p-3 font-bold">'+buyerEsc(r.request_code)+'</td><td class="p-3">'+buyerDate(r.request_date||r.created_at)+'</td><td class="p-3">'+buyerEsc(r.requested_by||'—')+'</td><td class="p-3">'+buyerStatus(r.status)+'</td><td class="p-3"><button onclick="App.openRequest(\''+buyerEsc(r.id)+'\')" class="text-purple-700 font-bold">التفاصيل</button></td></tr>';}).join('')||'<tr><td colspan="5" class="p-8 text-center text-slate-400">لا توجد طلبات شراء</td></tr>';
-        html+='</tbody></table></div>';
+        html+='</tbody></table></div><p class="text-[11px] text-slate-400 mt-2">قائمة PR محدودة بحد 500 سجل؛ البحث الحالي داخل السجلات المعادة.</p>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     openRequest:async function(id){
@@ -386,7 +386,8 @@ var App = {
     renderOrders:async function(){
         this.pageLoading('تحميل أوامر الشراء');
         var results=await Promise.all([this.data('purchase_orders'),this.data('purchase_quotations')]);
-        var rows=results[0].sort(function(a,b){return String(b.po_date||'').localeCompare(String(a.po_date||''));});
+        var q=this.search.toLowerCase();
+        var rows=results[0].filter(function(o){return !q||[o.po_code,o.po_date,o.supplier_name,o.status].join(' ').toLowerCase().indexOf(q)!==-1;}).sort(function(a,b){return String(b.po_date||'').localeCompare(String(a.po_date||''));});
         var currency=this.currency||'SAR';
         var accepted=results[1].filter(function(q){return q.status==='Accepted';});
         var html='<div class="mb-4"><h2 class="text-xl font-black">أوامر الشراء / PO</h2><p class="text-xs text-slate-500">متابعة أوامر الشراء الصادرة من دورة عروض الأسعار والاستلام</p></div>';
@@ -394,7 +395,7 @@ var App = {
         html+=accepted.map(function(q){return '<div class="flex flex-wrap justify-between items-center gap-2 border-t py-2"><div><b>'+buyerEsc(q.quotation_code)+'</b><p class="text-xs text-slate-400">'+buyerDate(q.quotation_date)+' · '+buyerMoney(q.total_amount,currency)+'</p></div><button onclick="App.convertQuote(\''+buyerEsc(q.id)+'\')" class="bg-indigo-700 text-white rounded-lg px-3 py-2 text-xs font-bold">تحويل إلى PO</button></div>';}).join('')||'<p class="text-xs text-slate-400">لا توجد عروض مقبولة تنتظر التحويل</p>';
         html+='</div><div class="overflow-x-auto bg-white rounded-2xl"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-right">رقم PO</th><th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">المورد</th><th class="p-3 text-right">الحالة</th><th class="p-3 text-right">القيمة</th><th class="p-3">التفاصيل</th></tr></thead><tbody>';
         html+=rows.map(function(o){return '<tr class="border-t"><td class="p-3 font-bold">'+buyerEsc(o.po_code)+'</td><td class="p-3">'+buyerDate(o.po_date)+'</td><td class="p-3">'+buyerEsc(o.supplier_name||'—')+'</td><td class="p-3">'+buyerStatus(o.status)+'</td><td class="p-3">'+buyerMoney(o.total_amount,currency)+'</td><td class="p-3"><button onclick="App.openPO(\''+buyerEsc(o.id)+'\')" class="text-purple-700 font-bold">فتح</button></td></tr>';}).join('')||'<tr><td colspan="6" class="p-8 text-center text-slate-400">لا توجد أوامر شراء</td></tr>';
-        html+='</tbody></table></div><p class="text-xs text-amber-700 mt-3">الإنشاء اليدوي المباشر وإرسال PO عبر البريد/واتساب غير متاحين في عقد Edge الحالي؛ المسار المتاح هو تحويل عرض مقبول. لا يظهر زر إرسال وهمي.</p>';
+        html+='</tbody></table></div><p class="text-xs text-amber-700 mt-3">الإنشاء اليدوي المباشر وإرسال PO عبر البريد/واتساب غير متاحين في عقد Edge الحالي؛ المسار المتاح هو تحويل عرض مقبول. لا يظهر زر إرسال وهمي.</p><p class="text-[11px] text-slate-400 mt-2">قائمة PO وعروض الموردين محدودة بحد 500 سجل؛ pagination والبحث الخادمي ما زالا مطلوبين للتوسع.</p>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     convertQuote:async function(id){
