@@ -1,3 +1,24 @@
+# LATEST VERIFIED CHECKPOINT — 2026-10-31 — GLOBAL REALTIME SYNCHRONIZATION AUDIT
+
+## Current branch execution
+- Repository: papamohammed77-glitch/erp-frontend
+- Isolated branch: feat/global-realtime-sync-audit-20261031
+- Production project: fiilmooggumokxanwiyx
+- Source audit: 27 standalone application pages; core.js included in 26; only sales/manager.html and warehouse/vouchers.html contain Realtime subscriptions.
+- Production snapshot: 72 tables in supabase_realtime; 18/27 selected business tables present; absent: branches, customer_ledger, customers, daily_settlements, items, purchase_order_details, purchase_orders, supplier_ledger, suppliers.
+- Source fix 1: core.js syncDown validates all remote datasets before an atomic Dexie replacement. Commit 8d49625a4b636cae8ed3c6a45f4794eb808f86b9.
+- Source fix 2: warehouse/receiver.html no longer overwrites the shared Supabase client with window.supabase. Commit 4ae9c651fac43a63abe267ee7af0963dfb8be432.
+- Full report: doc/Draft/Reprots/GLOBAL_REALTIME_DATA_SYNC_FORENSIC_20261031.md.
+
+## Strict status
+- These changes exist only on the isolated feature branch; not merged to main and not deployed.
+- No Production DDL, publication, RLS, policy, or business data was changed.
+- Central Realtime engine remains OPEN.
+- Parent main.html mapping remains OPEN because its 1.89 MB source could not be retrieved through the current file-content response.
+- Authenticated cross-application E2E and Cloudflare deployed-artifact parity remain OPEN.
+- Do not claim global realtime synchronization complete until all gates in the linked report pass.
+
+---
 # LATEST VERIFIED CHECKPOINT — 2026-10-30 — SAVE-ITEM 401 / SHARED AUTH SESSION
 
 ## الحالة المثبتة حتى الآن
