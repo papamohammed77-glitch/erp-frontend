@@ -159,6 +159,11 @@ serve(async (req) => {
         if (employeeResult.error) throw employeeResult.error;
         employeeRows = employeeResult.data || [];
       }
+      const employeeNames = new Map(employeeRows.map((row: any) => [row.id, row.name]));
+      for (const custody of custodyRows) {
+        custody.employee_name = employeeNames.get(custody.employee_id) ||
+          (custody.employee_id === profile.id ? profile.name : "موظف");
+      }
       data = { success: true, custodies: custodyRows, expenses: expenseRows,
         settlements: settlementRows, employees: employeeRows, is_finance: financeView };
     } else if (op === "GET_DATA") {
