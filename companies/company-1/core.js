@@ -306,20 +306,46 @@ function getDB(appName) {
 
     function syncDown(appName, callback) {
         var db = getDB(appName);
-        if (!db) {
-            if (callback) callback(false, 'Dexie غير مهيأ');
+        if (!db || !supabase) {
+            if (callback) callback(false, !db ? 'Dexie غير مهيأ' : 'Supabase غير مهيأ');
             return;
         }
+
+        // Fetch and validate every dataset before touching the local cache.
         Promise.all([
-            supabase.from('customers').select('*').then(function(r) { return db.customers.clear().then(function() { return db.customers.bulkPut(r.data || []); }); }),
-            supabase.from('items').select('*').then(function(r) { return db.items.clear().then(function() { return db.items.bulkPut(r.data || []); }); }),
-            supabase.from('stock_branches').select('*').then(function(r) { return db.stock.clear().then(function() { return db.stock.bulkPut(r.data || []); }); }),
-            supabase.from('branches').select('*').then(function(r) { return db.branches.clear().then(function() { return db.branches.bulkPut(r.data || []); }); })
-        ]).then(function() {
+            supabase.from('customers').select('*'),
+            supabase.from('items').select('*'),
+            supabase.from('stock_branches').select('*'),
+            supabase.from('branches').select('*')
+        ]).then(function(results) {
+            var names = ['customers', 'items', 'stock_branches', 'branches'];
+            var i;
+            for (i = 0; i < results.length; i++) {
+                if (!results[i] || results[i].error) {
+                    throw new Error(
+                        'فشل تنزيل ' + names[i] + ': ' +
+                        (results[i] && results[i].error ? results[i].error.message : 'استجابة غير صالحة')
+                    );
+                }
+                if (!Array.isArray(results[i].data)) {
+                    throw new Error('بيانات ' + names[i] + ' غير صالحة؛ تم الاحتفاظ بالنسخة المحلية');
+                }
+            }
+
+            // One IndexedDB transaction prevents a partially replaced local snapshot.
+            return db.transaction('rw', db.customers, db.items, db.stock, db.branches, function() {
+                return Promise.all([
+                    db.customers.clear().then(function() { return db.customers.bulkPut(results[0].data); }),
+                    db.items.clear().then(function() { return db.items.bulkPut(results[1].data); }),
+                    db.stock.clear().then(function() { return db.stock.bulkPut(results[2].data); }),
+                    db.branches.clear().then(function() { return db.branches.bulkPut(results[3].data); })
+                ]);
+            });
+        }).then(function() {
             if (callback) callback(true, null);
         }).catch(function(e) {
-            console.error('❌ فشل syncDown:', e);
-            if (callback) callback(false, e.message);
+            console.error('❌ فشل syncDown؛ تم إلغاء استبدال اللقطة المحلية:', e);
+            if (callback) callback(false, e && e.message ? e.message : 'فشل المزامنة');
         });
     }
 
