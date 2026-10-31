@@ -74,22 +74,13 @@ serve(async (req) => {
     } else if (op === "GET_SUMMARY" || op === "GET_REPORTS") {
       requireAny(["purchases", "finance", "reports"]);
     } else if (op === "SAVE_SUPPLIER") {
-      ({ data, error } = await call("save_supplier_atomic", {
-        p_auth_user_id: user.id,
-        p_company_id: companyId,
-        p_user_email: user.email,
-        p_supplier: p.supplier || {},
-        p_is_edit: p.is_edit === true,
-        p_supplier_code: p.supplier_code || null
-      }));
+      requireAny(["purchases", "suppliers"]);
     } else if (op === "GET_DATA") {
       const table = String(p.table || "");
       if (table === "treasury") requireAny(["finance"]);
       else if (table === "suppliers") requireAny(["purchases", "suppliers"]);
       else if (table === "stock_branches") requireAny(["purchases", "warehouse"]);
       else requireAny(["purchases", "finance"]);
-    } else if (op === "SAVE_SUPPLIER") {
-      requireAny(["purchases", "suppliers"]);
     } else {
       requireAny(["purchases"]);
     }
@@ -103,7 +94,16 @@ serve(async (req) => {
     let data: any, error: any;
     const call = (name: string, args: any) => sb.rpc(name, args);
 
-    if (op === "CREATE_REQUEST") {
+    if (op === "SAVE_SUPPLIER") {
+      ({ data, error } = await call("save_supplier_atomic", {
+        p_auth_user_id: user.id,
+        p_company_id: companyId,
+        p_user_email: user.email,
+        p_supplier: p.supplier || {},
+        p_is_edit: p.is_edit === true,
+        p_supplier_code: p.supplier_code || null
+      }));
+    } else if (op === "CREATE_REQUEST") {
       ({ data, error } = await call("purchase_create_request_atomic", {
         p_company_id: companyId,
         p_title: p.title,
