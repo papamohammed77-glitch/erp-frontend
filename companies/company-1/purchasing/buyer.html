@@ -222,7 +222,7 @@ var App = {
         var outstanding=invoices.filter(function(i){return ['Posted','PartiallyPaid','Approved'].indexOf(i.status)!==-1;}).reduce(function(sum,i){return sum+Math.max(0,Number(i.total_amount||0)-Number(i.paid_amount||0));},0);
         var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">مركز عمل المشتريات</h2><p class="text-xs text-slate-500 mt-1">ملخص من عقود المشتريات الحالية في قاعدة البيانات</p></div><button onclick="App.quickPurchase()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-bolt ml-2"></i>شراء عاجل / فاتورة مسودة</button></div>';
         html+='<div class="grid grid-cols-2 xl:grid-cols-4 gap-3">';
-        html+=this.card('نواقص حرجة',critical,'حسب reorder_point والمخزون المتاح',"App.switchTab('orders')",'fa-triangle-exclamation');
+        html+=this.card('نواقص حرجة',critical,'حسب reorder_point والمخزون المتاح',"App.openCriticalShortages()",'fa-triangle-exclamation');
         html+=this.card('أوامر متأخرة','غير محسوب','موعد التسليم المتوقع غير مخزن في PO',"App.switchTab('orders')",'fa-truck-ramp-box');
         html+=this.card('زيارات اليوم','غير متاح','لا يوجد سجل زيارات موردين مرتبط بالمحرك',"App.switchTab('suppliers')",'fa-location-dot');
         html+=this.card('رصيد عهدتي','غير متاح','لا يوجد دفتر عهدة مشتريات مستقل',"App.switchTab('custody')",'fa-wallet');
@@ -240,8 +240,27 @@ var App = {
         html+='<div class="flex justify-between"><span>فواتير الشراء</span><b>'+invoices.length+'</b></div>';
         html+='<div class="flex justify-between"><span>الفروع</span><b>'+branches.length+'</b></div>';
         html+='<div class="flex justify-between"><span>أصناف متاحة للتحليل</span><b>'+items.length+'</b></div>';
-        html+='<p class="text-[11px] text-slate-400 border-t pt-3">الأرقام أعلاه ناتجة عن قراءة مقيدة بالشركة من محرك المشتريات، وليست بيانات تجريبية.</p></div></div></div>';
+        html+='<p class="text-[11px] text-slate-400 border-t pt-3">الأرقام من قراءة مقيدة بالشركة وليست بيانات تجريبية. حد القراءة الحالي 500 سجل لكل كيان؛ لذلك لا تمثل حصرًا نهائيًا إذا تجاوز حجم البيانات هذا الحد.</p></div></div></div>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+    },
+    openCriticalShortages:async function(){
+        try{
+            var results=await Promise.all([this.data('items'),this.data('stock_branches'),this.data('branches')]);
+            var itemIndex={},branchIndex={},rows=[];
+            results[0].forEach(function(it){itemIndex[it.id]=it;});
+            results[2].forEach(function(b){branchIndex[b.id]=b;});
+            results[1].forEach(function(st){
+                var it=itemIndex[st.item_id],available=Number(st.available_qty==null?st.qty:st.available_qty);
+                if(it&&Number(it.reorder_point||0)>0&&available<=Number(it.reorder_point)){
+                    rows.push({item:it,branch:branchIndex[st.branch_id],available:available,shortage:Math.max(0,Number(it.reorder_point)-available)});
+                }
+            });
+            rows.sort(function(a,b){return b.shortage-a.shortage;});
+            var html='<div class="text-right"><p class="text-xs text-slate-500 mb-3">النواقص المحسوبة من المخزون المتاح مقابل reorder_point. القراءة الحالية محدودة بحد 500 سجل لكل جدول.</p><div class="overflow-auto"><table class="w-full text-xs"><thead><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الفرع</th><th class="p-2">المتاح</th><th class="p-2">حد الطلب</th><th class="p-2">العجز</th></tr></thead><tbody>';
+            html+=rows.map(function(x){return '<tr class="border-t"><td class="p-2">'+buyerEsc(x.item.name)+'<small class="block text-slate-400">'+buyerEsc(x.item.item_code)+'</small></td><td class="p-2">'+buyerEsc(x.branch?x.branch.name:'—')+'</td><td class="p-2">'+buyerEsc(x.available)+'</td><td class="p-2">'+buyerEsc(x.item.reorder_point)+'</td><td class="p-2 font-bold text-red-600">'+buyerEsc(x.shortage)+'</td></tr>';}).join('')||'<tr><td colspan="5" class="p-4 text-center text-slate-400">لا توجد نواقص حرجة ضمن السجلات المعادة</td></tr>';
+            html+='</tbody></table></div></div>';
+            await Swal.fire({title:'تفاصيل النواقص الحرجة',html:html,width:900,showCloseButton:true,showConfirmButton:false});
+        }catch(e){this.notifyError(e);}
     },
     renderSuppliers:async function(){
         this.pageLoading('تحميل الموردين');
