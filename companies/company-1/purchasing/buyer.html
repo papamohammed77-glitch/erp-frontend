@@ -66,6 +66,10 @@ function buyerDate(value){
     if(!value)return '—';
     try{return new Date(value).toLocaleDateString('ar-EG');}catch(e){return buyerEsc(value);}
 }
+function buyerLocalDate(value){
+    var d=value||new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function buyerStatus(value){
     var map={Draft:'مسودة',PendingApproval:'بانتظار الاعتماد',Submitted:'مرسل للاعتماد',Approved:'معتمد',Rejected:'مرفوض',Cancelled:'ملغي',Sent:'مرسل للمورد',PartiallyReceived:'مستلم جزئياً','Partially Received':'مستلم جزئياً',Received:'مستلم',Closed:'مغلق',Posted:'مرحل',Paid:'مدفوع',PartiallyPaid:'مدفوع جزئياً',Accepted:'مقبول',Issued:'عهدة مسلّمة',UnderReview:'قيد مراجعة المالية',Settled:'تمت التسوية'};
     return map[value]||buyerEsc(value||'غير محدد');
@@ -615,6 +619,7 @@ var App = {
             var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">الموظف<select id="bc-employee" class="swal2-select w-full">'+employees.map(function(e){return '<option value="'+buyerEsc(e.id)+'">'+buyerEsc(e.name)+' · '+buyerEsc(e.email)+'</option>';}).join('')+'</select></label>'+
                 '<label class="block text-xs font-bold">الغرض<input id="bc-purpose" class="swal2-input" placeholder="مثال: مشتريات تشغيلية / مصروفات موردين"></label>'+
                 '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bc-amount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="0.00"></label><label class="text-xs font-bold">العملة<input id="bc-currency" class="swal2-input" value="'+buyerEsc(this.currency||'SAR')+'"></label></div>'+
+                '<label class="block text-xs font-bold">تاريخ التسليم<input id="bc-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label>'+
                 '<label class="block text-xs font-bold">الفرع<select id="bc-branch" class="swal2-select w-full"><option value="">بدون تحديد</option>'+branches.map(function(b){return '<option value="'+buyerEsc(b.id)+'">'+buyerEsc(b.name)+'</option>';}).join('')+'</select></label>'+
                 '<label class="block text-xs font-bold">مرجع التسليم اليدوي<input id="bc-reference" class="swal2-input" placeholder="رقم سند/إيصال الصرف أو مرجع داخلي"></label>'+
                 '<label class="block text-xs font-bold">ملاحظات<textarea id="bc-notes" class="swal2-textarea"></textarea></label>'+
@@ -623,7 +628,7 @@ var App = {
             var result=await Swal.fire({title:'تسجيل عهدة مسلّمة يدويًا',html:html,width:650,showCancelButton:true,confirmButtonText:'تسجيل التسليم',cancelButtonText:'إلغاء',preConfirm:async function(){
                 var amount=Number(RW_UI.byId('bc-amount').value||0),purpose=RW_UI.byId('bc-purpose').value.trim();
                 if(!purpose||amount<=0){Swal.showValidationMessage('أدخل الغرض ومبلغًا أكبر من صفر');return false;}
-                try{return await self.api('ISSUE_CUSTODY',{employee_id:RW_UI.byId('bc-employee').value,branch_id:RW_UI.byId('bc-branch').value||null,purpose:purpose,amount:amount,currency:RW_UI.byId('bc-currency').value.trim()||'SAR',received_reference:RW_UI.byId('bc-reference').value.trim()||null,notes:RW_UI.byId('bc-notes').value.trim()||null});}
+                try{return await self.api('ISSUE_CUSTODY',{employee_id:RW_UI.byId('bc-employee').value,branch_id:RW_UI.byId('bc-branch').value||null,purpose:purpose,amount:amount,issued_date:RW_UI.byId('bc-date').value||buyerLocalDate(),currency:RW_UI.byId('bc-currency').value.trim()||'SAR',received_reference:RW_UI.byId('bc-reference').value.trim()||null,notes:RW_UI.byId('bc-notes').value.trim()||null});}
                 catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
             if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تسجيل العهدة يدويًا','success');}
@@ -635,7 +640,7 @@ var App = {
     },
     submitCustodyExpense:async function(custodyId){
         var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">وصف المصروف<input id="bce-description" class="swal2-input" placeholder="سبب الصرف أو نوع المشتريات"></label>'+
-            '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bce-amount" type="number" min="0.01" step="0.01" class="swal2-input"></label><label class="text-xs font-bold">التاريخ<input id="bce-date" type="date" class="swal2-input" value="'+new Date().toISOString().slice(0,10)+'"></label></div>'+
+            '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bce-amount" type="number" min="0.01" step="0.01" class="swal2-input"></label><label class="text-xs font-bold">التاريخ<input id="bce-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label></div>'+
             '<label class="block text-xs font-bold">المورد<input id="bce-supplier" class="swal2-input"></label><label class="block text-xs font-bold">رقم الفاتورة<input id="bce-invoice" class="swal2-input"></label>'+
             '<label class="block text-xs font-bold">صورة الفاتورة أو المستند (PDF / صورة)<input id="bce-file" type="file" accept="application/pdf,image/*" class="swal2-file"></label><p class="text-xs text-slate-400">الحد الأقصى 10 ميجابايت. يتم حفظ الملف في مساحة المستندات الخاصة بالشركة.</p></div>';
         var self=this;
