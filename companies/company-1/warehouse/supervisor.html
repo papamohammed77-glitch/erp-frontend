@@ -83,12 +83,30 @@
 <script>
 var App = {
     currentUser:null, companyId:null, staffList:[], currentTab:'dashboard', chartInstance:null,
+    realtimeKey: null,
     supervisorBranchId:null, supervisorBranchCodes:[], effectiveBranchCodes:[], branchRows:[], effectiveBranchRows:[],
     togglePass:function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash'}else{p.type='password';i.className='fa-solid fa-eye'}},
     doLogin:function(){var e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.byId('loginMsg').innerText='أدخل البيانات';RW_UI.byId('loginMsg').classList.remove('hidden');return}RW_UI.byId('loginMsg').classList.add('hidden');var s=this;RW_UI.showLoader('جاري تسجيل الدخول...');RW_Auth.doLogin(e,p,function(user,err){RW_UI.hideLoader();if(err){RW_UI.byId('loginMsg').innerText=err;RW_UI.byId('loginMsg').classList.remove('hidden')}else{s.init()}})},
     init:function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return}var isO=user.isOwner,perms=user.permissions,has=isO||perms.indexOf('warehouse_supervisor')!==-1;if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;supabase.from('users').select('company_id').eq('id',user.id||'').maybeSingle().then(function(r){if(r.error||!r.data||!r.data.company_id)throw new Error('سياق الشركة غير محدد');s.companyId=r.data.company_id;s.enterApp()}).catch(function(e){RW_UI.showError(e.message||'تعذر تحديد الشركة')})})},
-    enterApp:function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.loadStaff();this.switchTab('dashboard')},
-    doLogout:function(){var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden')})},
+    enterApp:function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.loadStaff();this.switchTab('dashboard');this.startRealtime();},
+    startRealtime:function(){
+        var self=this;
+        if(!this.companyId||typeof RW_Realtime==='undefined')return;
+        if(this.realtimeKey)RW_Realtime.stop(this.realtimeKey);
+        this.realtimeKey=RW_Realtime.start({
+            appId:'warehouse-supervisor',
+            companyId:this.companyId,
+            tables:['purchase_orders'],
+            debounceMs:500,
+            reconcileMs:60000,
+            onEvent:function(event){if(event.table==='purchase_orders'||event.table==='stock_vouchers'){if (self.currentTab === 'dashboard') self.renderDashboard();}},
+            onReconcile:function(){if (self.currentTab === 'dashboard') self.renderDashboard();},
+            onStatus:function(status){console.log('[warehouse-supervisor] Realtime:',status.status)}
+        });
+        if(!this.realtimeKey)console.error('[warehouse-supervisor] Realtime rejected: verified company scope unavailable.');
+    },
+    stopRealtime:function(){if(this.realtimeKey&&typeof RW_Realtime!=='undefined'){RW_Realtime.stop(this.realtimeKey);this.realtimeKey=null}},
+    doLogout:function(){this.stopRealtime();var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden')})},
     switchTab:function(t){this.currentTab=t;['dashboard','roster','live'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-blue-600','text-white');b.classList.add('text-slate-400')}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-blue-600','text-white');a.classList.remove('text-slate-400')}if(t==='dashboard')this.renderDashboard();else if(t==='roster')this.renderRoster();else if(t==='live')this.renderLive()},
     normalizeBranchCodes:function(value){var out=[];if(Array.isArray(value))out=value.slice(0);else if(typeof value==='string'){var v=value.trim();if(v){try{var parsed=JSON.parse(v);if(Array.isArray(parsed))out=parsed.map(function(x){return String(x).trim()})}catch(e){out=v.split(',').map(function(x){return x.trim()})}}}var clean=[];for(var i=0;i<out.length;i++){var c=String(out[i]||'').trim();if(c&&clean.indexOf(c)===-1)clean.push(c)}return clean},
     resolveSupervisorScope:function(){var s=this;return supabase.from('users').select('default_branch_id,allowed_branch_ids').eq('id',s.currentUser.id||'').maybeSingle().then(function(u){if(u.error||!u.data)throw new Error('تعذر قراءة نطاق فرع المشرف');s.supervisorBranchId=u.data.default_branch_id||null;s.supervisorBranchCodes=s.normalizeBranchCodes(u.data.allowed_branch_ids);return supabase.from('branches').select('id,branch_code,name,is_active').eq('company_id',s.companyId).then(function(b){if(b.error)throw b.error;s.branchRows=b.data||[];var codes=s.supervisorBranchCodes.slice(0);if(s.supervisorBranchId){for(var i=0;i<s.branchRows.length;i++){if(s.branchRows[i].id===s.supervisorBranchId&&codes.indexOf(s.branchRows[i].branch_code)===-1)codes.push(s.branchRows[i].branch_code)}}if(codes.indexOf('*')===-1&&!codes.length)throw new Error('نطاق فرع المشرف غير محدد');s.effectiveBranchCodes=codes;s.effectiveBranchRows=[];for(var j=0;j<s.branchRows.length;j++){if(codes.indexOf('*')!==-1||codes.indexOf(s.branchRows[j].branch_code)!==-1)s.effectiveBranchRows.push(s.branchRows[j])}})})},
