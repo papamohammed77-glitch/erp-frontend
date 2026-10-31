@@ -12,7 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
     <script src="../core.js"></script>
-    <script>var supabase = window.supabase;</script>
+    <!-- Supabase client is provided by the shared core.js. -->
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Tahoma,sans-serif;background:#f1f5f9}
@@ -53,12 +53,32 @@ var db = new Dexie('RW_Buyer'); db.version(1).stores({ orders: 'po_code', suppli
 
 var App = {
     currentUser: null, currentTab: 'orders', cart: [], selSupplier: null,
+    realtimeKey: null,
 
     togglePass: function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
     doLogin: function(){var e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.byId('loginMsg').innerText='أدخل البيانات';RW_UI.byId('loginMsg').classList.remove('hidden');return;}RW_UI.byId('loginMsg').classList.add('hidden');var s=this;RW_UI.showLoader('جاري تسجيل الدخول...');RW_Auth.doLogin(e,p,function(user,err){RW_UI.hideLoader();if(err){RW_UI.byId('loginMsg').innerText=err;RW_UI.byId('loginMsg').classList.remove('hidden');}else{s.init();}});},
     init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return;}var isO=user.isOwner,perms=user.permissions,has=isO||(Array.isArray(perms)&&perms.indexOf('purchases')!==-1);if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return;}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;s.enterApp();});},
-    enterApp: function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.switchTab('orders');},
-    doLogout: function(){var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden');});},
+    enterApp: function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.switchTab('orders');this.startRealtime();},
+    startRealtime: function(){
+        var self = this;
+        if (!this.currentUser || !this.currentUser.company_id || typeof RW_Realtime === 'undefined') return;
+        if (this.realtimeKey) RW_Realtime.stop(this.realtimeKey);
+        this.realtimeKey = RW_Realtime.start({
+            appId: 'buyer',
+            companyId: this.currentUser.company_id,
+            tables: ['purchase_orders'],
+            debounceMs: 500,
+            reconcileMs: 60000,
+            onEvent: function(event){ if (event.table === 'purchase_orders') { if (self.currentTab === 'orders') self.renderOrders(); } },
+            onReconcile: function(){ if (self.currentTab === 'orders') self.renderOrders(); },
+            onStatus: function(status){ console.log('[Buyer] Realtime:', status.status); }
+        });
+        if (!this.realtimeKey) console.error('[Buyer] Realtime rejected: verified company scope unavailable.');
+    },
+    stopRealtime: function(){
+        if (this.realtimeKey && typeof RW_Realtime !== 'undefined') { RW_Realtime.stop(this.realtimeKey); this.realtimeKey = null; }
+    },
+    doLogout: function(){this.stopRealtime();var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden');});},
     switchTab: function(t){this.currentTab=t;['orders','new','suppliers'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-purple-600','text-white');b.classList.add('text-gray-500');}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-purple-600','text-white');a.classList.remove('text-gray-500');}if(t==='orders')this.renderOrders();else if(t==='new')this.renderNewOrder();else if(t==='suppliers')this.renderSuppliers();},
 
     renderOrders: function(){
