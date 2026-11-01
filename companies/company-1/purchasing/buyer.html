@@ -487,14 +487,14 @@ var App = {
         var results=await Promise.all([this.data('purchase_orders'),this.data('purchase_quotations')]);
         var q=this.search.toLowerCase();
         var rows=results[0].filter(function(o){return !q||[o.po_code,o.po_date,o.supplier_name,o.status].join(' ').toLowerCase().indexOf(q)!==-1;}).sort(function(a,b){return String(b.po_date||'').localeCompare(String(a.po_date||''));});
-        var currency=this.currency||'SAR';
+        var currency=this.currency||'EGP';
         var accepted=results[1].filter(function(q){return q.status==='Accepted';});
         var html='<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-black">أوامر الشراء / PO</h2><p class="text-xs text-slate-500">متابعة أوامر الشراء الصادرة من دورة عروض الأسعار والاستلام</p></div><button type="button" onclick="App.createPO()" class="px-4 py-3 rounded-xl bg-emerald-600 text-white font-black">+ أمر شراء PO جديد</button></div>';
         html+='<div class="card mb-3"><h3 class="font-black mb-2">عروض مقبولة جاهزة للتحويل إلى PO</h3>';
         html+=accepted.map(function(q){return '<div class="flex flex-wrap justify-between items-center gap-2 border-t py-2"><div><b>'+buyerEsc(q.quotation_code)+'</b><p class="text-xs text-slate-400">'+buyerDate(q.quotation_date)+' · '+buyerMoney(q.total_amount,currency)+'</p></div><button onclick="App.convertQuote(\''+buyerEsc(q.id)+'\')" class="bg-indigo-700 text-white rounded-lg px-3 py-2 text-xs font-bold">تحويل إلى PO</button></div>';}).join('')||'<p class="text-xs text-slate-400">لا توجد عروض مقبولة تنتظر التحويل</p>';
         html+='</div><div class="overflow-x-auto bg-white rounded-2xl"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-right">رقم PO</th><th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">المورد</th><th class="p-3 text-right">الحالة</th><th class="p-3 text-right">القيمة</th><th class="p-3">التفاصيل</th></tr></thead><tbody>';
         html+=rows.map(function(o){return '<tr class="border-t"><td class="p-3 font-bold">'+buyerEsc(o.po_code)+'</td><td class="p-3">'+buyerDate(o.po_date)+'</td><td class="p-3">'+buyerEsc(o.supplier_name||'—')+'</td><td class="p-3">'+buyerStatus(o.status)+'</td><td class="p-3">'+buyerMoney(o.total_amount,currency)+'</td><td class="p-3"><button onclick="App.openPO(\''+buyerEsc(o.id)+'\')" class="text-purple-700 font-bold">فتح</button></td></tr>';}).join('')||'<tr><td colspan="6" class="p-8 text-center text-slate-400">لا توجد أوامر شراء</td></tr>';
-        html+='</tbody></table></div><p class="text-xs text-amber-700 mt-3">الإنشاء اليدوي المباشر وإرسال PO عبر البريد/واتساب غير متاحين في عقد Edge الحالي؛ المسار المتاح هو تحويل عرض مقبول. لا يظهر زر إرسال وهمي.</p><p class="text-[11px] text-slate-400 mt-2">قائمة PO وعروض الموردين محدودة بحد 500 سجل؛ pagination والبحث الخادمي ما زالا مطلوبين للتوسع.</p>';
+        html+='</tbody></table></div><p class="text-[11px] text-slate-400 mt-2">يمكن إنشاء PO يدويًا أو تحويل عرض مقبول. قائمة PO وعروض الموردين محدودة بحد 500 سجل؛ pagination والبحث الخادمي ما زالا مطلوبين للتوسع.</p>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     createPO:async function(){
@@ -606,7 +606,7 @@ var App = {
         q=String(q||'').trim().toLowerCase();
         if(!q){RW_UI.safeHTML(box,'');return;}
         var matches=items.filter(function(it){return [it.name,it.item_code,it.barcode].join(' ').toLowerCase().indexOf(q)!==-1;}).slice(0,20);
-        var currency=this.currency||'SAR';
+        var currency=this.currency||'EGP';
         RW_UI.safeHTML(box,matches.map(function(it){var idx=items.indexOf(it);return '<button type="button" onclick="App.quickAddItem('+idx+')" class="w-full text-right p-2 border-b hover:bg-purple-50 text-xs"><b>'+buyerEsc(it.name)+'</b><span class="text-slate-400"> · '+buyerEsc(it.item_code)+' · '+buyerEsc(it.barcode||'')+'</span><span class="block text-purple-700">'+buyerMoney(it.cost_price,currency)+' / '+buyerEsc(it.unit||'')+'</span></button>';}).join('')||'<p class="p-2 text-xs text-slate-400">لا توجد نتائج</p>');
     },
     quickAddItem:function(index){
@@ -626,7 +626,7 @@ var App = {
     renderQuickCart:function(){
         var box=RW_UI.byId('bq-cart');if(!box)return;
         if(!this.quickCart.length){RW_UI.safeHTML(box,'<p class="text-center text-xs text-slate-400 p-3">لم تتم إضافة أصناف بعد</p>');return;}
-        var total=0,currency=this.currency||'SAR',html='<h4 class="font-black py-2">الأصناف المختارة</h4>';
+        var total=0,currency=this.currency||'EGP',html='<h4 class="font-black py-2">الأصناف المختارة</h4>';
         html+=this.quickCart.map(function(x,i){var line=Number(x.qty)*Number(x.unit_price);total+=line;return '<div class="grid grid-cols-12 gap-1 items-center border-t py-2 text-xs"><div class="col-span-4"><b>'+buyerEsc(x.name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></div><input class="col-span-2 border rounded p-2" type="number" min="0.001" step="0.001" value="'+buyerEsc(x.qty)+'" onchange="App.quickUpdate('+i+',\'qty\',this.value)"><input class="col-span-3 border rounded p-2" type="number" min="0" step="0.01" value="'+buyerEsc(x.unit_price)+'" onchange="App.quickUpdate('+i+',\'unit_price\',this.value)"><div class="col-span-2 font-bold">'+buyerMoney(line,currency)+'</div><button class="col-span-1 text-red-600" onclick="App.quickRemove('+i+')">×</button></div>';}).join('');
         html+='<div class="text-left font-black border-t pt-2">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div>';
         RW_UI.safeHTML(box,html);
@@ -641,6 +641,7 @@ var App = {
         this.custodySnapshot=data||{};
         var custodies=Array.isArray(data.custodies)?data.custodies:[],
             expenses=Array.isArray(data.expenses)?data.expenses:[],
+            advances=Array.isArray(data.advances)?data.advances:[],
             settlements=Array.isArray(data.settlements)?data.settlements:[],
             finance=!!data.is_finance;
         var currentEmployeeId=(this.currentUser||{}).id;
@@ -661,10 +662,15 @@ var App = {
             var approvedTotal=lines.filter(function(e){return e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
             var pendingCount=lines.filter(function(e){return e.status==='Submitted';}).length;
             var settlement=settlements.find(function(x){return x.custody_id===c.id;});
+            var custodyAdvances=advances.filter(function(a){return a.custody_id===c.id;});
+            var acknowledgedTotal=custodyAdvances.filter(function(a){return !!a.acknowledged_at;}).reduce(function(n,a){return n+Number(a.amount||0);},0);
+            var committedTotal=lines.filter(function(e){return e.status==='Submitted'||e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
             html+='<section class="card mb-3 border border-slate-100"><div class="flex flex-wrap justify-between gap-2"><div><b class="text-purple-800">'+buyerEsc(c.custody_code)+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(c.employee_name||'')+' · '+buyerDate(c.issued_date)+'</p></div><span class="px-3 py-1 rounded-full bg-slate-100 text-xs font-bold">'+buyerStatus(c.status)+'</span></div>'+
-                '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-sm"><div><small class="text-slate-400">المبلغ المسلّم</small><b class="block">'+buyerMoney(c.issued_amount,c.currency)+'</b></div><div><small class="text-slate-400">مصروفات معتمدة</small><b class="block">'+buyerMoney(approvedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مستندات معلقة</small><b class="block">'+pendingCount+'</b></div><div><small class="text-slate-400">الغرض</small><b class="block">'+buyerEsc(c.purpose)+'</b></div></div>'+
-                (c.received_reference?'<p class="text-xs text-slate-500 mt-2">مرجع التسليم اليدوي: '+buyerEsc(c.received_reference)+'</p>':'')+
+                '<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3 text-sm"><div><small class="text-slate-400">إجمالي النقد المسلم</small><b class="block">'+buyerMoney(c.issued_amount,c.currency)+'</b></div><div><small class="text-slate-400">النقد المؤكد استلامه</small><b class="block">'+buyerMoney(acknowledgedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مصروفات معتمدة</small><b class="block">'+buyerMoney(approvedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مستندات معلقة</small><b class="block">'+pendingCount+'</b></div><div><small class="text-slate-400">الرصيد المتاح للمستندات</small><b class="block">'+buyerMoney(Math.max(0,acknowledgedTotal-committedTotal),c.currency)+'</b></div></div>'+
+                (c.received_reference?'<p class="text-xs text-slate-500 mt-2">مرجع التسليم الأول: '+buyerEsc(c.received_reference)+'</p>':'')+
+                (custodyAdvances.length?'<div class="mt-3 p-3 rounded-xl bg-slate-50"><b class="text-xs">سجل تسليمات العهدة وزياداتها</b><div class="space-y-1 mt-2">'+custodyAdvances.map(function(a){return '<div class="flex flex-wrap justify-between gap-2 text-xs border-b last:border-0 py-1"><span>'+buyerDate(a.advance_date)+' · '+(a.advance_type==='Initial'?'العهدة الأصلية':'زيادة عهدة')+' · '+buyerEsc(a.reference||'—')+'</span><b>'+buyerMoney(a.amount,a.currency)+'</b><span class="'+(a.acknowledged_at?'text-emerald-700':'text-amber-700')+'">'+(a.acknowledged_at?'تم تأكيد الاستلام':'بانتظار تأكيد الموظف')+'</span>'+(a.employee_id===currentEmployeeId&&!a.acknowledged_at&&a.advance_type==='Additional'?'<button onclick="App.acknowledgeCustodyAdvance(\''+a.id+'\')" class="text-blue-700 font-bold">تأكيد استلام الزيادة</button>':'')+'</div>';}).join('')+'</div></div>':'')+
                 '<div class="flex flex-wrap gap-2 mt-3">'+
+                (finance&&c.status!=='Settled'&&c.status!=='Closed'&&c.employee_id!==currentEmployeeId?'<button onclick="App.addCustodyAdvance(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold">زيادة عهدة / تسليم نقدية إضافية</button>':'')+
                 (c.employee_id===currentEmployeeId&&c.status==='Issued'&&!c.acknowledged_at?'<button onclick="App.acknowledgeCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">تأكيد استلام المبلغ</button>':'')+
                 (c.employee_id===currentEmployeeId&&c.status!=='Settled'&&c.status!=='Closed'?'<button onclick="App.submitCustodyExpense(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-purple-700 text-white text-xs font-bold">تقديم فاتورة / مستند</button>':'')+
                 (finance&&c.employee_id!==currentEmployeeId&&c.status!=='Settled'&&c.status!=='Closed'&&pendingCount===0?'<button onclick="App.settleCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold">إقفال التسوية</button>':'')+
@@ -692,7 +698,7 @@ var App = {
             if(!employees.length)throw new Error('لا يوجد موظفون نشطون مسجلون في الشركة');
             var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">الموظف<select id="bc-employee" class="swal2-select w-full">'+employees.map(function(e){return '<option value="'+buyerEsc(e.id)+'">'+buyerEsc(e.name)+' · '+buyerEsc(e.email)+'</option>';}).join('')+'</select></label>'+
                 '<label class="block text-xs font-bold">الغرض<input id="bc-purpose" class="swal2-input" placeholder="مثال: مشتريات تشغيلية / مصروفات موردين"></label>'+
-                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bc-amount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="0.00"></label><label class="text-xs font-bold">العملة<input id="bc-currency" class="swal2-input" value="'+buyerEsc(this.currency||'SAR')+'"></label></div>'+
+                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bc-amount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="0.00"></label><label class="text-xs font-bold">العملة<input id="bc-currency" class="swal2-input" value="'+buyerEsc(this.currency||'EGP')+'"></label></div>'+
                 '<label class="block text-xs font-bold">تاريخ التسليم<input id="bc-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label>'+
                 '<label class="block text-xs font-bold">الفرع<select id="bc-branch" class="swal2-select w-full"><option value="">بدون تحديد</option>'+branches.map(function(b){return '<option value="'+buyerEsc(b.id)+'">'+buyerEsc(b.name)+'</option>';}).join('')+'</select></label>'+
                 '<label class="block text-xs font-bold">مرجع التسليم اليدوي<input id="bc-reference" class="swal2-input" placeholder="رقم سند/إيصال الصرف أو مرجع داخلي"></label>'+
@@ -702,7 +708,7 @@ var App = {
             var result=await Swal.fire({title:'تسجيل عهدة مسلّمة يدويًا',html:html,width:650,showCancelButton:true,confirmButtonText:'تسجيل التسليم',cancelButtonText:'إلغاء',preConfirm:async function(){
                 var amount=Number(RW_UI.byId('bc-amount').value||0),purpose=RW_UI.byId('bc-purpose').value.trim();
                 if(!purpose||amount<=0){Swal.showValidationMessage('أدخل الغرض ومبلغًا أكبر من صفر');return false;}
-                try{return await self.api('ISSUE_CUSTODY',{employee_id:RW_UI.byId('bc-employee').value,branch_id:RW_UI.byId('bc-branch').value||null,purpose:purpose,amount:amount,issued_date:RW_UI.byId('bc-date').value||buyerLocalDate(),currency:RW_UI.byId('bc-currency').value.trim()||'SAR',received_reference:RW_UI.byId('bc-reference').value.trim()||null,notes:RW_UI.byId('bc-notes').value.trim()||null});}
+                try{return await self.api('ISSUE_CUSTODY',{employee_id:RW_UI.byId('bc-employee').value,branch_id:RW_UI.byId('bc-branch').value||null,purpose:purpose,amount:amount,issued_date:RW_UI.byId('bc-date').value||buyerLocalDate(),currency:RW_UI.byId('bc-currency').value.trim()||'EGP',received_reference:RW_UI.byId('bc-reference').value.trim()||null,notes:RW_UI.byId('bc-notes').value.trim()||null});}
                 catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
             if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تسجيل العهدة يدويًا','success');}
@@ -714,7 +720,7 @@ var App = {
     },
     submitCustodyExpense:async function(custodyId){
         var custodyRecord=(this.custodySnapshot&&this.custodySnapshot.custodies||[]).find(function(c){return c.id===custodyId;});
-        var custodyCurrency=custodyRecord&&custodyRecord.currency?custodyRecord.currency:(this.currency||'SAR');
+        var custodyCurrency=custodyRecord&&custodyRecord.currency?custodyRecord.currency:(this.currency||'EGP');
         var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">وصف المصروف<input id="bce-description" class="swal2-input" placeholder="سبب الصرف أو نوع المشتريات"></label>'+
             '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bce-amount" type="number" min="0.01" step="0.01" class="swal2-input"></label><label class="text-xs font-bold">التاريخ<input id="bce-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label></div>'+
             '<label class="block text-xs font-bold">المورد<input id="bce-supplier" class="swal2-input"></label><label class="block text-xs font-bold">رقم الفاتورة<input id="bce-invoice" class="swal2-input"></label>'+
@@ -798,10 +804,10 @@ var App = {
                 '<label class="flex justify-between items-center gap-2">اشتراط الفاتورة قبل السداد<input id="ps-invoice" type="checkbox" '+(s.require_invoice_before_payment?'checked':'')+'></label>'+
                 '<label class="flex justify-between items-center gap-2">ترحيل المخزون عند ترحيل الفاتورة<input id="ps-stock" type="checkbox" '+(s.require_inventory_on_invoice?'checked':'')+'></label>'+
                 '<label class="flex justify-between items-center gap-2">اشتراط إذن مخزني عند المرتجع<input id="ps-return" type="checkbox" '+(s.require_inventory_voucher_on_return?'checked':'')+'></label>'+
-                '<label class="block text-xs">العملة الافتراضية<input id="ps-currency" class="swal2-input" value="'+buyerEsc(s.default_currency||'SAR')+'"></label></div>';
+                '<div class="p-3 rounded-xl bg-slate-50 text-sm">عملة النظام المعتمدة: <b>'+buyerEsc(this.currency||'EGP')+'</b><p class="text-xs text-slate-500 mt-1">تُقرأ من تبويب إعدادات النظام في النظام الأم، ولا تُغيّر من إعدادات المشتريات.</p></div></div>';
             var self=this;
             var result=await Swal.fire({title:'إعدادات المشتريات',html:html,width:650,showCancelButton:true,confirmButtonText:'حفظ الإعدادات',cancelButtonText:'إلغاء',preConfirm:async function(){
-                try{return await self.api('SAVE_SETTINGS',{require_request_approval:RW_UI.byId('ps-approval').checked,require_receiving_before_invoice:RW_UI.byId('ps-receive').checked,require_invoice_before_payment:RW_UI.byId('ps-invoice').checked,require_inventory_on_invoice:RW_UI.byId('ps-stock').checked,require_inventory_voucher_on_return:RW_UI.byId('ps-return').checked,default_currency:RW_UI.byId('ps-currency').value.trim()||'SAR'});}
+                try{return await self.api('SAVE_SETTINGS',{require_request_approval:RW_UI.byId('ps-approval').checked,require_receiving_before_invoice:RW_UI.byId('ps-receive').checked,require_invoice_before_payment:RW_UI.byId('ps-invoice').checked,require_inventory_on_invoice:RW_UI.byId('ps-stock').checked,require_inventory_voucher_on_return:RW_UI.byId('ps-return').checked});}
                 catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
             if(result.isConfirmed){this.invalidate();RW_UI.toast('تم حفظ إعدادات المشتريات','success');}
