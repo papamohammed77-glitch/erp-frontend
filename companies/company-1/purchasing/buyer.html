@@ -60,7 +60,8 @@ function buyerEsc(value){
     return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function buyerMoney(value,currency){
-    return RW_UI.formatCurrency(Number(value||0),currency||'EGP');
+    var activeCurrency=currency||(typeof App!=='undefined'&&App.currency)||'EGP';
+    return RW_UI.formatCurrency(Number(value||0),activeCurrency);
 }
 function buyerDate(value){
     if(!value)return '—';
@@ -144,6 +145,13 @@ var App = {
     },
     invalidate:function(){
         this.cache={};this.cacheAt={};
+    },
+    loadSystemCurrency:async function(){
+        var result=await this.api('GET_SETTINGS',{});
+        var currency=String(result&&result.currency||'').trim().toUpperCase();
+        if(!/^[A-Z]{3}$/.test(currency))throw new Error('تعذر قراءة العملة المعتمدة من إعدادات النظام الأم');
+        this.currency=currency;
+        return currency;
     },
     notifyError:function(error){
         RW_UI.toast(error&&error.message?error.message:'حدث خطأ غير متوقع','error');
@@ -352,6 +360,7 @@ var App = {
         }catch(e){this.notifyError(e);}
     },
     renderSuppliers:async function(){
+        await this.loadSystemCurrency();
         this.pageLoading('تحميل الموردين');
         var rows=await this.data('suppliers');
         var q=this.search.toLowerCase();
@@ -366,6 +375,7 @@ var App = {
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     supplierForm:async function(id){
+        await this.loadSystemCurrency();
         var rows=await this.data('suppliers'),current=id?rows.find(function(x){return x.id===id;}):null,self=this,isEdit=!!current;
         var code=current?current.supplier_code:('SUPP-'+(rows.reduce(function(m,x){var n=String(x.supplier_code||'').match(/^SUPP-(\d+)$/i);return n?Math.max(m,Number(n[1])):m;},1000)+1));
         var html='<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">'+
@@ -501,8 +511,10 @@ var App = {
     },
     createPO:async function(){
         try{
-            var d=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_settings')]);
+            var d=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_settings'),this.api('GET_SETTINGS',{})]);
             var suppliers=d[0].filter(function(x){return x.is_active!==false;}),items=d[1],branches=d[2],settings=d[3][0]||{},lines=[],self=this;
+            this.currency=String(d[4]&&d[4].currency||'EGP').trim().toUpperCase();
+            if(!/^[A-Z]{3}$/.test(this.currency))throw new Error('عملة النظام غير صالحة');
             var html='<div dir="rtl" class="text-right space-y-5"><div class="rounded-2xl bg-gradient-to-l from-emerald-50 to-slate-50 border border-emerald-100 p-5"><div class="flex items-center gap-3"><div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center"><i class="fas fa-cart-plus"></i></div><div><div class="text-lg font-black">إنشاء أمر شراء PO</div><div class="text-sm text-slate-500">وثيقة توريد للمورد، مع تحديد الفرع والموعد وشروط الدفع وبنود الأصناف.</div></div></div></div>'+
             '<div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-black">المورد<select id="bpo-supplier" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر المورد</option>'+suppliers.map(function(x){return '<option value="'+buyerEsc(x.id)+'">'+buyerEsc(x.name)+'</option>';}).join('')+'</select></label>'+
             '<label class="text-sm font-black">فرع الاستلام<select id="bpo-branch" class="w-full border rounded-xl p-3 mt-1"><option value="">الفرع الافتراضي</option>'+branches.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+(settings.default_branch_id===x.id?'selected':'')+'>'+buyerEsc(x.name)+'</option>';}).join('')+'</select></label>'+
@@ -517,7 +529,7 @@ var App = {
                 Array.from(host.querySelectorAll('[data-pof]')).forEach(function(el){el.addEventListener('change',function(){lines[Number(el.dataset.poi)][el.dataset.pof]=Number(el.value);render();});});
                 Array.from(host.querySelectorAll('[data-por]')).forEach(function(el){el.addEventListener('click',function(){lines.splice(Number(el.dataset.por),1);render();});});
             }
-            var r=await Swal.fire({title:'أمر شراء جديد — PO',width:1050,html:html,showCancelButton:true,confirmButtonText:'حفظ أمر الشراء',cancelButtonText:'إلغاء',didOpen:function(){
+            var r=await Swal.fire({title:'أمر شراء جديد — PO',width:980,html:html,showCancelButton:true,confirmButtonText:'حفظ أمر الشراء',cancelButtonText:'إلغاء',didOpen:function(){
                 var search=RW_UI.byId('bpo-search'),box=RW_UI.byId('bpo-results'),selected=null;
                 search.addEventListener('input',function(){var q=this.value.trim().toLowerCase();selected=null;var found=items.filter(function(x){return [x.name,x.item_code,x.barcode].join(' ').toLowerCase().includes(q);}).slice(0,20);
                     box.innerHTML=found.map(function(x,i){return '<button type="button" data-bpoi="'+i+'" class="w-full text-right p-3 border-b hover:bg-emerald-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.item_code)+'</small></button>';}).join('')||'<div class="p-3">لا توجد نتائج</div>';box.classList.remove('hidden');
@@ -697,6 +709,7 @@ var App = {
     },
     issueCustody:async function(){
         try{
+            await this.loadSystemCurrency();
             var snapshot=this.custodySnapshot||await this.api('GET_CUSTODY',{}),employees=snapshot.employees||[];
             var data=await Promise.all([this.data('branches'),this.data('treasury')]),branches=data[0],treasuries=data[1].filter(function(t){return t.is_active!==false;});
             if(!employees.length)throw new Error('لا يوجد موظفون نشطون مسجلون في الشركة');
@@ -846,6 +859,7 @@ var App = {
         }catch(e){this.notifyError(e);}
     },
     renderAccount:async function(){
+        await this.loadSystemCurrency();
         this.pageLoading('تحميل ملف المشتري');
         var settings=await this.data('purchase_settings');
         var p=this.currentUser||{},perms=Array.isArray(p.permissions)?p.permissions:[];
