@@ -698,7 +698,7 @@ var App = {
             if(!employees.length)throw new Error('لا يوجد موظفون نشطون مسجلون في الشركة');
             var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">الموظف<select id="bc-employee" class="swal2-select w-full">'+employees.map(function(e){return '<option value="'+buyerEsc(e.id)+'">'+buyerEsc(e.name)+' · '+buyerEsc(e.email)+'</option>';}).join('')+'</select></label>'+
                 '<label class="block text-xs font-bold">الغرض<input id="bc-purpose" class="swal2-input" placeholder="مثال: مشتريات تشغيلية / مصروفات موردين"></label>'+
-                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bc-amount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="0.00"></label><label class="text-xs font-bold">العملة<input id="bc-currency" class="swal2-input" value="'+buyerEsc(this.currency||'EGP')+'"></label></div>'+
+                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bc-amount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="0.00"></label><label class="text-xs font-bold">العملة<input id="bc-currency" class="swal2-input" value="'+buyerEsc(this.currency||'EGP')+'" readonly></label></div>'+
                 '<label class="block text-xs font-bold">تاريخ التسليم<input id="bc-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label>'+
                 '<label class="block text-xs font-bold">الفرع<select id="bc-branch" class="swal2-select w-full"><option value="">بدون تحديد</option>'+branches.map(function(b){return '<option value="'+buyerEsc(b.id)+'">'+buyerEsc(b.name)+'</option>';}).join('')+'</select></label>'+
                 '<label class="block text-xs font-bold">مرجع التسليم اليدوي<input id="bc-reference" class="swal2-input" placeholder="رقم سند/إيصال الصرف أو مرجع داخلي"></label>'+
@@ -714,36 +714,76 @@ var App = {
             if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تسجيل العهدة يدويًا','success');}
         }catch(e){this.notifyError(e);}
     },
+    addCustodyAdvance:async function(custodyId){
+        var result=await Swal.fire({title:'زيادة عهدة / تسليم نقدية إضافية',html:'<div class="text-right space-y-2"><label class="block text-xs font-bold">المبلغ الإضافي<input id="bca-amount" type="number" min="0.01" step="0.01" class="swal2-input"></label><label class="block text-xs font-bold">تاريخ التسليم<input id="bca-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label><label class="block text-xs font-bold">مرجع سند التسليم<input id="bca-reference" class="swal2-input"></label><label class="block text-xs font-bold">ملاحظات<textarea id="bca-notes" class="swal2-textarea"></textarea></label><p class="text-xs text-amber-700">تُسجل الزيادة كحركة نقدية مستقلة، ولا تصبح متاحة لتقديم المصروفات إلا بعد تأكيد الموظف استلامها.</p></div>',showCancelButton:true,confirmButtonText:'تسجيل الزيادة',cancelButtonText:'إلغاء',preConfirm:async function(){
+            var amount=Number(RW_UI.byId('bca-amount').value||0);if(amount<=0){Swal.showValidationMessage('أدخل مبلغًا أكبر من صفر');return false;}
+            try{return await App.api('ADD_CUSTODY_ADVANCE',{custody_id:custodyId,amount:amount,advance_date:RW_UI.byId('bca-date').value||buyerLocalDate(),reference:RW_UI.byId('bca-reference').value.trim()||null,notes:RW_UI.byId('bca-notes').value.trim()||null});}
+            catch(e){Swal.showValidationMessage(e.message);return false;}
+        }});
+        if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تسجيل زيادة العهدة وبانتظار تأكيد الموظف','success');}
+    },
+    acknowledgeCustodyAdvance:async function(advanceId){
+        var ok=await Swal.fire({title:'تأكيد استلام زيادة العهدة',text:'هل استلمت هذه النقدية الإضافية فعليًا؟',icon:'question',showCancelButton:true,confirmButtonText:'نعم، استلمت',cancelButtonText:'إلغاء'});
+        if(!ok.isConfirmed)return;
+        try{await this.api('ACKNOWLEDGE_CUSTODY_ADVANCE',{advance_id:advanceId});this.invalidate();await this.renderCustody();RW_UI.toast('تم تأكيد استلام الزيادة','success');}
+        catch(e){this.notifyError(e);}
+    },
     acknowledgeCustody:async function(id){
         try{await this.api('ACKNOWLEDGE_CUSTODY',{custody_id:id});this.invalidate();await this.renderCustody();RW_UI.toast('تم تأكيد استلام العهدة','success');}
         catch(e){this.notifyError(e);}
     },
     submitCustodyExpense:async function(custodyId){
-        var custodyRecord=(this.custodySnapshot&&this.custodySnapshot.custodies||[]).find(function(c){return c.id===custodyId;});
-        var custodyCurrency=custodyRecord&&custodyRecord.currency?custodyRecord.currency:(this.currency||'EGP');
-        var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">وصف المصروف<input id="bce-description" class="swal2-input" placeholder="سبب الصرف أو نوع المشتريات"></label>'+
-            '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bce-amount" type="number" min="0.01" step="0.01" class="swal2-input"></label><label class="text-xs font-bold">التاريخ<input id="bce-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label></div>'+
-            '<label class="block text-xs font-bold">المورد<input id="bce-supplier" class="swal2-input"></label><label class="block text-xs font-bold">رقم الفاتورة<input id="bce-invoice" class="swal2-input"></label>'+
-            '<label class="block text-xs font-bold">صورة الفاتورة أو المستند (PDF / صورة)<input id="bce-file" type="file" accept="application/pdf,image/*" class="swal2-file"></label><p class="text-xs text-slate-400">الحد الأقصى 10 ميجابايت. يتم حفظ الملف في مساحة المستندات الخاصة بالشركة.</p></div>';
-        var self=this;
-        var result=await Swal.fire({title:'تقديم مستند للتسوية',html:html,width:650,showCancelButton:true,confirmButtonText:'إرسال للمالية',cancelButtonText:'إلغاء',preConfirm:async function(){
-            var file=RW_UI.byId('bce-file').files[0],amount=Number(RW_UI.byId('bce-amount').value||0),description=RW_UI.byId('bce-description').value.trim();
-            if(!file||!description||amount<=0){Swal.showValidationMessage('أدخل الوصف والمبلغ وارفق المستند');return false;}
-            if(file.size>10*1024*1024||!(file.type==='application/pdf'||file.type.indexOf('image/')===0)){Swal.showValidationMessage('يسمح بملف PDF أو صورة لا تتجاوز 10 ميجابايت');return false;}
-            var safeName=file.name.replace(/[^A-Za-z0-9._-]/g,'_').slice(-80)||'document';
-            var path=self.currentUser.company_id+'/'+self.currentUser.id+'/buyer-custody/'+custodyId+'/'+Date.now()+'_'+safeName;
-            var uploaded=await supabase.storage.from('employee-documents').upload(path,file,{cacheControl:'3600',upsert:false,contentType:file.type});
-            if(uploaded.error){Swal.showValidationMessage('تعذر رفع المستند: '+uploaded.error.message);return false;}
-            try{
-                return await self.api('SUBMIT_CUSTODY_EXPENSE',{custody_id:custodyId,expense_date:RW_UI.byId('bce-date').value||null,supplier_name:RW_UI.byId('bce-supplier').value.trim()||null,invoice_number:RW_UI.byId('bce-invoice').value.trim()||null,description:description,amount:amount,currency:custodyCurrency,document_name:file.name,document_path:path,mime_type:file.type});
-            }catch(e){
-                await supabase.storage.from('employee-documents').remove([path]);
-                Swal.showValidationMessage(e.message);return false;
-            }
-        }});
-        if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم إرسال المستند إلى الإدارة المالية','success');}
+        try{
+            var custody=(this.custodySnapshot&&this.custodySnapshot.custodies||[]).find(function(c){return c.id===custodyId;});
+            if(!custody)throw new Error('العهدة غير موجودة');
+            var loaded=await Promise.all([this.data('purchase_invoices'),this.data('purchase_orders'),this.data('receiving'),this.data('suppliers')]);
+            var invoices=loaded[0].filter(function(i){return i.purchase_order_id&&i.supplier_id&&['Draft','Posted'].indexOf(i.status)!==-1&&String(i.currency||'').toUpperCase()===String(custody.currency).toUpperCase();});
+            var orders=loaded[1],receipts=loaded[2].filter(function(r){return ['مكتمل','Completed'].indexOf(r.status)!==-1;}),suppliers=loaded[3];
+            if(!invoices.length||!receipts.length)throw new Error('لا توجد فاتورة شراء مرتبطة بأمر PO وإذن استلام مخزني مكتمل. أنشئ PO، ثم سجّل الاستلام بالمخزن، ثم أنشئ فاتورة مرتبطة بالـ PO.');
+            var html='<div class="text-right space-y-3"><label class="block text-xs font-bold">فاتورة الشراء المسجلة في النظام<select id="bce-invoice" class="swal2-select w-full"><option value="">اختر فاتورة مرتبطة بأمر شراء</option>'+invoices.map(function(i){return '<option value="'+buyerEsc(i.id)+'">'+buyerEsc(i.invoice_code)+' · '+buyerEsc(i.supplier_invoice_no||'بدون رقم مورد')+' · '+buyerMoney(i.total_amount,i.currency)+'</option>';}).join('')+'</select></label>'+
+                '<label class="block text-xs font-bold">إذن استلام المخزن<select id="bce-receipt" class="swal2-select w-full"><option value="">اختر إذن الاستلام المرتبط بأمر الشراء</option></select></label>'+
+                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المورد<input id="bce-supplier-name" class="swal2-input" readonly></label><label class="text-xs font-bold">رقم فاتورة المورد<input id="bce-invoice-no" class="swal2-input" readonly></label></div>'+
+                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">قيمة الفاتورة ('+buyerEsc(custody.currency)+')<input id="bce-amount" type="number" class="swal2-input" readonly></label><label class="text-xs font-bold">تاريخ المصروف<input id="bce-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label></div>'+
+                '<label class="block text-xs font-bold">وصف المصروف / المشتريات<input id="bce-description" class="swal2-input" placeholder="الغرض من الشراء"></label>'+
+                '<label class="block text-xs font-bold">صورة فاتورة المورد (PDF / صورة)<input id="bce-file" type="file" accept="application/pdf,image/*" class="swal2-file"></label>'+
+                '<label class="block text-xs font-bold">صورة إذن استلام المخزن (PDF / صورة)<input id="bce-receipt-file" type="file" accept="application/pdf,image/*" class="swal2-file"></label>'+
+                '<p class="text-xs text-amber-700">لن يُقبل المستند للتسوية إلا إذا ارتبطت فاتورة المورد بأمر الشراء نفسه، وكان إذن الاستلام مكتملًا ويغطي أصناف الفاتورة وكمياتها. الحد الأقصى لكل ملف 10 ميجابايت.</p></div>';
+            var self=this;
+            var result=await Swal.fire({title:'تقديم فاتورة وإذن استلام للتسوية',html:html,width:750,showCancelButton:true,confirmButtonText:'إرسال للمالية',cancelButtonText:'إلغاء',didOpen:function(){
+                RW_UI.byId('bce-invoice').addEventListener('change',function(){
+                    var inv=invoices.find(function(x){return x.id===this.value;},this),supplier=inv&&suppliers.find(function(x){return x.id===inv.supplier_id;});
+                    RW_UI.byId('bce-supplier-name').value=supplier?supplier.name:'';
+                    RW_UI.byId('bce-invoice-no').value=inv?inv.supplier_invoice_no||'':'';
+                    RW_UI.byId('bce-amount').value=inv?Number(inv.total_amount||0).toFixed(2):'';
+                    var po=inv&&orders.find(function(x){return x.id===inv.purchase_order_id;});
+                    var options=receipts.filter(function(r){return po&&r.po_number===po.po_code;});
+                    RW_UI.byId('bce-receipt').innerHTML='<option value="">اختر إذن الاستلام</option>'+options.map(function(r){return '<option value="'+buyerEsc(r.operation_id)+'">'+buyerEsc(r.po_number)+' · '+buyerDate(r.date)+' · '+buyerEsc(r.responsible||'')+'</option>';}).join('');
+                });
+            },preConfirm:async function(){
+                var invoiceId=RW_UI.byId('bce-invoice').value,receiptId=RW_UI.byId('bce-receipt').value;
+                var invoice=invoices.find(function(x){return x.id===invoiceId;}),supplier=invoice&&suppliers.find(function(x){return x.id===invoice.supplier_id;});
+                var invoiceFile=RW_UI.byId('bce-file').files[0],receiptFile=RW_UI.byId('bce-receipt-file').files[0],amount=Number(RW_UI.byId('bce-amount').value||0),description=RW_UI.byId('bce-description').value.trim();
+                if(!invoice||!receiptId||!invoiceFile||!receiptFile||!description||amount<=0){Swal.showValidationMessage('اختر الفاتورة وإذن الاستلام وأرفق الملفين وأدخل وصف المصروف');return false;}
+                var files=[invoiceFile,receiptFile];for(var i=0;i<files.length;i++){if(files[i].size>10*1024*1024||!(files[i].type==='application/pdf'||files[i].type.indexOf('image/')===0)){Swal.showValidationMessage('يسمح بملفات PDF أو صور لا تتجاوز 10 ميجابايت لكل ملف');return false;}}
+                var prefix=self.currentUser.company_id+'/'+self.currentUser.id+'/buyer-custody/'+custodyId+'/';
+                var stamp=Date.now(),safe=function(n){return n.replace(/[^A-Za-z0-9._-]/g,'_').slice(-80)||'document';};
+                var invoicePath=prefix+stamp+'_invoice_'+safe(invoiceFile.name),receiptPath=prefix+stamp+'_receipt_'+safe(receiptFile.name);
+                var up1=await supabase.storage.from('employee-documents').upload(invoicePath,invoiceFile,{cacheControl:'3600',upsert:false,contentType:invoiceFile.type});
+                if(up1.error){Swal.showValidationMessage('تعذر رفع فاتورة المورد: '+up1.error.message);return false;}
+                var up2=await supabase.storage.from('employee-documents').upload(receiptPath,receiptFile,{cacheControl:'3600',upsert:false,contentType:receiptFile.type});
+                if(up2.error){await supabase.storage.from('employee-documents').remove([invoicePath]);Swal.showValidationMessage('تعذر رفع إذن الاستلام: '+up2.error.message);return false;}
+                try{
+                    return await self.api('SUBMIT_CUSTODY_EXPENSE',{custody_id:custodyId,expense_date:RW_UI.byId('bce-date').value||buyerLocalDate(),
+                        supplier_id:invoice.supplier_id,supplier_name:supplier?supplier.name:null,invoice_number:invoice.supplier_invoice_no||null,
+                        purchase_invoice_id:invoice.id,receiving_operation_id:receiptId,description:description,amount:amount,currency:custody.currency,
+                        document_name:invoiceFile.name,document_path:invoicePath,mime_type:invoiceFile.type,
+                        receipt_document_name:receiptFile.name,receipt_document_path:receiptPath,receipt_mime_type:receiptFile.type});
+                }catch(e){await supabase.storage.from('employee-documents').remove([invoicePath,receiptPath]);Swal.showValidationMessage(e.message);return false;}
+            }});
+            if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم إرسال فاتورة المورد وإذن الاستلام للمالية','success');}
+        }catch(e){this.notifyError(e);}
     },
-    viewCustodyDocument:async function(path){
+    viewCustodyDocument:async function(path){    viewCustodyDocument:async function(path){
         var preview=window.open('about:blank','_blank');
         try{
             var result=await supabase.storage.from('employee-documents').createSignedUrl(path,300);
