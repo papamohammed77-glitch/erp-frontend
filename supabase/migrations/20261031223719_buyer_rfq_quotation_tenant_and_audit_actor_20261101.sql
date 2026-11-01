@@ -4,6 +4,7 @@ DECLARE
   v_old text;
   v_new text;
 BEGIN
+  -- Quotation item lookup must be tenant-bound just like PR and invoice item lookups.
   v_def := pg_get_functiondef('public.purchase_create_quotation_atomic(uuid,uuid,uuid,date,text,text,jsonb,text)'::regprocedure);
   v_old := 'SELECT * INTO im FROM items WHERE item_code=btrim(x->>''item_code'');';
   v_new := 'SELECT * INTO im FROM items WHERE item_code=btrim(x->>''item_code'') AND company_id=p_company_id;';
@@ -11,6 +12,7 @@ BEGIN
   v_def := replace(v_def,v_old,v_new);
   EXECUTE v_def;
 
+  -- Status-history actor should be the actor performing the transition, not the original creator.
   v_def := pg_get_functiondef('public.purchase_company_status_history()'::regprocedure);
   v_old := 'ELSIF TG_TABLE_NAME=''purchase_rfqs'' THEN actor:=NEW.created_by;';
   v_new := 'ELSIF TG_TABLE_NAME=''purchase_rfqs'' THEN actor:=COALESCE(NULLIF(current_setting(''rawaea.purchase_actor'',true),''''),NEW.created_by);';

@@ -1,11 +1,9 @@
--- LVE-574: system currency, PO/receipt accounting boundary, and supplier AP synchronization.
--- Applied to SMART ERP as migration 20261101120225.
 
 CREATE OR REPLACE FUNCTION app_private.sync_supplier_accounts_payable()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
 AS $function$
 DECLARE
   v_supplier_id uuid;
@@ -41,17 +39,29 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$function$
-;
+$function$;
+
 REVOKE ALL ON FUNCTION app_private.sync_supplier_accounts_payable() FROM PUBLIC, anon, authenticated;
 DROP TRIGGER IF EXISTS supplier_ledger_sync_accounts_payable ON public.supplier_ledger;
-CREATE TRIGGER supplier_ledger_sync_accounts_payable AFTER INSERT OR DELETE OR UPDATE ON public.supplier_ledger FOR EACH ROW EXECUTE FUNCTION app_private.sync_supplier_accounts_payable();
+CREATE TRIGGER supplier_ledger_sync_accounts_payable
+AFTER INSERT OR UPDATE OR DELETE ON public.supplier_ledger
+FOR EACH ROW EXECUTE FUNCTION app_private.sync_supplier_accounts_payable();
 
-CREATE OR REPLACE FUNCTION public.purchase_create_invoice_atomic(p_company_id uuid, p_supplier_id uuid, p_purchase_order_id uuid, p_branch_id uuid, p_due_date date, p_currency text, p_created_by text, p_items jsonb, p_operation_id text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
+CREATE OR REPLACE FUNCTION public.purchase_create_invoice_atomic(
+  p_company_id uuid,
+  p_supplier_id uuid,
+  p_purchase_order_id uuid,
+  p_branch_id uuid,
+  p_due_date date,
+  p_currency text,
+  p_created_by text,
+  p_items jsonb,
+  p_operation_id text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
 AS $function$
 DECLARE
   iid uuid;
@@ -195,14 +205,17 @@ BEGIN
     'total_amount', total, 'currency', v_system_currency
   );
 END;
-$function$
-;
+$function$;
 
-CREATE OR REPLACE FUNCTION public.purchase_post_invoice_atomic(p_company_id uuid, p_invoice_id uuid, p_actor text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
+CREATE OR REPLACE FUNCTION public.purchase_post_invoice_atomic(
+  p_company_id uuid,
+  p_invoice_id uuid,
+  p_actor text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
 AS $function$
 DECLARE
   i public.purchase_invoices%rowtype;
@@ -390,14 +403,18 @@ BEGIN
     'status', 'Posted', 'journal', je
   );
 END;
-$function$
-;
+$function$;
 
-CREATE OR REPLACE FUNCTION public.buyer_custody_review_expense_atomic(p_company_id uuid, p_expense_id uuid, p_decision text, p_review_note text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO ''
+CREATE OR REPLACE FUNCTION public.buyer_custody_review_expense_atomic(
+  p_company_id uuid,
+  p_expense_id uuid,
+  p_decision text,
+  p_review_note text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
 AS $function$
 DECLARE
   v_actor public.users%rowtype;
@@ -636,5 +653,4 @@ BEGIN
     'journal_entry_id', v_journal->'entry_id'
   );
 END;
-$function$
-;
+$function$;

@@ -8,6 +8,7 @@ REVOKE TRUNCATE ON TABLE
   public.purchase_quotation_details,
   public.purchase_quotations,
   public.purchase_request_details,
+  public.purchase_requests,
   public.purchase_return_details,
   public.purchase_returns,
   public.purchase_rfq_details,

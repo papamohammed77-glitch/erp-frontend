@@ -13,7 +13,7 @@ BEGIN
 
   v_def := pg_get_functiondef('public.purchase_create_quotation_atomic(uuid,uuid,uuid,date,text,text,jsonb,text)'::regprocedure);
   v_old := '  code:=purchase_next_code(p_company_id,''quotation'');';
-  v_new := '  code:=purchase_next_code(p_company_id,''quotation'')
+  v_new := '  code:=purchase_next_code(p_company_id,''quotation'');
   PERFORM set_config(''rawaea.purchase_actor'',p_created_by,true);';
   IF position(v_old in v_def)=0 THEN RAISE EXCEPTION 'QUOTATION_CREATE_ACTOR_ANCHOR_NOT_FOUND'; END IF;
   v_def := replace(v_def,v_old,v_new);

@@ -1,3 +1,4 @@
+
 DROP POLICY IF EXISTS supplier_ledger_select_current_tenant ON public.supplier_ledger;
 CREATE POLICY supplier_ledger_select_current_tenant
 ON public.supplier_ledger
