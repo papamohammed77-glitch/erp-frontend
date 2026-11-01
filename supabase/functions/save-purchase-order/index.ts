@@ -367,6 +367,7 @@ serve(async (req) => {
       data = { success: true, currency: await getSystemCurrency() };
     } else if (op === "GET_DATA") {
       const table = String(p.table || "");
+      if (table === "treasury") requireAny(["finance", "finance_manager"]);
       const allowed = [
         "purchase_requests",
         "purchase_request_details",
@@ -395,8 +396,7 @@ serve(async (req) => {
         "stock_branches",
         "suppliers",
         "items",
-        "branches",
-        "treasury"
+        "branches"
       ];
       if (!allowed.includes(table)) throw new Error("جدول غير مدعوم");
       const detailScope: Record<string, { parent: string; foreignKey: string }> = {
