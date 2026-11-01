@@ -75,12 +75,14 @@ serve(async (req) => {
       requireAny(["purchases", "finance", "finance_manager", "reports"]);
     } else if (op === "SAVE_SUPPLIER") {
       requireAny(["purchases", "suppliers"]);
-    } else if (["ISSUE_CUSTODY", "REVIEW_CUSTODY_EXPENSE", "SETTLE_CUSTODY"].includes(op)) {
+    } else if (["ISSUE_CUSTODY", "ADD_CUSTODY_ADVANCE", "REVIEW_CUSTODY_EXPENSE", "SETTLE_CUSTODY"].includes(op)) {
       requireAny(["finance", "finance_manager"]);
-    } else if (["SUBMIT_CUSTODY_EXPENSE", "ACKNOWLEDGE_CUSTODY"].includes(op)) {
+    } else if (["SUBMIT_CUSTODY_EXPENSE", "ACKNOWLEDGE_CUSTODY", "ACKNOWLEDGE_CUSTODY_ADVANCE"].includes(op)) {
       requireAny(["purchases", "finance", "finance_manager"]);
     } else if (op === "GET_CUSTODY") {
-      requireAny(["purchases", "finance"]);
+      requireAny(["purchases", "finance", "finance_manager"]);
+    } else if (op === "GET_SETTINGS") {
+      requireAny(["purchases", "finance", "finance_manager"]);
     } else if (op === "GET_DATA") {
       const table = String(p.table || "");
       if (table === "treasury") requireAny(["finance", "finance_manager"]);
@@ -99,6 +101,14 @@ serve(async (req) => {
 
     let data: any, error: any;
     const call = (name: string, args: any) => sb.rpc(name, args);
+    const getSystemCurrency = async () => {
+      const { data: settings, error: settingsError } = await sb.from("app_settings")
+        .select("currency").eq("company_id", companyId).order("created_at", { ascending: true }).limit(1).maybeSingle();
+      if (settingsError) throw settingsError;
+      const currency = String(settings?.currency || "EGP").trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(currency)) throw new Error("SYSTEM_CURRENCY_INVALID");
+      return currency;
+    };
 
     if (op === "SAVE_SUPPLIER") {
       ({ data, error } = await call("save_supplier_atomic", {
@@ -118,6 +128,12 @@ serve(async (req) => {
         p_notes: p.notes || null,
         p_items: p.items || [],
         p_operation_id: operationId
+      }));
+    } else if (op === "CREATE_PO") {
+      ({ data, error } = await profileClient.rpc("purchase_create_po_atomic", {
+        p_company_id: companyId, p_supplier_id: p.supplier_id, p_branch_id: p.branch_id || null,
+        p_expected_delivery_date: p.expected_delivery_date || null, p_payment_terms: p.payment_terms || null,
+        p_notes: p.notes || null, p_items: p.items || [], p_operation_id: operationId
       }));
     } else if (op === "SUBMIT_REQUEST") {
       ({ data, error } = await call("purchase_submit_request_atomic", {
@@ -158,7 +174,7 @@ serve(async (req) => {
         p_supplier_id: p.supplier_id,
         p_rfq_id: p.rfq_id || null,
         p_valid_until: p.valid_until || null,
-        p_currency: p.currency || "SAR",
+        p_currency: await getSystemCurrency(),
         p_created_by: user.email,
         p_items: p.items || [],
         p_operation_id: operationId
@@ -182,7 +198,7 @@ serve(async (req) => {
         p_purchase_order_id: p.purchase_order_id || null,
         p_branch_id: p.branch_id || null,
         p_due_date: p.due_date || null,
-        p_currency: p.currency || "SAR",
+        p_currency: await getSystemCurrency(),
         p_created_by: user.email,
         p_supplier_invoice_no: p.supplier_invoice_no || null,
         p_notes: p.notes || null,
@@ -258,7 +274,7 @@ serve(async (req) => {
     } else if (op === "ISSUE_CUSTODY") {
       ({ data, error } = await profileClient.rpc("buyer_custody_issue_atomic", {
         p_company_id: companyId, p_employee_id: p.employee_id, p_branch_id: p.branch_id || null,
-        p_purpose: p.purpose, p_currency: p.currency || "SAR", p_amount: Number(p.amount || 0),
+        p_purpose: p.purpose, p_currency: await getSystemCurrency(), p_amount: Number(p.amount || 0),
         p_issued_date: p.issued_date || new Date().toISOString().slice(0, 10),
         p_received_reference: p.received_reference || null, p_notes: p.notes || null,
         p_operation_id: operationId
@@ -267,14 +283,27 @@ serve(async (req) => {
       ({ data, error } = await profileClient.rpc("buyer_custody_acknowledge_atomic", {
         p_company_id: companyId, p_custody_id: p.custody_id
       }));
+    } else if (op === "ADD_CUSTODY_ADVANCE") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_add_advance_atomic", {
+        p_company_id: companyId, p_custody_id: p.custody_id, p_amount: Number(p.amount || 0),
+        p_advance_date: p.advance_date || new Date().toISOString().slice(0, 10),
+        p_reference: p.reference || null, p_notes: p.notes || null, p_operation_id: operationId
+      }));
+    } else if (op === "ACKNOWLEDGE_CUSTODY_ADVANCE") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_acknowledge_advance_atomic", {
+        p_company_id: companyId, p_advance_id: p.advance_id
+      }));
     } else if (op === "SUBMIT_CUSTODY_EXPENSE") {
       ({ data, error } = await profileClient.rpc("buyer_custody_submit_expense_atomic", {
         p_company_id: companyId, p_custody_id: p.custody_id,
         p_expense_date: p.expense_date || new Date().toISOString().slice(0, 10),
         p_supplier_name: p.supplier_name || null, p_invoice_number: p.invoice_number || null,
-        p_description: p.description, p_amount: Number(p.amount || 0), p_currency: p.currency || "SAR",
+        p_description: p.description, p_amount: Number(p.amount || 0), p_currency: await getSystemCurrency(),
         p_document_name: p.document_name, p_document_path: p.document_path,
-        p_mime_type: p.mime_type || null, p_operation_id: operationId
+        p_mime_type: p.mime_type || null, p_supplier_id: p.supplier_id,
+        p_purchase_invoice_id: p.purchase_invoice_id, p_receiving_operation_id: p.receiving_operation_id,
+        p_receipt_document_name: p.receipt_document_name, p_receipt_document_path: p.receipt_document_path,
+        p_receipt_mime_type: p.receipt_mime_type || null, p_operation_id: operationId
       }));
     } else if (op === "REVIEW_CUSTODY_EXPENSE") {
       ({ data, error } = await profileClient.rpc("buyer_custody_review_expense_atomic", {
@@ -298,17 +327,22 @@ serve(async (req) => {
       const custodyIds = custodyRows.map((row: any) => row.id).filter(Boolean);
       let expenseRows: any[] = [];
       let settlementRows: any[] = [];
+      let advanceRows: any[] = [];
       if (custodyIds.length) {
-        const [expenseResult, settlementResult] = await Promise.all([
+        const [expenseResult, settlementResult, advanceResult] = await Promise.all([
           sb.from("buyer_custody_expenses").select("*").eq("company_id", companyId)
             .in("custody_id", custodyIds).order("expense_date", { ascending: false }).limit(500),
           sb.from("buyer_custody_settlements").select("*").eq("company_id", companyId)
-            .in("custody_id", custodyIds).limit(200)
+            .in("custody_id", custodyIds).limit(200),
+          sb.from("buyer_custody_advances").select("*").eq("company_id", companyId)
+            .in("custody_id", custodyIds).order("advance_date", { ascending: false }).limit(500)
         ]);
         if (expenseResult.error) throw expenseResult.error;
         if (settlementResult.error) throw settlementResult.error;
+        if (advanceResult.error) throw advanceResult.error;
         expenseRows = expenseResult.data || [];
         settlementRows = settlementResult.data || [];
+        advanceRows = advanceResult.data || [];
       }
       let employeeRows: any[] = [];
       if (financeView) {
@@ -322,8 +356,10 @@ serve(async (req) => {
         custody.employee_name = employeeNames.get(custody.employee_id) ||
           (custody.employee_id === profile.id ? profile.name : "موظف");
       }
-      data = { success: true, custodies: custodyRows, expenses: expenseRows,
+      data = { success: true, custodies: custodyRows, expenses: expenseRows, advances: advanceRows,
         settlements: settlementRows, employees: employeeRows, is_finance: financeView };
+    } else if (op === "GET_SETTINGS") {
+      data = { success: true, currency: await getSystemCurrency() };
     } else if (op === "GET_DATA") {
       const table = String(p.table || "");
       const allowed = [
@@ -349,6 +385,7 @@ serve(async (req) => {
         "purchase_attachments",
         "purchase_document_links",
         "purchase_settings",
+        "receiving",
         "stock_branches",
         "suppliers",
         "items",
