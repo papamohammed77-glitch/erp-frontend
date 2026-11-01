@@ -274,7 +274,7 @@ serve(async (req) => {
     } else if (op === "ISSUE_CUSTODY") {
       ({ data, error } = await profileClient.rpc("buyer_custody_issue_atomic", {
         p_company_id: companyId, p_employee_id: p.employee_id, p_branch_id: p.branch_id || null,
-        p_purpose: p.purpose, p_currency: await getSystemCurrency(), p_amount: Number(p.amount || 0),
+        p_treasury_id: p.treasury_id, p_purpose: p.purpose, p_currency: await getSystemCurrency(), p_amount: Number(p.amount || 0),
         p_issued_date: p.issued_date || new Date().toISOString().slice(0, 10),
         p_received_reference: p.received_reference || null, p_notes: p.notes || null,
         p_operation_id: operationId
@@ -285,7 +285,7 @@ serve(async (req) => {
       }));
     } else if (op === "ADD_CUSTODY_ADVANCE") {
       ({ data, error } = await profileClient.rpc("buyer_custody_add_advance_atomic", {
-        p_company_id: companyId, p_custody_id: p.custody_id, p_amount: Number(p.amount || 0),
+        p_company_id: companyId, p_custody_id: p.custody_id, p_treasury_id: p.treasury_id, p_amount: Number(p.amount || 0),
         p_advance_date: p.advance_date || new Date().toISOString().slice(0, 10),
         p_reference: p.reference || null, p_notes: p.notes || null, p_operation_id: operationId
       }));
@@ -312,7 +312,7 @@ serve(async (req) => {
       }));
     } else if (op === "SETTLE_CUSTODY") {
       ({ data, error } = await profileClient.rpc("buyer_custody_settle_atomic", {
-        p_company_id: companyId, p_custody_id: p.custody_id,
+        p_company_id: companyId, p_custody_id: p.custody_id, p_treasury_id: p.treasury_id || null,
         p_cash_returned: Number(p.cash_returned || 0),
         p_finance_reference: p.finance_reference || null, p_notes: p.notes || null
       }));
@@ -328,21 +328,26 @@ serve(async (req) => {
       let expenseRows: any[] = [];
       let settlementRows: any[] = [];
       let advanceRows: any[] = [];
+      let paymentRows: any[] = [];
       if (custodyIds.length) {
-        const [expenseResult, settlementResult, advanceResult] = await Promise.all([
+        const [expenseResult, settlementResult, advanceResult, paymentResult] = await Promise.all([
           sb.from("buyer_custody_expenses").select("*").eq("company_id", companyId)
             .in("custody_id", custodyIds).order("expense_date", { ascending: false }).limit(500),
           sb.from("buyer_custody_settlements").select("*").eq("company_id", companyId)
             .in("custody_id", custodyIds).limit(200),
           sb.from("buyer_custody_advances").select("*").eq("company_id", companyId)
-            .in("custody_id", custodyIds).order("advance_date", { ascending: false }).limit(500)
+            .in("custody_id", custodyIds).order("advance_date", { ascending: false }).limit(500),
+          sb.from("buyer_custody_payments").select("*").eq("company_id", companyId)
+            .in("custody_id", custodyIds).order("payment_date", { ascending: false }).limit(500)
         ]);
         if (expenseResult.error) throw expenseResult.error;
         if (settlementResult.error) throw settlementResult.error;
         if (advanceResult.error) throw advanceResult.error;
+        if (paymentResult.error) throw paymentResult.error;
         expenseRows = expenseResult.data || [];
         settlementRows = settlementResult.data || [];
         advanceRows = advanceResult.data || [];
+        paymentRows = paymentResult.data || [];
       }
       let employeeRows: any[] = [];
       if (financeView) {
@@ -356,7 +361,7 @@ serve(async (req) => {
         custody.employee_name = employeeNames.get(custody.employee_id) ||
           (custody.employee_id === profile.id ? profile.name : "موظف");
       }
-      data = { success: true, custodies: custodyRows, expenses: expenseRows, advances: advanceRows,
+      data = { success: true, custodies: custodyRows, expenses: expenseRows, advances: advanceRows, payments: paymentRows,
         settlements: settlementRows, employees: employeeRows, is_finance: financeView };
     } else if (op === "GET_SETTINGS") {
       data = { success: true, currency: await getSystemCurrency() };
@@ -386,6 +391,7 @@ serve(async (req) => {
         "purchase_document_links",
         "purchase_settings",
         "receiving",
+        "treasury",
         "stock_branches",
         "suppliers",
         "items",
