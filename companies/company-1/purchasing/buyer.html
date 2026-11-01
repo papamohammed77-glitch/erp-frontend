@@ -177,7 +177,9 @@ var App = {
                 'purchase_document_links',
                 'purchase_settings',
                 'buyer_custodies',
+                'buyer_custody_advances',
                 'buyer_custody_expenses',
+                'buyer_custody_payments',
                 'buyer_custody_settlements',
                 'suppliers',
                 'items',
@@ -193,7 +195,7 @@ var App = {
                     requests:['purchase_requests','purchase_request_details','purchase_rfqs','purchase_rfq_details','purchase_rfq_suppliers','purchase_quotations','purchase_quotation_details','purchase_status_history'],
                     orders:['suppliers','purchase_quotations','purchase_quotation_details','purchase_orders','purchase_order_details','purchase_status_history','purchase_attachments','purchase_document_links'],
                     account:['purchase_invoices','purchase_invoice_details','purchase_payments','purchase_payment_allocations','purchase_returns','purchase_return_details','purchase_status_history','purchase_attachments','purchase_document_links','purchase_settings','suppliers'],
-                    custody:['buyer_custodies','buyer_custody_expenses','buyer_custody_settlements']
+                    custody:['buyer_custodies','buyer_custody_advances','buyer_custody_expenses','buyer_custody_payments','buyer_custody_settlements']
                 };
                 var relevant=self.currentTab==='today'||
                     (targets[self.currentTab]||[]).indexOf(event.table)!==-1;
@@ -679,9 +681,10 @@ var App = {
             if(lines.length){
                 html+='<div class="mt-4 border-t pt-3"><h4 class="font-black text-sm mb-2">المستندات والمصروفات</h4><div class="space-y-2">';
                 lines.forEach(function(e){
+                    var custodyPayment=payments.find(function(p){return p.expense_id===e.id;});
                     html+='<div class="p-3 rounded-xl bg-slate-50"><div class="flex flex-wrap justify-between gap-2"><b class="text-sm">'+buyerEsc(e.description)+'</b><b>'+buyerMoney(e.amount,e.currency)+'</b></div>'+
                         '<p class="text-xs text-slate-500 mt-1">'+buyerEsc(e.supplier_name||'')+' '+(e.invoice_number?'· فاتورة '+buyerEsc(e.invoice_number):'')+' · '+buyerDate(e.expense_date)+'</p>'+
-                        '<div class="flex flex-wrap items-center gap-2 mt-2"><span class="text-xs font-bold">'+buyerStatus(e.status)+'</span><button onclick="App.viewCustodyDocument(\''+buyerEsc(e.document_path)+'\')" class="text-xs text-blue-700 underline">عرض المستند</button>'+
+                        '<div class="flex flex-wrap items-center gap-2 mt-2"><span class="text-xs font-bold">'+buyerStatus(e.status)+'</span><button onclick="App.viewCustodyDocument(\''+buyerEsc(e.document_path)+'\')" class="text-xs text-blue-700 underline">عرض فاتورة المورد</button>'+(e.receipt_document_path?'<button onclick="App.viewCustodyDocument(\''+buyerEsc(e.receipt_document_path)+'\')" class="text-xs text-blue-700 underline">عرض إذن استلام المخزن</button>':'')+(custodyPayment?'<span class="text-xs text-emerald-700 font-bold">سداد المورد: '+buyerEsc(custodyPayment.payment_code)+'</span>':'')+
                         (finance&&e.employee_id!==currentEmployeeId&&e.status==='Submitted'?'<button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Approved\')" class="text-xs text-emerald-700 font-bold">اعتماد</button><button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Rejected\')" class="text-xs text-red-700 font-bold">رفض</button>':'')+
                         (e.review_note?'<p class="w-full text-xs text-slate-500">'+buyerEsc(e.review_note)+'</p>':'')+'</div></div>';
                 });
