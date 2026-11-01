@@ -60,7 +60,7 @@ function buyerEsc(value){
     return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function buyerMoney(value,currency){
-    return RW_UI.formatCurrency(Number(value||0),currency||'SAR');
+    return RW_UI.formatCurrency(Number(value||0),currency||'EGP');
 }
 function buyerDate(value){
     if(!value)return '—';
@@ -86,7 +86,7 @@ var App = {
     cache:{},
     cacheAt:{},
     quickCart:[],
-    currency:'SAR',
+    currency:'EGP',
 
     togglePass:function(){
         var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');
@@ -293,9 +293,10 @@ var App = {
             this.data('items'),
             this.data('stock_branches'),
             this.data('branches'),
-            this.data('purchase_settings')
+            this.data('purchase_settings'),
+            this.api('GET_SETTINGS',{})
         ]);
-        this.currency=(results[8][0]&&results[8][0].default_currency)||this.currency||'SAR';
+        this.currency=(results[9]&&results[9].currency)||'EGP';
         var summary=results[0]||{},requests=results[1],orders=results[2],invoices=results[3],suppliers=results[4],items=results[5],stock=results[6],branches=results[7];
         var itemIndex={},critical=0;
         items.forEach(function(it){itemIndex[it.id]=it;});
@@ -306,7 +307,7 @@ var App = {
         var openOrders=orders.filter(function(o){return ['Received','Cancelled','Closed'].indexOf(o.status)===-1;}).length;
         var pending=requests.filter(function(r){return ['PendingApproval','Submitted'].indexOf(r.status)!==-1;}).length;
         var outstanding=invoices.filter(function(i){return ['Posted','PartiallyPaid','Approved'].indexOf(i.status)!==-1;}).reduce(function(sum,i){return sum+Math.max(0,Number(i.total_amount||0)-Number(i.paid_amount||0));},0);
-        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">مركز عمل المشتريات</h2><p class="text-xs text-slate-500 mt-1">ملخص من عقود المشتريات الحالية في قاعدة البيانات</p></div><button onclick="App.quickPurchase()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-bolt ml-2"></i>شراء عاجل / فاتورة مسودة</button></div>';
+        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">مركز عمل المشتريات</h2><p class="text-xs text-slate-500 mt-1">ملخص من عقود المشتريات الحالية في قاعدة البيانات</p></div><button onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-bolt ml-2"></i>شراء عاجل / فاتورة مسودة</button></div>';
         html+='<div class="grid grid-cols-2 xl:grid-cols-4 gap-3">';
         html+=this.card('نواقص حرجة',critical,'حسب reorder_point والمخزون المتاح',"App.openCriticalShortages()",'fa-triangle-exclamation');
         html+=this.card('أوامر متأخرة','غير محسوب','موعد التسليم المتوقع غير مخزن في PO',"App.switchTab('orders')",'fa-truck-ramp-box');
@@ -353,7 +354,7 @@ var App = {
         var rows=await this.data('suppliers');
         var q=this.search.toLowerCase();
         rows=rows.filter(function(s){return !q||[s.name,s.supplier_code,s.phone,s.area].join(' ').toLowerCase().indexOf(q)!==-1;});
-        var html='<div class="flex justify-between items-center gap-2 mb-4"><div><h2 class="text-xl font-black">دليل الموردين</h2><p class="text-xs text-slate-500">بيانات الموردين الفعلية المرتبطة بالشركة</p></div><button onclick="App.supplierForm()" class="bg-purple-700 text-white rounded-xl px-4 py-3 font-bold text-sm">+ مورد جديد</button></div>';
+        var html='<div class="flex justify-between items-center gap-2 mb-4"><div><h2 class="text-xl font-black">دليل الموردين</h2><p class="text-xs text-slate-500">بيانات الموردين الفعلية المرتبطة بالشركة</p></div><button onclick="App.supplierForm()" class="bg-orange-600 text-white rounded-xl px-4 py-3 font-bold text-sm">+ مورد جديد</button></div>';
         html+='<input class="w-full p-3 rounded-xl border bg-white mb-3" placeholder="بحث بالاسم أو الكود أو الهاتف" value="'+buyerEsc(this.search)+'" oninput="App.search=this.value;App.renderSuppliers()">';
         if(!rows.length)html+='<div class="card text-center text-slate-400 py-10">لا توجد نتائج مطابقة</div>';
         rows.forEach(function(s){
@@ -363,31 +364,43 @@ var App = {
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     supplierForm:async function(id){
-        var current=null;
-        if(id){var suppliers=await this.data('suppliers');current=suppliers.find(function(x){return x.id===id;})||null;}
-        var html='<div class="grid md:grid-cols-2 gap-2 text-right">'+
-            '<label class="text-xs font-bold">اسم المورد<input id="bs-name" class="swal2-input" value="'+buyerEsc(current?current.name:'')+'"></label>'+
-            '<label class="text-xs font-bold">الهاتف<input id="bs-phone" class="swal2-input" value="'+buyerEsc(current?current.phone:'')+'"></label>'+
-            '<label class="text-xs font-bold">المنطقة<input id="bs-area" class="swal2-input" value="'+buyerEsc(current?current.area:'')+'"></label>'+
-            '<label class="text-xs font-bold">العنوان<input id="bs-address" class="swal2-input" value="'+buyerEsc(current?current.address:'')+'"></label>'+
-            '<label class="text-xs font-bold">نوع المورد<input id="bs-type" class="swal2-input" value="'+buyerEsc(current?current.supplier_type:'مورد عام')+'"></label>'+
-            '<label class="text-xs font-bold">شروط الدفع الحالية<input id="bs-payment" class="swal2-input" value="'+buyerEsc(current?current.payment_type:'نقدي')+'"></label>'+
-            '<label class="text-xs font-bold">مسؤول الاتصال<input id="bs-contact" class="swal2-input" value="'+buyerEsc(current?current.contact_person:'')+'"></label>'+
-            '<label class="text-xs font-bold">مسؤول المشتريات<input id="bs-rep" class="swal2-input" value="'+buyerEsc(current?current.purchase_rep:'')+'"></label>'+
-            '<label class="text-xs font-bold md:col-span-2">ملاحظات<textarea id="bs-notes" class="swal2-textarea">'+buyerEsc(current?current.notes:'')+'</textarea></label></div>'+
-            '<p class="text-xs text-amber-700 text-right mt-2">البريد الإلكتروني والتصنيف A/B/C والتقييم غير موجودة في جدول الموردين الحالي.</p>';
-        var self=this;
-        var result=await Swal.fire({title:current?'تعديل بيانات المورد':'إضافة مورد جديد',html:html,width:850,showCancelButton:true,confirmButtonText:'حفظ',cancelButtonText:'إلغاء',preConfirm:async function(){
-            var name=RW_UI.byId('bs-name').value.trim();
-            if(!name){Swal.showValidationMessage('اسم المورد مطلوب');return false;}
-            try{
-                return await self.api('SAVE_SUPPLIER',{
-                    supplier:{name:name,phone:RW_UI.byId('bs-phone').value.trim(),area:RW_UI.byId('bs-area').value.trim(),address:RW_UI.byId('bs-address').value.trim(),supplier_type:RW_UI.byId('bs-type').value.trim(),payment_type:RW_UI.byId('bs-payment').value.trim(),contact_person:RW_UI.byId('bs-contact').value.trim(),purchase_rep:RW_UI.byId('bs-rep').value.trim(),notes:RW_UI.byId('bs-notes').value.trim()},
-                    is_edit:!!current,supplier_code:current?current.supplier_code:null
-                });
-            }catch(e){Swal.showValidationMessage(e.message);return false;}
+        var rows=await this.data('suppliers'),current=id?rows.find(function(x){return x.id===id;}):null,self=this,isEdit=!!current;
+        var code=current?current.supplier_code:('SUPP-'+(rows.reduce(function(m,x){var n=String(x.supplier_code||'').match(/^SUPP-(\d+)$/i);return n?Math.max(m,Number(n[1])):m;},1000)+1));
+        var html='<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">'+
+        '<div class="bg-orange-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fas fa-truck ml-2"></i>'+(current?'تعديل المورد':'إضافة مورد جديد')+'</h3><button onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button></div>'+
+        '<form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto" onsubmit="return false"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
+        '<div class="flex flex-col"><label>كود المورد</label><input id="supp-code" value="'+buyerEsc(code)+'" readonly class="p-2.5 bg-gray-100 border rounded-lg"></div>'+
+        '<div class="flex flex-col"><label>اسم المورد *</label><input id="supp-name" value="'+buyerEsc(current?current.name:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
+        '<div class="flex flex-col"><label>رقم الهاتف</label><input id="supp-phone" value="'+buyerEsc(current?current.phone:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
+        '<div class="flex flex-col"><label>المنطقة</label><input id="supp-area" value="'+buyerEsc(current?current.area:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
+        '<div class="flex flex-col"><label>العنوان التفصيلي</label><input id="supp-address" value="'+buyerEsc(current?current.address:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
+        '<div class="flex flex-col"><label>نوع المورد</label><select id="supp-type" class="p-2.5 bg-gray-50 border rounded-lg"><option>مورد عام</option><option>مصنع</option><option>مورد خارجي</option></select></div>'+
+        '<div class="flex flex-col"><label>طريقة الدفع</label><select id="supp-payment" class="p-2.5 bg-gray-50 border rounded-lg"><option>نقدي</option><option>أجل</option></select></div>'+
+        '<div class="flex flex-col"><label>الرصيد الدائن ('+buyerEsc(this.currency)+')</label><input id="supp-balance" type="number" value="'+buyerEsc(current?current.accounts_payable||0:0)+'" readonly disabled class="p-2.5 bg-gray-100 border rounded-lg text-gray-600 cursor-not-allowed"><p class="text-xs text-gray-500 mt-1">الرصيد المالي للقراءة فقط ويُدار من الفواتير والمدفوعات.</p></div>'+
+        '<div class="flex flex-col"><label>جهة الاتصال</label><input id="supp-contact" value="'+buyerEsc(current?current.contact_person:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
+        '<div class="flex flex-col"><label>مسؤول المشتريات</label><div class="relative"><input id="supp-rep" value="'+buyerEsc(current?current.purchase_rep:'')+'" autocomplete="off" placeholder="ابحث بالاسم أو البريد أو الهاتف" class="p-2.5 bg-gray-50 border rounded-lg w-full"><div id="supp-rep-results" class="absolute right-0 left-0 top-full mt-1 hidden max-h-64 overflow-y-auto bg-white border rounded-xl shadow-xl z-[1300]"></div></div><p class="text-xs text-gray-500 mt-1">اختر مندوب المشتريات من النتائج.</p></div>'+
+        '<div class="md:col-span-2 flex flex-col"><label>ملاحظات</label><textarea id="supp-notes" rows="2" class="p-2.5 bg-gray-50 border rounded-lg">'+buyerEsc(current?current.notes:'')+'</textarea></div></div>'+
+        '<div class="flex justify-end gap-3 pt-4 border-t"><button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button><button type="button" id="btn-save-supp" class="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-bold">حفظ</button></div></form></div></div>';
+        await Swal.fire({html:html,width:'900px',showConfirmButton:false,showCancelButton:false,customClass:{popup:'!bg-transparent !shadow-none !p-0'},didOpen:function(){
+            RW_UI.byId('supp-type').value=current&&current.supplier_type?current.supplier_type:'مورد عام';
+            RW_UI.byId('supp-payment').value=current&&current.payment_type?current.payment_type:'نقدي';
+            var input=RW_UI.byId('supp-rep'),box=RW_UI.byId('supp-rep-results'),timer=null,seq=0;
+            input.addEventListener('input',function(){clearTimeout(timer);var q=input.value.trim(),n=++seq;box.classList.remove('hidden');box.textContent='جاري البحث...';timer=setTimeout(function(){
+                RW_SUPABASE_CLIENT.rpc('get_supplier_purchase_reps',{p_query:q||null}).then(function(r){if(n!==seq)return;box.innerHTML='';
+                    if(r.error){box.textContent='تعذر تحميل المندوبين: '+r.error.message;return;}
+                    (r.data||[]).forEach(function(x){var b=document.createElement('button');b.type='button';b.className='w-full text-right px-3 py-2 hover:bg-orange-50 border-b';b.dataset.rep=x.name||'';b.textContent=(x.name||x.email||'')+' · '+(x.email||'')+(x.phone?' · '+x.phone:'');box.appendChild(b);});
+                    if(!box.childNodes.length)box.textContent='لا يوجد مندوب مطابق.';
+                }).catch(function(e){if(n===seq)box.textContent=e.message;});},180);});
+            box.addEventListener('mousedown',function(e){var b=e.target.closest('button[data-rep]');if(!b)return;e.preventDefault();input.value=b.dataset.rep||'';box.classList.add('hidden');});
+            RW_UI.byId('btn-save-supp').addEventListener('click',async function(){var name=RW_UI.byId('supp-name').value.trim();if(!name){RW_UI.toast('اسم المورد مطلوب','error');return;}
+                var payload={name:name,phone:RW_UI.byId('supp-phone').value.trim(),area:RW_UI.byId('supp-area').value.trim(),address:RW_UI.byId('supp-address').value.trim(),
+                    supplier_type:RW_UI.byId('supp-type').value,payment_type:RW_UI.byId('supp-payment').value,contact_person:RW_UI.byId('supp-contact').value.trim(),
+                    purchase_rep:input.value.trim(),notes:RW_UI.byId('supp-notes').value.trim()};
+                var btn=this;btn.disabled=true;btn.textContent='جارٍ الحفظ...';
+                try{await self.api('SAVE_SUPPLIER',{supplier:payload,is_edit:isEdit,supplier_code:current?current.supplier_code:null});Swal.close();self.invalidate();RW_UI.toast('تم حفظ المورد','success');await self.renderSuppliers();}
+                catch(e){RW_UI.toast(e.message,'error');btn.disabled=false;btn.textContent='حفظ';}
+            });
         }});
-        if(result.isConfirmed){this.invalidate();RW_UI.toast('تم حفظ المورد','success');await this.renderSuppliers();}
     },
     openSupplier:async function(id){
         var self=this;
@@ -476,13 +489,48 @@ var App = {
         var rows=results[0].filter(function(o){return !q||[o.po_code,o.po_date,o.supplier_name,o.status].join(' ').toLowerCase().indexOf(q)!==-1;}).sort(function(a,b){return String(b.po_date||'').localeCompare(String(a.po_date||''));});
         var currency=this.currency||'SAR';
         var accepted=results[1].filter(function(q){return q.status==='Accepted';});
-        var html='<div class="mb-4"><h2 class="text-xl font-black">أوامر الشراء / PO</h2><p class="text-xs text-slate-500">متابعة أوامر الشراء الصادرة من دورة عروض الأسعار والاستلام</p></div>';
+        var html='<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-black">أوامر الشراء / PO</h2><p class="text-xs text-slate-500">متابعة أوامر الشراء الصادرة من دورة عروض الأسعار والاستلام</p></div><button type="button" onclick="App.createPO()" class="px-4 py-3 rounded-xl bg-emerald-600 text-white font-black">+ أمر شراء PO جديد</button></div>';
         html+='<div class="card mb-3"><h3 class="font-black mb-2">عروض مقبولة جاهزة للتحويل إلى PO</h3>';
         html+=accepted.map(function(q){return '<div class="flex flex-wrap justify-between items-center gap-2 border-t py-2"><div><b>'+buyerEsc(q.quotation_code)+'</b><p class="text-xs text-slate-400">'+buyerDate(q.quotation_date)+' · '+buyerMoney(q.total_amount,currency)+'</p></div><button onclick="App.convertQuote(\''+buyerEsc(q.id)+'\')" class="bg-indigo-700 text-white rounded-lg px-3 py-2 text-xs font-bold">تحويل إلى PO</button></div>';}).join('')||'<p class="text-xs text-slate-400">لا توجد عروض مقبولة تنتظر التحويل</p>';
         html+='</div><div class="overflow-x-auto bg-white rounded-2xl"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-right">رقم PO</th><th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">المورد</th><th class="p-3 text-right">الحالة</th><th class="p-3 text-right">القيمة</th><th class="p-3">التفاصيل</th></tr></thead><tbody>';
         html+=rows.map(function(o){return '<tr class="border-t"><td class="p-3 font-bold">'+buyerEsc(o.po_code)+'</td><td class="p-3">'+buyerDate(o.po_date)+'</td><td class="p-3">'+buyerEsc(o.supplier_name||'—')+'</td><td class="p-3">'+buyerStatus(o.status)+'</td><td class="p-3">'+buyerMoney(o.total_amount,currency)+'</td><td class="p-3"><button onclick="App.openPO(\''+buyerEsc(o.id)+'\')" class="text-purple-700 font-bold">فتح</button></td></tr>';}).join('')||'<tr><td colspan="6" class="p-8 text-center text-slate-400">لا توجد أوامر شراء</td></tr>';
         html+='</tbody></table></div><p class="text-xs text-amber-700 mt-3">الإنشاء اليدوي المباشر وإرسال PO عبر البريد/واتساب غير متاحين في عقد Edge الحالي؛ المسار المتاح هو تحويل عرض مقبول. لا يظهر زر إرسال وهمي.</p><p class="text-[11px] text-slate-400 mt-2">قائمة PO وعروض الموردين محدودة بحد 500 سجل؛ pagination والبحث الخادمي ما زالا مطلوبين للتوسع.</p>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+    },
+    createPO:async function(){
+        try{
+            var d=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_settings')]);
+            var suppliers=d[0].filter(function(x){return x.is_active!==false;}),items=d[1],branches=d[2],settings=d[3][0]||{},lines=[],self=this;
+            var html='<div dir="rtl" class="text-right space-y-5"><div class="rounded-2xl bg-gradient-to-l from-emerald-50 to-slate-50 border border-emerald-100 p-5"><div class="flex items-center gap-3"><div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center"><i class="fas fa-cart-plus"></i></div><div><div class="text-lg font-black">إنشاء أمر شراء PO</div><div class="text-sm text-slate-500">وثيقة توريد للمورد، مع تحديد الفرع والموعد وشروط الدفع وبنود الأصناف.</div></div></div></div>'+
+            '<div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-black">المورد<select id="bpo-supplier" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر المورد</option>'+suppliers.map(function(x){return '<option value="'+buyerEsc(x.id)+'">'+buyerEsc(x.name)+'</option>';}).join('')+'</select></label>'+
+            '<label class="text-sm font-black">فرع الاستلام<select id="bpo-branch" class="w-full border rounded-xl p-3 mt-1"><option value="">الفرع الافتراضي</option>'+branches.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+(settings.default_branch_id===x.id?'selected':'')+'>'+buyerEsc(x.name)+'</option>';}).join('')+'</select></label>'+
+            '<label class="text-sm font-black">موعد التوريد المتوقع<input id="bpo-date" type="date" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-black">شروط الدفع<input id="bpo-terms" class="w-full border rounded-xl p-3 mt-1" placeholder="نقدي / آجل 30 يومًا"></label></div>'+
+            '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود أمر الشراء</div><div class="grid grid-cols-1 md:grid-cols-[1fr_120px_140px_auto] gap-3 items-end"><div class="relative"><label class="text-sm font-bold">بحث الصنف<input id="bpo-search" class="w-full border rounded-xl p-3 mt-1" placeholder="الاسم أو الكود أو الباركود"></label><div id="bpo-results" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-64 overflow-auto rounded-xl border bg-white shadow-2xl"></div></div>'+
+            '<label class="text-sm font-bold">الكمية<input id="bpo-qty" type="number" min="0.001" step="0.001" value="1" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-bold">السعر<input id="bpo-price" type="number" min="0" step="0.01" class="w-full border rounded-xl p-3 mt-1"></label><button id="bpo-add" type="button" class="px-5 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bpo-lines" class="mt-4"></div></div>'+
+            '<label class="text-sm font-black">ملاحظات<textarea id="bpo-notes" rows="3" class="w-full border rounded-xl p-3 mt-1"></textarea></label><p class="text-xs text-amber-700">يُحفظ PO كمسودة Draft. الإنشاء لا يخصم المخزون ولا ينشئ رصيد مورد أو قيدًا ماليًا.</p></div>';
+            function render(){var host=RW_UI.byId('bpo-lines');if(!host)return;if(!lines.length){host.innerHTML='<div class="rounded-xl border border-dashed p-6 text-center text-slate-400">لا توجد بنود.</div>';return;}
+                var total=0,h='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
+                lines.forEach(function(x,i){var v=x.qty*x.unit_price;total+=v;h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td><td class="p-2">'+buyerEsc(x.unit)+'</td><td class="p-2"><input data-pof="qty" data-poi="'+i+'" type="number" min="0.001" step="0.001" value="'+x.qty+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-pof="unit_price" data-poi="'+i+'" type="number" min="0" step="0.01" value="'+x.unit_price+'" class="w-24 border rounded p-2"></td><td class="p-2 font-black">'+buyerMoney(v,self.currency)+'</td><td><button type="button" data-por="'+i+'" class="text-red-600">حذف</button></td></tr>';});
+                host.innerHTML=h+'</tbody></table><div class="p-3 text-left font-black">الإجمالي: '+buyerMoney(total,self.currency)+'</div></div>';
+                Array.from(host.querySelectorAll('[data-pof]')).forEach(function(el){el.addEventListener('change',function(){lines[Number(el.dataset.poi)][el.dataset.pof]=Number(el.value);render();});});
+                Array.from(host.querySelectorAll('[data-por]')).forEach(function(el){el.addEventListener('click',function(){lines.splice(Number(el.dataset.por),1);render();});});
+            }
+            var r=await Swal.fire({title:'أمر شراء جديد — PO',width:1050,html:html,showCancelButton:true,confirmButtonText:'حفظ أمر الشراء',cancelButtonText:'إلغاء',didOpen:function(){
+                var search=RW_UI.byId('bpo-search'),box=RW_UI.byId('bpo-results'),selected=null;
+                search.addEventListener('input',function(){var q=this.value.trim().toLowerCase();selected=null;var found=items.filter(function(x){return [x.name,x.item_code,x.barcode].join(' ').toLowerCase().includes(q);}).slice(0,20);
+                    box.innerHTML=found.map(function(x,i){return '<button type="button" data-bpoi="'+i+'" class="w-full text-right p-3 border-b hover:bg-emerald-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.item_code)+'</small></button>';}).join('')||'<div class="p-3">لا توجد نتائج</div>';box.classList.remove('hidden');
+                    Array.from(box.querySelectorAll('[data-bpoi]')).forEach(function(b){b.addEventListener('click',function(){selected=found[Number(b.dataset.bpoi)];search.value=selected.item_code+' — '+selected.name;RW_UI.byId('bpo-price').value=Number(selected.cost_price||0);box.classList.add('hidden');});});
+                });
+                RW_UI.byId('bpo-add').addEventListener('click',function(){if(!selected){Swal.showValidationMessage('اختر الصنف من النتائج');return;}if(lines.some(function(x){return x.item_code===selected.item_code;})){Swal.showValidationMessage('الصنف مضاف بالفعل');return;}
+                    var qty=Number(RW_UI.byId('bpo-qty').value),price=Number(RW_UI.byId('bpo-price').value);if(qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('تحقق من الكمية والسعر');return;}
+                    lines.push({item_code:selected.item_code,name:selected.name,unit:selected.unit,qty:qty,unit_price:price});selected=null;search.value='';RW_UI.byId('bpo-qty').value='1';RW_UI.byId('bpo-price').value='';render();});
+                render();
+            },preConfirm:async function(){var supplier=RW_UI.byId('bpo-supplier').value;if(!supplier){Swal.showValidationMessage('اختر المورد');return false;}if(!lines.length){Swal.showValidationMessage('أضف صنفًا واحدًا على الأقل');return false;}
+                try{return await self.api('CREATE_PO',{supplier_id:supplier,branch_id:RW_UI.byId('bpo-branch').value||settings.default_branch_id||null,expected_delivery_date:RW_UI.byId('bpo-date').value||null,payment_terms:RW_UI.byId('bpo-terms').value.trim()||null,notes:RW_UI.byId('bpo-notes').value.trim()||null,items:lines.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price};})});}
+                catch(e){Swal.showValidationMessage(e.message);return false;}
+            }});
+            if(r.isConfirmed){this.invalidate();RW_UI.toast('تم إنشاء أمر الشراء: '+(r.value.code||''),'success');await this.renderOrders();}
+        }catch(e){this.notifyError(e);}
     },
     convertQuote:async function(id){
         var self=this;
@@ -497,37 +545,63 @@ var App = {
         if(!o)throw new Error('أمر الشراء غير موجود');
         var details=results[1].filter(function(x){return x.po_id===id;});
         var history=results[2].filter(function(x){return x.document_id===id;}).sort(function(a,b){return String(a.created_at||'').localeCompare(String(b.created_at||''));});
-        var html='<div class="text-right"><div class="grid grid-cols-2 gap-2"><div class="p-3 bg-slate-50 rounded-xl"><small>المورد</small><b class="block">'+buyerEsc(o.supplier_name)+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>الحالة</small><b class="block">'+buyerStatus(o.status)+'</b></div></div><p class="my-3"><b>التاريخ:</b> '+buyerDate(o.po_date)+' · <b>القيمة:</b> '+buyerMoney(o.total_amount,'SAR')+'</p><h4 class="font-black mb-2">الأصناف</h4><div class="overflow-auto"><table class="w-full text-xs"><thead><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">المستلم</th><th class="p-2">المتبقي</th></tr></thead><tbody>';
-        html+=details.map(function(d){return '<tr class="border-t"><td class="p-2">'+buyerEsc(d.item_name||d.item_code)+'</td><td class="p-2">'+buyerEsc(d.qty_ordered)+'</td><td class="p-2">'+buyerMoney(d.unit_price,'SAR')+'</td><td class="p-2">'+buyerEsc(d.qty_received||0)+'</td><td class="p-2">'+buyerEsc(Math.max(0,Number(d.qty_ordered||0)-Number(d.qty_received||0)))+'</td></tr>';}).join('')||'<tr><td colspan="5" class="p-3 text-center">لا توجد تفاصيل</td></tr>';
+        var poCurrency=o.currency||this.currency||'EGP';
+        var html='<div class="text-right"><div class="grid grid-cols-2 gap-2"><div class="p-3 bg-slate-50 rounded-xl"><small>المورد</small><b class="block">'+buyerEsc(o.supplier_name)+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>الحالة</small><b class="block">'+buyerStatus(o.status)+'</b></div></div><p class="my-3"><b>التاريخ:</b> '+buyerDate(o.po_date)+' · <b>القيمة:</b> '+buyerMoney(o.total_amount,poCurrency)+'</p><p><b>موعد التوريد:</b> '+buyerDate(o.expected_delivery_date)+' · <b>شروط الدفع:</b> '+buyerEsc(o.payment_terms||'—')+'</p><h4 class="font-black mb-2">الأصناف</h4><div class="overflow-auto"><table class="w-full text-xs"><thead><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">المستلم</th><th class="p-2">المتبقي</th></tr></thead><tbody>';
+        html+=details.map(function(d){return '<tr class="border-t"><td class="p-2">'+buyerEsc(d.item_name||d.item_code)+'</td><td class="p-2">'+buyerEsc(d.qty_ordered)+'</td><td class="p-2">'+buyerMoney(d.unit_price,poCurrency)+'</td><td class="p-2">'+buyerEsc(d.qty_received||0)+'</td><td class="p-2">'+buyerEsc(Math.max(0,Number(d.qty_ordered||0)-Number(d.qty_received||0)))+'</td></tr>';}).join('')||'<tr><td colspan="5" class="p-3 text-center">لا توجد تفاصيل</td></tr>';
         html+='</tbody></table></div><h4 class="font-black mt-4 mb-2">Timeline</h4><div class="space-y-2">'+(history.map(function(h){return '<p class="p-2 bg-slate-50 rounded-lg text-xs">'+buyerEsc(h.from_status||'بداية')+' ← '+buyerEsc(h.to_status||'')+' · '+buyerDate(h.created_at)+' · '+buyerEsc(h.actor_email||'')+'</p>';}).join('')||'<p class="text-xs text-slate-400">لا يوجد سجل حالات معاد</p>')+'</div><p class="text-xs text-amber-700 mt-3">موعد التسليم المتوقع وشروط الدفع وبيانات الاعتماد/الإرسال غير محفوظة في جدول PO الحالي.</p></div>';
         await Swal.fire({title:'تفاصيل '+buyerEsc(o.po_code),html:html,width:900,showCloseButton:true,showConfirmButton:false});
     },
-    quickPurchase:async function(){
+    createPurchaseInvoice:async function(){
         try{
-            var results=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_settings')]);
-            var suppliers=results[0].filter(function(s){return s.is_active!==false;}),items=results[1],branches=results[2],settings=results[3][0]||{};
-            this.currency=settings.default_currency||'SAR';this.quickCart=[];
-            var html='<div class="text-right space-y-3"><p class="text-xs p-3 bg-amber-50 text-amber-800 rounded-xl">هذه العملية تنشئ فاتورة شراء Draft فقط. لا تُرحّل المخزون أو الحسابات. عقد الاستلام المباشر للصنف من دون PO، وOCR، وطريقة الدفع غير مكتمل؛ لذلك لن يتم الادعاء بتنفيذها هنا.</p>'+
-                '<div class="grid md:grid-cols-2 gap-2"><label class="text-xs font-bold">المورد<select id="bq-supplier" class="swal2-select w-full"><option value="">اختر المورد</option>'+suppliers.map(function(s){return '<option value="'+buyerEsc(s.id)+'">'+buyerEsc(s.name)+'</option>';}).join('')+'</select></label>'+
-                '<label class="text-xs font-bold">الفرع<select id="bq-branch" class="swal2-select w-full"><option value="">الفرع الافتراضي</option>'+branches.map(function(b){return '<option value="'+buyerEsc(b.id)+'" '+(settings.default_branch_id===b.id?'selected':'')+'>'+buyerEsc(b.name)+'</option>';}).join('')+'</select></label></div>'+
-                '<label class="block text-xs font-bold">رقم فاتورة المورد<input id="bq-invoice" class="swal2-input" placeholder="رقم الفاتورة"></label>'+
-                '<label class="block text-xs font-bold">بحث بالاسم أو الكود أو الباركود<input id="bq-search" class="swal2-input" placeholder="ابحث عن الصنف أو امسح الباركود"></label><div id="bq-results" class="max-h-36 overflow-auto text-right"></div><div id="bq-cart" class="text-right"></div></div>';
-            var self=this;
-            var result=await Swal.fire({title:'شراء عاجل — فاتورة مسودة',html:html,width:850,showCancelButton:true,confirmButtonText:'إنشاء فاتورة Draft',cancelButtonText:'إلغاء',didOpen:function(){
-                var search=RW_UI.byId('bq-search');
-                search.addEventListener('input',function(){self.renderQuickSearch(items,this.value);});
-                self.renderQuickCart();
-            },preConfirm:async function(){
-                var supplierId=RW_UI.byId('bq-supplier').value,branchId=RW_UI.byId('bq-branch').value||settings.default_branch_id||null;
-                if(!supplierId){Swal.showValidationMessage('اختر المورد');return false;}
-                if(!self.quickCart.length){Swal.showValidationMessage('أضف صنفاً واحداً على الأقل');return false;}
-                var payload={supplier_id:supplierId,purchase_order_id:null,branch_id:branchId,currency:self.currency,supplier_invoice_no:RW_UI.byId('bq-invoice').value.trim()||null,notes:'فاتورة شراء مباشر — مسودة بانتظار مراجعة الاستلام والترحيل',items:self.quickCart.map(function(x){return {item_code:x.item_code,qty:Number(x.qty),unit_price:Number(x.unit_price)};})};
-                try{return await self.api('CREATE_INVOICE',payload);}catch(e){Swal.showValidationMessage(e.message);return false;}
+            var d=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_orders'),this.data('purchase_settings'),this.api('GET_SETTINGS',{})]);
+            var suppliers=d[0].filter(function(x){return x.is_active!==false;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=d[5].currency||'EGP',lines=[],self=this,selectedSupplier=null,selectedItem=null;
+            this.currency=currency;
+            var html='<div dir="rtl" class="text-right space-y-5"><div class="rounded-2xl bg-gradient-to-l from-amber-50 to-slate-50 border border-amber-100 p-5"><div class="flex items-center gap-3"><div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center"><i class="fas fa-file-invoice-dollar"></i></div><div><div class="text-lg font-black">إنشاء فاتورة شراء</div><div class="text-sm text-slate-500">اربط الفاتورة بأمر شراء وحدد الفرع وبنود الفاتورة بدقة.</div></div></div></div>'+
+            '<div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="relative"><label class="text-sm font-black">المورد<input id="bpi-s" class="w-full border rounded-xl p-3 mt-1" placeholder="ابحث باسم المورد أو الكود"></label><input id="bpi-sid" type="hidden"><div id="bpi-sbox" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-64 overflow-auto rounded-xl border bg-white shadow-2xl"></div></div>'+
+            '<label class="text-sm font-black">الفرع<select id="bpi-branch" class="w-full border rounded-xl p-3 mt-1"><option value="">الفرع الرئيسي</option>'+branches.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+(settings.default_branch_id===x.id?'selected':'')+'>'+buyerEsc(x.name)+'</option>';}).join('')+'</select></label>'+
+            '<label class="text-sm font-black">أمر الشراء<select id="bpi-po" class="w-full border rounded-xl p-3 mt-1"><option value="">بدون أمر شراء</option></select></label></div>'+
+            '<div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-black">تاريخ الاستحقاق<input id="bpi-due" type="date" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-black">رقم فاتورة المورد<input id="bpi-no" class="w-full border rounded-xl p-3 mt-1" placeholder="رقم المستند لدى المورد"></label>'+
+            '<label class="text-sm font-black md:col-span-2">ملاحظات الفاتورة<textarea id="bpi-notes" rows="2" class="w-full border rounded-xl p-3 mt-1"></textarea></label></div>'+
+            '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود الفاتورة · العملة المعتمدة '+buyerEsc(currency)+'</div><div class="grid grid-cols-1 md:grid-cols-[1fr_120px_140px_auto] gap-3 items-end">'+
+            '<div class="relative"><label class="text-sm font-bold">بحث الصنف<input id="bpi-item" class="w-full border rounded-xl p-3 mt-1" placeholder="الكود أو الاسم أو الباركود"></label><div id="bpi-ibox" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-72 overflow-auto rounded-xl border bg-white shadow-2xl"></div></div>'+
+            '<label class="text-sm font-bold">الكمية<input id="bpi-qty" type="number" min="0.01" step="0.01" value="1" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-bold">السعر<input id="bpi-price" type="number" min="0" step="0.01" class="w-full border rounded-xl p-3 mt-1"></label><button id="bpi-add" type="button" class="px-5 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bpi-lines" class="mt-4"></div></div>'+
+            '<p class="text-xs text-amber-700">ستُحفظ الفاتورة كمسودة Draft دون أثر على المخزون أو الحسابات حتى الترحيل وفق دورة الاستلام والاعتماد.</p></div>';
+            function poOptions(){var box=RW_UI.byId('bpi-po');var valid=pos.filter(function(x){return !selectedSupplier||x.supplier_id===selectedSupplier.id;});box.innerHTML='<option value="">بدون أمر شراء</option>'+valid.map(function(x){return '<option value="'+buyerEsc(x.id)+'">'+buyerEsc(x.po_code+' — '+(x.supplier_name||''))+'</option>';}).join('');}
+            function render(){var host=RW_UI.byId('bpi-lines');if(!host)return;if(!lines.length){host.innerHTML='<div class="rounded-xl border border-dashed p-6 text-center text-slate-400">لا توجد بنود.</div>';return;}
+                var total=0,h='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
+                lines.forEach(function(x,i){var v=x.qty*x.unit_price*(1-x.discount_percent/100)*(1+x.tax_rate/100);total+=v;h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td>'+
+                '<td class="p-2"><input data-bif="qty" data-bii="'+i+'" type="number" min="0.01" step="0.01" value="'+x.qty+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bif="unit_price" data-bii="'+i+'" type="number" min="0" step="0.01" value="'+x.unit_price+'" class="w-24 border rounded p-2"></td>'+
+                '<td class="p-2"><input data-bif="discount_percent" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.discount_percent+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bif="tax_rate" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.tax_rate+'" class="w-20 border rounded p-2"></td>'+
+                '<td class="p-2 font-black">'+buyerMoney(v,currency)+'</td><td><button type="button" data-bir="'+i+'" class="text-red-600">حذف</button></td></tr>';});
+                host.innerHTML=h+'</tbody></table><div class="p-3 text-left font-black">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div></div>';
+                Array.from(host.querySelectorAll('[data-bif]')).forEach(function(el){el.addEventListener('change',function(){lines[Number(el.dataset.bii)][el.dataset.bif]=Number(el.value);render();});});
+                Array.from(host.querySelectorAll('[data-bir]')).forEach(function(el){el.addEventListener('click',function(){lines.splice(Number(el.dataset.bir),1);render();});});
+            }
+            var modal=await Swal.fire({title:'فاتورة شراء جديدة',width:1100,html:html,showCancelButton:true,confirmButtonText:'حفظ الفاتورة',cancelButtonText:'إلغاء',didOpen:function(){
+                var ss=RW_UI.byId('bpi-s'),sb=RW_UI.byId('bpi-sbox'),is=RW_UI.byId('bpi-item'),ib=RW_UI.byId('bpi-ibox');
+                ss.addEventListener('input',function(){var q=ss.value.trim().toLowerCase();selectedSupplier=null;RW_UI.byId('bpi-sid').value='';poOptions();var found=suppliers.filter(function(x){return [x.name,x.supplier_code,x.phone].join(' ').toLowerCase().includes(q);}).slice(0,20);
+                    sb.innerHTML=found.map(function(x,i){return '<button type="button" data-bpis="'+i+'" class="w-full text-right p-3 border-b hover:bg-amber-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.supplier_code||'')+'</small></button>';}).join('')||'<div class="p-3">لا يوجد مورد مطابق</div>';sb.classList.remove('hidden');
+                    Array.from(sb.querySelectorAll('[data-bpis]')).forEach(function(b){b.addEventListener('click',function(){selectedSupplier=found[Number(b.dataset.bpis)];ss.value=selectedSupplier.name;RW_UI.byId('bpi-sid').value=selectedSupplier.id;sb.classList.add('hidden');poOptions();});});
+                });
+                is.addEventListener('input',function(){var q=is.value.trim().toLowerCase();selectedItem=null;var found=items.filter(function(x){return [x.name,x.item_code,x.barcode].join(' ').toLowerCase().includes(q);}).slice(0,20);
+                    ib.innerHTML=found.map(function(x,i){return '<button type="button" data-bpii="'+i+'" class="w-full text-right p-3 border-b hover:bg-blue-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.item_code)+'</small></button>';}).join('')||'<div class="p-3">لا يوجد صنف مطابق</div>';ib.classList.remove('hidden');
+                    Array.from(ib.querySelectorAll('[data-bpii]')).forEach(function(b){b.addEventListener('click',function(){selectedItem=found[Number(b.dataset.bpii)];is.value=selectedItem.item_code+' — '+selectedItem.name;RW_UI.byId('bpi-price').value=Number(selectedItem.cost_price||0);ib.classList.add('hidden');});});
+                });
+                RW_UI.byId('bpi-add').addEventListener('click',function(){if(!selectedItem){Swal.showValidationMessage('اختر صنفًا من نتائج البحث');return;}if(lines.some(function(x){return x.item_code===selectedItem.item_code;})){Swal.showValidationMessage('الصنف مضاف بالفعل');return;}
+                    var qty=Number(RW_UI.byId('bpi-qty').value),price=Number(RW_UI.byId('bpi-price').value);if(qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('تحقق من الكمية والسعر');return;}
+                    lines.push({item_code:selectedItem.item_code,name:selectedItem.name,qty:qty,unit_price:price,discount_percent:0,tax_rate:0});selectedItem=null;is.value='';RW_UI.byId('bpi-qty').value='1';RW_UI.byId('bpi-price').value='';render();});
+                RW_UI.byId('bpi-po').addEventListener('change',function(){var po=pos.find(function(x){return x.id===this.value;},this);if(po&&!selectedSupplier){selectedSupplier=suppliers.find(function(x){return x.id===po.supplier_id;})||null;if(selectedSupplier){ss.value=selectedSupplier.name;RW_UI.byId('bpi-sid').value=selectedSupplier.id;}}});
+                render();poOptions();
+            },preConfirm:async function(){var supplierId=RW_UI.byId('bpi-sid').value,poId=RW_UI.byId('bpi-po').value||null;if(!supplierId){Swal.showValidationMessage('اختر المورد');return false;}if(!lines.length){Swal.showValidationMessage('أضف بندًا واحدًا على الأقل');return false;}
+                if(poId){var po=pos.find(function(x){return x.id===poId;});if(!po||po.supplier_id!==supplierId){Swal.showValidationMessage('المورد لا يطابق أمر الشراء');return false;}}
+                try{return await self.api('CREATE_INVOICE',{supplier_id:supplierId,purchase_order_id:poId,branch_id:RW_UI.byId('bpi-branch').value||settings.default_branch_id||null,due_date:RW_UI.byId('bpi-due').value||null,currency:currency,supplier_invoice_no:RW_UI.byId('bpi-no').value.trim()||null,notes:RW_UI.byId('bpi-notes').value.trim()||null,items:lines.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price,discount_percent:x.discount_percent,tax_rate:x.tax_rate};})});}
+                catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
-            if(result.isConfirmed){this.invalidate();RW_UI.toast('تم إنشاء مسودة فاتورة الشراء: '+(result.value.code||result.value.invoice_code||''),'success');await this.renderToday();}
+            if(modal.isConfirmed){this.invalidate();RW_UI.toast('تم إنشاء مسودة فاتورة الشراء: '+(modal.value.code||''),'success');await this.renderToday();}
         }catch(e){this.notifyError(e);}
     },
-    renderQuickSearch:function(items,q){
+    quickPurchase:function(){return this.createPurchaseInvoice();},
+    renderQuickSearch:function(items,q){    renderQuickSearch:function(items,q){
         var box=RW_UI.byId('bq-results');if(!box)return;
         q=String(q||'').trim().toLowerCase();
         if(!q){RW_UI.safeHTML(box,'');return;}
