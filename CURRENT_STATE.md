@@ -1,3 +1,63 @@
+# CURRENT EXECUTION HANDOFF — BUYER LVE-587 — 2026-11-02
+
+## Current status
+- **Active task checkpoint:** Responsible Buyer (companies/company-1/purchasing/buyer.html) — PR #10 / LVE-587.
+- **Source branch:** cto/buyer-field-workbench-lve-587; PR #10 remains OPEN and DRAFT, not merged.
+- **Scope verified:** branch is 2 commits ahead of main, 0 behind; the only changed path is Buyer HTML (140 additions, 33 deletions).
+- **Previous Buyer UI changes:** present in the work branch; see the independent final execution report below.
+- **Additional PO idempotency patch:** exact surgical instructions documented, but NOT yet applied to GitHub Buyer source. Current CREATE_PO call does not pass operation_id.
+- **Deployment:** Cloudflare served Buyer artifact identity is NOT VERIFIED. Do not claim deployed.
+- **Browser E2E:** authenticated browser E2E is NOT RUN. Do not claim successful PO/invoice create-edit-delete round trips.
+- **Invoice privacy:** current created_by filter is client-side only; server-side row confidentiality remains UNVERIFIED / unresolved.
+- **Overall Buyer task:** PARTIAL / OWNER PATCH + E2E + SECURITY BOUNDARY + DEPLOYMENT GATES OPEN.
+
+## Latest verified checkpoint
+- Independent report: doc/Draft/Reprots/BUYER_LVE587_FINAL_EXECUTION_REPORT_20261102.md.
+- Report commit on main: 6381f63c7cea22b2410dfdc4eb2c49b55353dcd5.
+- PR: https://github.com/papamohammed77-glitch/erp-frontend/pull/10
+- PR head commit observed: 5ae94d769a22b540f852d235694ccf4969862cfc.
+- Buyer branch blob SHA: ac8be3839e7c30689e757cb8ae61c2957a8063be.
+- Buyer main blob SHA at audit: 73d746571a10b1720bdd31631004abce0ac9afa1.
+- Branch comparison: ahead_by=2, behind_by=0; one changed file, companies/company-1/purchasing/buyer.html.
+- Branch source confirms one buyerOperationId() helper; the CREATE_PO request does not yet include operation_id.
+- Branch source confirms zero cost_price references, nine retained tabs, and client-side invoice owner filtering.
+- Prior recorded checks: inline JavaScript syntax PASS; item-search tests against 30 Production items PASS for exact barcode, item code, Arabic name, hamza normalization, Arabic numerals, empty and unknown queries.
+- Prior Production negative-path checks rejected invalid PO/invoice items as expected. Before/after counts remained unchanged: purchase_orders 1; purchase_order_details 1; purchase_invoices 3; purchase_invoice_details 6; purchase_status_history 5; stock_branches 57; inventory_log 76; treasury 4; cash_box 8; supplier_ledger 2; journal_entries 19.
+- These are static/search and negative-path checks; they are NOT successful create-flow tests or browser E2E.
+
+## Exact owner patch — Buyer only
+Inside createPO:async function(), immediately after the existing local variable initialization, add:
+```javascript
+var operationId=buyerOperationId();
+```
+Inside that same function's preConfirm, change the beginning of the request from:
+```javascript
+self.api('CREATE_PO',{supplier_id:supplier,
+```
+to:
+```javascript
+self.api('CREATE_PO',{operation_id:operationId,supplier_id:supplier,
+```
+Keep every other property and behavior unchanged. Do not redefine buyerOperationId(); it already exists. Generate the ID once per opened PO form, outside preConfirm, so retries from that form reuse it.
+
+**Important:** this front-end patch alone does not prove Idempotency. Inspect the current Edge Function/RPC contract and demonstrate that the same operation ID returns the original result without creating a second PO. Do not change server code or SQL under this Buyer-only patch without a separate evidence-based scope decision.
+
+## Required next actions — do not restart
+1. Owner applies the two exact Buyer-only edits above to the intended Buyer copy; preserve a rollback copy first.
+2. Read back the edited file and verify only the intended lines changed beyond the already-approved Buyer branch changes.
+3. Inspect the live CREATE_PO Edge Function/RPC implementation and confirm the operation ID is persisted/enforced end-to-end.
+4. Run a safe authenticated test: first successful PO draft, then retry with the exact same operation ID; verify exactly one PO and a stable returned result. Ensure deterministic cleanup or transaction rollback.
+5. Run authenticated browser E2E for PO creation, invoice creation, invoice details, draft edit/delete, and validation failures.
+6. Resolve or explicitly accept the server-side invoice-ownership boundary: client-side created_by filtering is not authorization. Do not represent it as data isolation.
+7. Verify Cloudflare served Buyer artifact against the approved Git source after owner publication. A branch commit or GitHub merge is not deployment proof.
+8. Append new evidence to the Buyer report and update this file only after the corresponding action is actually completed.
+
+## Change-control boundaries
+- This checkpoint concerns Buyer only. Do not modify main.html, core.js, Receiver, unrelated apps, schema, RLS, Edge Functions, or Production business data as part of the owner-side HTML patch.
+- PR #10 remains Draft and unmerged. No merge or deployment was performed by this documentation update.
+- Do not call the Buyer task complete until owner patch, Idempotency contract/runtime proof, authenticated E2E, invoice authorization decision, and served-artifact verification are each explicitly classified.
+
+---
 # CURRENT EXECUTION HANDOFF — REALTIME SYNCHRONIZATION — 2026-10-31
 
 ## Current status
