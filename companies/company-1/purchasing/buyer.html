@@ -669,6 +669,7 @@ var App = {
         try{
             var d=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_settings'),this.api('GET_SETTINGS',{})]);
             var suppliers=d[0].filter(function(x){return x.is_active!==false;}),items=d[1],branches=d[2],settings=d[3][0]||{},lines=[],self=this;
+            var operationId=buyerOperationId();
             this.currency=String(d[4]&&d[4].currency||'EGP').trim().toUpperCase();
             if(!/^[A-Z]{3}$/.test(this.currency))throw new Error('عملة النظام غير صالحة');
             var html='<div dir="rtl" class="text-right space-y-5"><div class="rounded-2xl bg-gradient-to-l from-emerald-50 to-slate-50 border border-emerald-100 p-5"><div class="flex items-center gap-3"><div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center"><i class="fas fa-cart-plus"></i></div><div><div class="text-lg font-black">إنشاء أمر شراء PO</div><div class="text-sm text-slate-500">وثيقة توريد للمورد، مع تحديد الفرع والموعد وشروط الدفع وبنود الأصناف.</div></div></div></div>'+
@@ -723,7 +724,7 @@ var App = {
                     lines.push({item_code:selected.item_code,name:selected.name,unit:selected.unit,qty:qty,unit_price:price});selected=null;search.value='';box.innerHTML='';box.classList.add('hidden');RW_UI.byId('bpo-qty').value='1';RW_UI.byId('bpo-price').value='';render();});
                 render();
             },preConfirm:async function(){var supplier=RW_UI.byId('bpo-supplier').value;if(!supplier){Swal.showValidationMessage('اختر المورد');return false;}if(!lines.length){Swal.showValidationMessage('أضف صنفًا واحدًا على الأقل');return false;}
-                try{return await self.api('CREATE_PO',{supplier_id:supplier,branch_id:RW_UI.byId('bpo-branch').value||settings.default_branch_id||null,expected_delivery_date:RW_UI.byId('bpo-date').value||null,payment_terms:RW_UI.byId('bpo-terms').value.trim()||null,notes:RW_UI.byId('bpo-notes').value.trim()||null,items:lines.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price};})});}
+                try{return await self.api('CREATE_PO',{operation_id:operationId,supplier_id:supplier,branch_id:RW_UI.byId('bpo-branch').value||settings.default_branch_id||null,expected_delivery_date:RW_UI.byId('bpo-date').value||null,payment_terms:RW_UI.byId('bpo-terms').value.trim()||null,notes:RW_UI.byId('bpo-notes').value.trim()||null,items:lines.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price};})});}
                 catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
             if(r.isConfirmed){this.invalidate();RW_UI.toast('تم إنشاء أمر الشراء: '+(r.value.code||''),'success');await this.renderOrders();}
