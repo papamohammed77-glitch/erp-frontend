@@ -74,6 +74,9 @@ function buyerLocalDate(value){
     var d=value||new Date();
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
+function buyerOperationId(){
+    return 'buyer-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+}
 function buyerStatus(value){
     var map={Draft:'مسودة',PendingApproval:'بانتظار الاعتماد',Submitted:'مرسل للاعتماد',Approved:'معتمد',Rejected:'مرفوض',Cancelled:'ملغي',Sent:'مرسل للمورد',PartiallyReceived:'مستلم جزئياً','Partially Received':'مستلم جزئياً',Received:'مستلم',Closed:'مغلق',Posted:'مرحل',Paid:'مدفوع',PartiallyPaid:'مدفوع جزئياً',Accepted:'مقبول',Issued:'عهدة مسلّمة',UnderReview:'قيد مراجعة المالية',Settled:'تمت التسوية'};
     return map[value]||buyerEsc(value||'غير محدد');
@@ -313,10 +316,11 @@ var App = {
             this.data('stock_branches'),
             this.data('branches'),
             this.data('purchase_settings'),
-            this.api('GET_SETTINGS',{})
+            this.api('GET_SETTINGS',{}),
+            this.api('GET_CUSTODY',{})
         ]);
         this.currency=(results[9]&&results[9].currency)||'EGP';
-        var summary=results[0]||{},requests=results[1],orders=results[2],invoices=results[3],suppliers=results[4],items=results[5],stock=results[6],branches=results[7];
+        var summary=results[0]||{},requests=results[1],orders=results[2],invoices=results[3],suppliers=results[4],items=results[5],stock=results[6],branches=results[7],custodyData=results[10]||{};
         var itemIndex={},critical=0;
         items.forEach(function(it){itemIndex[it.id]=it;});
         stock.forEach(function(st){
@@ -324,20 +328,28 @@ var App = {
             if(it&&Number(it.reorder_point||0)>0&&Number(st.available_qty==null?st.qty:st.available_qty)<=Number(it.reorder_point))critical++;
         });
         var openOrders=orders.filter(function(o){return ['Received','Cancelled','Closed'].indexOf(o.status)===-1;}).length;
+        var today=buyerLocalDate();
+        var overdueOrders=orders.filter(function(o){return ['Received','Cancelled','Closed'].indexOf(o.status)===-1&&o.expected_delivery_date&&String(o.expected_delivery_date).slice(0,10)<today;});
+        var ordersWithoutDueDate=orders.filter(function(o){return ['Received','Cancelled','Closed'].indexOf(o.status)===-1&&!o.expected_delivery_date;}).length;
         var pending=requests.filter(function(r){return ['PendingApproval','Submitted'].indexOf(r.status)!==-1;}).length;
         var outstanding=invoices.filter(function(i){return ['Posted','PartiallyPaid','Approved'].indexOf(i.status)!==-1;}).reduce(function(sum,i){return sum+Math.max(0,Number(i.total_amount||0)-Number(i.paid_amount||0));},0);
+        var myCustodies=(custodyData.custodies||[]).filter(function(c){return c.employee_id===(this.currentUser||{}).id&&c.status!=='Settled'&&c.status!=='Closed';},this);
+        var myCustodyIds=myCustodies.map(function(c){return c.id;});
+        var acknowledgedCustody=(custodyData.advances||[]).filter(function(a){return myCustodyIds.indexOf(a.custody_id)!==-1&&!!a.acknowledged_at;}).reduce(function(n,a){return n+Number(a.amount||0);},0);
+        var committedCustody=(custodyData.expenses||[]).filter(function(e){return myCustodyIds.indexOf(e.custody_id)!==-1&&(e.status==='Submitted'||e.status==='Approved');}).reduce(function(n,e){return n+Number(e.amount||0);},0);
+        var custodyAvailable=Math.max(0,acknowledgedCustody-committedCustody);
         var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">مركز عمل المشتريات</h2><p class="text-xs text-slate-500 mt-1">ملخص من عقود المشتريات الحالية في قاعدة البيانات</p></div><button onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-bolt ml-2"></i>شراء عاجل / فاتورة مسودة</button></div>';
         html+='<div class="grid grid-cols-2 xl:grid-cols-4 gap-3">';
         html+=this.card('نواقص حرجة',critical,'حسب reorder_point والمخزون المتاح',"App.openCriticalShortages()",'fa-triangle-exclamation');
-        html+=this.card('أوامر متأخرة','غير محسوب','موعد التسليم المتوقع غير مخزن في PO',"App.switchTab('orders')",'fa-truck-ramp-box');
-        html+=this.card('زيارات اليوم','غير متاح','لا يوجد سجل زيارات موردين مرتبط بالمحرك',"App.switchTab('suppliers')",'fa-location-dot');
-        html+=this.card('رصيد عهدتي','غير متاح','لا يوجد دفتر عهدة مشتريات مستقل',"App.switchTab('custody')",'fa-wallet');
+        html+=this.card('أوامر متأخرة',overdueOrders.length,'وفق موعد التسليم المتوقع المسجل في PO',"App.switchTab('orders')",'fa-truck-ramp-box');
+        html+=this.card('زيارات اليوم','غير متاح','سجل الزيارات والتقييمات غير موجود في قاعدة البيانات الحالية',"App.switchTab('suppliers')",'fa-location-dot');
+        html+=this.card('رصيد عهدتي',buyerMoney(custodyAvailable,this.currency),'النقد المؤكد استلامه ناقص المصروفات المقدمة والمعتمدة',"App.switchTab('custody')",'fa-wallet');
         html+='</div>';
         html+='<div class="grid md:grid-cols-2 gap-3 mt-4">';
         html+='<div class="card"><h3 class="font-black mb-3">تنبيهات يجب عدم إخفائها</h3><div class="space-y-3 text-sm">';
-        html+='<p class="p-3 rounded-xl bg-amber-50 text-amber-800">• موعد التوريد المتوقع غير موجود في purchase_orders؛ لذلك لا يمكن احتساب الأوامر المتأخرة بدقة.</p>';
+        html+='<p class="p-3 rounded-xl bg-slate-50 text-slate-700">• تم احتساب المتأخر من expected_delivery_date. الأوامر المفتوحة بلا موعد تسليم مسجل: '+ordersWithoutDueDate+'.</p>';
         html+='<p class="p-3 rounded-xl bg-amber-50 text-amber-800">• لا يوجد عقد زيارات موردين/تقييمات في نموذج البيانات الحالي.</p>';
-        html+='<p class="p-3 rounded-xl bg-amber-50 text-amber-800">• لا يوجد دفتر عهدة موظف مشتريات مستقل؛ لا تُسجل العهدة داخل خزينة الشركة كبديل.</p>';
+        html+='<p class="p-3 rounded-xl bg-slate-50 text-slate-700">• رصيد العهدة يعتمد على الزيادات المؤكد استلامها ناقص المصروفات المقدمة أو المعتمدة؛ لا يغني عن مطابقة النقد الفعلي عند التسوية.</p>';
         html+='<p class="p-3 rounded-xl bg-slate-50 text-slate-600">• الشراء العاجل ينشئ فاتورة Draft فقط؛ الترحيل المخزني والمحاسبي منفصل ويتطلب صلاحية المالية.</p>';
         html+='</div></div>';
         html+='<div class="card"><h3 class="font-black mb-3">مؤشرات التشغيل</h3><div class="space-y-3 text-sm">';
@@ -688,7 +700,7 @@ var App = {
         var poCurrency=o.currency||this.currency||'EGP';
         var html='<div class="text-right"><div class="grid grid-cols-2 gap-2"><div class="p-3 bg-slate-50 rounded-xl"><small>المورد</small><b class="block">'+buyerEsc(o.supplier_name)+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>الحالة</small><b class="block">'+buyerStatus(o.status)+'</b></div></div><p class="my-3"><b>التاريخ:</b> '+buyerDate(o.po_date)+' · <b>القيمة:</b> '+buyerMoney(o.total_amount,poCurrency)+'</p><p><b>موعد التوريد:</b> '+buyerDate(o.expected_delivery_date)+' · <b>شروط الدفع:</b> '+buyerEsc(o.payment_terms||'—')+'</p><h4 class="font-black mb-2">الأصناف</h4><div class="overflow-auto"><table class="w-full text-xs"><thead><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">المستلم</th><th class="p-2">المتبقي</th></tr></thead><tbody>';
         html+=details.map(function(d){return '<tr class="border-t"><td class="p-2">'+buyerEsc(d.item_name||d.item_code)+'</td><td class="p-2">'+buyerEsc(d.qty_ordered)+'</td><td class="p-2">'+buyerMoney(d.unit_price,poCurrency)+'</td><td class="p-2">'+buyerEsc(d.qty_received||0)+'</td><td class="p-2">'+buyerEsc(Math.max(0,Number(d.qty_ordered||0)-Number(d.qty_received||0)))+'</td></tr>';}).join('')||'<tr><td colspan="5" class="p-3 text-center">لا توجد تفاصيل</td></tr>';
-        html+='</tbody></table></div><h4 class="font-black mt-4 mb-2">Timeline</h4><div class="space-y-2">'+(history.map(function(h){return '<p class="p-2 bg-slate-50 rounded-lg text-xs">'+buyerEsc(h.from_status||'بداية')+' ← '+buyerEsc(h.to_status||'')+' · '+buyerDate(h.created_at)+' · '+buyerEsc(h.actor_email||'')+'</p>';}).join('')||'<p class="text-xs text-slate-400">لا يوجد سجل حالات معاد</p>')+'</div><p class="text-xs text-amber-700 mt-3">موعد التسليم المتوقع وشروط الدفع وبيانات الاعتماد/الإرسال غير محفوظة في جدول PO الحالي.</p></div>';
+        html+='</tbody></table></div><h4 class="font-black mt-4 mb-2">Timeline</h4><div class="space-y-2">'+(history.map(function(h){return '<p class="p-2 bg-slate-50 rounded-lg text-xs">'+buyerEsc(h.from_status||'بداية')+' ← '+buyerEsc(h.to_status||'')+' · '+buyerDate(h.created_at)+' · '+buyerEsc(h.actor_email||'')+'</p>';}).join('')||'<p class="text-xs text-slate-400">لا يوجد سجل حالات معاد</p>')+'</div><p class="text-xs text-slate-500 mt-3">موعد التسليم المتوقع وشروط الدفع محفوظان في PO؛ سجل الاعتماد والإرسال يُراجع من Timeline المستند.</p></div>';
         await Swal.fire({title:'تفاصيل '+buyerEsc(o.po_code),html:html,width:900,showCloseButton:true,showConfirmButton:false});
     },
     createPurchaseInvoice:async function(){
