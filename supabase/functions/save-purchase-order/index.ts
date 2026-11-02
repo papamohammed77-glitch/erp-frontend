@@ -205,6 +205,29 @@ serve(async (req) => {
         p_items: p.items || [],
         p_operation_id: operationId
       }));
+    } else if (op === "UPDATE_DRAFT_INVOICE") {
+      ({ data, error } = await call("purchase_update_draft_invoice_atomic", {
+        p_company_id: companyId,
+        p_invoice_id: p.id,
+        p_supplier_id: p.supplier_id,
+        p_purchase_order_id: p.purchase_order_id || null,
+        p_branch_id: p.branch_id || null,
+        p_due_date: p.due_date || null,
+        p_currency: await getSystemCurrency(),
+        p_actor: user.email,
+        p_supplier_invoice_no: p.supplier_invoice_no || null,
+        p_notes: p.notes || null,
+        p_items: p.items || [],
+        p_operation_id: operationId
+      }));
+    } else if (op === "DELETE_DRAFT_INVOICE") {
+      ({ data, error } = await call("purchase_delete_draft_invoice_atomic", {
+        p_company_id: companyId,
+        p_invoice_id: p.id,
+        p_actor: user.email,
+        p_reason: p.reason || null,
+        p_operation_id: operationId
+      }));
     } else if (op === "POST_INVOICE") {
       ({ data, error } = await call("purchase_post_invoice_atomic", {
         p_company_id: companyId,
@@ -391,6 +414,8 @@ serve(async (req) => {
         "purchase_attachments",
         "purchase_document_links",
         "purchase_settings",
+        "fleet_vehicle_assignments",
+        "vehicles",
         "receiving",
         "treasury",
         "stock_branches",
@@ -411,7 +436,25 @@ serve(async (req) => {
       };
       const rowLimit = Math.min(Number(p.limit || 300), 500);
       let r: any;
-      if (detailScope[table]) {
+      if (table === "fleet_vehicle_assignments") {
+        r = await sb.from(table).select("*").eq("company_id", companyId)
+          .eq("driver_user_id", profile.id).order("start_at", { ascending: false }).limit(rowLimit);
+        if (r.error) throw r.error;
+        data = { success: true, items: r.data || [], table };
+      } else if (table === "vehicles") {
+        const assignmentResult = await sb.from("fleet_vehicle_assignments").select("vehicle_id")
+          .eq("company_id", companyId).eq("driver_user_id", profile.id).limit(100);
+        if (assignmentResult.error) throw assignmentResult.error;
+        const assignedVehicleIds = (assignmentResult.data || []).map((row: any) => row.vehicle_id).filter(Boolean);
+        if (!assignedVehicleIds.length) {
+          data = { success: true, items: [], table };
+        } else {
+          r = await sb.from("vehicles").select("*").eq("company_id", companyId)
+            .in("id", assignedVehicleIds).limit(rowLimit);
+          if (r.error) throw r.error;
+          data = { success: true, items: r.data || [], table };
+        }
+      } else if (detailScope[table]) {
         const scope = detailScope[table];
         const parents = await sb.from(scope.parent).select("id").eq("company_id", companyId).limit(500);
         if (parents.error) throw parents.error;
