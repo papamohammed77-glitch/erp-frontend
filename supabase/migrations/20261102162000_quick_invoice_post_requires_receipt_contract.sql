@@ -217,7 +217,7 @@ BEGIN
     'status', 'Posted', 'journal', je
   );
 END;
-$function$
+$function$;
 
 
 COMMENT ON FUNCTION public.purchase_post_invoice_atomic(uuid, uuid, text)
