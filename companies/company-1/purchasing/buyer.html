@@ -675,8 +675,8 @@ var App = {
             '<div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-black">المورد<select id="bpo-supplier" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر المورد</option>'+suppliers.map(function(x){return '<option value="'+buyerEsc(x.id)+'">'+buyerEsc(x.name)+'</option>';}).join('')+'</select></label>'+
             '<label class="text-sm font-black">فرع الاستلام<select id="bpo-branch" class="w-full border rounded-xl p-3 mt-1"><option value="">الفرع الافتراضي</option>'+branches.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+(settings.default_branch_id===x.id?'selected':'')+'>'+buyerEsc(x.name)+'</option>';}).join('')+'</select></label>'+
             '<label class="text-sm font-black">موعد التوريد المتوقع<input id="bpo-date" type="date" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-black">شروط الدفع<input id="bpo-terms" class="w-full border rounded-xl p-3 mt-1" placeholder="نقدي / آجل 30 يومًا"></label></div>'+
-            '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود أمر الشراء</div><div class="grid grid-cols-1 md:grid-cols-[1fr_120px_140px_auto] gap-3 items-end"><div class="relative"><label class="text-sm font-bold">بحث الصنف<input id="bpo-search" class="w-full border rounded-xl p-3 mt-1" placeholder="الاسم أو الكود أو الباركود"></label><div id="bpo-results" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-64 overflow-auto rounded-xl border bg-white shadow-2xl"></div></div>'+
-            '<label class="text-sm font-bold">الكمية<input id="bpo-qty" type="number" min="0.001" step="0.001" value="1" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-bold">السعر<input id="bpo-price" type="number" min="0" step="0.01" class="w-full border rounded-xl p-3 mt-1"></label><button id="bpo-add" type="button" class="px-5 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bpo-lines" class="mt-4"></div></div>'+
+            '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود أمر الشراء</div><div class="grid grid-cols-1 md:grid-cols-[1fr_120px_140px_auto] gap-3 items-end"><div class="relative"><label class="text-sm font-bold">ابحث عن الصنف من كتالوج النظام<input id="bpo-search" autocomplete="off" inputmode="search" class="w-full border rounded-xl p-3 mt-1" placeholder="اكتب حرفًا أو اسم الصنف أو امسح الباركود"></label><div id="bpo-results" class="bpi-item-results hidden"></div></div>'+
+            '<label class="text-sm font-bold">الكمية<input id="bpo-qty" type="number" min="0.001" step="0.001" value="1" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-bold">سعر الشراء الفعلي<input id="bpo-price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="اكتبه يدويًا" class="w-full border rounded-xl p-3 mt-1"><small class="bpi-manual-price-hint">أدخل السعر الذي اتفقت عليه مع المورد.</small></label><button id="bpo-add" type="button" class="px-5 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bpo-lines" class="mt-4"></div></div>'+
             '<label class="text-sm font-black">ملاحظات<textarea id="bpo-notes" rows="3" class="w-full border rounded-xl p-3 mt-1"></textarea></label><p class="text-xs text-amber-700">يُحفظ PO كمسودة Draft. الإنشاء لا يخصم المخزون ولا ينشئ رصيد مورد أو قيدًا ماليًا.</p></div>';
             function render(){var host=RW_UI.byId('bpo-lines');if(!host)return;if(!lines.length){host.innerHTML='<div class="rounded-xl border border-dashed p-6 text-center text-slate-400">لا توجد بنود.</div>';return;}
                 var total=0,h='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
@@ -686,14 +686,41 @@ var App = {
                 Array.from(host.querySelectorAll('[data-por]')).forEach(function(el){el.addEventListener('click',function(){lines.splice(Number(el.dataset.por),1);render();});});
             }
             var r=await Swal.fire({title:'أمر شراء جديد — PO',width:980,html:html,showCancelButton:true,confirmButtonText:'حفظ أمر الشراء',cancelButtonText:'إلغاء',didOpen:function(){
-                var search=RW_UI.byId('bpo-search'),box=RW_UI.byId('bpo-results'),selected=null;
-                search.addEventListener('input',function(){var q=this.value.trim().toLowerCase();selected=null;var found=items.filter(function(x){return [x.name,x.item_code,x.barcode].join(' ').toLowerCase().includes(q);}).slice(0,20);
-                    box.innerHTML=found.map(function(x,i){return '<button type="button" data-bpoi="'+i+'" class="w-full text-right p-3 border-b hover:bg-emerald-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.item_code)+'</small></button>';}).join('')||'<div class="p-3">لا توجد نتائج</div>';box.classList.remove('hidden');
-                    Array.from(box.querySelectorAll('[data-bpoi]')).forEach(function(b){b.addEventListener('click',function(){selected=found[Number(b.dataset.bpoi)];search.value=selected.item_code+' — '+selected.name;RW_UI.byId('bpo-price').value=Number(selected.cost_price||0);box.classList.add('hidden');});});
-                });
-                RW_UI.byId('bpo-add').addEventListener('click',function(){if(!selected){Swal.showValidationMessage('اختر الصنف من النتائج');return;}if(lines.some(function(x){return x.item_code===selected.item_code;})){Swal.showValidationMessage('الصنف مضاف بالفعل');return;}
-                    var qty=Number(RW_UI.byId('bpo-qty').value),price=Number(RW_UI.byId('bpo-price').value);if(qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('تحقق من الكمية والسعر');return;}
-                    lines.push({item_code:selected.item_code,name:selected.name,unit:selected.unit,qty:qty,unit_price:price});selected=null;search.value='';RW_UI.byId('bpo-qty').value='1';RW_UI.byId('bpo-price').value='';render();});
+                var search=RW_UI.byId('bpo-search'),box=RW_UI.byId('bpo-results'),selected=null,bpoMatches=[];
+                function normalizePOItemSearch(value){
+                    return String(value||'').toLowerCase().normalize('NFKC')
+                        .replace(/[\u064B-\u065F\u0670\u0640]/g,'')
+                        .replace(/[أإآٱ]/g,'ا').replace(/ى/g,'ي')
+                        .replace(/[٠-٩]/g,function(d){return String('٠١٢٣٤٥٦٧٨٩'.indexOf(d));})
+                        .replace(/\s+/g,' ').trim();
+                }
+                function showPOItemMatches(){
+                    var q=normalizePOItemSearch(search.value);selected=null;bpoMatches=[];
+                    if(!q){box.innerHTML='';box.classList.add('hidden');return;}
+                    bpoMatches=items.filter(function(x){return x.is_active!==false;}).map(function(x){
+                        var name=normalizePOItemSearch(x.name),code=normalizePOItemSearch(x.item_code),barcode=normalizePOItemSearch(x.barcode),score=99;
+                        if(barcode&&barcode===q)score=0;
+                        else if(code&&code.indexOf(q)===0)score=1;
+                        else if(name&&name.indexOf(q)===0)score=2;
+                        else if(name&&name.indexOf(q)!==-1)score=3;
+                        else if(code&&code.indexOf(q)!==-1)score=4;
+                        else if(barcode&&barcode.indexOf(q)!==-1)score=5;
+                        return {item:x,score:score};
+                    }).filter(function(x){return x.score<99;}).sort(function(a,b){return a.score-b.score||String(a.item.name||'').localeCompare(String(b.item.name||''),'ar');}).slice(0,14).map(function(x){return x.item;});
+                    if(!bpoMatches.length){box.innerHTML='<div class="bpi-item-empty">لا يوجد صنف مطابق في كتالوج النظام</div>';box.classList.remove('hidden');return;}
+                    box.innerHTML=bpoMatches.map(function(x,i){
+                        var image=String(x.image_url||''),hasImage=image.indexOf('https://')===0||image.indexOf('http://')===0;
+                        var thumb=hasImage?'<span class="bpi-item-thumb"><img src="'+buyerEsc(image)+'" alt="'+buyerEsc(x.name)+'" loading="lazy"></span>':'<span class="bpi-item-thumb"><i class="fa-solid fa-box-open"></i></span>';
+                        return '<button type="button" data-bpoi="'+i+'" class="bpi-item-result">'+thumb+'<span class="bpi-item-copy"><b class="bpi-item-name">'+buyerEsc(x.name)+'</b><span class="bpi-item-meta"><span>كود: '+buyerEsc(x.item_code)+'</span>'+(x.barcode?'<span>باركود: '+buyerEsc(x.barcode)+'</span>':'')+'<span>الوحدة: '+buyerEsc(x.unit||'—')+'</span></span></span></button>';
+                    }).join('');
+                    box.classList.remove('hidden');
+                    Array.from(box.querySelectorAll('[data-bpoi]')).forEach(function(button){button.addEventListener('click',function(){selected=bpoMatches[Number(button.dataset.bpoi)];search.value=selected.item_code+' — '+selected.name;RW_UI.byId('bpo-price').value='';box.classList.add('hidden');RW_UI.byId('bpo-price').focus();});});
+                }
+                search.addEventListener('input',showPOItemMatches);
+                search.addEventListener('keydown',function(event){if(event.key!=='Enter')return;var q=normalizePOItemSearch(search.value),exact=items.find(function(x){return x.is_active!==false&&q&&normalizePOItemSearch(x.barcode)===q;});if(exact){event.preventDefault();selected=exact;search.value=exact.item_code+' — '+exact.name;box.classList.add('hidden');RW_UI.byId('bpo-price').value='';RW_UI.byId('bpo-price').focus();}else if(bpoMatches.length===1){event.preventDefault();selected=bpoMatches[0];search.value=selected.item_code+' — '+selected.name;box.classList.add('hidden');RW_UI.byId('bpo-price').value='';RW_UI.byId('bpo-price').focus();}});
+                RW_UI.byId('bpo-add').addEventListener('click',function(){if(!selected){Swal.showValidationMessage('اختر الصنف من نتائج البحث');return;}if(lines.some(function(x){return x.item_code===selected.item_code;})){Swal.showValidationMessage('الصنف مضاف بالفعل');return;}
+                    var qty=Number(RW_UI.byId('bpo-qty').value),priceRaw=String(RW_UI.byId('bpo-price').value||'').trim(),price=Number(priceRaw);if(qty<=0||priceRaw===''||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('أدخل الكمية وسعر الشراء الفعلي يدويًا');return;}
+                    lines.push({item_code:selected.item_code,name:selected.name,unit:selected.unit,qty:qty,unit_price:price});selected=null;search.value='';box.innerHTML='';box.classList.add('hidden');RW_UI.byId('bpo-qty').value='1';RW_UI.byId('bpo-price').value='';render();});
                 render();
             },preConfirm:async function(){var supplier=RW_UI.byId('bpo-supplier').value;if(!supplier){Swal.showValidationMessage('اختر المورد');return false;}if(!lines.length){Swal.showValidationMessage('أضف صنفًا واحدًا على الأقل');return false;}
                 try{return await self.api('CREATE_PO',{supplier_id:supplier,branch_id:RW_UI.byId('bpo-branch').value||settings.default_branch_id||null,expected_delivery_date:RW_UI.byId('bpo-date').value||null,payment_terms:RW_UI.byId('bpo-terms').value.trim()||null,notes:RW_UI.byId('bpo-notes').value.trim()||null,items:lines.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price};})});}
