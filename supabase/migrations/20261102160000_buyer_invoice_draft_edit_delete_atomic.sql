@@ -100,9 +100,8 @@ BEGIN
   IF v_invoice.status <> 'Draft'
      OR COALESCE(v_invoice.is_received, false)
      OR COALESCE(v_invoice.paid_amount, 0) <> 0
-     OR v_invoice.posted_at IS NOT NULL
-     OR v_invoice.journal_entry_id IS NOT NULL
-     OR v_invoice.supplier_ledger_id IS NOT NULL THEN
+     OR v_invoice.received_date IS NOT NULL
+     OR v_invoice.posted_at IS NOT NULL THEN
     RAISE EXCEPTION 'ONLY_UNRECEIVED_UNPOSTED_DRAFT_INVOICES_CAN_BE_EDITED';
   END IF;
 
@@ -232,7 +231,8 @@ BEGIN
       subtotal = v_subtotal,
       discount_amount = v_total_discount,
       tax_amount = v_total_tax,
-      total_amount = v_total
+      total_amount = v_total,
+      updated_at = now()
   WHERE id = p_invoice_id
     AND company_id = p_company_id
     AND status = 'Draft';
@@ -317,9 +317,8 @@ BEGIN
   IF v_invoice.status <> 'Draft'
      OR COALESCE(v_invoice.is_received, false)
      OR COALESCE(v_invoice.paid_amount, 0) <> 0
-     OR v_invoice.posted_at IS NOT NULL
-     OR v_invoice.journal_entry_id IS NOT NULL
-     OR v_invoice.supplier_ledger_id IS NOT NULL THEN
+     OR v_invoice.received_date IS NOT NULL
+     OR v_invoice.posted_at IS NOT NULL THEN
     RAISE EXCEPTION 'ONLY_UNRECEIVED_UNPOSTED_DRAFT_INVOICES_CAN_BE_DELETED';
   END IF;
 
