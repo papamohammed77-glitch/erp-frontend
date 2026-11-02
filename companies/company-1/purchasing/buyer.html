@@ -41,12 +41,15 @@
         <span id="buyerRealtimeStatus" class="text-[10px] font-bold rounded-lg px-2 py-1 bg-white/10">جارٍ الاتصال المباشر...</span>
         <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
     </header>
-    <div class="grid grid-cols-3 md:grid-cols-6 gap-1 p-2 bg-white border-b flex-shrink-0">
+    <div class="grid grid-cols-3 md:grid-cols-9 gap-1 p-2 bg-white border-b flex-shrink-0">
         <button onclick="App.switchTab('today')" class="px-2 py-3 rounded-xl font-bold text-xs bg-purple-600 text-white" id="tab-today">🏠 اليوم</button>
         <button onclick="App.switchTab('suppliers')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-suppliers">🏭 الموردون</button>
         <button onclick="App.switchTab('requests')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-requests">📥 طلبات PR</button>
+        <button onclick="App.switchTab('quotations')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-quotations">💰 عروض أسعار</button>
         <button onclick="App.switchTab('orders')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-orders">📋 أوامر PO</button>
+        <button onclick="App.switchTab('invoices')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-invoices">🧾 فواتيري</button>
         <button onclick="App.switchTab('custody')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-custody">💳 عهدتي</button>
+        <button onclick="App.switchTab('vehicle')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-vehicle">🚚 رصيد السيارة</button>
         <button onclick="App.switchTab('account')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-account">👤 حسابي</button>
     </div>
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
@@ -83,6 +86,8 @@ var App = {
     needsLiveRefresh:false,
     liveRefreshObserver:null,
     custodySnapshot:null,
+    invoiceFilters:{query:'',from:'',to:'',status:''},
+    quotationFilters:{query:'',status:''},
     search:'',
     cache:{},
     cacheAt:{},
@@ -125,7 +130,9 @@ var App = {
     },
     api:function(operation,payload){
         return new Promise(function(resolve,reject){
-            RW_API.call('save-purchase-order',{operation:operation,payload:payload||{}},function(json,error){
+            var request={operation:operation,payload:payload||{}};
+            if(payload&&payload.operation_id)request.operation_id=payload.operation_id;
+            RW_API.call('save-purchase-order',request,function(json,error){
                 if(error||!json){reject(new Error(error||'تعذر الاتصال بمحرك المشتريات'));return;}
                 if(json.success===false){reject(new Error(json.msg||'تعذر تنفيذ العملية'));return;}
                 resolve(json);
@@ -203,7 +210,9 @@ var App = {
                     requests:['purchase_requests','purchase_request_details','purchase_rfqs','purchase_rfq_details','purchase_rfq_suppliers','purchase_quotations','purchase_quotation_details','purchase_status_history'],
                     orders:['suppliers','purchase_quotations','purchase_quotation_details','purchase_orders','purchase_order_details','purchase_status_history','purchase_attachments','purchase_document_links'],
                     account:['purchase_invoices','purchase_invoice_details','purchase_payments','purchase_payment_allocations','purchase_returns','purchase_return_details','purchase_status_history','purchase_attachments','purchase_document_links','purchase_settings','suppliers'],
-                    custody:['buyer_custodies','buyer_custody_advances','buyer_custody_expenses','buyer_custody_payments','buyer_custody_settlements']
+                    custody:['buyer_custodies','buyer_custody_advances','buyer_custody_expenses','buyer_custody_payments','buyer_custody_settlements'],
+                    quotations:['purchase_quotations','purchase_quotation_details','purchase_status_history'],
+                    invoices:['purchase_invoices','purchase_invoice_details','purchase_status_history','purchase_attachments','purchase_document_links','purchase_payments','purchase_payment_allocations']
                 };
                 var relevant=self.currentTab==='today'||
                     (targets[self.currentTab]||[]).indexOf(event.table)!==-1;
@@ -251,7 +260,7 @@ var App = {
     },
     switchTab:function(tab){
         this.currentTab=tab;this.search='';
-        ['today','suppliers','requests','orders','custody','account'].forEach(function(name){
+        ['today','suppliers','requests','quotations','orders','invoices','custody','vehicle','account'].forEach(function(name){
             var b=RW_UI.byId('tab-'+name);
             if(!b)return;
             b.classList.remove('bg-purple-600','text-white');b.classList.add('text-gray-500');
@@ -262,7 +271,7 @@ var App = {
     },
     renderCurrent:function(){
         var self=this;
-        var map={today:'renderToday',suppliers:'renderSuppliers',requests:'renderRequests',orders:'renderOrders',custody:'renderCustody',account:'renderAccount'};
+        var map={today:'renderToday',suppliers:'renderSuppliers',requests:'renderRequests',quotations:'renderQuotations',orders:'renderOrders',invoices:'renderInvoices',custody:'renderCustody',vehicle:'renderVehicleBalance',account:'renderAccount'};
         var fn=this[map[this.currentTab]];
         if(typeof fn!=='function')return;
         Promise.resolve().then(function(){return fn.call(self);}).catch(function(error){self.showPageError(error);});
@@ -494,6 +503,117 @@ var App = {
             if(res.isConfirmed){this.invalidate();RW_UI.toast('تم إنشاء وإرسال طلب عروض الأسعار','success');await this.renderRequests();}
         }catch(e){this.notifyError(e);}
     },
+
+    applyInvoiceFilters:function(){
+        this.invoiceFilters={query:(RW_UI.byId('bi-query').value||'').trim(),from:RW_UI.byId('bi-from').value||'',to:RW_UI.byId('bi-to').value||'',status:RW_UI.byId('bi-status').value||''};
+        this.renderInvoices();
+    },
+    clearInvoiceFilters:function(){this.invoiceFilters={query:'',from:'',to:'',status:''};this.renderInvoices();},
+    renderInvoices:async function(){
+        await this.loadSystemCurrency();this.pageLoading('تحميل فواتيري');
+        var results=await Promise.all([this.data('purchase_invoices'),this.data('suppliers')]);
+        var invoices=results[0],suppliers=results[1],filters=this.invoiceFilters||{query:'',from:'',to:'',status:''},supplierIndex={};
+        suppliers.forEach(function(x){supplierIndex[x.id]=x;});
+        var q=String(filters.query||'').toLowerCase();
+        var rows=invoices.filter(function(x){var supplier=supplierIndex[x.supplier_id]||{},date=String(x.invoice_date||x.created_at||'').slice(0,10),hay=[x.invoice_code,x.supplier_invoice_no,supplier.name,supplier.supplier_code,x.status].join(' ').toLowerCase();return (!q||hay.indexOf(q)!==-1)&&(!filters.from||date>=filters.from)&&(!filters.to||date<=filters.to)&&(!filters.status||x.status===filters.status);}).sort(function(a,b){return String(b.invoice_date||b.created_at||'').localeCompare(String(a.invoice_date||a.created_at||''));});
+        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">فواتيري</h2><p class="text-xs text-slate-500">فواتير الموردين ومسوداتها وسجل تفاصيلها</p></div><button type="button" onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black">+ فاتورة شراء</button></div>';
+        html+='<div class="card mb-3"><div class="grid grid-cols-1 md:grid-cols-4 gap-2"><input id="bi-query" value="'+buyerEsc(filters.query||'')+'" class="border rounded-xl p-3 text-sm" placeholder="رقم الفاتورة / رقم المورد / اسم المورد"><label class="text-xs font-bold">من تاريخ<input id="bi-from" type="date" value="'+buyerEsc(filters.from||'')+'" class="block w-full border rounded-xl p-3 mt-1"></label><label class="text-xs font-bold">إلى تاريخ<input id="bi-to" type="date" value="'+buyerEsc(filters.to||'')+'" class="block w-full border rounded-xl p-3 mt-1"></label><select id="bi-status" class="border rounded-xl p-3 text-sm"><option value="">كل الحالات</option>'+['Draft','Posted','PartiallyPaid','Paid','Cancelled'].map(function(st){return '<option value="'+st+'" '+(filters.status===st?'selected':'')+'>'+buyerStatus(st)+'</option>';}).join('')+'</select></div><div class="flex gap-2 mt-3"><button type="button" onclick="App.applyInvoiceFilters()" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-bold">بحث وتصفية</button><button type="button" onclick="App.clearInvoiceFilters()" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold">مسح</button></div></div>';
+        html+='<div class="overflow-x-auto bg-white rounded-2xl"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-right">رقم الفاتورة</th><th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">المورد</th><th class="p-3 text-right">رقم المورد</th><th class="p-3 text-right">الحالة</th><th class="p-3 text-right">القيمة</th><th class="p-3">تفاصيل</th></tr></thead><tbody>';
+        html+=rows.map(function(x){var supplier=supplierIndex[x.supplier_id]||{};return '<tr class="border-t hover:bg-slate-50"><td class="p-3 font-black">'+buyerEsc(x.invoice_code)+'</td><td class="p-3">'+buyerDate(x.invoice_date||x.created_at)+'</td><td class="p-3">'+buyerEsc(supplier.name||'—')+'</td><td class="p-3">'+buyerEsc(x.supplier_invoice_no||'—')+'</td><td class="p-3">'+buyerStatus(x.status)+'</td><td class="p-3 font-bold">'+buyerMoney(x.total_amount,x.currency||App.currency)+'</td><td class="p-3"><button type="button" onclick="App.openInvoice(\''+buyerEsc(x.id)+'\')" class="text-purple-700 font-black">فتح</button></td></tr>';}).join('')||'<tr><td colspan="7" class="p-8 text-center text-slate-400">لا توجد فواتير مطابقة</td></tr>';
+        html+='</tbody></table></div><p class="text-[11px] text-slate-400 mt-2">المسودة لا تؤثر في المخزون أو الخزينة أو حساب المورد. الترحيل غير متاح من هذه الشاشة، ويظل مشروطًا بمستند الاستلام الفعلي واعتماده.</p><p class="text-[11px] text-slate-400">القائمة الحالية تعرض حتى 500 سجل؛ البحث الخادمي والترقيم مطلوبان عند التوسع.</p>';
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+    },
+    openInvoice:async function(id){
+        var results=await Promise.all([this.data('purchase_invoices'),this.data('purchase_invoice_details'),this.data('purchase_status_history'),this.data('suppliers'),this.data('purchase_orders')]);
+        var invoice=results[0].find(function(x){return x.id===id;});if(!invoice)throw new Error('فاتورة الشراء غير موجودة');
+        var lines=results[1].filter(function(x){return x.invoice_id===id;}),history=results[2].filter(function(x){return x.document_id===id&&(!x.document_type||x.document_type==='PurchaseInvoice');}).sort(function(a,b){return String(a.created_at||'').localeCompare(String(b.created_at||''));});
+        var supplier=results[3].find(function(x){return x.id===invoice.supplier_id;})||{},po=results[4].find(function(x){return x.id===invoice.purchase_order_id;})||{};
+        var editable=invoice.status==='Draft'&&!invoice.is_received&&!invoice.received_date&&Number(invoice.paid_amount||0)===0&&lines.every(function(x){return Number(x.received_qty||0)===0;}),currency=invoice.currency||this.currency||'EGP';
+        var html='<div class="text-right space-y-3"><div class="grid grid-cols-2 md:grid-cols-4 gap-2"><div class="p-3 bg-slate-50 rounded-xl"><small>المورد</small><b class="block">'+buyerEsc(supplier.name||'—')+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>الحالة</small><b class="block">'+buyerStatus(invoice.status)+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>التاريخ</small><b class="block">'+buyerDate(invoice.invoice_date)+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>رقم فاتورة المورد</small><b class="block">'+buyerEsc(invoice.supplier_invoice_no||'—')+'</b></div></div>';
+        html+='<div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm"><p><b>رقم النظام:</b> '+buyerEsc(invoice.invoice_code)+'</p><p><b>الاستحقاق:</b> '+buyerDate(invoice.due_date)+'</p><p><b>أمر الشراء:</b> '+buyerEsc(po.po_code||'بدون PO')+'</p><p><b>العملة:</b> '+buyerEsc(currency)+'</p><p><b>الإجمالي:</b> '+buyerMoney(invoice.total_amount,currency)+'</p><p><b>المسدد:</b> '+buyerMoney(invoice.paid_amount,currency)+'</p></div>';
+        html+='<h4 class="font-black">بنود الفاتورة</h4><div class="overflow-auto"><table class="w-full text-xs"><thead class="bg-slate-50"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">المستلم</th><th class="p-2">السعر</th><th class="p-2">خصم</th><th class="p-2">ضريبة</th><th class="p-2">الإجمالي</th></tr></thead><tbody>';
+        html+=lines.map(function(x){return '<tr class="border-t"><td class="p-2">'+buyerEsc(x.item_name||x.item_code)+'</td><td class="p-2">'+buyerEsc(x.qty)+'</td><td class="p-2">'+buyerEsc(x.received_qty||0)+'</td><td class="p-2">'+buyerMoney(x.unit_price,currency)+'</td><td class="p-2">'+buyerEsc(x.discount_percent||0)+'%</td><td class="p-2">'+buyerEsc(x.tax_rate||0)+'%</td><td class="p-2 font-bold">'+buyerMoney(x.line_total,currency)+'</td></tr>';}).join('')||'<tr><td colspan="7" class="p-3 text-center">لا توجد تفاصيل</td></tr>';
+        html+='</tbody></table></div><h4 class="font-black">سجل المستند</h4><div class="space-y-1">'+(history.map(function(h){return '<div class="p-2 bg-slate-50 rounded-lg text-xs">'+buyerEsc(h.action||'تحديث')+' · '+buyerEsc(h.from_status||'—')+' ← '+buyerEsc(h.to_status||'—')+' · '+buyerDate(h.created_at)+' · '+buyerEsc(h.actor_email||'')+(h.note?'<p class="text-slate-500 mt-1">'+buyerEsc(h.note)+'</p>':'')+'</div>';}).join('')||'<p class="text-xs text-slate-400">لا توجد أحداث مسجلة.</p>')+'</div>';
+        html+='<div class="p-3 rounded-xl '+(editable?'bg-amber-50 text-amber-800':'bg-slate-50 text-slate-600')+' text-xs">'+(editable?'هذه مسودة غير مستلمة وغير مرحلة؛ يمكن تعديلها أو حذفها وفق الصلاحيات.':'فاتورة غير قابلة للتعديل أو الحذف من هذه الشاشة. أي تصحيح بعد الترحيل يكون عبر مسار عكس معتمد.')+'</div></div>';
+        var result=await Swal.fire({title:'تفاصيل فاتورة '+buyerEsc(invoice.invoice_code),html:html,width:1000,showCloseButton:true,allowEscapeKey:true,showCancelButton:true,cancelButtonText:'إغلاق',showConfirmButton:editable,confirmButtonText:'تعديل المسودة',showDenyButton:editable,denyButtonText:'حذف المسودة',denyButtonColor:'#b91c1c'});
+        if(result.isConfirmed)await this.createPurchaseInvoice(id);else if(result.isDenied)await this.deleteDraftInvoice(id);
+    },
+    deleteDraftInvoice:async function(id){
+        var confirm=await Swal.fire({title:'حذف مسودة الفاتورة؟',text:'لن يُسمح بالحذف إذا كان للمستند استلام أو سداد أو حركة أو مستند مرتبط. سيُحتفظ بسجل تدقيق للحذف.',icon:'warning',showCancelButton:true,confirmButtonText:'حذف المسودة',cancelButtonText:'تراجع',confirmButtonColor:'#b91c1c'});
+        if(!confirm.isConfirmed)return;
+        try{await this.api('DELETE_DRAFT_INVOICE',{id:id,reason:'Deleted from Buyer invoices tab',operation_id:buyerOperationId()});this.invalidate();RW_UI.toast('تم حذف مسودة الفاتورة مع الاحتفاظ بسجل التدقيق','success');await this.renderInvoices();}
+        catch(e){this.notifyError(e);}
+    },
+    applyQuotationFilters:function(){
+        this.quotationFilters={query:(RW_UI.byId('bq-query').value||'').trim(),status:RW_UI.byId('bq-status').value||''};this.renderQuotations();
+    },
+    clearQuotationFilters:function(){this.quotationFilters={query:'',status:''};this.renderQuotations();},
+    renderQuotations:async function(){
+        await this.loadSystemCurrency();this.pageLoading('تحميل عروض الأسعار');
+        var results=await Promise.all([this.data('purchase_quotations'),this.data('suppliers')]);
+        var quotes=results[0],suppliers=results[1],filters=this.quotationFilters||{query:'',status:''},supplierIndex={};
+        suppliers.forEach(function(x){supplierIndex[x.id]=x;});
+        var q=String(filters.query||'').toLowerCase();
+        var rows=quotes.filter(function(x){var supplier=supplierIndex[x.supplier_id]||{};return (!q||[x.quotation_code,supplier.name,supplier.supplier_code,x.status].join(' ').toLowerCase().indexOf(q)!==-1)&&(!filters.status||x.status===filters.status);}).sort(function(a,b){return String(b.quotation_date||b.created_at||'').localeCompare(String(a.quotation_date||a.created_at||''));});
+        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">عروض أسعار الموردين</h2><p class="text-xs text-slate-500">تسجيل ومقارنة عروض الموردين قبل إصدار أمر الشراء</p></div><button type="button" onclick="App.createQuotation()" class="px-4 py-3 rounded-xl bg-emerald-600 text-white font-black">+ إضافة عرض سعر</button></div>';
+        html+='<div class="card mb-3"><div class="grid grid-cols-1 md:grid-cols-2 gap-2"><input id="bq-query" value="'+buyerEsc(filters.query||'')+'" class="border rounded-xl p-3 text-sm" placeholder="كود العرض / المورد"><select id="bq-status" class="border rounded-xl p-3 text-sm"><option value="">كل الحالات</option>'+['Submitted','Accepted','Rejected','Converted','Cancelled'].map(function(st){return '<option value="'+st+'" '+(filters.status===st?'selected':'')+'>'+buyerStatus(st)+'</option>';}).join('')+'</select></div><div class="flex gap-2 mt-3"><button type="button" onclick="App.applyQuotationFilters()" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-bold">بحث وتصفية</button><button type="button" onclick="App.clearQuotationFilters()" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold">مسح</button></div></div>';
+        html+='<div class="overflow-x-auto bg-white rounded-2xl"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-3 text-right">كود العرض</th><th class="p-3 text-right">التاريخ</th><th class="p-3 text-right">المورد</th><th class="p-3 text-right">صالح حتى</th><th class="p-3 text-right">القيمة</th><th class="p-3 text-right">الحالة</th><th class="p-3">إجراءات</th></tr></thead><tbody>';
+        html+=rows.map(function(x){var supplier=supplierIndex[x.supplier_id]||{};return '<tr class="border-t"><td class="p-3 font-black">'+buyerEsc(x.quotation_code)+'</td><td class="p-3">'+buyerDate(x.quotation_date||x.created_at)+'</td><td class="p-3">'+buyerEsc(supplier.name||'—')+'</td><td class="p-3">'+buyerDate(x.valid_until)+'</td><td class="p-3 font-bold">'+buyerMoney(x.total_amount,x.currency||App.currency)+'</td><td class="p-3">'+buyerStatus(x.status)+'</td><td class="p-3"><div class="flex flex-wrap gap-2"><button type="button" onclick="App.openQuotation(\''+buyerEsc(x.id)+'\')" class="text-purple-700 font-bold">تفاصيل</button>'+(x.status==='Submitted'?'<button type="button" onclick="App.acceptQuotation(\''+buyerEsc(x.id)+'\')" class="text-emerald-700 font-bold">قبول</button>':'')+(x.status==='Accepted'?'<button type="button" onclick="App.convertQuote(\''+buyerEsc(x.id)+'\')" class="text-blue-700 font-bold">تحويل PO</button>':'')+'</div></td></tr>';}).join('')||'<tr><td colspan="7" class="p-8 text-center text-slate-400">لا توجد عروض أسعار مسجلة</td></tr>';
+        html+='</tbody></table></div><p class="text-[11px] text-slate-400 mt-2">العرض لا ينشئ مخزونًا أو التزامًا ماليًا أو رصيد مورد. القبول يسمح بتحويله إلى PO، والـPO نفسه لا يرحّل المخزون أو الخزينة.</p>';
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+    },
+    openQuotation:async function(id){
+        var results=await Promise.all([this.data('purchase_quotations'),this.data('purchase_quotation_details'),this.data('purchase_status_history'),this.data('suppliers'),this.data('purchase_rfqs')]);
+        var quote=results[0].find(function(x){return x.id===id;});if(!quote)throw new Error('عرض السعر غير موجود');
+        var lines=results[1].filter(function(x){return x.quotation_id===id;}),history=results[2].filter(function(x){return x.document_id===id&&(!x.document_type||x.document_type==='Quotation');}).sort(function(a,b){return String(a.created_at||'').localeCompare(String(b.created_at||''));});
+        var supplier=results[3].find(function(x){return x.id===quote.supplier_id;})||{},rfq=results[4].find(function(x){return x.id===quote.rfq_id;})||{},currency=quote.currency||this.currency||'EGP';
+        var html='<div class="text-right space-y-3"><div class="grid grid-cols-2 md:grid-cols-4 gap-2"><div class="p-3 bg-slate-50 rounded-xl"><small>المورد</small><b class="block">'+buyerEsc(supplier.name||'—')+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>الحالة</small><b class="block">'+buyerStatus(quote.status)+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>التاريخ</small><b class="block">'+buyerDate(quote.quotation_date)+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>صالح حتى</small><b class="block">'+buyerDate(quote.valid_until)+'</b></div></div><p><b>كود العرض:</b> '+buyerEsc(quote.quotation_code)+' · <b>RFQ:</b> '+buyerEsc(rfq.rfq_code||'—')+' · <b>الإجمالي:</b> '+buyerMoney(quote.total_amount,currency)+'</p><h4 class="font-black">بنود العرض</h4><div class="overflow-auto"><table class="w-full text-xs"><thead class="bg-slate-50"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">خصم</th><th class="p-2">ضريبة</th><th class="p-2">الإجمالي</th></tr></thead><tbody>';
+        html+=lines.map(function(x){return '<tr class="border-t"><td class="p-2">'+buyerEsc(x.item_name||x.item_code)+'</td><td class="p-2">'+buyerEsc(x.qty)+'</td><td class="p-2">'+buyerMoney(x.unit_price,currency)+'</td><td class="p-2">'+buyerEsc(x.discount_percent||0)+'%</td><td class="p-2">'+buyerEsc(x.tax_rate||0)+'%</td><td class="p-2 font-bold">'+buyerMoney(x.line_total,currency)+'</td></tr>';}).join('')||'<tr><td colspan="6" class="p-3 text-center">لا توجد بنود</td></tr>';
+        html+='</tbody></table></div><h4 class="font-black">سجل الحالة</h4><div class="space-y-1">'+(history.map(function(h){return '<div class="p-2 bg-slate-50 rounded-lg text-xs">'+buyerEsc(h.action||'تحديث')+' · '+buyerEsc(h.from_status||'—')+' ← '+buyerEsc(h.to_status||'—')+' · '+buyerDate(h.created_at)+'</div>';}).join('')||'<p class="text-xs text-slate-400">لا يوجد سجل إضافي</p>')+'</div><p class="text-xs text-slate-500">هذا عرض تجاري للمقارنة؛ لا يغيّر المخزون أو الخزينة أو حساب المورد.</p></div>';
+        await Swal.fire({title:'تفاصيل عرض '+buyerEsc(quote.quotation_code),html:html,width:950,showCloseButton:true,allowEscapeKey:true,showConfirmButton:false});
+    },
+    createQuotation:async function(){
+        try{
+            await this.loadSystemCurrency();
+            var data=await Promise.all([this.data('suppliers'),this.data('items'),this.data('purchase_rfqs'),this.data('purchase_rfq_details'),this.data('purchase_rfq_suppliers')]);
+            var suppliers=data[0].filter(function(x){return x.is_active!==false;}),items=data[1],rfqs=data[2],rfqLines=data[3],rfqSuppliers=data[4],lines=[],self=this,selectedItem=null;
+            var supplierOptions=suppliers.map(function(x){return '<option value="'+buyerEsc(x.id)+'">'+buyerEsc(x.name||x.supplier_code)+'</option>';}).join('');
+            var rfqOptions='<option value="">بدون RFQ</option>'+rfqs.map(function(x){return '<option value="'+buyerEsc(x.id)+'">'+buyerEsc(x.rfq_code+' — '+buyerStatus(x.status))+'</option>';}).join('');
+            var html='<div dir="rtl" class="text-right space-y-4"><div class="rounded-2xl bg-violet-50 border border-violet-100 p-4"><b class="text-lg">إضافة عرض سعر مورد</b><p class="text-xs text-slate-500 mt-1">سجل أسعار المورد مقابل طلب عروض الأسعار أو عرض مستقل. العملة المعتمدة: '+buyerEsc(this.currency)+'.</p></div><div class="grid grid-cols-1 md:grid-cols-3 gap-3"><label class="text-sm font-bold">المورد<select id="bq-supplier" class="w-full border rounded-xl p-3 mt-1">'+supplierOptions+'</select></label><label class="text-sm font-bold">طلب عروض RFQ<select id="bq-rfq" class="w-full border rounded-xl p-3 mt-1">'+rfqOptions+'</select></label><label class="text-sm font-bold">صالح حتى<input id="bq-valid" type="date" class="w-full border rounded-xl p-3 mt-1"></label></div><div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود العرض</div><div class="grid grid-cols-1 md:grid-cols-[1fr_110px_130px_auto] gap-2 items-end"><div class="relative"><label class="text-sm font-bold">بحث الصنف<input id="bq-item" class="w-full border rounded-xl p-3 mt-1" placeholder="اسم الصنف أو الكود أو الباركود"></label><div id="bq-item-results" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-60 overflow-auto rounded-xl border bg-white shadow-xl"></div></div><label class="text-sm font-bold">الكمية<input id="bq-qty" type="number" min="0.01" step="0.01" value="1" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-bold">سعر الوحدة<input id="bq-price" type="number" min="0" step="0.01" class="w-full border rounded-xl p-3 mt-1"></label><button type="button" id="bq-add" class="px-4 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bq-lines" class="mt-4"></div></div><p class="text-xs text-amber-700">حفظ العرض لا يعني اعتماد شراء ولا يحرّك المخزون أو الخزينة أو حساب المورد.</p></div>';
+            function renderLines(){
+                var host=RW_UI.byId('bq-lines');if(!host)return;
+                if(!lines.length){host.innerHTML='<div class="border border-dashed rounded-xl p-5 text-center text-slate-400">لا توجد بنود في العرض.</div>';return;}
+                var total=0,h='<div class="overflow-auto bg-white rounded-xl border"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
+                lines.forEach(function(x,i){var gross=x.qty*x.unit_price,net=gross*(1-x.discount_percent/100),v=net*(1+x.tax_rate/100);total+=v;h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name||'')+'</small></td><td class="p-2"><input data-bqf="qty" data-bqi="'+i+'" type="number" min="0.01" step="0.01" value="'+x.qty+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bqf="unit_price" data-bqi="'+i+'" type="number" min="0" step="0.01" value="'+x.unit_price+'" class="w-24 border rounded p-2"></td><td class="p-2"><input data-bqf="discount_percent" data-bqi="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.discount_percent+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bqf="tax_rate" data-bqi="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.tax_rate+'" class="w-20 border rounded p-2"></td><td class="p-2 font-bold">'+buyerMoney(v,self.currency)+'</td><td><button type="button" data-bqremove="'+i+'" class="text-red-600">حذف</button></td></tr>';});
+                host.innerHTML=h+'</tbody></table><div class="p-3 text-left font-black">الإجمالي التقديري: '+buyerMoney(total,self.currency)+'</div></div>';
+                Array.from(host.querySelectorAll('[data-bqf]')).forEach(function(el){el.addEventListener('change',function(){var row=lines[Number(el.dataset.bqi)];row[el.dataset.bqf]=Number(el.value);renderLines();});});
+                Array.from(host.querySelectorAll('[data-bqremove]')).forEach(function(el){el.addEventListener('click',function(){lines.splice(Number(el.dataset.bqremove),1);renderLines();});});
+            }
+            var modal=await Swal.fire({title:'إضافة عرض سعر',width:1100,html:html,showCloseButton:true,allowEscapeKey:true,showCancelButton:true,confirmButtonText:'حفظ العرض',cancelButtonText:'إلغاء',didOpen:function(){
+                var supplier=RW_UI.byId('bq-supplier'),rfq=RW_UI.byId('bq-rfq'),search=RW_UI.byId('bq-item'),results=RW_UI.byId('bq-item-results');
+                RW_UI.byId('bq-valid').value=buyerLocalDate();
+                function updateSupplierOptions(){var rfqId=rfq.value;if(!rfqId){supplier.innerHTML=supplierOptions;return;}var invited=rfqSuppliers.filter(function(x){return x.rfq_id===rfqId;}).map(function(x){return x.supplier_id;});supplier.innerHTML=suppliers.filter(function(x){return invited.indexOf(x.id)!==-1;}).map(function(x){return '<option value="'+buyerEsc(x.id)+'">'+buyerEsc(x.name||x.supplier_code)+'</option>';}).join('');if(!supplier.options.length)Swal.showValidationMessage('لا يوجد موردون مدعوون لطلب العروض المحدد');}
+                rfq.addEventListener('change',function(){updateSupplierOptions();var selected=rfqLines.filter(function(x){return x.rfq_id===rfq.value;});if(rfq.value)lines=selected.map(function(x){return {item_code:x.item_code,name:x.item_name,unit:x.unit,qty:Number(x.qty_requested||0),unit_price:0,discount_percent:0,tax_rate:0};});else lines=[];renderLines();});
+                search.addEventListener('input',function(){var q=search.value.trim().toLowerCase();selectedItem=null;var found=items.filter(function(x){return [x.name,x.item_code,x.barcode].join(' ').toLowerCase().indexOf(q)!==-1;}).slice(0,20);results.innerHTML=found.map(function(x,i){return '<button type="button" data-bqitem="'+i+'" class="w-full text-right p-3 border-b hover:bg-violet-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.item_code)+'</small></button>';}).join('')||'<div class="p-3 text-xs text-slate-400">لا توجد أصناف مطابقة</div>';results.classList.remove('hidden');Array.from(results.querySelectorAll('[data-bqitem]')).forEach(function(btn){btn.addEventListener('click',function(){selectedItem=found[Number(btn.dataset.bqitem)];search.value=selectedItem.item_code+' — '+selectedItem.name;results.classList.add('hidden');});});});
+                RW_UI.byId('bq-add').addEventListener('click',function(){if(!selectedItem){Swal.showValidationMessage('اختر الصنف من نتائج البحث');return;}if(lines.some(function(x){return x.item_code===selectedItem.item_code;})){Swal.showValidationMessage('الصنف موجود بالفعل في العرض');return;}var qty=Number(RW_UI.byId('bq-qty').value),price=Number(RW_UI.byId('bq-price').value);if(!Number.isFinite(qty)||qty<=0||!Number.isFinite(price)||price<0){Swal.showValidationMessage('تحقق من الكمية والسعر');return;}lines.push({item_code:selectedItem.item_code,name:selectedItem.name,unit:selectedItem.unit,qty:qty,unit_price:price,discount_percent:0,tax_rate:0});selectedItem=null;search.value='';RW_UI.byId('bq-qty').value='1';RW_UI.byId('bq-price').value='';renderLines();});
+                updateSupplierOptions();renderLines();
+            },preConfirm:async function(){var supplierId=RW_UI.byId('bq-supplier').value,rfqId=RW_UI.byId('bq-rfq').value||null;if(!supplierId){Swal.showValidationMessage('اختيار المورد مطلوب');return false;}if(rfqId&&!rfqSuppliers.some(function(x){return x.rfq_id===rfqId&&x.supplier_id===supplierId;})){Swal.showValidationMessage('المورد غير مدعو إلى RFQ المحدد');return false;}if(!lines.length){Swal.showValidationMessage('أضف بندًا واحدًا على الأقل');return false;}for(var i=0;i<lines.length;i++){var x=lines[i];if(!Number.isFinite(Number(x.qty))||x.qty<=0||!Number.isFinite(Number(x.unit_price))||x.unit_price<0||Number(x.discount_percent)<0||Number(x.discount_percent)>100||Number(x.tax_rate)<0||Number(x.tax_rate)>100){Swal.showValidationMessage('تحقق من كميات وأسعار وخصومات وضرائب البنود');return false;}}try{return await self.api('CREATE_QUOTATION',{supplier_id:supplierId,rfq_id:rfqId,valid_until:RW_UI.byId('bq-valid').value||null,currency:self.currency,items:lines.map(function(x){return {item_code:x.item_code,qty:Number(x.qty),unit_price:Number(x.unit_price),discount_percent:Number(x.discount_percent||0),tax_rate:Number(x.tax_rate||0)};})});}catch(e){Swal.showValidationMessage(e.message);return false;}}
+            });
+            if(modal.isConfirmed){this.invalidate();RW_UI.toast('تم حفظ عرض السعر: '+(modal.value.code||''),'success');await this.renderQuotations();}
+        }catch(e){this.notifyError(e);}
+    },
+    renderVehicleBalance:async function(){
+        this.pageLoading('تحميل رصيد السيارة');
+        var results=await Promise.all([this.data('fleet_vehicle_assignments'),this.data('vehicles')]);
+        var assignments=results[0],vehicles=results[1],now=new Date(),currentId=(this.currentUser||{}).id;
+        var active=assignments.filter(function(a){var start=!a.start_at||new Date(a.start_at)<=now;var end=!a.end_at||new Date(a.end_at)>=now;return a.driver_user_id===currentId&&start&&end;});
+        var vehicleIndex={};vehicles.forEach(function(v){vehicleIndex[v.id]=v;});
+        var html='<div class="flex items-center justify-between gap-2 mb-4"><div><h2 class="text-xl font-black">رصيد السيارة</h2><p class="text-xs text-slate-500">مسؤولية البضاعة المنقولة من المورد إلى المخزن أو المرتجعة من المخزن إلى المورد</p></div><span class="text-[10px] rounded-full bg-slate-100 px-3 py-1">قراءة فقط</span></div>';
+        if(active.length){html+='<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+active.map(function(a){var v=vehicleIndex[a.vehicle_id]||{};return '<div class="card"><small class="text-slate-500">المركبة المسندة</small><b class="block text-lg">'+buyerEsc(v.vehicle_code||v.license_plate||'مركبة')+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(v.license_plate||'')+'</p></div>';}).join('')+'</div>';}
+        else{html+='<div class="card mb-3 border border-amber-200 bg-amber-50"><b class="text-amber-900">لا توجد مركبة مسندة لهذا المستخدم</b><p class="text-xs text-amber-800 mt-1">لم يُعثر على تعيين نشط في سجل الأسطول لهذا الحساب. لا يجوز اختيار مركبة عشوائيًا أو اعتبار أي فاتورة/أمر شراء رصيدًا على السيارة.</p></div>';}
+        html+='<div class="card border border-slate-200"><h3 class="font-black mb-2">دفتر عهدة بضاعة المشتريات — غير مفعّل بعد</h3><p class="text-sm text-slate-600">المخطط الحالي لا يحتوي على حركة مشتريات تربط تسليم المورد إلى عهدة المشتري/المركبة ثم التسليم الفعلي إلى المخزن، ولا على حركة عكسية تربط صرف المرتجع من المخزن إلى المركبة ثم تسليمه للمورد.</p><p class="text-xs text-slate-500 mt-2">سندات المخزون الحالية مخصصة لأنواع حركة أخرى ولا تسمح بعهدة مشتريات على المركبة. لذلك لن أحسب رصيدًا من الفواتير أو PO أو أوامر الاستلام؛ هذه مستندات وحالات مختلفة وليست إثبات تحميل فعلي.</p><div class="mt-3 p-3 rounded-xl bg-blue-50 text-blue-800 text-xs">التصميم المطلوب قبل تفعيل الرصيد: (1) المورد ← المركبة: إثبات استلام فعلي للصنف بواسطة المشتري، (2) المركبة ← المخزن: استلام فعلي بواسطة أمين المخزن وربط الكمية بمحضر الاستلام، (3) المخزن ← المركبة: صرف فعلي لمرتجع المورد، (4) المركبة ← المورد: إثبات التسليم للمورد. لا يترتب على تحميل المركبة وحده زيادة مخزون الفرع أو حركة خزينة/حساب مورد.</div></div>';
+        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+    },
     renderOrders:async function(){
         this.pageLoading('تحميل أوامر الشراء');
         var results=await Promise.all([this.data('purchase_orders'),this.data('purchase_quotations')]);
@@ -545,6 +665,12 @@ var App = {
             }});
             if(r.isConfirmed){this.invalidate();RW_UI.toast('تم إنشاء أمر الشراء: '+(r.value.code||''),'success');await this.renderOrders();}
         }catch(e){this.notifyError(e);}
+    },
+    acceptQuotation:async function(id){
+        var confirm=await Swal.fire({title:'قبول عرض المورد؟',text:'القبول لا ينشئ حركة مخزون أو قيدًا ماليًا؛ يمكنك تحويل العرض المقبول إلى PO.',showCancelButton:true,confirmButtonText:'قبول العرض',cancelButtonText:'إلغاء'});
+        if(!confirm.isConfirmed)return;
+        try{await this.api('ACCEPT_QUOTATION',{id:id});this.invalidate();RW_UI.toast('تم قبول العرض','success');await this.renderQuotations();}
+        catch(e){this.notifyError(e);}
     },
     convertQuote:async function(id){
         var self=this;
