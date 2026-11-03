@@ -7,6 +7,14 @@ on:
         description: 'Optional deployed URL of companies/company-1/main.html; leave blank to test exact current Git source locally'
         required: false
         type: string
+  pull_request:
+    branches: [main]
+    paths:
+      - 'companies/company-1/main.html'
+      - 'companies/company-1/sw.js'
+      - '_routes.json'
+      - 'functions/**'
+      - '.github/workflows/browser_e2e_mother_20260915.yml'
   push:
     branches: [main]
     paths:
@@ -47,19 +55,32 @@ jobs:
           print('ROUTES_JSON_SYNTAX=PASS')
           PY
 
-      - name: Assert canonical payroll syntax in Mother source
+      - name: Validate exact Mother inline JavaScript syntax
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          s=Path('companies/company-1/main.html').read_text(encoding='utf-8')
-          good="esc(x.status||'-')])));"
-          bad="esc(x.status||'-')]))));"
-          assert good in s, 'Canonical RW_HR payroll syntax not present'
-          assert bad not in s, 'Known malformed RW_HR payroll syntax is still present'
-          print('RW_HR_PAYROLL_SOURCE_SYNTAX=PASS')
+          import re
+          raw=Path('companies/company-1/main.html').read_text(encoding='utf-8')
+          scripts=list(re.finditer(r'<script(?P<a>[^>]*)>(?P<b>[\s\S]*?)</script>',raw,re.I))
+          positioned=[' ' if ch!=chr(10) else ch for ch in raw]
+          blocks=0
+          for m in scripts:
+            attrs=m.group('a') or ''
+            if not re.search(r'\bsrc\s*=',attrs,re.I):
+              tm=re.search(r'\btype\s*=\s*["\']([^"\']+)',attrs,re.I)
+              typ=(tm.group(1) if tm else '').lower()
+              if typ in ('','text/javascript','application/javascript','application/ecmascript','text/ecmascript'):
+                blocks+=1
+                a=m.start(); b=m.end()-len('</script>'); oe=raw.find('>',a)+1
+                positioned[oe:b]=list(raw[oe:b])
+          print('INLINE_JS_BLOCKS='+str(blocks))
+          if blocks!=1: raise SystemExit('INLINE_JS_BLOCK_COUNT_INVALID')
+          Path('/tmp/main-positioned.js').write_text(''.join(positioned),encoding='utf-8')
           PY
+          node --check /tmp/main-positioned.js
+          echo NODE_CHECK_CURRENT_MAIN=PASS
 
       - name: Install Playwright
         shell: bash
