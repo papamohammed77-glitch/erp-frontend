@@ -49,7 +49,7 @@
         <button onclick="App.switchTab('orders')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-orders">📋 أوامر PO</button>
         <button onclick="App.switchTab('invoices')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-invoices">🧾 فواتيري</button>
         <button onclick="App.switchTab('custody')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-custody">💳 عهدتي</button>
-        <button onclick="App.switchTab('vehicle')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-vehicle">🚚 رصيد السيارة</button>
+        <button onclick="App.switchTab('vehicle')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-vehicle">📦 رصيدي</button>
         <button onclick="App.switchTab('account')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-account">👤 حسابي</button>
     </div>
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
@@ -353,7 +353,7 @@ var App = {
         html+='<p class="p-3 rounded-xl bg-slate-50 text-slate-600">• الشراء العاجل ينشئ فاتورة Draft فقط؛ الترحيل المخزني والمحاسبي منفصل ويتطلب صلاحية المالية.</p>';
         html+='</div></div>';
         html+='<div class="card"><h3 class="font-black mb-3">مؤشرات التشغيل</h3><div class="space-y-3 text-sm">';
-        html+='<div class="flex justify-between"><span>الموردون النشطون</span><b>'+suppliers.filter(function(x){return x.is_active!==false;}).length+'</b></div>';
+        html+='<div class="flex justify-between"><span>الموردون النشطون</span><b>'+suppliers.filter(function(x){return x.is_active===true;}).length+'</b></div>';
         html+='<div class="flex justify-between"><span>أوامر الشراء</span><b>'+orders.length+'</b></div>';
         html+='<div class="flex justify-between"><span>فواتير الشراء</span><b>'+invoices.length+'</b></div>';
         html+='<div class="flex justify-between"><span>الفروع</span><b>'+branches.length+'</b></div>';
@@ -385,55 +385,18 @@ var App = {
         this.pageLoading('تحميل الموردين');
         var rows=await this.data('suppliers');
         var q=this.search.toLowerCase();
-        rows=rows.filter(function(s){return !q||[s.name,s.supplier_code,s.phone,s.area].join(' ').toLowerCase().indexOf(q)!==-1;});
-        var html='<div class="flex justify-between items-center gap-2 mb-4"><div><h2 class="text-xl font-black">دليل الموردين</h2><p class="text-xs text-slate-500">بيانات الموردين الفعلية المرتبطة بالشركة</p></div><button onclick="App.supplierForm()" class="bg-orange-600 text-white rounded-xl px-4 py-3 font-bold text-sm">+ مورد جديد</button></div>';
+        rows=rows.filter(function(s){return s.is_active===true&&(!q||[s.name,s.supplier_code,s.phone,s.area].join(' ').toLowerCase().indexOf(q)!==-1);});
+        var html='<div class="flex justify-between items-center gap-2 mb-4"><div><h2 class="text-xl font-black">دليل الموردين المركزي</h2><p class="text-xs text-slate-500">عرض وبحث فقط — إدارة الموردين وإنشاؤهم تتم من النظام الأم</p></div><span class="text-xs rounded-full bg-blue-50 text-blue-700 px-3 py-2 font-bold">مصدر مركزي</span></div>';
         html+='<input class="w-full p-3 rounded-xl border bg-white mb-3" placeholder="بحث بالاسم أو الكود أو الهاتف" value="'+buyerEsc(this.search)+'" oninput="App.search=this.value;App.renderSuppliers()">';
         if(!rows.length)html+='<div class="card text-center text-slate-400 py-10">لا توجد نتائج مطابقة</div>';
         rows.forEach(function(s){
-            html+='<button onclick="App.openSupplier(\''+buyerEsc(s.id)+'\')" class="card w-full text-right mb-2 border border-slate-100"><div class="flex justify-between gap-3"><div><b>'+buyerEsc(s.name)+'</b><p class="text-xs text-slate-400 mt-1">'+buyerEsc(s.supplier_code)+' · '+buyerEsc(s.phone||'لا يوجد هاتف')+'</p><p class="text-xs text-slate-400">'+buyerEsc(s.area||s.address||'لا يوجد عنوان مسجل')+'</p></div><div class="text-left"><b class="text-purple-700">'+buyerMoney(s.accounts_payable,this.currency)+'</b><p class="text-[11px] text-slate-400">رصيد المورد</p><span class="text-xs '+(s.is_active===false?'text-red-600':'text-emerald-600')+'">'+(s.is_active===false?'معلق':'نشط')+'</span></div></div></button>';
+            html+='<button onclick="App.openSupplier(\\''+buyerEsc(s.id)+'\\')" class="card w-full text-right mb-2 border border-slate-100"><div class="flex justify-between gap-3"><div><b>'+buyerEsc(s.name)+'</b><p class="text-xs text-slate-400 mt-1">'+buyerEsc(s.supplier_code)+' · '+buyerEsc(s.phone||'لا يوجد هاتف')+'</p><p class="text-xs text-slate-400">'+buyerEsc(s.area||s.address||'لا يوجد عنوان مسجل')+'</p><p class="text-[11px] text-emerald-700 mt-1">نشط في دليل الموردين المركزي · شروط الدفع: '+buyerEsc(s.payment_type||'غير محددة')+'</p></div><div class="text-left"><b class="text-purple-700">'+buyerMoney(s.accounts_payable,this.currency)+'</b><p class="text-[11px] text-slate-400">رصيد المورد</p><span class="text-xs text-emerald-600">نشط</span></div></div></button>';
         },this);
         html+='<p class="text-[11px] text-slate-400 mt-3">تصنيف A/B/C والتقييم والزيارات غير متاحة حاليًا. القائمة محدودة بحد 500 سجل حتى إضافة pagination/بحث خادمي.</p>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
-    supplierForm:async function(id){
-        await this.loadSystemCurrency();
-        var rows=await this.data('suppliers'),current=id?rows.find(function(x){return x.id===id;}):null,self=this,isEdit=!!current;
-        var code=current?current.supplier_code:('SUPP-'+(rows.reduce(function(m,x){var n=String(x.supplier_code||'').match(/^SUPP-(\d+)$/i);return n?Math.max(m,Number(n[1])):m;},1000)+1));
-        var html='<div class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" dir="rtl"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">'+
-        '<div class="bg-orange-600 px-6 py-4 flex justify-between text-white"><h3 class="text-xl font-bold"><i class="fas fa-truck ml-2"></i>'+(current?'تعديل المورد':'إضافة مورد جديد')+'</h3><button onclick="Swal.close()"><i class="fas fa-xmark text-xl"></i></button></div>'+
-        '<form class="p-6 space-y-6" style="max-height:70vh;overflow-y:auto" onsubmit="return false"><div class="grid grid-cols-1 md:grid-cols-2 gap-4">'+
-        '<div class="flex flex-col"><label>كود المورد</label><input id="supp-code" value="'+buyerEsc(code)+'" readonly class="p-2.5 bg-gray-100 border rounded-lg"></div>'+
-        '<div class="flex flex-col"><label>اسم المورد *</label><input id="supp-name" value="'+buyerEsc(current?current.name:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
-        '<div class="flex flex-col"><label>رقم الهاتف</label><input id="supp-phone" value="'+buyerEsc(current?current.phone:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
-        '<div class="flex flex-col"><label>المنطقة</label><input id="supp-area" value="'+buyerEsc(current?current.area:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
-        '<div class="flex flex-col"><label>العنوان التفصيلي</label><input id="supp-address" value="'+buyerEsc(current?current.address:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
-        '<div class="flex flex-col"><label>نوع المورد</label><select id="supp-type" class="p-2.5 bg-gray-50 border rounded-lg"><option>مورد عام</option><option>مصنع</option><option>مورد خارجي</option></select></div>'+
-        '<div class="flex flex-col"><label>طريقة الدفع</label><select id="supp-payment" class="p-2.5 bg-gray-50 border rounded-lg"><option>نقدي</option><option>أجل</option></select></div>'+
-        '<div class="flex flex-col"><label>الرصيد الدائن ('+buyerEsc(this.currency)+')</label><input id="supp-balance" type="number" value="'+buyerEsc(current?current.accounts_payable||0:0)+'" readonly disabled class="p-2.5 bg-gray-100 border rounded-lg text-gray-600 cursor-not-allowed"><p class="text-xs text-gray-500 mt-1">الرصيد المالي للقراءة فقط ويُدار من الفواتير والمدفوعات.</p></div>'+
-        '<div class="flex flex-col"><label>جهة الاتصال</label><input id="supp-contact" value="'+buyerEsc(current?current.contact_person:'')+'" class="p-2.5 bg-gray-50 border rounded-lg"></div>'+
-        '<div class="flex flex-col"><label>مسؤول المشتريات</label><div class="relative"><input id="supp-rep" value="'+buyerEsc(current?current.purchase_rep:'')+'" autocomplete="off" placeholder="ابحث بالاسم أو البريد أو الهاتف" class="p-2.5 bg-gray-50 border rounded-lg w-full"><div id="supp-rep-results" class="absolute right-0 left-0 top-full mt-1 hidden max-h-64 overflow-y-auto bg-white border rounded-xl shadow-xl z-[1300]"></div></div><p class="text-xs text-gray-500 mt-1">اختر مندوب المشتريات من النتائج.</p></div>'+
-        '<div class="md:col-span-2 flex flex-col"><label>ملاحظات</label><textarea id="supp-notes" rows="2" class="p-2.5 bg-gray-50 border rounded-lg">'+buyerEsc(current?current.notes:'')+'</textarea></div></div>'+
-        '<div class="flex justify-end gap-3 pt-4 border-t"><button type="button" class="px-5 py-2.5 border rounded-xl font-bold" onclick="Swal.close()">إلغاء</button><button type="button" id="btn-save-supp" class="px-6 py-2.5 bg-orange-600 text-white rounded-xl font-bold">حفظ</button></div></form></div></div>';
-        await Swal.fire({html:html,width:'900px',showConfirmButton:false,showCancelButton:false,customClass:{popup:'!bg-transparent !shadow-none !p-0'},didOpen:function(){
-            RW_UI.byId('supp-type').value=current&&current.supplier_type?current.supplier_type:'مورد عام';
-            RW_UI.byId('supp-payment').value=current&&current.payment_type?current.payment_type:'نقدي';
-            var input=RW_UI.byId('supp-rep'),box=RW_UI.byId('supp-rep-results'),timer=null,seq=0;
-            input.addEventListener('input',function(){clearTimeout(timer);var q=input.value.trim(),n=++seq;box.classList.remove('hidden');box.textContent='جاري البحث...';timer=setTimeout(function(){
-                RW_SUPABASE_CLIENT.rpc('get_supplier_purchase_reps',{p_query:q||null}).then(function(r){if(n!==seq)return;box.innerHTML='';
-                    if(r.error){box.textContent='تعذر تحميل المندوبين: '+r.error.message;return;}
-                    (r.data||[]).forEach(function(x){var b=document.createElement('button');b.type='button';b.className='w-full text-right px-3 py-2 hover:bg-orange-50 border-b';b.dataset.rep=x.name||'';b.textContent=(x.name||x.email||'')+' · '+(x.email||'')+(x.phone?' · '+x.phone:'');box.appendChild(b);});
-                    if(!box.childNodes.length)box.textContent='لا يوجد مندوب مطابق.';
-                }).catch(function(e){if(n===seq)box.textContent=e.message;});},180);});
-            box.addEventListener('mousedown',function(e){var b=e.target.closest('button[data-rep]');if(!b)return;e.preventDefault();input.value=b.dataset.rep||'';box.classList.add('hidden');});
-            RW_UI.byId('btn-save-supp').addEventListener('click',async function(){var name=RW_UI.byId('supp-name').value.trim();if(!name){RW_UI.toast('اسم المورد مطلوب','error');return;}
-                var payload={name:name,phone:RW_UI.byId('supp-phone').value.trim(),area:RW_UI.byId('supp-area').value.trim(),address:RW_UI.byId('supp-address').value.trim(),
-                    supplier_type:RW_UI.byId('supp-type').value,payment_type:RW_UI.byId('supp-payment').value,contact_person:RW_UI.byId('supp-contact').value.trim(),
-                    purchase_rep:input.value.trim(),notes:RW_UI.byId('supp-notes').value.trim()};
-                var btn=this;btn.disabled=true;btn.textContent='جارٍ الحفظ...';
-                try{await self.api('SAVE_SUPPLIER',{supplier:payload,is_edit:isEdit,supplier_code:current?current.supplier_code:null});Swal.close();self.invalidate();RW_UI.toast('تم حفظ المورد','success');await self.renderSuppliers();}
-                catch(e){RW_UI.toast(e.message,'error');btn.disabled=false;btn.textContent='حفظ';}
-            });
-        }});
+    supplierForm:async function(){
+        throw new Error('إدارة الموردين مركزية في النظام الأم؛ تطبيق Buyer للعرض والاختيار فقط.');
     },
     openSupplier:async function(id){
         var self=this;
@@ -451,8 +414,7 @@ var App = {
                 '<h4 class="font-black border-t pt-3">آخر أوامر الشراء</h4><div>'+(orders.slice(0,5).map(function(o){return '<p class="text-xs py-1">'+buyerEsc(o.po_code)+' · '+buyerDate(o.po_date)+' · '+buyerMoney(o.total_amount,self.currency)+'</p>';}).join('')||'<p class="text-xs text-slate-400">لا توجد أوامر مسجلة</p>')+'</div>'+
                 '<h4 class="font-black border-t pt-3">آخر أسعار فواتير المورد</h4><div>'+(prices.map(function(d){return '<p class="text-xs py-1">'+buyerEsc(d.item_name||d.item_code)+' · '+buyerMoney(d.unit_price,self.currency)+' / '+buyerEsc(d.unit||'')+'</p>';}).join('')||'<p class="text-xs text-slate-400">لا توجد تفاصيل فواتير كافية</p>')+'</div>'+
                 '<p class="text-xs text-amber-700 border-t pt-3">الزيارات الميدانية والتقييم التفصيلي غير موصولين بعقد تخزين معتمد بعد.</p></div>';
-            var action=await Swal.fire({title:s.name,html:html,width:800,showCancelButton:true,confirmButtonText:'تعديل',cancelButtonText:'إغلاق'});
-            if(action.isConfirmed)await self.supplierForm(id);
+            await Swal.fire({title:s.name,html:html,width:800,showCloseButton:true,showConfirmButton:false});
         }catch(e){this.notifyError(e);}
     },
     renderRequests:async function(){
@@ -615,15 +577,10 @@ var App = {
         }catch(e){this.notifyError(e);}
     },
     renderVehicleBalance:async function(){
-        this.pageLoading('تحميل رصيد السيارة');
-        var results=await Promise.all([this.data('fleet_vehicle_assignments'),this.data('vehicles')]);
-        var assignments=results[0],vehicles=results[1],now=new Date(),currentId=(this.currentUser||{}).id;
-        var active=assignments.filter(function(a){var start=!a.start_at||new Date(a.start_at)<=now;var end=!a.end_at||new Date(a.end_at)>=now;return a.driver_user_id===currentId&&start&&end;});
-        var vehicleIndex={};vehicles.forEach(function(v){vehicleIndex[v.id]=v;});
-        var html='<div class="flex items-center justify-between gap-2 mb-4"><div><h2 class="text-xl font-black">رصيد السيارة</h2><p class="text-xs text-slate-500">مسؤولية البضاعة المنقولة من المورد إلى المخزن أو المرتجعة من المخزن إلى المورد</p></div><span class="text-[10px] rounded-full bg-slate-100 px-3 py-1">قراءة فقط</span></div>';
-        if(active.length){html+='<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+active.map(function(a){var v=vehicleIndex[a.vehicle_id]||{};return '<div class="card"><small class="text-slate-500">المركبة المسندة</small><b class="block text-lg">'+buyerEsc(v.vehicle_code||v.license_plate||'مركبة')+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(v.license_plate||'')+'</p></div>';}).join('')+'</div>';}
-        else{html+='<div class="card mb-3 border border-amber-200 bg-amber-50"><b class="text-amber-900">لا توجد مركبة مسندة لهذا المستخدم</b><p class="text-xs text-amber-800 mt-1">لم يُعثر على تعيين نشط في سجل الأسطول لهذا الحساب. لا يجوز اختيار مركبة عشوائيًا أو اعتبار أي فاتورة/أمر شراء رصيدًا على السيارة.</p></div>';}
-        html+='<div class="card border border-slate-200"><h3 class="font-black mb-2">دفتر عهدة بضاعة المشتريات — غير مفعّل بعد</h3><p class="text-sm text-slate-600">المخطط الحالي لا يحتوي على حركة مشتريات تربط تسليم المورد إلى عهدة المشتري/المركبة ثم التسليم الفعلي إلى المخزن، ولا على حركة عكسية تربط صرف المرتجع من المخزن إلى المركبة ثم تسليمه للمورد.</p><p class="text-xs text-slate-500 mt-2">سندات المخزون الحالية مخصصة لأنواع حركة أخرى ولا تسمح بعهدة مشتريات على المركبة. لذلك لن أحسب رصيدًا من الفواتير أو PO أو أوامر الاستلام؛ هذه مستندات وحالات مختلفة وليست إثبات تحميل فعلي.</p><div class="mt-3 p-3 rounded-xl bg-blue-50 text-blue-800 text-xs">التصميم المطلوب قبل تفعيل الرصيد: (1) المورد ← المركبة: إثبات استلام فعلي للصنف بواسطة المشتري، (2) المركبة ← المخزن: استلام فعلي بواسطة أمين المخزن وربط الكمية بمحضر الاستلام، (3) المخزن ← المركبة: صرف فعلي لمرتجع المورد، (4) المركبة ← المورد: إثبات التسليم للمورد. لا يترتب على تحميل المركبة وحده زيادة مخزون الفرع أو حركة خزينة/حساب مورد.</div></div>';
+        this.pageLoading('تحميل رصيد البضاعة');
+        var html='<div class="mb-4"><h2 class="text-xl font-black">رصيدي — عهدة بضاعة المشتريات</h2><p class="text-xs text-slate-500 mt-1">دفتر حيازة الأصناف المسلمة فعليًا إلى مسؤول المشتريات، سواء بسيارة أو يدويًا</p></div>';
+        html+='<div class="card border border-amber-200 bg-amber-50"><div class="flex items-center gap-2 text-amber-900 font-black"><i class="fa-solid fa-triangle-exclamation"></i> دفتر الحيازة المركزي غير منشأ بعد</div><p class="text-sm text-amber-900 mt-2">لا يوجد في مخطط Production الحالي دفتر حركات عهدة بضاعة المشتريات. لذلك لا يمكن عرض رصيد موثوق أو تسجيل حركة هنا حتى يُعتمد عقد الحركات المركزي ويُنفذ.</p><p class="text-xs text-amber-800 mt-2">لن يُستخدم تعيين Fleet أو مخزون سيارات التوصيل كبديل، ولن تُحسب فاتورة أو أمر شراء أو مجرد خروج من المورد كاستلام فعلي في عهدة المشتري.</p></div>';
+        html+='<div class="card mt-3"><h3 class="font-black mb-3">دورة الحيازة المطلوبة</h3><ol class="space-y-3 text-sm"><li><b>1. المورد ← المشتري:</b> إثبات الكمية المستلمة فعليًا، مع رقم الفاتورة والصنف والكمية والفرع، والمركبة اختيارية.</li><li><b>2. المشتري ← المخزن:</b> أمين المخزن يثبت المقبول والمرفوض ويربط الحركة باستلام الفاتورة؛ المقبول فقط يزيد مخزون الفرع.</li><li><b>3. المخزن ← المشتري:</b> إذن صرف مرتجع مورد ينشئ حيازة مرتجع على المشتري، ولا يخفض حساب المورد.</li><li><b>4. المشتري ← المورد:</b> إثبات تفويض المورد عند اللزوم، والكميات المقبولة فعليًا وإيصال/إشعار المورد؛ لا يخفض AP إلا المقبول المثبت مرة واحدة.</li></ol><p class="text-xs text-slate-500 border-t mt-3 pt-3">الرصيد يجب أن يُشتق من دفتر حركات غير قابل للتعديل المباشر، مع سجل عكسي/تصحيحي، لا من قيمة قابلة للتحرير ولا من ربط إلزامي بمركبة.</p></div>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     renderOrders:async function(){
