@@ -338,7 +338,7 @@ var App = {
         var acknowledgedCustody=(custodyData.advances||[]).filter(function(a){return myCustodyIds.indexOf(a.custody_id)!==-1&&!!a.acknowledged_at;}).reduce(function(n,a){return n+Number(a.amount||0);},0);
         var committedCustody=(custodyData.expenses||[]).filter(function(e){return myCustodyIds.indexOf(e.custody_id)!==-1&&(e.status==='Submitted'||e.status==='Approved');}).reduce(function(n,e){return n+Number(e.amount||0);},0);
         var custodyAvailable=Math.max(0,acknowledgedCustody-committedCustody);
-        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">مركز عمل المشتريات</h2><p class="text-xs text-slate-500 mt-1">ملخص من عقود المشتريات الحالية في قاعدة البيانات</p></div><button onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-bolt ml-2"></i>شراء عاجل / فاتورة مسودة</button></div>';
+        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">مركز عمل المشتريات</h2><p class="text-xs text-slate-500 mt-1">ملخص من عقود المشتريات الحالية في قاعدة البيانات</p></div><button onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-bolt ml-2"></i>فاتورة شراء مسودة</button></div>';
         html+='<div class="grid grid-cols-2 xl:grid-cols-4 gap-3">';
         html+=this.card('نواقص حرجة',critical,'حسب reorder_point والمخزون المتاح',"App.openCriticalShortages()",'fa-triangle-exclamation');
         html+=this.card('أوامر متأخرة',overdueOrders.length,'وفق موعد التسليم المتوقع المسجل في PO',"App.switchTab('orders')",'fa-truck-ramp-box');
@@ -656,22 +656,22 @@ var App = {
             '<label class="text-sm font-black">ملاحظات<textarea id="bpo-notes" rows="3" class="w-full border rounded-xl p-3 mt-1"></textarea></label><p class="text-xs text-amber-700">يُحفظ PO كمسودة Draft. الإنشاء لا يخصم المخزون ولا ينشئ رصيد مورد أو قيدًا ماليًا.</p></div>';
             function render(){var host=RW_UI.byId('bpo-lines');if(!host)return;if(!lines.length){host.innerHTML='<div class="rounded-xl border border-dashed p-6 text-center text-slate-400">لا توجد بنود.</div>';return;}
                 var total=0,h='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
-                lines.forEach(function(x,i){var v=x.qty*x.unit_price;total+=v;h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td><td class="p-2">'+buyerEsc(x.unit)+'</td><td class="p-2"><input data-pof="qty" data-poi="'+i+'" type="number" min="0.001" step="0.001" value="'+x.qty+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-pof="unit_price" data-poi="'+i+'" type="number" min="0" step="0.01" value="'+x.unit_price+'" class="w-24 border rounded p-2"></td><td class="p-2 font-black">'+buyerMoney(v,self.currency)+'</td><td><button type="button" data-por="'+i+'" class="text-red-600">حذف</button></td></tr>';});
+                lines.forEach(function(x,i){var v=x.qty*x.unit_price;total+=v;h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td><td class="p-2">'+buyerEsc(x.unit)+'</td><td class="p-2"><input data-pof="qty" data-poi="'+i+'" type="number" min="0.001" step="0.001" value="'+x.qty+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-pof="unit_price" data-poi="'+i+'" type="number" min="0" step="0.01" value="'+(x.unit_price==null?'':x.unit_price)+'" class="w-24 border rounded p-2"></td><td class="p-2 font-black">'+buyerMoney(v,self.currency)+'</td><td><button type="button" data-por="'+i+'" class="text-red-600">حذف</button></td></tr>';});
                 host.innerHTML=h+'</tbody></table><div class="p-3 text-left font-black">الإجمالي: '+buyerMoney(total,self.currency)+'</div></div>';
-                Array.from(host.querySelectorAll('[data-pof]')).forEach(function(el){el.addEventListener('change',function(){lines[Number(el.dataset.poi)][el.dataset.pof]=Number(el.value);render();});});
+                Array.from(host.querySelectorAll('[data-pof]')).forEach(function(el){el.addEventListener('change',function(){lines[Number(el.dataset.poi)][el.dataset.pof]=el.value===''?null:Number(el.value);render();});});
                 Array.from(host.querySelectorAll('[data-por]')).forEach(function(el){el.addEventListener('click',function(){lines.splice(Number(el.dataset.por),1);render();});});
             }
             var r=await Swal.fire({title:'أمر شراء جديد — PO',width:980,html:html,showCancelButton:true,confirmButtonText:'حفظ أمر الشراء',cancelButtonText:'إلغاء',didOpen:function(){
                 var search=RW_UI.byId('bpo-search'),box=RW_UI.byId('bpo-results'),selected=null;
                 search.addEventListener('input',function(){var q=this.value.trim().toLowerCase();selected=null;var found=items.filter(function(x){return [x.name,x.item_code,x.barcode].join(' ').toLowerCase().includes(q);}).slice(0,20);
                     box.innerHTML=found.map(function(x,i){return '<button type="button" data-bpoi="'+i+'" class="w-full text-right p-3 border-b hover:bg-emerald-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.item_code)+'</small></button>';}).join('')||'<div class="p-3">لا توجد نتائج</div>';box.classList.remove('hidden');
-                    Array.from(box.querySelectorAll('[data-bpoi]')).forEach(function(b){b.addEventListener('click',function(){selected=found[Number(b.dataset.bpoi)];search.value=selected.item_code+' — '+selected.name;RW_UI.byId('bpo-price').value=Number(selected.cost_price||0);box.classList.add('hidden');});});
+                    Array.from(box.querySelectorAll('[data-bpoi]')).forEach(function(b){b.addEventListener('click',function(){selected=found[Number(b.dataset.bpoi)];search.value=selected.item_code+' — '+selected.name;RW_UI.byId('bpo-price').value='';box.classList.add('hidden');});});
                 });
                 RW_UI.byId('bpo-add').addEventListener('click',function(){if(!selected){Swal.showValidationMessage('اختر الصنف من النتائج');return;}if(lines.some(function(x){return x.item_code===selected.item_code;})){Swal.showValidationMessage('الصنف مضاف بالفعل');return;}
-                    var qty=Number(RW_UI.byId('bpo-qty').value),price=Number(RW_UI.byId('bpo-price').value);if(qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('تحقق من الكمية والسعر');return;}
+                    var qtyRaw=String(RW_UI.byId('bpo-qty').value||'').trim(),priceRaw=String(RW_UI.byId('bpo-price').value||'').trim(),qty=Number(qtyRaw),price=Number(priceRaw);if(!qtyRaw||!priceRaw||qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('أدخل الكمية وسعر الوحدة صراحةً؛ الصفر مسموح إذا كان سعرًا متفقًا عليه');return;}
                     lines.push({item_code:selected.item_code,name:selected.name,unit:selected.unit,qty:qty,unit_price:price});selected=null;search.value='';RW_UI.byId('bpo-qty').value='1';RW_UI.byId('bpo-price').value='';render();});
                 render();
-            },preConfirm:async function(){var supplier=RW_UI.byId('bpo-supplier').value;if(!supplier){Swal.showValidationMessage('اختر المورد');return false;}if(!lines.length){Swal.showValidationMessage('أضف صنفًا واحدًا على الأقل');return false;}
+            },preConfirm:async function(){var supplier=RW_UI.byId('bpo-supplier').value;if(!supplier){Swal.showValidationMessage('اختر المورد');return false;}if(!lines.length){Swal.showValidationMessage('أضف صنفًا واحدًا على الأقل');return false;}for(var i=0;i<lines.length;i++){var line=lines[i];if(!Number.isFinite(Number(line.qty))||Number(line.qty)<=0||line.unit_price===null||line.unit_price===undefined||!Number.isFinite(Number(line.unit_price))||Number(line.unit_price)<0){Swal.showValidationMessage('يجب إدخال سعر صريح لكل بند؛ الصفر مسموح إذا كان مقصودًا');return false;}}
                 try{return await self.api('CREATE_PO',{supplier_id:supplier,branch_id:RW_UI.byId('bpo-branch').value||settings.default_branch_id||null,expected_delivery_date:RW_UI.byId('bpo-date').value||null,payment_terms:RW_UI.byId('bpo-terms').value.trim()||null,notes:RW_UI.byId('bpo-notes').value.trim()||null,items:lines.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price};})});}
                 catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
@@ -706,7 +706,7 @@ var App = {
     createPurchaseInvoice:async function(invoiceId){
         try{
             var d=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_orders'),this.data('purchase_settings'),this.api('GET_SETTINGS',{}),this.data('purchase_invoices'),this.data('purchase_invoice_details')]);
-            var suppliers=d[0].filter(function(x){return x.is_active!==false;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=d[5].currency||'EGP',current=invoiceId?d[6].find(function(x){return x.id===invoiceId;}):null,selectedSupplier=null,selectedItem=null,lines=[];
+            var suppliers=d[0].filter(function(x){return x.is_active!==false;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=d[5].currency||'EGP',current=invoiceId?d[6].find(function(x){return x.id===invoiceId;}):null,selectedSupplier=null,selectedItem=null,lines=[],invoiceOperationId=buyerOperationId();
             if(invoiceId&&!current)throw new Error('مسودة الفاتورة غير موجودة');
             if(current&&(current.status!=='Draft'||current.is_received||current.received_date||Number(current.paid_amount||0)>0))throw new Error('لا يمكن تعديل فاتورة مستلمة أو مرحلة أو مسددة');
             var currentSupplier=current?suppliers.find(function(x){return x.id===current.supplier_id;}):null;
@@ -727,11 +727,11 @@ var App = {
             function render(){var host=RW_UI.byId('bpi-lines');if(!host)return;if(!lines.length){host.innerHTML='<div class="rounded-xl border border-dashed p-6 text-center text-slate-400">لا توجد بنود.</div>';return;}
                 var total=0,h='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
                 lines.forEach(function(x,i){var v=x.qty*x.unit_price*(1-x.discount_percent/100)*(1+x.tax_rate/100);total+=v;h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td>'+
-                '<td class="p-2"><input data-bif="qty" data-bii="'+i+'" type="number" min="0.01" step="0.01" value="'+x.qty+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bif="unit_price" data-bii="'+i+'" type="number" min="0" step="0.01" value="'+x.unit_price+'" class="w-24 border rounded p-2"></td>'+
+                '<td class="p-2"><input data-bif="qty" data-bii="'+i+'" type="number" min="0.01" step="0.01" value="'+x.qty+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bif="unit_price" data-bii="'+i+'" type="number" min="0" step="0.01" value="'+(x.unit_price==null?'':x.unit_price)+'" class="w-24 border rounded p-2"></td>'+
                 '<td class="p-2"><input data-bif="discount_percent" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.discount_percent+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bif="tax_rate" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.tax_rate+'" class="w-20 border rounded p-2"></td>'+
                 '<td class="p-2 font-black">'+buyerMoney(v,currency)+'</td><td><button type="button" data-bir="'+i+'" class="text-red-600">حذف</button></td></tr>';});
                 host.innerHTML=h+'</tbody></table><div class="p-3 text-left font-black">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div></div>';
-                Array.from(host.querySelectorAll('[data-bif]')).forEach(function(el){el.addEventListener('change',function(){lines[Number(el.dataset.bii)][el.dataset.bif]=Number(el.value);render();});});
+                Array.from(host.querySelectorAll('[data-bif]')).forEach(function(el){el.addEventListener('change',function(){lines[Number(el.dataset.bii)][el.dataset.bif]=el.value===''?null:Number(el.value);render();});});
                 Array.from(host.querySelectorAll('[data-bir]')).forEach(function(el){el.addEventListener('click',function(){lines.splice(Number(el.dataset.bir),1);render();});});
             }
             var modal=await Swal.fire({title:current?'تعديل مسودة فاتورة شراء':'فاتورة شراء جديدة',width:1100,html:html,showCloseButton:true,allowEscapeKey:true,showCancelButton:true,confirmButtonText:current?'حفظ التعديلات':'حفظ الفاتورة',cancelButtonText:'إلغاء',didOpen:function(){
@@ -742,17 +742,17 @@ var App = {
                 });
                 is.addEventListener('input',function(){var q=is.value.trim().toLowerCase();selectedItem=null;var found=items.filter(function(x){return [x.name,x.item_code,x.barcode].join(' ').toLowerCase().includes(q);}).slice(0,20);
                     ib.innerHTML=found.map(function(x,i){return '<button type="button" data-bpii="'+i+'" class="w-full text-right p-3 border-b hover:bg-blue-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.item_code)+'</small></button>';}).join('')||'<div class="p-3">لا يوجد صنف مطابق</div>';ib.classList.remove('hidden');
-                    Array.from(ib.querySelectorAll('[data-bpii]')).forEach(function(b){b.addEventListener('click',function(){selectedItem=found[Number(b.dataset.bpii)];is.value=selectedItem.item_code+' — '+selectedItem.name;RW_UI.byId('bpi-price').value=Number(selectedItem.cost_price||0);ib.classList.add('hidden');});});
+                    Array.from(ib.querySelectorAll('[data-bpii]')).forEach(function(b){b.addEventListener('click',function(){selectedItem=found[Number(b.dataset.bpii)];is.value=selectedItem.item_code+' — '+selectedItem.name;RW_UI.byId('bpi-price').value='';ib.classList.add('hidden');});});
                 });
                 RW_UI.byId('bpi-add').addEventListener('click',function(){if(!selectedItem){Swal.showValidationMessage('اختر صنفًا من نتائج البحث');return;}if(lines.some(function(x){return x.item_code===selectedItem.item_code;})){Swal.showValidationMessage('الصنف مضاف بالفعل');return;}
-                    var qty=Number(RW_UI.byId('bpi-qty').value),price=Number(RW_UI.byId('bpi-price').value);if(qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('تحقق من الكمية والسعر');return;}
+                    var qtyRaw=String(RW_UI.byId('bpi-qty').value||'').trim(),priceRaw=String(RW_UI.byId('bpi-price').value||'').trim(),qty=Number(qtyRaw),price=Number(priceRaw);if(!qtyRaw||!priceRaw||qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('أدخل الكمية وسعر الوحدة صراحةً؛ الصفر مسموح إذا كان سعرًا متفقًا عليه');return;}
                     lines.push({item_code:selectedItem.item_code,name:selectedItem.name,qty:qty,unit_price:price,discount_percent:0,tax_rate:0});selectedItem=null;is.value='';RW_UI.byId('bpi-qty').value='1';RW_UI.byId('bpi-price').value='';render();});
                 RW_UI.byId('bpi-po').addEventListener('change',function(){var po=pos.find(function(x){return x.id===this.value;},this);if(po&&!selectedSupplier){selectedSupplier=suppliers.find(function(x){return x.id===po.supplier_id;})||null;if(selectedSupplier){ss.value=selectedSupplier.name;RW_UI.byId('bpi-sid').value=selectedSupplier.id;}}});
                 render();poOptions();
-            },preConfirm:async function(){var supplierId=RW_UI.byId('bpi-sid').value,poId=RW_UI.byId('bpi-po').value||null;if(!supplierId){Swal.showValidationMessage('اختر المورد');return false;}if(!lines.length){Swal.showValidationMessage('أضف بندًا واحدًا على الأقل');return false;}
+            },preConfirm:async function(){var supplierId=RW_UI.byId('bpi-sid').value,poId=RW_UI.byId('bpi-po').value||null;if(!supplierId){Swal.showValidationMessage('اختر المورد');return false;}if(!lines.length){Swal.showValidationMessage('أضف بندًا واحدًا على الأقل');return false;}for(var i=0;i<lines.length;i++){var line=lines[i];if(!Number.isFinite(Number(line.qty))||Number(line.qty)<=0||line.unit_price===null||line.unit_price===undefined||!Number.isFinite(Number(line.unit_price))||Number(line.unit_price)<0){Swal.showValidationMessage('يجب إدخال سعر صريح لكل بند؛ الصفر مسموح إذا كان مقصودًا');return false;}}
                 if(poId){var po=pos.find(function(x){return x.id===poId;});if(!po||po.supplier_id!==supplierId){Swal.showValidationMessage('المورد لا يطابق أمر الشراء');return false;}}
                 var payload={supplier_id:supplierId,purchase_order_id:poId,branch_id:RW_UI.byId('bpi-branch').value||(invoiceId?null:settings.default_branch_id||null),due_date:RW_UI.byId('bpi-due').value||null,currency:currency,supplier_invoice_no:RW_UI.byId('bpi-no').value.trim()||null,notes:RW_UI.byId('bpi-notes').value.trim()||null,items:lines.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price,discount_percent:x.discount_percent,tax_rate:x.tax_rate};})};
-                if(invoiceId){payload.id=invoiceId;payload.operation_id=buyerOperationId();}
+                payload.operation_id=invoiceOperationId;if(invoiceId){payload.id=invoiceId;}
                 try{return await self.api(invoiceId?'UPDATE_DRAFT_INVOICE':'CREATE_INVOICE',payload);}
                 catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
@@ -766,18 +766,18 @@ var App = {
         if(!q){RW_UI.safeHTML(box,'');return;}
         var matches=items.filter(function(it){return [it.name,it.item_code,it.barcode].join(' ').toLowerCase().indexOf(q)!==-1;}).slice(0,20);
         var currency=this.currency||'EGP';
-        RW_UI.safeHTML(box,matches.map(function(it){var idx=items.indexOf(it);return '<button type="button" onclick="App.quickAddItem('+idx+')" class="w-full text-right p-2 border-b hover:bg-purple-50 text-xs"><b>'+buyerEsc(it.name)+'</b><span class="text-slate-400"> · '+buyerEsc(it.item_code)+' · '+buyerEsc(it.barcode||'')+'</span><span class="block text-purple-700">'+buyerMoney(it.cost_price,currency)+' / '+buyerEsc(it.unit||'')+'</span></button>';}).join('')||'<p class="p-2 text-xs text-slate-400">لا توجد نتائج</p>');
+        RW_UI.safeHTML(box,matches.map(function(it){var idx=items.indexOf(it);return '<button type="button" onclick="App.quickAddItem('+idx+')" class="w-full text-right p-2 border-b hover:bg-purple-50 text-xs"><b>'+buyerEsc(it.name)+'</b><span class="text-slate-400"> · '+buyerEsc(it.item_code)+' · '+buyerEsc(it.barcode||'')+'</span><span class="block text-purple-700">'+'آخر تكلفة مرجعية: '+buyerMoney(it.cost_price,currency)+' / '+buyerEsc(it.unit||'')+'</span></button>';}).join('')||'<p class="p-2 text-xs text-slate-400">لا توجد نتائج</p>');
     },
     quickAddItem:function(index){
         var items=this.cache.items||[],it=items[index];if(!it)return;
         var existing=this.quickCart.find(function(x){return x.item_code===it.item_code;});
         if(existing)existing.qty=Number(existing.qty)+1;
-        else this.quickCart.push({item_code:it.item_code,name:it.name,unit:it.unit,qty:1,unit_price:Number(it.cost_price||0)});
+        else this.quickCart.push({item_code:it.item_code,name:it.name,unit:it.unit,qty:1,unit_price:null});
         this.renderQuickCart();
     },
     quickUpdate:function(index,key,value){
         if(!this.quickCart[index])return;
-        this.quickCart[index][key]=Number(value||0);
+        this.quickCart[index][key]=value===''?null:Number(value);
         if(this.quickCart[index].qty<0)this.quickCart[index].qty=0;
         this.renderQuickCart();
     },
@@ -786,7 +786,7 @@ var App = {
         var box=RW_UI.byId('bq-cart');if(!box)return;
         if(!this.quickCart.length){RW_UI.safeHTML(box,'<p class="text-center text-xs text-slate-400 p-3">لم تتم إضافة أصناف بعد</p>');return;}
         var total=0,currency=this.currency||'EGP',html='<h4 class="font-black py-2">الأصناف المختارة</h4>';
-        html+=this.quickCart.map(function(x,i){var line=Number(x.qty)*Number(x.unit_price);total+=line;return '<div class="grid grid-cols-12 gap-1 items-center border-t py-2 text-xs"><div class="col-span-4"><b>'+buyerEsc(x.name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></div><input class="col-span-2 border rounded p-2" type="number" min="0.001" step="0.001" value="'+buyerEsc(x.qty)+'" onchange="App.quickUpdate('+i+',\'qty\',this.value)"><input class="col-span-3 border rounded p-2" type="number" min="0" step="0.01" value="'+buyerEsc(x.unit_price)+'" onchange="App.quickUpdate('+i+',\'unit_price\',this.value)"><div class="col-span-2 font-bold">'+buyerMoney(line,currency)+'</div><button class="col-span-1 text-red-600" onclick="App.quickRemove('+i+')">×</button></div>';}).join('');
+        html+=this.quickCart.map(function(x,i){var line=Number(x.qty)*Number(x.unit_price);total+=line;return '<div class="grid grid-cols-12 gap-1 items-center border-t py-2 text-xs"><div class="col-span-4"><b>'+buyerEsc(x.name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></div><input class="col-span-2 border rounded p-2" type="number" min="0.001" step="0.001" value="'+buyerEsc(x.qty)+'" onchange="App.quickUpdate('+i+',\'qty\',this.value)"><input class="col-span-3 border rounded p-2" type="number" min="0" step="0.01" value="'+buyerEsc(x.unit_price==null?'':x.unit_price)+'" onchange="App.quickUpdate('+i+',\'unit_price\',this.value)"><div class="col-span-2 font-bold">'+buyerMoney(line,currency)+'</div><button class="col-span-1 text-red-600" onclick="App.quickRemove('+i+')">×</button></div>';}).join('');
         html+='<div class="text-left font-black border-t pt-2">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div>';
         RW_UI.safeHTML(box,html);
     },
