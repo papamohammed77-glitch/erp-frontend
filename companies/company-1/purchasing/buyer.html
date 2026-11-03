@@ -390,7 +390,7 @@ var App = {
         html+='<input class="w-full p-3 rounded-xl border bg-white mb-3" placeholder="بحث بالاسم أو الكود أو الهاتف" value="'+buyerEsc(this.search)+'" oninput="App.search=this.value;App.renderSuppliers()">';
         if(!rows.length)html+='<div class="card text-center text-slate-400 py-10">لا توجد نتائج مطابقة</div>';
         rows.forEach(function(s){
-            html+='<button onclick="App.openSupplier(\\''+buyerEsc(s.id)+'\\')" class="card w-full text-right mb-2 border border-slate-100"><div class="flex justify-between gap-3"><div><b>'+buyerEsc(s.name)+'</b><p class="text-xs text-slate-400 mt-1">'+buyerEsc(s.supplier_code)+' · '+buyerEsc(s.phone||'لا يوجد هاتف')+'</p><p class="text-xs text-slate-400">'+buyerEsc(s.area||s.address||'لا يوجد عنوان مسجل')+'</p><p class="text-[11px] text-emerald-700 mt-1">نشط في دليل الموردين المركزي · شروط الدفع: '+buyerEsc(s.payment_type||'غير محددة')+'</p></div><div class="text-left"><b class="text-purple-700">'+buyerMoney(s.accounts_payable,this.currency)+'</b><p class="text-[11px] text-slate-400">رصيد المورد</p><span class="text-xs text-emerald-600">نشط</span></div></div></button>';
+            html+='<button onclick="App.openSupplier(\''+buyerEsc(s.id)+'\\')" class="card w-full text-right mb-2 border border-slate-100"><div class="flex justify-between gap-3"><div><b>'+buyerEsc(s.name)+'</b><p class="text-xs text-slate-400 mt-1">'+buyerEsc(s.supplier_code)+' · '+buyerEsc(s.phone||'لا يوجد هاتف')+'</p><p class="text-xs text-slate-400">'+buyerEsc(s.area||s.address||'لا يوجد عنوان مسجل')+'</p><p class="text-[11px] text-emerald-700 mt-1">نشط في دليل الموردين المركزي · شروط الدفع: '+buyerEsc(s.payment_type||'غير محددة')+'</p></div><div class="text-left"><b class="text-purple-700">'+buyerMoney(s.accounts_payable,this.currency)+'</b><p class="text-[11px] text-slate-400">رصيد المورد</p><span class="text-xs text-emerald-600">نشط</span></div></div></button>';
         },this);
         html+='<p class="text-[11px] text-slate-400 mt-3">تصنيف A/B/C والتقييم والزيارات غير متاحة حاليًا. القائمة محدودة بحد 500 سجل حتى إضافة pagination/بحث خادمي.</p>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
@@ -601,7 +601,7 @@ var App = {
     createPO:async function(){
         try{
             var d=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_settings'),this.api('GET_SETTINGS',{})]);
-            var suppliers=d[0].filter(function(x){return x.is_active!==false;}),items=d[1],branches=d[2],settings=d[3][0]||{},lines=[],self=this;
+            var suppliers=d[0].filter(function(x){return x.is_active===true;}),items=d[1],branches=d[2],settings=d[3][0]||{},lines=[],self=this;
             this.currency=String(d[4]&&d[4].currency||'EGP').trim().toUpperCase();
             if(!/^[A-Z]{3}$/.test(this.currency))throw new Error('عملة النظام غير صالحة');
             var html='<div dir="rtl" class="text-right space-y-5"><div class="rounded-2xl bg-gradient-to-l from-emerald-50 to-slate-50 border border-emerald-100 p-5"><div class="flex items-center gap-3"><div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center"><i class="fas fa-cart-plus"></i></div><div><div class="text-lg font-black">إنشاء أمر شراء PO</div><div class="text-sm text-slate-500">وثيقة توريد للمورد، مع تحديد الفرع والموعد وشروط الدفع وبنود الأصناف.</div></div></div></div>'+
@@ -663,7 +663,7 @@ var App = {
     createPurchaseInvoice:async function(invoiceId){
         try{
             var d=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_orders'),this.data('purchase_settings'),this.api('GET_SETTINGS',{}),this.data('purchase_invoices'),this.data('purchase_invoice_details')]);
-            var suppliers=d[0].filter(function(x){return x.is_active!==false;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=d[5].currency||'EGP',current=invoiceId?d[6].find(function(x){return x.id===invoiceId;}):null,selectedSupplier=null,selectedItem=null,lines=[],invoiceOperationId=buyerOperationId();
+            var suppliers=d[0].filter(function(x){return x.is_active===true;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=d[5].currency||'EGP',current=invoiceId?d[6].find(function(x){return x.id===invoiceId;}):null,selectedSupplier=null,selectedItem=null,lines=[],invoiceOperationId=buyerOperationId();
             if(invoiceId&&!current)throw new Error('مسودة الفاتورة غير موجودة');
             if(current&&(current.status!=='Draft'||current.is_received||current.received_date||Number(current.paid_amount||0)>0))throw new Error('لا يمكن تعديل فاتورة مستلمة أو مرحلة أو مسددة');
             var currentSupplier=current?suppliers.find(function(x){return x.id===current.supplier_id;}):null;
