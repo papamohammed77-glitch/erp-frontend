@@ -400,13 +400,14 @@ var App = {
         var myCustodyIds=myCustodies.map(function(c){return c.id;});
         var acknowledgedCustody=(custodyData.advances||[]).filter(function(a){return myCustodyIds.indexOf(a.custody_id)!==-1&&!!a.acknowledged_at;}).reduce(function(n,a){return n+Number(a.amount||0);},0);
         var committedCustody=(custodyData.expenses||[]).filter(function(e){return myCustodyIds.indexOf(e.custody_id)!==-1&&(e.status==='Submitted'||e.status==='Approved');}).reduce(function(n,e){return n+Number(e.amount||0);},0);
-        var custodyAvailable=Math.max(0,acknowledgedCustody-committedCustody);
-        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">مركز عمل المشتريات</h2><p class="text-xs text-slate-500 mt-1">ملخص من عقود المشتريات الحالية في قاعدة البيانات</p></div><button onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-bolt ml-2"></i>فاتورة شراء مسودة</button></div>';
+        var qmpReserved=myCustodies.reduce(function(n,c){return n+this.quickMarketCashReservation(invoices,custodyData.expenses||[],c.id,null);}.bind(this),0);
+        var custodyAvailable=Math.max(0,acknowledgedCustody-committedCustody-qmpReserved);
+        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">مركز عمل المشتريات</h2><p class="text-xs text-slate-500 mt-1">ملخص من عقود المشتريات الحالية في قاعدة البيانات</p></div><div class="flex flex-wrap gap-2"><button onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-slate-800 text-white font-black text-sm"><i class="fa-solid fa-file-invoice ml-2"></i>فاتورة PO</button><button onclick="App.quickPurchase()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-basket-shopping ml-2"></i>شراء سوق سريع</button></div></div>';
         html+='<div class="grid grid-cols-2 xl:grid-cols-4 gap-3">';
         html+=this.card('نواقص حرجة',critical,'حسب reorder_point والمخزون المتاح',"App.openCriticalShortages()",'fa-triangle-exclamation');
         html+=this.card('أوامر متأخرة',overdueOrders.length,'وفق موعد التسليم المتوقع المسجل في PO',"App.switchTab('orders')",'fa-truck-ramp-box');
         html+=this.card('زيارات اليوم','غير متاح','سجل الزيارات والتقييمات غير موجود في قاعدة البيانات الحالية',"App.switchTab('suppliers')",'fa-location-dot');
-        html+=this.card('رصيد عهدتي',buyerMoney(custodyAvailable,this.currency),'النقد المؤكد استلامه ناقص المصروفات المقدمة والمعتمدة',"App.switchTab('custody')",'fa-wallet');
+        html+=this.card('رصيد عهدتي',buyerMoney(custodyAvailable,this.currency),'النقد المؤكد ناقص المصروفات وحجوزات فواتير السوق السريع',"App.switchTab('custody')",'fa-wallet');
         html+='</div>';
         html+='<div class="grid md:grid-cols-2 gap-3 mt-4">';
         html+='<div class="card"><h3 class="font-black mb-3">تنبيهات يجب عدم إخفائها</h3><div class="space-y-3 text-sm">';
@@ -554,7 +555,7 @@ var App = {
         this.renderInvoices();
     },
     clearInvoiceFilters:function(){
-        this.invoiceFilters={query:'',from:'',to:'',status:'',branchId:'',createdBy:'',receipt:''};
+        this.invoiceFilters={query:'',from:'',to:'',status:'',branchId:'',createdBy:this.canFinanceCustody()?'':((this.currentUser||{}).email||''),receipt:''};
         this.renderInvoices();
     },
     renderInvoices:async function(){
@@ -566,6 +567,8 @@ var App = {
         var invoices=results[0],suppliers=results[1],branches=results[2],pos=results[3],details=results[4],
             filters=this.invoiceFilters||{query:'',from:'',to:'',status:'',branchId:'',createdBy:'',receipt:''},
             supplierIndex={},branchIndex={},poIndex={},detailsIndex={},creators={};
+        if(!this.canFinanceCustody()&&!filters.createdBy)filters.createdBy=(this.currentUser||{}).email||'';
+        this.invoiceFilters=filters;
         suppliers.forEach(function(x){supplierIndex[x.id]=x;});
         branches.forEach(function(x){branchIndex[x.id]=x;});
         pos.forEach(function(x){poIndex[x.id]=x;});
@@ -594,7 +597,7 @@ var App = {
         var currencySummary=Object.keys(totalsByCurrency).sort().map(function(cur){
             return '<span class="inline-flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs"><b>'+buyerEsc(cur)+'</b><span>إجمالي '+buyerMoney(totalsByCurrency[cur],cur)+'</span><span class="text-amber-700">متبقي '+buyerMoney(outstandingByCurrency[cur]||0,cur)+'</span></span>';
         }).join('')||'<span class="text-xs text-slate-400">لا توجد مبالغ ضمن التصفية</span>';
-        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">فواتيري</h2><p class="text-xs text-slate-500">سجل فواتير الشراء المركزي؛ المنشئ ظاهر للتتبع، والقائمة لا تقتصر على فواتير المستخدم الحالي</p></div><button type="button" onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black">+ فاتورة شراء</button></div>';
+        var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">فواتيري</h2><p class="text-xs text-slate-500">تبدأ القائمة بفواتير المستخدم الحالي؛ العرض الشامل متاح للمالية المخولة فقط</p></div><div class="flex flex-wrap gap-2"><button type="button" onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-slate-800 text-white font-black">+ فاتورة PO</button><button type="button" onclick="App.quickPurchase()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black">+ شراء سوق سريع</button></div></div>';
         html+='<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3"><div class="card"><small class="text-slate-500">الفواتير المطابقة</small><b class="block text-xl">'+rows.length+'</b></div><div class="card"><small class="text-slate-500">مسودات</small><b class="block text-xl">'+rows.filter(function(x){return x.status==='Draft';}).length+'</b></div><div class="card"><small class="text-slate-500">العملة المركزية للمستندات الجديدة</small><b class="block text-xl">'+buyerEsc(this.currency)+'</b></div></div>';
         html+='<div class="card mb-3"><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2"><input id="bi-query" value="'+buyerEsc(filters.query||'')+'" class="border rounded-xl p-3 text-sm" placeholder="رقم النظام / المورد / PO / المنشئ"><label class="text-xs font-bold">من تاريخ<input id="bi-from" type="date" value="'+buyerEsc(filters.from||'')+'" class="block w-full border rounded-xl p-3 mt-1"></label><label class="text-xs font-bold">إلى تاريخ<input id="bi-to" type="date" value="'+buyerEsc(filters.to||'')+'" class="block w-full border rounded-xl p-3 mt-1"></label><select id="bi-status" class="border rounded-xl p-3 text-sm"><option value="">كل الحالات</option>'+['Draft','Posted','PartiallyPaid','Paid','Cancelled'].map(function(st){return '<option value="'+st+'" '+(filters.status===st?'selected':'')+'>'+buyerStatus(st)+'</option>';}).join('')+'</select>';
         html+='<select id="bi-branch" class="border rounded-xl p-3 text-sm"><option value="">كل الفروع</option>'+branches.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+(filters.branchId===x.id?'selected':'')+'>'+buyerEsc(x.name)+'</option>';}).join('')+'</select><select id="bi-creator" class="border rounded-xl p-3 text-sm"><option value="">كل المنشئين</option>'+Object.keys(creators).sort().map(function(email){return '<option value="'+buyerEsc(email)+'" '+(filters.createdBy===email?'selected':'')+'>'+buyerEsc(email)+'</option>';}).join('')+'</select><select id="bi-receipt" class="border rounded-xl p-3 text-sm"><option value="">كل حالات الاستلام</option><option value="pending" '+(filters.receipt==='pending'?'selected':'')+'>بانتظار الاستلام</option><option value="partial" '+(filters.receipt==='partial'?'selected':'')+'>استلام جزئي</option><option value="received" '+(filters.receipt==='received'?'selected':'')+'>مستلم بالكامل</option></select></div><div class="flex gap-2 mt-3"><button type="button" onclick="App.applyInvoiceFilters()" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-bold">بحث وتصفية</button><button type="button" onclick="App.clearInvoiceFilters()" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold">مسح</button></div></div>';
@@ -887,7 +890,10 @@ var App = {
                 if(poId){var po=pos.find(function(x){return x.id===poId;});if(!po||po.supplier_id!==supplierId){Swal.showValidationMessage('المورد لا يطابق أمر الشراء');return false;}}
                 var payload={supplier_id:supplierId,purchase_order_id:poId,branch_id:RW_UI.byId('bpi-branch').value||(invoiceId?null:settings.default_branch_id||null),due_date:RW_UI.byId('bpi-due').value||null,currency:currency,supplier_invoice_no:RW_UI.byId('bpi-no').value.trim()||null,notes:RW_UI.byId('bpi-notes').value.trim()||null,items:lines.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price,discount_percent:x.discount_percent,tax_rate:x.tax_rate};})};
                 payload.operation_id=invoiceOperationId;if(invoiceId){payload.id=invoiceId;}
-                try{return await self.api(invoiceId?'UPDATE_DRAFT_INVOICE':'CREATE_INVOICE',payload);}
+                if(!invoiceId&&!poId){Swal.showValidationMessage('فاتورة PO يجب أن ترتبط بأمر شراء؛ استخدم شراء السوق السريع للمشتريات دون PO');return false;}
+                if(current&&current.purchase_source==='PURCHASE_ORDER'&&!poId){Swal.showValidationMessage('لا يمكن فصل فاتورة PO عن أمر الشراء الأصلي');return false;}
+                var operation=invoiceId?(current.purchase_source==='PURCHASE_ORDER'?'UPDATE_PO_INVOICE':'UPDATE_BUYER_LEGACY_DRAFT'):'CREATE_PO_INVOICE';
+                try{return await self.api(operation,payload);}
                 catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
             if(modal.isConfirmed){this.invalidate();RW_UI.toast(invoiceId?'تم تحديث مسودة فاتورة الشراء':'تم إنشاء مسودة فاتورة الشراء: '+(modal.value.code||''),'success');if(this.currentTab==='invoices')await this.renderInvoices();else await this.renderToday();}
@@ -899,8 +905,7 @@ var App = {
         q=String(q||'').trim().toLowerCase();
         if(!q){RW_UI.safeHTML(box,'');return;}
         var matches=items.filter(function(it){return [it.name,it.item_code,it.barcode].join(' ').toLowerCase().indexOf(q)!==-1;}).slice(0,20);
-        var currency=this.currency||'EGP';
-        RW_UI.safeHTML(box,matches.map(function(it){var idx=items.indexOf(it);return '<button type="button" onclick="App.quickAddItem('+idx+')" class="w-full text-right p-2 border-b hover:bg-purple-50 text-xs"><b>'+buyerEsc(it.name)+'</b><span class="text-slate-400"> · '+buyerEsc(it.item_code)+' · '+buyerEsc(it.barcode||'')+'</span><span class="block text-purple-700">'+'آخر تكلفة مرجعية: '+buyerMoney(it.cost_price,currency)+' / '+buyerEsc(it.unit||'')+'</span></button>';}).join('')||'<p class="p-2 text-xs text-slate-400">لا توجد نتائج</p>');
+        RW_UI.safeHTML(box,matches.map(function(it){var idx=items.indexOf(it);return '<button type="button" onclick="App.quickAddItem('+idx+')" class="w-full text-right p-2 border-b hover:bg-purple-50 text-xs"><b>'+buyerEsc(it.name)+'</b><span class="text-slate-400"> · '+buyerEsc(it.item_code)+' · '+buyerEsc(it.barcode||'')+' · '+buyerEsc(it.unit||'')+'</span><span class="block text-slate-500">أدخل سعر الشراء الفعلي يدويًا</span></button>';}).join('')||'<p class="p-2 text-xs text-slate-400">لا توجد نتائج</p>');
     },
     quickAddItem:function(index){
         var items=this.cache.items||[],it=items[index];if(!it)return;
