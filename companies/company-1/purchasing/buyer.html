@@ -152,6 +152,7 @@ var App = {
     liveRefreshObserver:null,
     custodySnapshot:null,
     invoiceFilters:{query:'',from:'',to:'',status:'',branchId:'',createdBy:'',receipt:''},
+    invoiceFiltersInitialized:false,
     poFilters:{query:'',from:'',to:'',status:'',branchId:'',createdBy:'',overdue:''},
     quotationFilters:{query:'',status:''},
     search:'',
@@ -567,6 +568,10 @@ var App = {
         var invoices=results[0],suppliers=results[1],branches=results[2],pos=results[3],details=results[4],
             filters=this.invoiceFilters||{query:'',from:'',to:'',status:'',branchId:'',createdBy:'',receipt:''},
             supplierIndex={},branchIndex={},poIndex={},detailsIndex={},creators={};
+        if(!this.invoiceFiltersInitialized){
+            filters.createdBy=(this.currentUser||{}).email||'';
+            this.invoiceFiltersInitialized=true;
+        }
         if(!this.canFinanceCustody()&&!filters.createdBy)filters.createdBy=(this.currentUser||{}).email||'';
         this.invoiceFilters=filters;
         suppliers.forEach(function(x){supplierIndex[x.id]=x;});
@@ -600,7 +605,7 @@ var App = {
         var html='<div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><h2 class="text-xl font-black">فواتيري</h2><p class="text-xs text-slate-500">تبدأ القائمة بفواتير المستخدم الحالي؛ العرض الشامل متاح للمالية المخولة فقط</p></div><div class="flex flex-wrap gap-2"><button type="button" onclick="App.createPurchaseInvoice()" class="px-4 py-3 rounded-xl bg-slate-800 text-white font-black">+ فاتورة PO</button><button type="button" onclick="App.quickPurchase()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black">+ شراء سوق سريع</button></div></div>';
         html+='<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3"><div class="card"><small class="text-slate-500">الفواتير المطابقة</small><b class="block text-xl">'+rows.length+'</b></div><div class="card"><small class="text-slate-500">مسودات</small><b class="block text-xl">'+rows.filter(function(x){return x.status==='Draft';}).length+'</b></div><div class="card"><small class="text-slate-500">العملة المركزية للمستندات الجديدة</small><b class="block text-xl">'+buyerEsc(this.currency)+'</b></div></div>';
         html+='<div class="card mb-3"><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2"><input id="bi-query" value="'+buyerEsc(filters.query||'')+'" class="border rounded-xl p-3 text-sm" placeholder="رقم النظام / المورد / PO / المنشئ"><label class="text-xs font-bold">من تاريخ<input id="bi-from" type="date" value="'+buyerEsc(filters.from||'')+'" class="block w-full border rounded-xl p-3 mt-1"></label><label class="text-xs font-bold">إلى تاريخ<input id="bi-to" type="date" value="'+buyerEsc(filters.to||'')+'" class="block w-full border rounded-xl p-3 mt-1"></label><select id="bi-status" class="border rounded-xl p-3 text-sm"><option value="">كل الحالات</option>'+['Draft','Posted','PartiallyPaid','Paid','Cancelled'].map(function(st){return '<option value="'+st+'" '+(filters.status===st?'selected':'')+'>'+buyerStatus(st)+'</option>';}).join('')+'</select>';
-        html+='<select id="bi-branch" class="border rounded-xl p-3 text-sm"><option value="">كل الفروع</option>'+branches.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+(filters.branchId===x.id?'selected':'')+'>'+buyerEsc(x.name)+'</option>';}).join('')+'</select><select id="bi-creator" class="border rounded-xl p-3 text-sm"><option value="">كل المنشئين</option>'+Object.keys(creators).sort().map(function(email){return '<option value="'+buyerEsc(email)+'" '+(filters.createdBy===email?'selected':'')+'>'+buyerEsc(email)+'</option>';}).join('')+'</select><select id="bi-receipt" class="border rounded-xl p-3 text-sm"><option value="">كل حالات الاستلام</option><option value="pending" '+(filters.receipt==='pending'?'selected':'')+'>بانتظار الاستلام</option><option value="partial" '+(filters.receipt==='partial'?'selected':'')+'>استلام جزئي</option><option value="received" '+(filters.receipt==='received'?'selected':'')+'>مستلم بالكامل</option></select></div><div class="flex gap-2 mt-3"><button type="button" onclick="App.applyInvoiceFilters()" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-bold">بحث وتصفية</button><button type="button" onclick="App.clearInvoiceFilters()" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold">مسح</button></div></div>';
+        html+='<select id="bi-branch" class="border rounded-xl p-3 text-sm"><option value="">كل الفروع</option>'+branches.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+(filters.branchId===x.id?'selected':'')+'>'+buyerEsc(x.name)+'</option>';}).join('')+'</select><select id="bi-creator" class="border rounded-xl p-3 text-sm"><option value="">'+(this.canFinanceCustody()?'كل المنشئين':'فواتيري فقط')+'</option>'+Object.keys(creators).sort().map(function(email){return '<option value="'+buyerEsc(email)+'" '+(filters.createdBy===email?'selected':'')+'>'+buyerEsc(email)+'</option>';}).join('')+'</select><select id="bi-receipt" class="border rounded-xl p-3 text-sm"><option value="">كل حالات الاستلام</option><option value="pending" '+(filters.receipt==='pending'?'selected':'')+'>بانتظار الاستلام</option><option value="partial" '+(filters.receipt==='partial'?'selected':'')+'>استلام جزئي</option><option value="received" '+(filters.receipt==='received'?'selected':'')+'>مستلم بالكامل</option></select></div><div class="flex gap-2 mt-3"><button type="button" onclick="App.applyInvoiceFilters()" class="px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-bold">بحث وتصفية</button><button type="button" onclick="App.clearInvoiceFilters()" class="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-bold">مسح</button></div></div>';
         html+='<div class="card mb-3"><div class="text-xs font-bold mb-2">ملخص القيم — مفصول حسب عملة كل مستند حتى لا تختلط العملات</div><div class="flex flex-wrap gap-2">'+currencySummary+'</div></div>';
         html+='<div class="overflow-x-auto bg-white rounded-2xl"><table class="w-full text-sm min-w-[1500px]"><thead class="bg-slate-50"><tr><th class="p-3 text-right">رقم النظام</th><th class="p-3 text-right">رقم فاتورة المورد</th><th class="p-3">التاريخ</th><th class="p-3 text-right">المورد</th><th class="p-3">PO المرتبط</th><th class="p-3">الفرع</th><th class="p-3">المنشئ</th><th class="p-3">الاستحقاق</th><th class="p-3">الاستلام</th><th class="p-3">الحالة</th><th class="p-3">الإجمالي</th><th class="p-3">العملة</th><th class="p-3">المدفوع</th><th class="p-3">المتبقي</th><th class="p-3">تفاصيل</th></tr></thead><tbody>';
         html+=rows.map(function(x){
@@ -987,8 +992,10 @@ var App = {
                     supplier_invoice_no:supplierNo,notes:RW_UI.byId('bqm-notes').value.trim()||null,
                     items:self.quickCart.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price,discount_percent:0,tax_rate:0};}),
                     settlement_source:source,cash_custody_id:custodyId,operation_id:buyerOperationId()};
-                if(invoiceId){payload.id=invoiceId;return await self.api('UPDATE_QUICK_MARKET_INVOICE',payload);}
-                return await self.api('CREATE_QUICK_MARKET_INVOICE',payload);
+                try{
+                    if(invoiceId){payload.id=invoiceId;return await self.api('UPDATE_QUICK_MARKET_INVOICE',payload);}
+                    return await self.api('CREATE_QUICK_MARKET_INVOICE',payload);
+                }catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
             if(result.isConfirmed){this.quickCart=[];this.invalidate();RW_UI.toast(current?'تم تحديث مسودة السوق السريع':'تم إنشاء مسودة السوق السريع: '+(result.value.code||''),'success');if(this.currentTab==='invoices')await this.renderInvoices();else await this.renderToday();}
         }catch(e){this.notifyError(e);}
