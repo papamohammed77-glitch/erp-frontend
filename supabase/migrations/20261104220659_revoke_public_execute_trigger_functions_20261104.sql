@@ -1,0 +1,17 @@
+REVOKE EXECUTE ON FUNCTION public.commission_assignment_guard() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.commission_audit_trigger() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.commission_rule_guard() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.enforce_stock_voucher_custodian() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.enforce_stock_voucher_transfer_vehicle_context() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.fn_delivery_relation_guard() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.fn_fleet_relation_guard() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.guard_stock_voucher_delete_integrity() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.guard_stock_voucher_detail_delete_integrity() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.guard_stock_voucher_operation_delete_integrity() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.hr_touch_updated_at() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.sales_decision_approval_audit_trigger() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.sales_decision_audit_trigger() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.sales_decision_touch_updated_at() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.touch_roles_updated_at() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.trg_sales_payment_to_installment() FROM PUBLIC, anon, authenticated;
+ALTER FUNCTION public.sales_decision_default_policy() SET search_path = pg_catalog;
