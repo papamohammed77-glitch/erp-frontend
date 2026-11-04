@@ -95,12 +95,6 @@ function buyerScanBarcode(items,onMatch){
         if(video){try{video.pause();video.srcObject=null;}catch(e){}}
     };
     var formats=['ean_13','ean_8','code_128','code_39','upc_a','upc_e','qr_code'];
-    var supported=typeof window.BarcodeDetector.getSupportedFormats==='function'?window.BarcodeDetector.getSupportedFormats():formats;
-    formats=formats.filter(function(format){return supported.indexOf(format)!==-1;});
-    if(!formats.length){
-        Swal.fire({icon:'info',title:'لا توجد صيغ باركود مدعومة',text:'يمكنك المتابعة بالبحث اليدوي أو قارئ USB.'});
-        return;
-    }
     Swal.fire({
         title:'مسح باركود الصنف',
         html:'<div class="text-right"><video id="buyer-barcode-video" autoplay muted playsinline class="w-full rounded-xl bg-black" style="max-height:55vh;object-fit:cover"></video><p id="buyer-barcode-status" class="text-xs text-slate-500 mt-3">وجّه الكاميرا الخلفية نحو الباركود وثبّت الصورة للحظة.</p></div>',
@@ -110,7 +104,10 @@ function buyerScanBarcode(items,onMatch){
             var status=document.getElementById('buyer-barcode-status');
             (async function(){
                 try{
-                    detector=new window.BarcodeDetector({formats:formats});
+                    var supported=typeof window.BarcodeDetector.getSupportedFormats==='function'?await window.BarcodeDetector.getSupportedFormats():formats;
+                    var usableFormats=formats.filter(function(format){return supported.indexOf(format)!==-1;});
+                    if(!usableFormats.length){if(status)status.textContent='لا توجد صيغ باركود مدعومة؛ استخدم البحث اليدوي أو قارئ USB.';return;}
+                    detector=new window.BarcodeDetector({formats:usableFormats});
                     stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});
                     if(closed){stream.getTracks().forEach(function(track){track.stop();});return;}
                     video.srcObject=stream;
