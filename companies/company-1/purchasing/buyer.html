@@ -1048,10 +1048,12 @@ var App = {
                 var allowedInvoiceMimes=['image/jpeg','image/png','image/webp','application/pdf'];
                 if(!invoiceFile&&!hasInvoiceAttachment){Swal.showValidationMessage('أرفق صورة أو PDF لفاتورة المورد قبل حفظ المسودة');return false;}
                 if(invoiceFile&&(!allowedInvoiceMimes.includes(invoiceFile.type)||invoiceFile.size<=0||invoiceFile.size>10*1024*1024)){Swal.showValidationMessage('نوع الملف غير مدعوم أو حجمه يتجاوز 10 ميجابايت');return false;}
+                var invoiceSaved=false,savedInvoiceId=null;
                 try{
                     var savedInvoice=invoiceId?(payload.id=invoiceId,await self.api('UPDATE_QUICK_MARKET_INVOICE',payload)):await self.api('CREATE_QUICK_MARKET_INVOICE',payload);
-                    var savedInvoiceId=invoiceId||savedInvoice.id;
+                    savedInvoiceId=invoiceId||savedInvoice.id;
                     if(!savedInvoiceId)throw new Error('تم حفظ الفاتورة دون إرجاع رقمها الداخلي؛ لا يمكن ربط صورة المورد');
+                    invoiceSaved=true;
                     if(invoiceFile){
                         var companyId=String((self.currentUser||{}).company_id||''),userId=String((self.currentUser||{}).id||'');
                         if(!companyId||!userId)throw new Error('سياق الشركة أو المستخدم غير متاح لرفع مستند المورد');
@@ -1061,7 +1063,11 @@ var App = {
                         await self.api('REGISTER_QUICK_MARKET_ATTACHMENT',{invoice_id:savedInvoiceId,storage_path:storagePath,file_name:invoiceFile.name},operationId+'-attachment');
                     }
                     return savedInvoice;
-                }catch(e){Swal.showValidationMessage(e.message);return false;}
+                }catch(e){
+                    if(invoiceSaved)self.invalidate();
+                    Swal.showValidationMessage(invoiceSaved?'تم حفظ مسودة الفاتورة بالفعل، لكن تعذر تأكيد ربط صورة المورد. احتفظنا بالملف؛ أعد المحاولة قبل إغلاق النافذة. '+e.message:e.message);
+                    return false;
+                }
             }});
             if(result.isConfirmed){this.quickCart=[];this.invalidate();RW_UI.toast(current?'تم تحديث مسودة السوق السريع':'تم إنشاء مسودة السوق السريع: '+(result.value.code||''),'success');if(this.currentTab==='invoices')await this.renderInvoices();else await this.renderToday();}
         }catch(e){this.notifyError(e);}
