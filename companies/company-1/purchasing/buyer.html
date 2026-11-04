@@ -1081,7 +1081,7 @@ var App = {
             payments=Array.isArray(data.payments)?data.payments:[],
             settlements=Array.isArray(data.settlements)?data.settlements:[],
             finance=!!data.is_finance;
-        var currentEmployeeId=(this.currentUser||{}).id;
+        var currentEmployeeId=(this.currentUser||{}).id,self=this;
         var issued=custodies.filter(function(c){return c.status!=='Settled'&&c.status!=='Closed';}).reduce(function(n,c){return n+Number(c.issued_amount||0);},0);
         var pending=expenses.filter(function(e){return e.status==='Submitted';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
         var approved=expenses.filter(function(e){return e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
@@ -1105,7 +1105,7 @@ var App = {
             var custodyAdvances=advances.filter(function(a){return a.custody_id===c.id;});
             var acknowledgedTotal=custodyAdvances.filter(function(a){return !!a.acknowledged_at;}).reduce(function(n,a){return n+Number(a.amount||0);},0);
             var committedTotal=lines.filter(function(e){return e.status==='Submitted'||e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
-            var qmpReserved=this.quickMarketCashReservation(invoices,expenses,c.id,null);
+            var qmpReserved=self.quickMarketCashReservation(invoices,expenses,c.id,null);
             var availableCash=Math.max(0,acknowledgedTotal-committedTotal-qmpReserved);
             html+='<section class="card mb-3 border border-slate-100"><div class="flex flex-wrap justify-between gap-2"><div><b class="text-purple-800">'+buyerEsc(c.custody_code)+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(c.employee_name||'')+' · '+buyerDate(c.issued_date)+'</p></div><span class="px-3 py-1 rounded-full bg-slate-100 text-xs font-bold">'+buyerStatus(c.status)+'</span></div>'+
                 '<div class="grid grid-cols-2 md:grid-cols-6 gap-2 mt-3 text-sm"><div><small class="text-slate-400">إجمالي النقد المسلم</small><b class="block">'+buyerMoney(c.issued_amount,c.currency)+'</b></div><div><small class="text-slate-400">النقد المؤكد استلامه</small><b class="block">'+buyerMoney(acknowledgedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مصروفات معتمدة</small><b class="block">'+buyerMoney(approvedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مستندات معلقة</small><b class="block">'+pendingCount+'</b></div><div><small class="text-slate-400">حجوزات السوق السريع</small><b class="block">'+buyerMoney(qmpReserved,c.currency)+'</b></div><div><small class="text-slate-400">المتاح بعد الحجوزات</small><b class="block">'+buyerMoney(availableCash,c.currency)+'</b></div></div>'+
