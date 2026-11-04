@@ -263,6 +263,7 @@ var App = {
                 'buyer_custody_expenses',
                 'buyer_custody_payments',
                 'buyer_custody_settlements',
+                'buyer_goods_custody_events',
                 'suppliers',
                 'items',
                 'branches',
@@ -279,7 +280,8 @@ var App = {
                     account:['purchase_invoices','purchase_invoice_details','purchase_payments','purchase_payment_allocations','purchase_returns','purchase_return_details','purchase_status_history','purchase_attachments','purchase_document_links','purchase_settings','suppliers'],
                     custody:['buyer_custodies','buyer_custody_advances','buyer_custody_expenses','buyer_custody_payments','buyer_custody_settlements'],
                     quotations:['purchase_quotations','purchase_quotation_details','purchase_status_history'],
-                    invoices:['purchase_invoices','purchase_invoice_details','purchase_status_history','purchase_attachments','purchase_document_links','purchase_payments','purchase_payment_allocations']
+                    invoices:['purchase_invoices','purchase_invoice_details','purchase_status_history','purchase_attachments','purchase_document_links','purchase_payments','purchase_payment_allocations','buyer_goods_custody_events'],
+                    vehicle:['buyer_goods_custody_events','purchase_invoices','purchase_invoice_details']
                 };
                 var relevant=self.currentTab==='today'||
                     (targets[self.currentTab]||[]).indexOf(event.table)!==-1;
@@ -1058,11 +1060,21 @@ var App = {
                         notes:RW_UI.byId('bhg-notes').value.trim()||null,operation_id:operationId
                     });
                 }catch(e){
-                    var committed=false;
-                    try{var verify=await self.api('GET_QUICK_MARKET_HANDOVER_PROGRESS',{invoice_id:invoiceId});committed=(verify.events||[]).some(function(x){return x.operation_id===operationId;});}catch(checkError){}
-                    if(!committed)await supabase.storage.from('employee-documents').remove([evidencePath]);
-                    if(committed)return {success:true,duplicate:true};
-                    Swal.showValidationMessage(e.message);return false;
+                    var committed=null;
+                    try{
+                        var verify=await self.api('GET_QUICK_MARKET_HANDOVER_PROGRESS',{invoice_id:invoiceId});
+                        committed=(verify.events||[]).some(function(x){return x.operation_id===operationId;});
+                    }catch(checkError){
+                        committed=null;
+                    }
+                    if(committed===true)return {success:true,duplicate:true};
+                    if(committed===false){
+                        var cleanup=await supabase.storage.from('employee-documents').remove([evidencePath]);
+                        if(cleanup.error)console.warn('[Buyer] Confirmed uncommitted handover; evidence cleanup failed',cleanup.error);
+                        Swal.showValidationMessage(e.message);return false;
+                    }
+                    Swal.showValidationMessage('تعذر تأكيد نتيجة تسجيل الحيازة بسبب انقطاع التحقق. احتفظنا بإثبات المورد ولم نكرر العملية؛ راجع دفتر الحيازة قبل إعادة المحاولة.');
+                    return false;
                 }
             }});
             if(result.isConfirmed){
