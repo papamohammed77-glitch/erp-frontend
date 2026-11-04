@@ -1012,6 +1012,7 @@ var App = {
         var self=this;
         try{
             var progress=await this.api('GET_QUICK_MARKET_HANDOVER_PROGRESS',{invoice_id:invoiceId});
+            var operationId=buyerOperationId();
             var lines=(progress.lines||[]).filter(function(x){return Number(x.remaining_qty||0)>0;});
             if(!lines.length)throw new Error('لا توجد كميات متبقية لإثبات حيازتها');
             var vehicles=(await this.data('vehicles')).filter(function(v){return v.status==='Active'||v.is_active===true;});
@@ -1042,9 +1043,15 @@ var App = {
                     return await self.api('REGISTER_QUICK_MARKET_HANDOVER',{
                         invoice_id:invoiceId,vehicle_id:RW_UI.byId('bhg-vehicle').value||null,
                         items:selected,evidence_path:evidencePath,
-                        notes:RW_UI.byId('bhg-notes').value.trim()||null,operation_id:buyerOperationId()
+                        notes:RW_UI.byId('bhg-notes').value.trim()||null,operation_id:operationId
                     });
-                }catch(e){await supabase.storage.from('employee-documents').remove([evidencePath]);Swal.showValidationMessage(e.message);return false;}
+                }catch(e){
+                    var committed=false;
+                    try{var verify=await self.api('GET_QUICK_MARKET_HANDOVER_PROGRESS',{invoice_id:invoiceId});committed=(verify.events||[]).some(function(x){return x.operation_id===operationId;});}catch(checkError){}
+                    if(!committed)await supabase.storage.from('employee-documents').remove([evidencePath]);
+                    if(committed)return {success:true,duplicate:true};
+                    Swal.showValidationMessage(e.message);return false;
+                }
             }});
             if(result.isConfirmed){
                 this.invalidate();RW_UI.toast('تم تسجيل حيازة البضاعة لدى المشتري دون تغيير مخزون المخزن','success');
