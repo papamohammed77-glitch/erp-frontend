@@ -1364,6 +1364,91 @@ var App = {
             this.notifyError(e);
         }
     },
+    submitOtherCustodyExpense:async function(custodyId){
+        var uploadedPath=null,uploadDone=false,unknownOutcome=false,operationId=buyerOperationId(),stamp=Date.now();
+        try{
+            var custody=(this.custodySnapshot&&this.custodySnapshot.custodies||[]).find(function(c){return c.id===custodyId;});
+            if(!custody)throw new Error('العهدة غير موجودة');
+            if(custody.employee_id!==(this.currentUser||{}).id)throw new Error('لا يمكنك تقديم مصروف على عهدة موظف آخر');
+            if(custody.status==='Settled'||custody.status==='Closed'||!custody.acknowledged_at)throw new Error('لا يمكن تقديم مصروف قبل تأكيد استلام العهدة أو بعد إغلاقها');
+            await this.loadSystemCurrency();
+            var html='<div class="text-right space-y-3"><div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">هذا المسار للانتقالات والوقود ورسوم الطرق والمواقف والمصروفات التشغيلية فقط. لا تستخدمه لفاتورة شراء مورد أو فاتورة Quick Market. تقديم المستند يحجز المبلغ من المتاح، ولا ينشئ قيدًا أو صرف خزينة حتى تراجعه المالية.</div>'+
+                '<label class="block text-xs font-bold">نوع المصروف<select id="bco-category" class="swal2-select w-full"><option value="TRANSPORTATION">انتقالات ومواصلات</option><option value="FUEL">وقود</option><option value="TOLLS_PARKING">رسوم طرق ومواقف</option><option value="OTHER">مصروف تشغيلي آخر</option></select></label>'+
+                '<label class="block text-xs font-bold">تاريخ المصروف<input id="bco-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label>'+
+                '<label class="block text-xs font-bold">مرجع الإيصال / رقم المستند<input id="bco-reference" class="swal2-input" placeholder="رقم الإيصال إن وجد"></label>'+
+                '<label class="block text-xs font-bold">وصف المصروف<input id="bco-description" class="swal2-input" placeholder="مثال: انتقال لمعاينة مورد / وقود مهمة شراء"></label>'+
+                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ ('+buyerEsc(custody.currency)+')<input id="bco-amount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="0.00"></label><label class="text-xs font-bold">العملة<input class="swal2-input" value="'+buyerEsc(custody.currency)+'" readonly></label></div>'+
+                '<label class="block text-xs font-bold">إيصال أو مستند المصروف (PDF / JPG / PNG / WEBP)<input id="bco-file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" class="swal2-file"></label>'+
+                '<p class="text-xs text-slate-500">الحد الأعلى 10 ميجابايت. يجب أن يطابق المستند المبلغ والغرض والتاريخ. ستختار المالية حساب المصروف الصحيح عند المراجعة.</p></div>';
+            var self=this;
+            var result=await Swal.fire({title:'مصروفات أخرى من العهدة',html:html,width:680,showCancelButton:true,confirmButtonText:'تقديم للمالية',cancelButtonText:'إلغاء',preConfirm:async function(){
+                if(unknownOutcome){Swal.showValidationMessage('نتيجة العملية السابقة غير مؤكدة. لا تعِد الإرسال؛ أغلق النافذة وحدّث دفتر العهدة للتحقق من وجود المصروف قبل أي محاولة جديدة.');return false;}
+                var category=RW_UI.byId('bco-category').value,date=RW_UI.byId('bco-date').value||buyerLocalDate(),
+                    reference=RW_UI.byId('bco-reference').value.trim(),description=RW_UI.byId('bco-description').value.trim(),
+                    amount=Number(RW_UI.byId('bco-amount').value||0),file=RW_UI.byId('bco-file').files[0];
+                if(!category||!description||!Number.isFinite(amount)||amount<=0||!file){Swal.showValidationMessage('اختر نوع المصروف وأدخل الوصف والمبلغ وأرفق الإيصال');return false;}
+                if(file.size<=0||file.size>10*1024*1024||['application/pdf','image/jpeg','image/png','image/webp'].indexOf(file.type)===-1){Swal.showValidationMessage('يسمح بملف PDF أو JPG أو PNG أو WEBP لا يتجاوز 10 ميجابايت');return false;}
+                if(!uploadedPath){
+                    var safe=file.name.replace(/[^A-Za-z0-9._-]/g,'_').slice(-80)||'receipt';
+                    uploadedPath=self.currentUser.company_id+'/'+self.currentUser.id+'/buyer-custody/'+custodyId+'/'+stamp+'_other_'+safe;
+                }
+                if(!uploadDone){
+                    var upload=await supabase.storage.from('employee-documents').upload(uploadedPath,file,{cacheControl:'3600',upsert:false,contentType:file.type});
+                    if(upload.error){Swal.showValidationMessage('تعذر رفع إيصال المصروف: '+upload.error.message);return false;}
+                    uploadDone=true;
+                }
+                var payload={custody_id:custodyId,expense_date:date,expense_category:category,expense_reference:reference||null,
+                    description:description,amount:amount,document_name:file.name,document_path:uploadedPath,mime_type:file.type,operation_id:operationId};
+                try{return await self.api('SUBMIT_OTHER_CUSTODY_EXPENSE',payload);}
+                catch(error){
+                    var verified=null;
+                    try{var check=await self.api('VERIFY_CUSTODY_EXPENSE_OPERATION',{custody_id:custodyId,operation_id:operationId});verified=check.committed===true;}
+                    catch(checkError){verified=null;}
+                    if(verified===true)return {success:true,duplicate:true};
+                    if(verified===false){
+                        var cleanup=await supabase.storage.from('employee-documents').remove([uploadedPath]);
+                        if(cleanup.error){console.warn('[Buyer] Confirmed uncommitted operational expense; evidence cleanup failed',cleanup.error);}
+                        else{uploadedPath=null;uploadDone=false;}
+                        Swal.showValidationMessage(error.message||'تعذر تقديم المصروف');return false;
+                    }
+                    unknownOutcome=true;
+                    Swal.showValidationMessage('تعذر التأكد من نتيجة تسجيل المصروف بسبب انقطاع التحقق. احتفظنا بالإيصال ولم نكرر العملية؛ أغلق النافذة وحدّث دفتر العهدة قبل إعادة المحاولة.');
+                    return false;
+                }
+            }});
+            if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تقديم المصروف التشغيلي للمالية وحجز قيمته من المتاح النقدي','success');}
+        }catch(e){this.notifyError(e);}
+    },
+    reviewOtherCustodyExpense:async function(expenseId,decision){
+        try{
+            var data=this.custodySnapshot||await this.api('GET_CUSTODY',{});
+            if(!data.is_finance)throw new Error('هذه المراجعة مخصصة للمالية ومدير المالية');
+            var note=null,accountId=null;
+            if(decision==='Approved'){
+                var result=await this.api('GET_OTHER_CUSTODY_EXPENSE_ACCOUNTS',{});
+                var accounts=result.accounts||[];
+                if(!accounts.length){
+                    await Swal.fire({icon:'warning',title:'لا يوجد حساب مصروف تشغيلي مناسب',
+                        text:'لم يعثر النظام على حساب مصروف نشط وفرعي صالح للانتقالات أو الوقود. لا يجوز ترحيل هذه المصروفات على تكلفة المبيعات (51) أو فروقات المخزون والتوالف (52). أُبقي المستند قيد المراجعة حتى يهيئ مسؤول دليل الحسابات الحساب الصحيح.'});
+                    return;
+                }
+                var options=accounts.map(function(a){return '<option value="'+buyerEsc(a.id)+'">'+buyerEsc(a.account_code)+' — '+buyerEsc(a.account_name)+'</option>';}).join('');
+                var approve=await Swal.fire({
+                    title:'اعتماد مصروف تشغيلي',width:650,showCancelButton:true,confirmButtonText:'اعتماد وترحيل القيد',cancelButtonText:'إلغاء',
+                    html:'<div class="text-right space-y-3"><label class="block text-xs font-bold">حساب المصروف<select id="bco-account" class="swal2-select w-full"><option value="">اختر الحساب المناسب</option>'+options+'</select></label><label class="block text-xs font-bold">ملاحظة المراجعة<textarea id="bco-review-note" class="swal2-textarea"></textarea></label><p class="text-xs text-amber-700">سيُنشأ قيد واحد: مدين حساب المصروف المختار / دائن عهدة الموظف. لا ينشأ صرف خزينة جديد ولا حركة مخزون أو ذمم مورد.</p></div>',
+                    preConfirm:function(){accountId=RW_UI.byId('bco-account').value;if(!accountId){Swal.showValidationMessage('اختر حساب مصروف صالحًا');return false;}note=RW_UI.byId('bco-review-note').value.trim()||null;return true;}
+                });
+                if(!approve.isConfirmed)return;
+            }else if(decision==='Rejected'){
+                var reject=await Swal.fire({title:'رفض المصروف',input:'textarea',inputLabel:'سبب الرفض / الملاحظة',showCancelButton:true,confirmButtonText:'تأكيد الرفض',cancelButtonText:'إلغاء'});
+                if(!reject.isConfirmed)return;
+                note=reject.value||null;
+            }else{throw new Error('قرار المراجعة غير صالح');}
+            await this.api('REVIEW_OTHER_CUSTODY_EXPENSE',{expense_id:expenseId,decision:decision,expense_account_id:accountId,review_note:note});
+            this.invalidate();await this.renderCustody();
+            RW_UI.toast(decision==='Approved'?'تم اعتماد المصروف وترحيل قيده دون حركة خزينة إضافية':'تم رفض المصروف وإلغاء حجزه من العهدة','success');
+        }catch(e){this.notifyError(e);}
+    },
     reviewCustodyExpense:async function(expenseId,decision){
         var decisionText=decision==='Approved'?'اعتماد المستند':'رفض المستند';
         var result=await Swal.fire({title:decisionText,input:'textarea',inputLabel:'ملاحظة المراجعة',inputPlaceholder:'سبب الاعتماد أو الرفض (اختياري)',showCancelButton:true,confirmButtonText:'تأكيد',cancelButtonText:'إلغاء'});
