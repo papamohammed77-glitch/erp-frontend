@@ -993,6 +993,49 @@ var App = {
             if(result.isConfirmed){this.quickCart=[];this.invalidate();RW_UI.toast(current?'تم تحديث مسودة السوق السريع':'تم إنشاء مسودة السوق السريع: '+(result.value.code||''),'success');if(this.currentTab==='invoices')await this.renderInvoices();else await this.renderToday();}
         }catch(e){this.notifyError(e);}
     },
+    recordQuickMarketHandover:async function(invoiceId){
+        try{
+            var progress=await this.api('GET_QUICK_MARKET_HANDOVER_PROGRESS',{invoice_id:invoiceId});
+            var lines=(progress.lines||[]).filter(function(x){return Number(x.remaining_qty||0)>0;});
+            if(!lines.length)throw new Error('لا توجد كميات متبقية لإثبات حيازتها');
+            var vehicles=(await this.data('vehicles')).filter(function(v){return v.status==='Active'||v.is_active===true;});
+            var fields=lines.map(function(x,i){
+                return '<div class="grid grid-cols-12 gap-2 items-center border-b py-2 text-xs"><div class="col-span-7"><b>'+buyerEsc(x.item_name)+'</b><small class="block text-slate-500">'+buyerEsc(x.item_code)+' · المتبقي '+buyerEsc(x.remaining_qty)+' '+buyerEsc(x.unit||'')+'</small></div><label class="col-span-5 font-bold">الكمية المستلمة<input data-bhg-qty="'+i+'" data-bhg-code="'+buyerEsc(x.item_code)+'" type="number" min="0" max="'+buyerEsc(x.remaining_qty)+'" step="0.0001" value="'+buyerEsc(x.remaining_qty)+'" class="w-full border rounded-lg p-2 mt-1"></label></div>';
+            }).join('');
+            var html='<div class="text-right space-y-3"><div class="rounded-xl bg-amber-50 p-3 text-xs text-amber-800">أثبت فقط الكمية التي استلمتها فعليًا من المورد. هذا الحدث يسجل حيازة المشتري ولا يضيف مخزونًا للمخزن.</div>'+
+                '<label class="block text-xs font-bold">المركبة (اختياري)<select id="bhg-vehicle" class="swal2-select w-full"><option value="">بدون مركبة / حيازة مباشرة</option>'+vehicles.map(function(v){return '<option value="'+buyerEsc(v.id)+'">'+buyerEsc(v.plate_number||v.vehicle_code||v.name||v.id)+'</option>';}).join('')+'</select></label>'+
+                '<div class="border rounded-xl p-3"><b class="text-sm">الكميات</b>'+fields+'</div>'+
+                '<label class="block text-xs font-bold">إثبات التسليم من المورد (PDF / صورة)<input id="bhg-file" type="file" accept="application/pdf,image/*" class="swal2-file"></label>'+
+                '<label class="block text-xs font-bold">ملاحظات<textarea id="bhg-notes" class="swal2-textarea"></textarea></label></div>';
+            var result=await Swal.fire({title:'إثبات استلام المورد إلى عهدتك',html:html,width:700,showCancelButton:true,confirmButtonText:'تسجيل الحيازة',cancelButtonText:'إلغاء',preConfirm:async function(){
+                var selected=Array.from(document.querySelectorAll('[data-bhg-qty]')).map(function(el){
+                    return {item_code:el.getAttribute('data-bhg-code'),qty:Number(el.value||0)};
+                }).filter(function(x){return x.qty>0;});
+                if(!selected.length||selected.some(function(x){var line=lines.find(function(y){return y.item_code===x.item_code;});return !Number.isFinite(x.qty)||!line||x.qty>Number(line.remaining_qty)+0.0001;})){
+                    Swal.showValidationMessage('أدخل كمية موجبة لا تتجاوز المتبقي لكل صنف');return false;
+                }
+                var file=RW_UI.byId('bhg-file').files[0];
+                if(!file||file.size>10*1024*1024||!(file.type==='application/pdf'||file.type.indexOf('image/')===0)){
+                    Swal.showValidationMessage('أرفق إثباتًا بصيغة PDF أو صورة لا يتجاوز 10 ميجابايت');return false;
+                }
+                var safe=file.name.replace(/[^A-Za-z0-9._-]/g,'_').slice(-80)||'evidence';
+                var evidencePath=self.currentUser.company_id+'/'+self.currentUser.id+'/buyer-goods/'+invoiceId+'/'+Date.now()+'_'+safe;
+                var uploaded=await supabase.storage.from('employee-documents').upload(evidencePath,file,{cacheControl:'3600',upsert:false,contentType:file.type});
+                if(uploaded.error){Swal.showValidationMessage('تعذر رفع إثبات المورد: '+uploaded.error.message);return false;}
+                try{
+                    return await self.api('REGISTER_QUICK_MARKET_HANDOVER',{
+                        invoice_id:invoiceId,vehicle_id:RW_UI.byId('bhg-vehicle').value||null,
+                        items:selected,evidence_path:evidencePath,
+                        notes:RW_UI.byId('bhg-notes').value.trim()||null,operation_id:buyerOperationId()
+                    });
+                }catch(e){await supabase.storage.from('employee-documents').remove([evidencePath]);Swal.showValidationMessage(e.message);return false;}
+            }});
+            if(result.isConfirmed){
+                this.invalidate();RW_UI.toast('تم تسجيل حيازة البضاعة لدى المشتري دون تغيير مخزون المخزن','success');
+                if(this.currentTab==='custody')await this.renderCustody();else await this.openInvoice(invoiceId);
+            }
+        }catch(e){this.notifyError(e);}
+    },
     renderQuickSearch:function(items,q){
         var box=RW_UI.byId('bq-results');if(!box)return;
         q=String(q||'').trim().toLowerCase();
