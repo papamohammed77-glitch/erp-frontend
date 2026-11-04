@@ -948,7 +948,7 @@ var App = {
                 this.data('purchase_invoice_details'),this.api('GET_SETTINGS',{}),this.api('GET_CUSTODY',{})
             ]);
             var suppliers=loaded[0].filter(function(x){return x.is_active===true;}),
-                items=loaded[1],branches=loaded[2],settings=loaded[3][0]||{},
+                items=loaded[1].filter(function(x){return x.is_active!==false;}),branches=loaded[2].filter(function(x){return x.is_active!==false;}),settings=loaded[3][0]||{},
                 invoices=loaded[4],details=loaded[5],currency=String(loaded[6]&&loaded[6].currency||'EGP').trim().toUpperCase(),
                 custodyData=loaded[7]||{},expenses=custodyData.expenses||[],custodies=(custodyData.custodies||[]).filter(function(c){return c.employee_id===(this.currentUser||{}).id&&c.status!=='Settled'&&c.status!=='Closed';},this),
                 current=invoiceId?invoices.find(function(x){return x.id===invoiceId;}):null,lines=[],self=this;
@@ -993,7 +993,7 @@ var App = {
                     supplierNo=RW_UI.byId('bqm-no').value.trim(),source=RW_UI.byId('bqm-source').value,
                     custodyId=source==='EMPLOYEE_CUSTODY'?RW_UI.byId('bqm-custody').value:null;
                 if(!supplierId||!branchId||!supplierNo){Swal.showValidationMessage('اختر المورد والفرع وأدخل رقم فاتورة المورد');return false;}
-                if(!self.quickCart.length||self.quickCart.some(function(x){return !Number.isFinite(Number(x.qty))||Number(x.qty)<=0||x.unit_price===null||x.unit_price===undefined||!Number.isFinite(Number(x.unit_price))||Number(x.unit_price)<0;})){Swal.showValidationMessage('أضف الأصناف وأدخل الكمية والسعر الفعلي لكل بند');return false;}
+                if(!self.quickCart.length||self.quickCart.some(function(x){return !Number.isFinite(Number(x.qty))||Number(x.qty)<=0||x.unit_price===null||x.unit_price===undefined||!Number.isFinite(Number(x.unit_price))||Number(x.unit_price)<=0;})){Swal.showValidationMessage('أضف الأصناف وأدخل كمية وسعر شراء موجب لكل بند');return false;}
                 var total=self.quickCart.reduce(function(n,x){return n+Number(x.qty)*Number(x.unit_price);},0);
                 if(source==='EMPLOYEE_CUSTODY'&&(!custodyId||total>Number(availableByCustody[custodyId]||0)+0.005)){Swal.showValidationMessage('العهدة المختارة لا تغطي قيمة الفاتورة بعد الحجوزات الحالية');return false;}
                 var payload={supplier_id:supplierId,branch_id:branchId,due_date:RW_UI.byId('bqm-due').value||null,
@@ -1085,7 +1085,7 @@ var App = {
         if(!this.quickCart.length){RW_UI.safeHTML(box,'<p class="text-center text-xs text-slate-400 p-3">لم تتم إضافة أصناف بعد</p>');return;}
         var total=0,currency=this.currency||'EGP',html='<h4 class="font-black py-2">الأصناف المختارة — أدخل الكمية وسعر الشراء الفعلي لكل صنف</h4>';
         html+='<div class="grid grid-cols-12 gap-1 text-[10px] text-slate-500 pb-1"><span class="col-span-4">الصنف</span><span class="col-span-2">الكمية</span><span class="col-span-3">سعر الوحدة</span><span class="col-span-2">الإجمالي</span><span class="col-span-1"></span></div>';
-        html+=this.quickCart.map(function(x,i){var line=Number(x.qty)*Number(x.unit_price);total+=line;return '<div class="grid grid-cols-12 gap-1 items-center border-t py-2 text-xs"><div class="col-span-4"><b>'+buyerEsc(x.name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></div><input class="col-span-2 border rounded p-2" type="number" min="0.001" step="0.001" value="'+buyerEsc(x.qty)+'" onchange="App.quickUpdate('+i+',\'qty\',this.value)"><input class="col-span-3 border rounded p-2" type="number" min="0" step="0.01" value="'+buyerEsc(x.unit_price==null?'':x.unit_price)+'" placeholder="السعر الفعلي" onchange="App.quickUpdate('+i+',\'unit_price\',this.value)"><div class="col-span-2 font-bold">'+buyerMoney(line,currency)+'</div><button class="col-span-1 text-red-600" onclick="App.quickRemove('+i+')">×</button></div>';}).join('');
+        html+=this.quickCart.map(function(x,i){var line=Number(x.qty)*Number(x.unit_price);total+=line;return '<div class="grid grid-cols-12 gap-1 items-center border-t py-2 text-xs"><div class="col-span-4"><b>'+buyerEsc(x.name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></div><input class="col-span-2 border rounded p-2" type="number" min="0.001" step="0.001" value="'+buyerEsc(x.qty)+'" onchange="App.quickUpdate('+i+',\'qty\',this.value)"><input class="col-span-3 border rounded p-2" type="number" min="0.01" step="0.01" value="'+buyerEsc(x.unit_price==null?'':x.unit_price)+'" placeholder="السعر الفعلي" onchange="App.quickUpdate('+i+',\'unit_price\',this.value)"><div class="col-span-2 font-bold">'+buyerMoney(line,currency)+'</div><button class="col-span-1 text-red-600" onclick="App.quickRemove('+i+')">×</button></div>';}).join('');
         html+='<div class="text-left font-black border-t pt-2">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div>';
         RW_UI.safeHTML(box,html);
     },
