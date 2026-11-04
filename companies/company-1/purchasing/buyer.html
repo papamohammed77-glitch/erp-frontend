@@ -1072,8 +1072,9 @@ var App = {
     },
     renderCustody:async function(){
         this.pageLoading('تحميل دفتر عهدتي');
-        var data=await this.api('GET_CUSTODY',{});
-        this.custodySnapshot=data||{};
+        var loaded=await Promise.all([this.api('GET_CUSTODY',{}),this.data('purchase_invoices'),this.api('GET_BUYER_GOODS_CUSTODY_BALANCES',{})]);
+        var data=loaded[0]||{},invoices=loaded[1]||[],goodsData=loaded[2]||{};
+        this.custodySnapshot=data;
         var custodies=Array.isArray(data.custodies)?data.custodies:[],
             expenses=Array.isArray(data.expenses)?data.expenses:[],
             advances=Array.isArray(data.advances)?data.advances:[],
@@ -1091,7 +1092,10 @@ var App = {
             '<div class="card"><small class="text-slate-500">قيمة العهد المفتوحة</small><b class="block text-lg mt-1">'+buyerMoney(issued,this.currency)+'</b></div>'+
             '<div class="card"><small class="text-slate-500">مستندات قيد المراجعة</small><b class="block text-lg mt-1">'+buyerMoney(pending,this.currency)+'</b></div>'+
             '<div class="card"><small class="text-slate-500">مصروفات معتمدة</small><b class="block text-lg mt-1">'+buyerMoney(approved,this.currency)+'</b></div></div>';
-        html+='<div class="p-3 rounded-xl bg-blue-50 text-blue-800 text-xs mb-4">التسليم والزيادة والمرتجع تُسجل كسندات خزينة فعلية إلى حساب عهد الموظفين، ومصروفات الشراء المعتمدة تُسدد بها فواتير الموردين وتنعكس في دفتر المورد والقيد العام.</div>';
+        html+='<div class="p-3 rounded-xl bg-blue-50 text-blue-800 text-xs mb-4">العهدة النقدية منفصلة عن حيازة البضاعة. الحيازة تُحسب من دفتر أحداث مستقل ولا تغيّر مخزون الفرع؛ المركبة اختيارية.</div>';
+        var goodsBalances=Array.isArray(goodsData.balances)?goodsData.balances:[];
+        html+='<section class="card mb-4 border border-purple-100"><div class="flex justify-between items-center gap-2"><div><h3 class="font-black">عهدة البضاعة — رصيد الحيازة الفعلي</h3><p class="text-xs text-slate-500 mt-1">المورد → المشتري، مستقل عن رصيد السيارة ورصيد المخزن</p></div><span class="text-xs font-bold text-purple-700">'+goodsBalances.length+' بندًا</span></div>'+
+            (goodsBalances.length?'<div class="overflow-auto mt-3"><table class="w-full text-xs"><thead class="bg-slate-50"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الفرع</th><th class="p-2">الرصيد</th><th class="p-2">آخر حركة</th></tr></thead><tbody>'+goodsBalances.map(function(x){return '<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></td><td class="p-2">'+buyerEsc(x.branch_name||'—')+'</td><td class="p-2 font-black">'+buyerEsc(x.balance_qty)+' '+buyerEsc(x.unit||'')+'</td><td class="p-2">'+buyerDate(x.last_movement_at)+'</td></tr>';}).join('')+'</tbody></table></div>':'<p class="text-xs text-slate-400 mt-3">لا توجد بضاعة مثبتة في حيازتك حاليًا.</p>')+'</section>';
         if(!custodies.length)html+='<div class="card text-center py-10"><i class="fa-solid fa-wallet text-3xl text-slate-300"></i><p class="font-bold mt-3">لا توجد عهد مسجلة</p><p class="text-xs text-slate-400 mt-1">'+(finance?'ابدأ بتسجيل عهدة تم تسليمها يدويًا إلى الموظف.':'ستظهر هنا العهد المسجلة باسمك من الإدارة المالية.')+'</p></div>';
         custodies.forEach(function(c){
             var lines=expenses.filter(function(e){return e.custody_id===c.id;});
@@ -1101,8 +1105,10 @@ var App = {
             var custodyAdvances=advances.filter(function(a){return a.custody_id===c.id;});
             var acknowledgedTotal=custodyAdvances.filter(function(a){return !!a.acknowledged_at;}).reduce(function(n,a){return n+Number(a.amount||0);},0);
             var committedTotal=lines.filter(function(e){return e.status==='Submitted'||e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
+            var qmpReserved=this.quickMarketCashReservation(invoices,expenses,c.id,null);
+            var availableCash=Math.max(0,acknowledgedTotal-committedTotal-qmpReserved);
             html+='<section class="card mb-3 border border-slate-100"><div class="flex flex-wrap justify-between gap-2"><div><b class="text-purple-800">'+buyerEsc(c.custody_code)+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(c.employee_name||'')+' · '+buyerDate(c.issued_date)+'</p></div><span class="px-3 py-1 rounded-full bg-slate-100 text-xs font-bold">'+buyerStatus(c.status)+'</span></div>'+
-                '<div class="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3 text-sm"><div><small class="text-slate-400">إجمالي النقد المسلم</small><b class="block">'+buyerMoney(c.issued_amount,c.currency)+'</b></div><div><small class="text-slate-400">النقد المؤكد استلامه</small><b class="block">'+buyerMoney(acknowledgedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مصروفات معتمدة</small><b class="block">'+buyerMoney(approvedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مستندات معلقة</small><b class="block">'+pendingCount+'</b></div><div><small class="text-slate-400">الرصيد المتاح للمستندات</small><b class="block">'+buyerMoney(Math.max(0,acknowledgedTotal-committedTotal),c.currency)+'</b></div></div>'+
+                '<div class="grid grid-cols-2 md:grid-cols-6 gap-2 mt-3 text-sm"><div><small class="text-slate-400">إجمالي النقد المسلم</small><b class="block">'+buyerMoney(c.issued_amount,c.currency)+'</b></div><div><small class="text-slate-400">النقد المؤكد استلامه</small><b class="block">'+buyerMoney(acknowledgedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مصروفات معتمدة</small><b class="block">'+buyerMoney(approvedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مستندات معلقة</small><b class="block">'+pendingCount+'</b></div><div><small class="text-slate-400">حجوزات السوق السريع</small><b class="block">'+buyerMoney(qmpReserved,c.currency)+'</b></div><div><small class="text-slate-400">المتاح بعد الحجوزات</small><b class="block">'+buyerMoney(availableCash,c.currency)+'</b></div></div>'+
                 (c.received_reference?'<p class="text-xs text-slate-500 mt-2">مرجع التسليم الأول: '+buyerEsc(c.received_reference)+'</p>':'')+
                 (custodyAdvances.length?'<div class="mt-3 p-3 rounded-xl bg-slate-50"><b class="text-xs">سجل تسليمات العهدة وزياداتها</b><div class="space-y-1 mt-2">'+custodyAdvances.map(function(a){return '<div class="flex flex-wrap justify-between gap-2 text-xs border-b last:border-0 py-1"><span>'+buyerDate(a.advance_date)+' · '+(a.advance_type==='Initial'?'العهدة الأصلية':'زيادة عهدة')+' · '+buyerEsc(a.reference||'—')+'</span><b>'+buyerMoney(a.amount,a.currency)+'</b><span class="'+(a.acknowledged_at?'text-emerald-700':'text-amber-700')+'">'+(a.acknowledged_at?'تم تأكيد الاستلام':'بانتظار تأكيد الموظف')+'</span>'+(a.employee_id===currentEmployeeId&&!a.acknowledged_at&&a.advance_type==='Additional'?'<button onclick="App.acknowledgeCustodyAdvance(\''+a.id+'\')" class="text-blue-700 font-bold">تأكيد استلام الزيادة</button>':'')+'</div>';}).join('')+'</div></div>':'')+
                 '<div class="flex flex-wrap gap-2 mt-3">'+
