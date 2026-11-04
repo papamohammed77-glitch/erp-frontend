@@ -899,7 +899,93 @@ var App = {
             if(modal.isConfirmed){this.invalidate();RW_UI.toast(invoiceId?'تم تحديث مسودة فاتورة الشراء':'تم إنشاء مسودة فاتورة الشراء: '+(modal.value.code||''),'success');if(this.currentTab==='invoices')await this.renderInvoices();else await this.renderToday();}
         }catch(e){this.notifyError(e);}
     },
-    quickPurchase:function(){return this.createPurchaseInvoice();},
+    quickMarketCashReservation:function(invoices,expenses,custodyId,excludeInvoiceId){
+        var rows=Array.isArray(invoices)?invoices:[],expenseRows=Array.isArray(expenses)?expenses:[];
+        return rows.filter(function(i){
+            return i.id!==excludeInvoiceId&&i.cash_custody_id===custodyId&&
+                i.purchase_source==='QUICK_MARKET'&&i.settlement_source==='EMPLOYEE_CUSTODY'&&
+                ['Draft','Posted','PartiallyPaid'].indexOf(i.status)!==-1&&
+                ['UNSETTLED','PENDING_FINANCE','AP_OPEN','PARTIALLY_SETTLED'].indexOf(i.settlement_status)!==-1;
+        }).reduce(function(total,i){
+            var linked=expenseRows.filter(function(e){
+                return e.purchase_invoice_id===i.id&&e.custody_id===custodyId&&
+                    ['Submitted','Approved'].indexOf(e.status)!==-1;
+            }).reduce(function(n,e){return n+Number(e.amount||0);},0);
+            return total+Math.max(0,Number(i.total_amount||0)-Number(i.paid_amount||0)-linked);
+        },0);
+    },
+    quickPurchase:async function(invoiceId){
+        try{
+            await this.loadSystemCurrency();
+            var loaded=await Promise.all([
+                this.data('suppliers'),this.data('items'),this.data('branches'),
+                this.data('purchase_settings'),this.data('purchase_invoices'),
+                this.data('purchase_invoice_details'),this.api('GET_SETTINGS',{}),this.api('GET_CUSTODY',{})
+            ]);
+            var suppliers=loaded[0].filter(function(x){return x.is_active===true;}),
+                items=loaded[1],branches=loaded[2],settings=loaded[3][0]||{},
+                invoices=loaded[4],details=loaded[5],currency=String(loaded[6]&&loaded[6].currency||'EGP').trim().toUpperCase(),
+                custodyData=loaded[7]||{},expenses=custodyData.expenses||[],custodies=(custodyData.custodies||[]).filter(function(c){return c.employee_id===(this.currentUser||{}).id&&c.status!=='Settled'&&c.status!=='Closed';},this),
+                current=invoiceId?invoices.find(function(x){return x.id===invoiceId;}):null,lines=[],self=this;
+            if(!/^[A-Z]{3}$/.test(currency))throw new Error('عملة النظام غير صالحة');
+            if(invoiceId&&(!current||current.purchase_source!=='QUICK_MARKET'||current.status!=='Draft'||current.purchaser_user_id!==(this.currentUser||{}).id))throw new Error('فاتورة السوق السريع غير موجودة أو ليست مسودة مملوكة لك');
+            if(current){
+                var progress=await this.api('GET_QUICK_MARKET_HANDOVER_PROGRESS',{invoice_id:invoiceId});
+                if((progress.events||[]).length||expenses.some(function(e){return e.purchase_invoice_id===invoiceId;}))throw new Error('لا يمكن تعديل فاتورة سوق سريع بعد إثبات حيازة أو تقديم مصروف تابع');
+                lines=details.filter(function(x){return x.invoice_id===invoiceId;}).map(function(x){return {item_code:x.item_code,name:x.item_name,unit:x.unit,qty:Number(x.qty||0),unit_price:Number(x.unit_price||0)};});
+            }
+            this.currency=currency;this.cache.items=items;this.quickCart=lines;
+            var custodyOptions=[],availableByCustody={};
+            custodies.forEach(function(c){
+                var advances=(custodyData.advances||[]).filter(function(a){return a.custody_id===c.id&&!!a.acknowledged_at;});
+                var acknowledged=advances.reduce(function(n,a){return n+Number(a.amount||0);},0);
+                var committed=expenses.filter(function(e){return e.custody_id===c.id&&['Submitted','Approved'].indexOf(e.status)!==-1;}).reduce(function(n,e){return n+Number(e.amount||0);},0);
+                var reserved=self.quickMarketCashReservation(invoices,expenses,c.id,current&&current.id);
+                var available=Math.max(0,acknowledged-committed-reserved);
+                availableByCustody[c.id]=available;
+                if(available>0||(current&&current.cash_custody_id===c.id)){
+                    custodyOptions.push('<option value="'+buyerEsc(c.id)+'" '+(current&&current.cash_custody_id===c.id?'selected':'')+'>'+buyerEsc(c.custody_code)+' · متاح '+buyerMoney(available,currency)+'</option>');
+                }
+            });
+            var html='<div dir="rtl" class="text-right space-y-4"><div class="rounded-2xl bg-gradient-to-l from-purple-50 to-amber-50 border border-purple-100 p-4"><b class="text-lg">شراء سوق سريع — دون أمر شراء</b><p class="text-xs text-slate-500 mt-1">فاتورة مورد مباشرة. لا تنشئ مخزونًا ولا ترحل حساب المورد أو الخزينة؛ الاستلام المخزني لاحقًا من Receiver.</p></div>'+
+                '<div class="grid grid-cols-1 md:grid-cols-2 gap-3"><label class="text-sm font-bold">المورد المعتمد<select id="bqm-supplier" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر المورد</option>'+suppliers.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+(current&&current.supplier_id===x.id?'selected':'')+'>'+buyerEsc(x.name)+' · '+buyerEsc(x.supplier_code||'')+'</option>';}).join('')+'</select></label>'+
+                '<label class="text-sm font-bold">فرع الاستلام المتوقع<select id="bqm-branch" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر الفرع</option>'+branches.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+((current?current.branch_id===x.id:settings.default_branch_id===x.id)?'selected':'')+'>'+buyerEsc(x.name)+'</option>';}).join('')+'</select></label>'+
+                '<label class="text-sm font-bold">رقم فاتورة المورد<input id="bqm-no" value="'+buyerEsc(current&&current.supplier_invoice_no||'')+'" class="w-full border rounded-xl p-3 mt-1" placeholder="رقم الفاتورة الأصلية" /></label>'+
+                '<label class="text-sm font-bold">تاريخ الاستحقاق<input id="bqm-due" type="date" value="'+buyerEsc(current&&current.due_date||'')+'" class="w-full border rounded-xl p-3 mt-1" /></label>'+
+                '<label class="text-sm font-bold">مصدر التسوية<select id="bqm-source" class="w-full border rounded-xl p-3 mt-1"><option value="EMPLOYEE_CUSTODY" '+(!current||current.settlement_source==='EMPLOYEE_CUSTODY'?'selected':'')+'>من عهدتي النقدية</option><option value="SUPPLIER_CREDIT" '+(current&&current.settlement_source==='SUPPLIER_CREDIT'?'selected':'')+'>ائتمان على المورد</option></select></label>'+
+                '<label id="bqm-custody-wrap" class="text-sm font-bold">العهدة النقدية<select id="bqm-custody" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر عهدة مؤكدة الاستلام</option>'+custodyOptions.join('')+'</select></label></div>'+
+                '<div class="rounded-2xl border bg-slate-50 p-4"><b class="block mb-2">بنود الفاتورة</b><div class="grid grid-cols-1 md:grid-cols-[1fr_110px_130px_auto] gap-2 items-end"><label class="relative text-sm font-bold">بحث الصنف<input id="bqm-search" class="w-full border rounded-xl p-3 mt-1" placeholder="الاسم أو الكود أو الباركود"><div id="bq-results" class="hidden absolute z-[90] top-full right-0 left-0 max-h-56 overflow-auto rounded-xl border bg-white shadow-xl"></div></label><label class="text-sm font-bold">الكمية<input id="bqm-qty" type="number" min="0.001" step="0.001" value="1" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-bold">سعر الشراء الفعلي<input id="bqm-price" type="number" min="0" step="0.01" class="w-full border rounded-xl p-3 mt-1"></label><button id="bqm-add" type="button" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-bold">إضافة</button></div><div id="bq-cart" class="mt-3"></div></div>'+
+                '<label class="block text-sm font-bold">ملاحظات<textarea id="bqm-notes" class="w-full border rounded-xl p-3 mt-1" rows="2">'+buyerEsc(current&&current.notes||'')+'</textarea></label><p class="text-xs text-amber-700">رقم فاتورة المورد والسعر الفعلي مطلوبان. لا تستخدم آخر تكلفة كبديل للسعر. لا يغير هذا المستند رصيد المخزن أو المورد أو الأستاذ العام.</p></div>';
+            var result=await Swal.fire({title:current?'تعديل مسودة السوق السريع':'شراء سوق سريع',html:html,width:1050,showCloseButton:true,showCancelButton:true,confirmButtonText:current?'حفظ التعديل':'حفظ مسودة السوق السريع',cancelButtonText:'إلغاء',didOpen:function(){
+                var search=RW_UI.byId('bqm-search'),results=RW_UI.byId('bq-results');
+                search.addEventListener('input',function(){self.renderQuickSearch(items,search.value);});
+                RW_UI.byId('bqm-add').addEventListener('click',function(){
+                    var q=Number(RW_UI.byId('bqm-qty').value||0),p=String(RW_UI.byId('bqm-price').value||'').trim();
+                    if(!self.quickCart.length){Swal.showValidationMessage('اختر صنفًا من نتائج البحث أولًا');return;}
+                    var last=self.quickCart[self.quickCart.length-1];
+                    if(last.unit_price==null){if(!p||q<=0||!Number.isFinite(q)||!Number.isFinite(Number(p))||Number(p)<0){Swal.showValidationMessage('أدخل الكمية وسعر الشراء الفعلي');return;}last.qty=q;last.unit_price=Number(p);self.renderQuickCart();RW_UI.byId('bqm-search').value='';RW_UI.byId('bqm-price').value='';}
+                });
+                RW_UI.byId('bqm-source').addEventListener('change',function(){RW_UI.byId('bqm-custody-wrap').classList.toggle('hidden',this.value!=='EMPLOYEE_CUSTODY');});
+                RW_UI.byId('bqm-source').dispatchEvent(new Event('change'));
+                self.renderQuickCart();
+            },preConfirm:async function(){
+                var supplierId=RW_UI.byId('bqm-supplier').value,branchId=RW_UI.byId('bqm-branch').value,
+                    supplierNo=RW_UI.byId('bqm-no').value.trim(),source=RW_UI.byId('bqm-source').value,
+                    custodyId=source==='EMPLOYEE_CUSTODY'?RW_UI.byId('bqm-custody').value:null;
+                if(!supplierId||!branchId||!supplierNo){Swal.showValidationMessage('اختر المورد والفرع وأدخل رقم فاتورة المورد');return false;}
+                if(!self.quickCart.length||self.quickCart.some(function(x){return !Number.isFinite(Number(x.qty))||Number(x.qty)<=0||x.unit_price===null||x.unit_price===undefined||!Number.isFinite(Number(x.unit_price))||Number(x.unit_price)<0;})){Swal.showValidationMessage('أضف الأصناف وأدخل الكمية والسعر الفعلي لكل بند');return false;}
+                var total=self.quickCart.reduce(function(n,x){return n+Number(x.qty)*Number(x.unit_price);},0);
+                if(source==='EMPLOYEE_CUSTODY'&&(!custodyId||total>Number(availableByCustody[custodyId]||0)+0.005)){Swal.showValidationMessage('العهدة المختارة لا تغطي قيمة الفاتورة بعد الحجوزات الحالية');return false;}
+                var payload={supplier_id:supplierId,branch_id:branchId,due_date:RW_UI.byId('bqm-due').value||null,
+                    supplier_invoice_no:supplierNo,notes:RW_UI.byId('bqm-notes').value.trim()||null,
+                    items:self.quickCart.map(function(x){return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price,discount_percent:0,tax_rate:0};}),
+                    settlement_source:source,cash_custody_id:custodyId,operation_id:buyerOperationId()};
+                if(invoiceId){payload.id=invoiceId;return await self.api('UPDATE_QUICK_MARKET_INVOICE',payload);}
+                return await self.api('CREATE_QUICK_MARKET_INVOICE',payload);
+            }});
+            if(result.isConfirmed){this.quickCart=[];this.invalidate();RW_UI.toast(current?'تم تحديث مسودة السوق السريع':'تم إنشاء مسودة السوق السريع: '+(result.value.code||''),'success');if(this.currentTab==='invoices')await this.renderInvoices();else await this.renderToday();}
+        }catch(e){this.notifyError(e);}
+    },
     renderQuickSearch:function(items,q){
         var box=RW_UI.byId('bq-results');if(!box)return;
         q=String(q||'').trim().toLowerCase();
