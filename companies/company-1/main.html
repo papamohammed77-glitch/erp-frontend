@@ -12423,6 +12423,15 @@ var RW_PurchaseGold = (function () {
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
+        table: 'purchase_orders',
+        filter: 'company_id=eq.' + c
+      }, function () {
+        if (!Swal.isVisible()) refresh();
+      })
+
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
         table: 'purchase_invoices',
         filter: 'company_id=eq.' + c
       }, function () {
@@ -13236,23 +13245,51 @@ var RW_PurchaseGold = (function () {
     var rows = await getData('purchase_orders', function(q){
       return q.order('po_date',{ascending:false});
     });
+    var support = await Promise.all([getData('suppliers'), getData('branches')]);
+    var supplierIndex = {}, branchIndex = {}, progressIndex = {};
+    support[0].forEach(function(s){ supplierIndex[s.id] = s; });
+    support[1].forEach(function(b){ branchIndex[b.id] = b; });
+    if (rows.length) {
+      var poIds = rows.map(function(x){ return x.id; }).filter(Boolean);
+      if (poIds.length) {
+        var detailResult = await supabase.from('purchase_order_details')
+          .select('po_id,qty_ordered,qty_received')
+          .in('po_id', poIds);
+        if (detailResult.error) throw detailResult.error;
+        (detailResult.data || []).forEach(function(d){
+          var p = progressIndex[d.po_id] || (progressIndex[d.po_id] = {ordered:0,received:0});
+          p.ordered += Number(d.qty_ordered || 0);
+          p.received += Number(d.qty_received || 0);
+        });
+      }
+    }
 
     var h =
-      '<div class="bg-white border rounded-2xl p-4">' +
+      '<div class="bg-white border rounded-2xl p-4 overflow-x-auto">' +
       '<div class="flex justify-between items-center mb-4">' +
       '<h2 class="text-xl font-black">أوامر الشراء</h2>' +
       '<button onclick="RW_Purchases.renderPOS()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl">أمر شراء مباشر</button>' +
       '</div>' +
-      '<table class="w-full text-sm"><thead class="bg-slate-50">' +
-      '<tr><th class="p-3">الكود</th><th class="p-3">المورد</th><th class="p-3">القيمة</th><th class="p-3">الحالة</th><th class="p-3">إجراء</th></tr></thead><tbody>';
+      '<table class="w-full min-w-[1180px] text-sm"><thead class="bg-slate-50">' +
+      '<tr><th class="p-3">الكود</th><th class="p-3">التاريخ</th><th class="p-3">المورد</th><th class="p-3">الفرع</th><th class="p-3">المنشئ</th><th class="p-3">موعد التوريد</th><th class="p-3">الحالة</th><th class="p-3">الكمية المسجلة</th><th class="p-3">القيمة</th><th class="p-3">العملة</th><th class="p-3">إجراء</th></tr></thead><tbody>';
 
     for (var i = 0; i < rows.length; i++) {
       var x = rows[i];
+      var supplier = supplierIndex[x.supplier_id] || {};
+      var branch = branchIndex[x.branch_id] || {};
+      var progress = progressIndex[x.id] || {ordered:0,received:0};
+      var currency = String(x.currency || 'EGP').toUpperCase();
       h += '<tr class="border-t">' +
         '<td class="p-3 font-black">' + esc(x.po_code) + '</td>' +
-        '<td class="p-3">' + esc(x.supplier_name) + '</td>' +
-        '<td class="p-3">' + Number(x.total_amount || 0).toLocaleString() + '</td>' +
+        '<td class="p-3">' + esc(x.po_date || x.created_at || '—') + '</td>' +
+        '<td class="p-3">' + esc(supplier.name || x.supplier_name || '—') + '</td>' +
+        '<td class="p-3">' + esc(branch.name || '—') + '</td>' +
+        '<td class="p-3 text-xs">' + esc(x.created_by || '—') + '</td>' +
+        '<td class="p-3">' + esc(x.expected_delivery_date || '—') + '</td>' +
         '<td class="p-3">' + esc(x.status) + '</td>' +
+        '<td class="p-3 text-xs">' + progress.received.toLocaleString() + ' / ' + progress.ordered.toLocaleString() + ' مسجل</td>' +
+        '<td class="p-3 font-bold">' + Number(x.total_amount || 0).toLocaleString() + '</td>' +
+        '<td class="p-3 font-black">' + esc(currency) + '</td>' +
         '<td class="p-3"><button onclick="RW_Purchases._openPO(\'' + esc(x.po_code) + '\')" class="text-blue-600">عرض</button></td>' +
         '</tr>';
     }
@@ -13261,7 +13298,11 @@ var RW_PurchaseGold = (function () {
   }
 
   async function invoices(host) {
-    var rows = await getData('purchase_invoices');
+    var support = await Promise.all([getData('purchase_invoices'), getData('suppliers'), getData('branches'), getData('purchase_orders')]);
+    var rows = support[0], supplierIndex = {}, branchIndex = {}, poIndex = {};
+    support[1].forEach(function(s){ supplierIndex[s.id] = s; });
+    support[2].forEach(function(b){ branchIndex[b.id] = b; });
+    support[3].forEach(function(p){ poIndex[p.id] = p; });
 
     var h =
       '<div class="flex justify-between items-center mb-4">' +
@@ -13269,15 +13310,27 @@ var RW_PurchaseGold = (function () {
       '<button onclick="RW_PurchaseGold.createInvoice()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black">فاتورة جديدة</button>' +
       '</div>' +
       '<div class="bg-white border rounded-2xl overflow-auto"><table class="w-full text-sm">' +
-      '<thead class="bg-slate-50"><tr><th class="p-3">الكود</th><th class="p-3">المورد</th><th class="p-3">القيمة</th><th class="p-3">المدفوع</th><th class="p-3">الحالة</th><th class="p-3">إجراء</th></tr></thead><tbody>';
+      '<thead class="bg-slate-50"><tr><th class="p-3">الكود</th><th class="p-3">التاريخ</th><th class="p-3">المورد</th><th class="p-3">PO</th><th class="p-3">الفرع</th><th class="p-3">المنشئ</th><th class="p-3">الاستحقاق</th><th class="p-3">القيمة</th><th class="p-3">العملة</th><th class="p-3">المدفوع</th><th class="p-3">المتبقي</th><th class="p-3">الحالة</th><th class="p-3">إجراء</th></tr></thead><tbody>';
 
     for (var i = 0; i < rows.length; i++) {
       var x = rows[i];
+      var supplier = supplierIndex[x.supplier_id] || {};
+      var branch = branchIndex[x.branch_id] || {};
+      var po = poIndex[x.purchase_order_id] || {};
+      var currency = String(x.currency || 'EGP').toUpperCase();
+      var total = Number(x.total_amount || 0), paid = Number(x.paid_amount || 0);
       h += '<tr class="border-t">' +
         '<td class="p-3 font-black">' + esc(x.invoice_code) + '</td>' +
-        '<td class="p-3">' + esc(x.supplier_id) + '</td>' +
-        '<td class="p-3">' + Number(x.total_amount || 0).toLocaleString() + '</td>' +
-        '<td class="p-3">' + Number(x.paid_amount || 0).toLocaleString() + '</td>' +
+        '<td class="p-3">' + esc(x.invoice_date || x.created_at || '—') + '</td>' +
+        '<td class="p-3">' + esc(supplier.name || '—') + '</td>' +
+        '<td class="p-3">' + esc(po.po_code || 'بدون PO') + '</td>' +
+        '<td class="p-3">' + esc(branch.name || '—') + '</td>' +
+        '<td class="p-3 text-xs">' + esc(x.created_by || '—') + '</td>' +
+        '<td class="p-3">' + esc(x.due_date || '—') + '</td>' +
+        '<td class="p-3 font-bold">' + total.toLocaleString() + '</td>' +
+        '<td class="p-3 font-black">' + esc(currency) + '</td>' +
+        '<td class="p-3">' + paid.toLocaleString() + '</td>' +
+        '<td class="p-3 font-bold">' + Math.max(0,total-paid).toLocaleString() + '</td>' +
         '<td class="p-3">' + esc(x.status) + '</td>' +
         '<td class="p-3">' +
         (x.status === 'Draft'
@@ -14289,6 +14342,12 @@ var RW_PurchaseGold = (function () {
     var branches = await getData('branches', function (q) {
       return q.eq('is_active', true).order('name', { ascending: true });
     });
+    var currencyResult = await supabase.from('app_settings')
+      .select('currency').eq('company_id', companyId())
+      .order('created_at', { ascending: true }).limit(1).maybeSingle();
+    if (currencyResult.error) throw currencyResult.error;
+    var systemCurrency = String(currencyResult.data && currencyResult.data.currency || 'EGP').trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(systemCurrency)) throw new Error('عملة النظام المركزي غير صالحة');
 
     var s = r.data || {};
     var branchOptions = '<option value="">لا يوجد فرع افتراضي</option>' + branches.map(function (x) {
@@ -14307,7 +14366,7 @@ var RW_PurchaseGold = (function () {
       '<div class="bg-white border rounded-2xl p-5">' +
       '<div class="font-black text-lg mb-4">الترقيم والعملة</div>' +
       '<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">' +
-      '<label class="text-sm font-black">العملة الافتراضية<input id="pg-s-currency" class="w-full border rounded-xl p-3 mt-1" value="' + esc(s.default_currency || 'SAR') + '"></label>' +
+      '<label class="text-sm font-black">عملة النظام المعتمدة<input id="pg-s-currency" readonly aria-readonly="true" class="w-full border rounded-xl p-3 mt-1 bg-slate-100 text-slate-600 cursor-not-allowed" value="' + esc(systemCurrency) + '"><small class="block text-xs text-slate-500 mt-1">تُدار من إعدادات النظام الأم فقط؛ كل مستند يحتفظ بعملته المسجلة.</small></label>' +
       '<label class="text-sm font-black">بادئة طلب الشراء<input id="pg-s-request" class="w-full border rounded-xl p-3 mt-1" value="' + esc(s.request_prefix || 'PR-') + '"></label>' +
       '<label class="text-sm font-black">بادئة RFQ<input id="pg-s-rfq" class="w-full border rounded-xl p-3 mt-1" value="' + esc(s.rfq_prefix || 'RFQ-') + '"></label>' +
       '<label class="text-sm font-black">بادئة العرض<input id="pg-s-quote" class="w-full border rounded-xl p-3 mt-1" value="' + esc(s.quotation_prefix || 'PQT-') + '"></label>' +
@@ -14333,7 +14392,6 @@ var RW_PurchaseGold = (function () {
   }
   async function saveSettings() {
     var payload = {
-      default_currency: byId('pg-s-currency').value.trim() || 'SAR',
       request_prefix: byId('pg-s-request').value.trim() || 'PR-',
       rfq_prefix: byId('pg-s-rfq').value.trim() || 'RFQ-',
       quotation_prefix: byId('pg-s-quote').value.trim() || 'PQT-',
