@@ -651,7 +651,13 @@ var App = {
     deleteDraftInvoice:async function(id){
         var confirm=await Swal.fire({title:'حذف مسودة الفاتورة؟',text:'لن يُسمح بالحذف إذا كان للمستند استلام أو سداد أو حركة أو مستند مرتبط. سيُحتفظ بسجل تدقيق للحذف.',icon:'warning',showCancelButton:true,confirmButtonText:'حذف المسودة',cancelButtonText:'تراجع',confirmButtonColor:'#b91c1c'});
         if(!confirm.isConfirmed)return;
-        try{await this.api('DELETE_DRAFT_INVOICE',{id:id,reason:'Deleted from Buyer invoices tab',operation_id:buyerOperationId()});this.invalidate();RW_UI.toast('تم حذف مسودة الفاتورة مع الاحتفاظ بسجل التدقيق','success');await this.renderInvoices();}
+        try{
+            var invoice=(await this.data('purchase_invoices')).find(function(x){return x.id===id;});
+            if(!invoice)throw new Error('فاتورة الشراء غير موجودة');
+            var op=invoice.purchase_source==='QUICK_MARKET'?'DELETE_QUICK_MARKET_DRAFT':'DELETE_BUYER_DRAFT_INVOICE';
+            await this.api(op,{id:id,reason:'Deleted from Buyer invoices tab',operation_id:buyerOperationId()});
+            this.invalidate();RW_UI.toast('تم حذف مسودة الفاتورة مع الاحتفاظ بسجل التدقيق','success');await this.renderInvoices();
+        }
         catch(e){this.notifyError(e);}
     },
     applyQuotationFilters:function(){
