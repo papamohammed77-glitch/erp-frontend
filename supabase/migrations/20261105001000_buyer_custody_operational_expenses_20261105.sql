@@ -107,9 +107,15 @@ BEGIN
     IF v_row.expense_type='PURCHASE_INVOICE'
        AND v_row.custody_id=p_custody_id AND v_row.employee_id=v_actor.id
        AND v_row.purchase_invoice_id=p_purchase_invoice_id AND v_row.supplier_id=p_supplier_id
-       AND abs(v_row.amount-p_amount)<=0.005
+       AND v_row.expense_date=COALESCE(p_expense_date,current_date)
+       AND v_row.invoice_number IS NOT DISTINCT FROM NULLIF(btrim(p_invoice_number),'')
+       AND v_row.description=btrim(p_description)
+       AND abs(v_row.amount-p_amount)<=0.005 AND v_row.currency=v_currency
        AND v_row.document_name=p_document_name AND v_row.document_path=p_document_path
+       AND v_row.mime_type IS NOT DISTINCT FROM NULLIF(btrim(p_mime_type),'')
+       AND v_row.receipt_document_name=p_receipt_document_name
        AND v_row.receipt_document_path=p_receipt_document_path
+       AND v_row.receipt_mime_type IS NOT DISTINCT FROM NULLIF(btrim(p_receipt_mime_type),'')
        AND v_row.receiving_operation_id=p_receiving_operation_id THEN
       RETURN to_jsonb(v_row)||jsonb_build_object('duplicate',true);
     END IF;
@@ -260,9 +266,10 @@ BEGIN
     IF v_row.expense_type='OPERATIONAL'
        AND v_row.custody_id=p_custody_id AND v_row.employee_id=v_actor.id
        AND v_row.expense_category=p_expense_category
+       AND v_row.expense_date=COALESCE(p_expense_date,current_date)
        AND v_row.expense_reference IS NOT DISTINCT FROM NULLIF(btrim(p_expense_reference),'')
        AND v_row.description=btrim(p_description)
-       AND abs(v_row.amount-p_amount)<=0.005
+       AND abs(v_row.amount-p_amount)<=0.005 AND v_row.currency=v_currency
        AND v_row.document_name=p_document_name AND v_row.document_path=p_document_path
        AND upper(COALESCE(v_row.mime_type,''))=upper(COALESCE(p_mime_type,'')) THEN
       RETURN to_jsonb(v_row)||jsonb_build_object('duplicate',true);
