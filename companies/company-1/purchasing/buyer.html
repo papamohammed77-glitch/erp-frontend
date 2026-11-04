@@ -49,7 +49,7 @@
         <button onclick="App.switchTab('orders')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-orders">📋 أوامر PO</button>
         <button onclick="App.switchTab('invoices')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-invoices">🧾 فواتيري</button>
         <button onclick="App.switchTab('custody')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-custody">💳 عهدتي</button>
-        <button onclick="App.switchTab('vehicle')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-vehicle">📦 رصيدي</button>
+        <button onclick="App.switchTab('vehicle')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-vehicle">📦 عهدة بضاعتي</button>
         <button onclick="App.switchTab('account')" class="px-2 py-3 rounded-xl font-bold text-xs text-gray-500" id="tab-account">👤 حسابي</button>
     </div>
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
@@ -707,10 +707,23 @@ var App = {
         }catch(e){this.notifyError(e);}
     },
     renderVehicleBalance:async function(){
-        this.pageLoading('تحميل رصيد البضاعة');
-        var html='<div class="mb-4"><h2 class="text-xl font-black">رصيدي — عهدة بضاعة المشتريات</h2><p class="text-xs text-slate-500 mt-1">دفتر حيازة الأصناف المسلمة فعليًا إلى مسؤول المشتريات، سواء بسيارة أو يدويًا</p></div>';
-        html+='<div class="card border border-amber-200 bg-amber-50"><div class="flex items-center gap-2 text-amber-900 font-black"><i class="fa-solid fa-triangle-exclamation"></i> دفتر الحيازة المركزي غير منشأ بعد</div><p class="text-sm text-amber-900 mt-2">لا يوجد في مخطط Production الحالي دفتر حركات عهدة بضاعة المشتريات. لذلك لا يمكن عرض رصيد موثوق أو تسجيل حركة هنا حتى يُعتمد عقد الحركات المركزي ويُنفذ.</p><p class="text-xs text-amber-800 mt-2">لن يُستخدم تعيين Fleet أو مخزون سيارات التوصيل كبديل، ولن تُحسب فاتورة أو أمر شراء أو مجرد خروج من المورد كاستلام فعلي في عهدة المشتري.</p></div>';
-        html+='<div class="card mt-3"><h3 class="font-black mb-3">دورة الحيازة المطلوبة</h3><ol class="space-y-3 text-sm"><li><b>1. المورد ← المشتري:</b> إثبات الكمية المستلمة فعليًا، مع رقم الفاتورة والصنف والكمية والفرع، والمركبة اختيارية.</li><li><b>2. المشتري ← المخزن:</b> أمين المخزن يثبت المقبول والمرفوض ويربط الحركة باستلام الفاتورة؛ المقبول فقط يزيد مخزون الفرع.</li><li><b>3. المخزن ← المشتري:</b> إذن صرف مرتجع مورد ينشئ حيازة مرتجع على المشتري، ولا يخفض حساب المورد.</li><li><b>4. المشتري ← المورد:</b> إثبات تفويض المورد عند اللزوم، والكميات المقبولة فعليًا وإيصال/إشعار المورد؛ لا يخفض AP إلا المقبول المثبت مرة واحدة.</li></ol><p class="text-xs text-slate-500 border-t mt-3 pt-3">الرصيد يجب أن يُشتق من دفتر حركات غير قابل للتعديل المباشر، مع سجل عكسي/تصحيحي، لا من قيمة قابلة للتحرير ولا من ربط إلزامي بمركبة.</p></div>';
+        this.pageLoading('تحميل دفتر حيازة البضاعة');
+        var result=await this.api('GET_BUYER_GOODS_CUSTODY_BALANCES',{}),balances=result.balances||[],events=result.events||[];
+        var labels={
+            SUPPLIER_TO_BUYER_QUICK_MARKET:'استلام من المورد إلى عهدة المشتري',
+            WAREHOUSE_TO_BUYER_SUPPLIER_RETURN:'مرتجع مورد من المخزن إلى عهدة المشتري',
+            BUYER_TO_WAREHOUSE_ACCEPTED:'تسليم مقبول للمخزن',
+            BUYER_TO_SUPPLIER_ACCEPTED:'تسليم مقبول للمورد',
+            BUYER_TO_WAREHOUSE_RETURN:'إعادة بضاعة إلى المخزن',
+            BUYER_CUSTODY_CORRECTION:'تسوية/تصحيح عكسي'
+        };
+        var html='<div class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h2 class="text-xl font-black">عهدة بضاعتي</h2><p class="text-xs text-slate-500 mt-1">رصيد الحيازة الفعلي من دفتر الأحداث المركزي؛ المركبة اختيارية ولا تمثل مفتاح الرصيد</p></div><button onclick="App.switchTab(\'invoices\')" class="px-3 py-2 rounded-xl bg-purple-700 text-white text-xs font-bold">فواتيري</button></div>';
+        html+='<div class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3"><div class="card"><small class="text-slate-500">بنود برصيد حيازة</small><b class="block text-2xl mt-1">'+balances.length+'</b></div><div class="card"><small class="text-slate-500">أحداث معروضة</small><b class="block text-2xl mt-1">'+events.length+'</b></div><div class="card"><small class="text-slate-500">المركبة</small><b class="block text-sm mt-2">اختيارية</b></div></div>';
+        html+='<section class="card mb-3"><h3 class="font-black mb-3">الرصيد الحالي حسب الصنف والفرع</h3>';
+        html+=balances.length?'<div class="overflow-auto"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الفرع</th><th class="p-2">الرصيد</th><th class="p-2">آخر حركة</th></tr></thead><tbody>'+balances.map(function(x){return '<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></td><td class="p-2">'+buyerEsc(x.branch_name||'—')+'</td><td class="p-2 font-black">'+buyerEsc(x.balance_qty)+' '+buyerEsc(x.unit||'')+'</td><td class="p-2 text-xs">'+buyerDate(x.last_movement_at)+'</td></tr>';}).join('')+'</tbody></table></div>':'<p class="text-xs text-slate-400">لا توجد أصناف مثبتة في عهدتك حاليًا.</p>';
+        html+='</section><section class="card"><h3 class="font-black mb-3">آخر أحداث الحيازة</h3>';
+        html+=events.length?'<div class="space-y-2">'+events.map(function(e){return '<div class="p-3 rounded-xl bg-slate-50"><div class="flex flex-wrap justify-between gap-2"><b class="text-sm">'+buyerEsc(e.item_name||e.item_code)+'</b><b class="'+(Number(e.qty_delta)>0?'text-emerald-700':'text-blue-700')+'">'+(Number(e.qty_delta)>0?'+':'')+buyerEsc(e.qty_delta)+' '+buyerEsc(e.unit||'')+'</b></div><p class="text-xs text-slate-500 mt-1">'+buyerEsc(labels[e.event_type]||e.event_type)+' · '+buyerEsc(e.branch_name||'')+' · '+buyerDate(e.created_at)+'</p>'+(e.invoice_code?'<button onclick="App.openInvoice(\''+buyerEsc(e.source_document_id)+'\')" class="text-xs text-purple-700 underline mt-2">فتح الفاتورة '+buyerEsc(e.invoice_code)+'</button>':'')+(e.vehicle_id?'<p class="text-[11px] text-slate-400 mt-1">مركبة مرتبطة بالحدث</p>':'<p class="text-[11px] text-slate-400 mt-1">حيازة مباشرة دون مركبة</p>')+(e.notes?'<p class="text-xs text-slate-500 mt-1">'+buyerEsc(e.notes)+'</p>':'')+'</div>';}).join('')+'</div>':'<p class="text-xs text-slate-400">لا توجد أحداث حيازة مسجلة.</p>';
+        html+='<p class="text-[11px] text-slate-500 border-t mt-3 pt-3">هذا الرصيد لا يغيّر مخزون الفرع ولا حساب المورد. إثبات التسليم للمخزن أو للمورد يتطلب مستند قبول منفصلًا، وسيضاف مساره في المرحلة اللاحقة.</p></section>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     applyPOFilters:function(){
