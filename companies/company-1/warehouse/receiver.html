@@ -200,7 +200,7 @@ var App = {
         var self = this;
         RW_UI.showSkeleton('mainContent', 3, 'card');
 
-        supabase.from('purchase_orders').select('po_code, po_date, supplier_name, status, total_amount').in('status', ['Sent', 'Partially Received']).order('po_date', { ascending: false }).limit(50).then(function(res) {
+        supabase.from('purchase_orders').select('id, po_code, po_date, supplier_name, status, total_amount').in('status', ['Approved', 'Sent', 'Partially Received']).order('po_date', { ascending: false }).limit(50).then(function(res) {
             self.purchaseOrders = res.data || [];
             self.renderList();
         }).catch(function(err) {
@@ -225,8 +225,8 @@ var App = {
             }
             for (var i = 0; i < filtered.length; i++) {
                 var po = filtered[i];
-                var sc = po.status === 'Sent' ? 'bg-amber-50 text-amber-600' : 'bg-orange-50 text-orange-600';
-                var sl = po.status === 'Sent' ? 'مُرسل' : 'استلام جزئي';
+                var sc = po.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : po.status === 'Sent' ? 'bg-amber-50 text-amber-600' : 'bg-orange-50 text-orange-600';
+                var sl = po.status === 'Approved' ? 'تم الاعتماد' : po.status === 'Sent' ? 'مُرسل' : 'استلام جزئي';
                 html += '<div class="card mb-3 cursor-pointer slide-in"><div class="flex justify-between items-center" onclick="App.toggleAccordion(' + i + ',\'' + po.po_code + '\')"><div><span class="font-black">' + po.po_code + '</span><p class="text-xs text-slate-400">' + po.po_date + ' | ' + (po.supplier_name || '---') + '</p></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span><i class="fa-solid fa-chevron-down text-slate-300" id="chevron-' + i + '"></i></div></div><div class="accordion-content" id="accordion-' + i + '"><div class="border-t mt-3 pt-3"><div id="details-' + i + '" class="text-center py-4">جاري تحميل التفاصيل...</div><button id="btn-rec-' + i + '" class="btn-primary mt-4 hidden" onclick="App.submitReceiving(' + i + ',\'' + po.po_code + '\')"><i class="fa-solid fa-check ml-2"></i> اعتماد الاستلام</button></div></div></div>';
             }
         }
@@ -251,13 +251,24 @@ var App = {
     loadPODetails: function(i, code){
         var self = this;
         RW_UI.safeHTML(RW_UI.byId('details-' + i), '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
-        supabase.from('purchase_order_details').select('item_code, item_name, qty_ordered, unit').eq('po_code', code).then(function(r) {
+                var po = self.purchaseOrders.find(function (x) { return x.po_code === code; });
+        if (!po || !po.id) {
+          RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-rose-600 text-center py-4">تعذر ربط تفاصيل أمر الشراء.</p>');
+          return;
+        }
+        supabase.from('purchase_order_details')
+          .select('item_code, item_name, qty_ordered, qty_received, unit')
+          .eq('po_id', po.id)
+          .then(function(r) {
             var items = r.data || [];
             var html = '';
             for (var j = 0; j < items.length; j++) {
-                var it = items[j];
-                html += '<div class="flex justify-between items-center p-3 border-b"><div><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + it.item_code + ' | مطلوب: ' + it.qty_ordered + ' ' + (it.unit || 'حبة') + '</p></div><input type="number" id="qty-' + i + '-' + j + '" value="' + it.qty_ordered + '" min="0" max="' + it.qty_ordered + '" class="w-20 p-2 border rounded-xl text-center font-bold text-sm" data-item-code="' + it.item_code + '"></div>';
-            }
+                 var it = items[j];
+                 var ordered = Number(it.qty_ordered) || 0;
+                 var received = Number(it.qty_received) || 0;
+                 var remaining = Math.max(0, ordered - received);
+                 html += '<div class="flex justify-between items-center p-3 border-b"><div><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + it.item_code + ' | مطلوب: ' + ordered + ' | مستلم: ' + received + ' | متبقي: ' + remaining + ' ' + (it.unit || 'حبة') + '</p></div><input type="number" step="0.01" id="qty-' + i + '-' + j + '" value="' + remaining + '" min="0" max="' + remaining + '" class="w-20 p-2 border rounded-xl text-center font-bold text-sm" data-item-code="' + it.item_code + '"></div>';
+             }
             RW_UI.safeHTML(RW_UI.byId('details-' + i), html || '<p class="text-slate-400 text-center py-4">لا توجد أصناف.</p>');
             var btn = RW_UI.byId('btn-rec-' + i);
             if (btn) btn.classList.remove('hidden');
@@ -269,7 +280,7 @@ var App = {
         var items = [];
         var qtyInputs = document.querySelectorAll('#details-' + i + ' input[type="number"]');
         for (var j = 0; j < qtyInputs.length; j++) {
-            var q = parseInt(qtyInputs[j].value) || 0;
+            var q = parseFloat(qtyInputs[j].value) || 0;
             var itemCode = qtyInputs[j].getAttribute('data-item-code') || '';
             items.push({ itemCode: itemCode, itemName: '', receivedQty: q, reason: '' });
         }
