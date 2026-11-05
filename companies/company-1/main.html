@@ -12064,10 +12064,33 @@ var RW_Purchases = (function() {
       if (poRes.error || !poRes.data) throw new Error('أمر الشراء غير موجود');
       var dRes = await supabase.from('purchase_order_details').select('*').eq('po_id', poRes.data.id).order('created_at', { ascending: true });
       if (dRes.error) throw dRes.error;
-      var rows = dRes.data || [], h = '<div class="text-right"><div class="grid grid-cols-2 gap-3 mb-4"><div class="bg-slate-50 rounded-xl p-3"><div class="text-xs text-gray-500">المورد</div><div class="font-bold">' + esc(poRes.data.supplier_name) + '</div></div><div class="bg-slate-50 rounded-xl p-3"><div class="text-xs text-gray-500">الحالة</div><div class="font-bold">' + esc(poRes.data.status) + '</div></div></div><table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">المطلوب</th><th class="p-2 text-center">المستلم</th><th class="p-2 text-center">المتبقي</th><th class="p-2 text-center">السعر</th></tr></thead><tbody>';
+      var rows = dRes.data || [], h = '<div class="text-right"><div class="grid grid-cols-2 gap-3 mb-4"><div class="bg-slate-50 rounded-xl p-3"><div class="text-xs text-gray-500">المورد</div><div class="font-bold">' + esc(poRes.data.supplier_name) + '</div></div><div class="bg-slate-50 rounded-xl p-3"><div class="text-xs text-gray-500">الحالة</div><div class="font-bold">' + esc(({Draft:'مسودة',Approved:'تم الاعتماد',Sent:'مرسل للمورد','Partially Received':'استلام جزئي',Received:'مكتمل الاستلام',Cancelled:'ملغي'})[poRes.data.status] || poRes.data.status || '—') + '</div></div></div><table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th class="p-2">الصنف</th><th class="p-2 text-center">المطلوب</th><th class="p-2 text-center">المستلم</th><th class="p-2 text-center">المتبقي</th><th class="p-2 text-center">السعر</th></tr></thead><tbody>';
       for (var i = 0; i < rows.length; i++) { var r = rows[i], ordered = Number(r.qty_ordered) || 0, received = Number(r.qty_received) || 0; h += '<tr class="border-b"><td class="p-2 font-semibold">' + esc(r.item_name || r.item_code) + '</td><td class="p-2 text-center">' + ordered + '</td><td class="p-2 text-center">' + received + '</td><td class="p-2 text-center font-bold">' + Math.max(0, ordered - received) + '</td><td class="p-2 text-center">' + (Number(r.unit_price) || 0).toLocaleString() + '</td></tr>'; }
       h += '</tbody></table><div class="mt-4 font-black text-lg">الإجمالي: ' + (Number(poRes.data.total_amount) || 0).toLocaleString() + ' EGP</div></div>';
-      hideLoader(); Swal.fire({ title: 'تفاصيل ' + esc(poCode), html: h, width: '820px', showConfirmButton: false, showCloseButton: true });
+		      var canApprovePO = poRes.data.status === 'Draft' && RW_Permissions_check('purchases_supervisor');
+      if (canApprovePO) {
+        h += '<div class="mt-4 flex justify-start"><button type="button" id="po-approve-btn" class="px-5 py-3 rounded-xl bg-emerald-600 text-white font-black"><i class="fa-solid fa-check ml-2"></i>اعتماد أمر الشراء</button></div>' +
+          '<p class="mt-2 text-xs text-slate-500">بعد الاعتماد يصبح الأمر متاحًا للاستلام بالمخزن. الاعتماد لا يثبت استلامًا ولا ينشئ حركة مخزون أو قيدًا محاسبيًا.</p>';
+      }
+            hideLoader();
+      Swal.fire({
+        title: 'تفاصيل ' + esc(poCode),
+        html: h,
+        width: '820px',
+        showConfirmButton: false,
+        showCloseButton: true,
+        didOpen: function () {
+          var approveBtn = byId('po-approve-btn');
+          if (approveBtn) approveBtn.addEventListener('click', function () {
+            Swal.close();
+            if (window.RW_PurchaseGold && typeof window.RW_PurchaseGold.approvePO === 'function') {
+              window.RW_PurchaseGold.approvePO(poRes.data.id);
+            } else {
+              showToast('مسار اعتماد أمر الشراء غير متاح', 'error');
+            }
+          });
+        }
+      });
     } catch (e) { hideLoader(); showToast(e.message || 'فشل تحميل التفاصيل', 'error'); }
   }
 
@@ -13241,6 +13264,41 @@ var RW_PurchaseGold = (function () {
     }
   }
 
+	  async function approvePO(poId) {
+    if (!RW_Permissions_check('purchases_supervisor')) {
+      showToast('اعتماد أمر الشراء يتطلب صلاحية مشرف المشتريات', 'error');
+      return;
+    }
+    if (!poId) {
+      showToast('معرّف أمر الشراء غير صالح', 'error');
+      return;
+    }
+
+    var confirmation = await Swal.fire({
+      title: 'اعتماد أمر الشراء؟',
+      text: 'ستتحول الحالة من مسودة إلى تم الاعتماد، ويصبح الأمر متاحًا للاستلام بالمخزن. الاعتماد وحده لا يثبت حركة مخزون أو قيدًا ماليًا.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'اعتماد الأمر',
+      cancelButtonText: 'إلغاء',
+      confirmButtonColor: '#059669'
+    });
+    if (!confirmation.isConfirmed) return;
+
+    showLoader('جاري اعتماد أمر الشراء...');
+    try {
+      var result = await api('APPROVE_PO', { id: poId });
+      hideLoader();
+      if (!result || result.success === false) throw new Error((result && result.msg) || 'فشل اعتماد أمر الشراء');
+      showToast('تم اعتماد أمر الشراء وأصبح جاهزًا للاستلام', 'success');
+      active = 'orders';
+      await refresh();
+    } catch (e) {
+      hideLoader();
+      showToast(e.message || 'تعذر اعتماد أمر الشراء', 'error');
+    }
+  }
+	
   async function orders(host) {
     var rows = await getData('purchase_orders', function(q){
       return q.order('po_date',{ascending:false});
@@ -13286,7 +13344,7 @@ var RW_PurchaseGold = (function () {
         '<td class="p-3">' + esc(branch.name || '—') + '</td>' +
         '<td class="p-3 text-xs">' + esc(x.created_by || '—') + '</td>' +
         '<td class="p-3">' + esc(x.expected_delivery_date || '—') + '</td>' +
-        '<td class="p-3">' + esc(x.status) + '</td>' +
+        '<td class="p-3">' + esc(({Draft:'مسودة',Approved:'تم الاعتماد',Sent:'مرسل للمورد','Partially Received':'استلام جزئي',Received:'مكتمل الاستلام',Cancelled:'ملغي'})[x.status] || x.status || '—') + '</td>' +
         '<td class="p-3 text-xs">' + progress.received.toLocaleString() + ' / ' + progress.ordered.toLocaleString() + ' مسجل</td>' +
         '<td class="p-3 font-bold">' + Number(x.total_amount || 0).toLocaleString() + '</td>' +
         '<td class="p-3 font-black">' + esc(currency) + '</td>' +
@@ -14426,6 +14484,7 @@ var RW_PurchaseGold = (function () {
     open: open,
     createRequest: createRequest,
     approveRequest: approveRequest,
+	approvePO: approvePO,
     createRFQ: createRFQ,
     sendRFQ: sendRFQ,
     createQuotation: createQuotation,
