@@ -51,12 +51,31 @@
 <script>
 var db = new Dexie('RW_PurchSupervisor'); db.version(1).stores({ meta: 'key' });
 
+function RW_PurchSupervisorEsc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function(ch) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+    });
+}
+function RW_PurchSupervisorStatus(s) {
+    var labels = {
+        Draft:'مسودة',
+        Approved:'تم الاعتماد',
+        Sent:'مرسل للمورد',
+        'Partially Received':'استلام جزئي',
+        Received:'مكتمل الاستلام',
+        Cancelled:'ملغي'
+    };
+    return labels[s] || s || '—';
+}
+
 var App = {
     currentUser: null,
+    currentOrders: [],
+    currentTab: 'dashboard',
     realtimeKey: null,
     togglePass: function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
     doLogin: function(){var e=RW_UI.byId('loginEmail').value.trim(),p=RW_UI.byId('loginPass').value.trim();if(!e||!p){RW_UI.byId('loginMsg').innerText='أدخل البيانات';RW_UI.byId('loginMsg').classList.remove('hidden');return;}RW_UI.byId('loginMsg').classList.add('hidden');var s=this;RW_UI.showLoader('جاري تسجيل الدخول...');RW_Auth.doLogin(e,p,function(user,err){RW_UI.hideLoader();if(err){RW_UI.byId('loginMsg').innerText=err;RW_UI.byId('loginMsg').classList.remove('hidden');}else{s.init();}});},
-    init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return;}var isO=user.isOwner,perms=user.permissions,has=isO||(Array.isArray(perms)&&perms.indexOf('purchases')!==-1);if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return;}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;s.enterApp();});},
+    init: function(){var s=this;RW_Auth.init(function(user,err){if(err||!user){if(err==='NO_SESSION')return;RW_UI.showError('فشل استعادة الجلسة');return;}var isO=user.isOwner===true,perms=Array.isArray(user.permissions)?user.permissions:[],has=isO||perms.indexOf('*')!==-1||perms.indexOf('purchases_supervisor')!==-1;if(!has){RW_UI.showError('غير مصرح');RW_Auth.doLogout();return;}RW_UI.safeText(RW_UI.byId('headerUserName'),user.name);s.currentUser=user;s.enterApp();});},
     enterApp: function(){RW_UI.byId('loginScreen').classList.add('hidden');RW_UI.byId('mainApp').classList.remove('hidden');this.switchTab('dashboard');this.startRealtime();},
     startRealtime: function(){
         var self = this;
@@ -80,7 +99,7 @@ var App = {
         if (this.realtimeKey && typeof RW_Realtime !== 'undefined') { RW_Realtime.stop(this.realtimeKey); this.realtimeKey = null; }
     },
     doLogout: function(){this.stopRealtime();var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden');});},
-    switchTab: function(t){['dashboard','orders','suppliers'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-fuchsia-600','text-white');b.classList.add('text-gray-500');}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-fuchsia-600','text-white');a.classList.remove('text-gray-500');}if(t==='dashboard')this.renderDashboard();else if(t==='orders')this.renderOrders();else if(t==='suppliers')this.renderSuppliers();},
+    switchTab: function(t){this.currentTab=t;['dashboard','orders','suppliers'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-fuchsia-600','text-white');b.classList.add('text-gray-500');}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-fuchsia-600','text-white');a.classList.remove('text-gray-500');}if(t==='dashboard')this.renderDashboard();else if(t==='orders')this.renderOrders();else if(t==='suppliers')this.renderSuppliers();},
 
     renderDashboard: function(){
         var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
@@ -100,12 +119,243 @@ var App = {
         });
     },
 
-    renderOrders: function(){
-        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        supabase.from('purchase_orders').select('po_code,po_date,supplier_name,status,total_amount').order('po_date',{ascending:false}).limit(50).then(function(r){var orders=r.data||[],html='<h2 class="text-lg font-black mb-4">📋 جميع أوامر الشراء</h2>';
-        if(!orders.length){html+='<div class="text-center text-gray-400 py-10">لا توجد أوامر</div>';}else{for(var i=0;i<orders.length;i++){var o=orders[i],sc=o.status==='Received'?'bg-green-100 text-green-700':o.status==='Partially Received'?'bg-orange-100 text-orange-700':o.status==='Sent'?'bg-blue-100 text-blue-700':'bg-amber-100 text-amber-700';
-        html+='<div class="card mb-2"><div class="flex justify-between"><div><span class="font-bold">'+o.po_code+'</span><p class="text-xs text-gray-400">'+o.po_date+' | '+o.supplier_name+'</p></div><div><span class="px-2 py-1 rounded-full text-xs font-bold '+sc+'">'+o.status+'</span><p class="font-black text-fuchsia-600 mt-1">'+fmtNum(o.total_amount)+' ج.م</p></div></div></div>';}}
-        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);});
+    renderOrders: async function(){
+        var self = this;
+        var companyId = this.currentUser && this.currentUser.company_id;
+        if (!companyId) {
+            RW_UI.showError('سياق الشركة غير متاح');
+            return;
+        }
+
+        RW_UI.showSkeleton('mainContent', 3, 'card');
+
+        try {
+            var all = [];
+            var offset = 0;
+            var pageSize = 200;
+
+            while (true) {
+                var page = await supabase.from('purchase_orders')
+                    .select('id,company_id,po_code,po_date,supplier_name,branch_id,created_by,expected_delivery_date,total_amount,currency,status,notes,created_at')
+                    .eq('company_id', companyId)
+                    .order('po_date', {ascending:false})
+                    .order('created_at', {ascending:false})
+                    .order('id', {ascending:false})
+                    .range(offset, offset + pageSize - 1);
+
+                if (page.error) throw page.error;
+
+                var batch = page.data || [];
+                all = all.concat(batch);
+                if (batch.length < pageSize) break;
+                offset += pageSize;
+            }
+
+            var branchResult = await supabase.from('branches')
+                .select('id,name')
+                .eq('company_id', companyId);
+
+            if (branchResult.error) throw branchResult.error;
+
+            var branchMap = {};
+            (branchResult.data || []).forEach(function(b){ branchMap[b.id] = b.name || ''; });
+
+            self.currentOrders = all;
+
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),
+                '<div class="flex flex-col gap-3 mb-4">' +
+                  '<div><h2 class="text-lg font-black">جميع أوامر الشراء</h2>' +
+                  '<p class="text-xs text-gray-500">كل أوامر الشركة لجميع مسؤولي المشتريات — إجمالي ' + all.length + ' أمر</p></div>' +
+                  '<div class="grid grid-cols-1 md:grid-cols-2 gap-2">' +
+                    '<input id="pws-po-search" class="w-full p-3 border rounded-xl" placeholder="ابحث برقم PO أو المورد أو مسؤول المشتريات">' +
+                    '<select id="pws-po-status" class="w-full p-3 border rounded-xl">' +
+                      '<option value="">كل الحالات</option>' +
+                      '<option value="Draft">مسودة</option>' +
+                      '<option value="Approved">تم الاعتماد</option>' +
+                      '<option value="Sent">مرسل للمورد</option>' +
+                      '<option value="Partially Received">استلام جزئي</option>' +
+                      '<option value="Received">مكتمل الاستلام</option>' +
+                      '<option value="Cancelled">ملغي</option>' +
+                    '</select>' +
+                  '</div>' +
+                '</div>' +
+                '<div class="bg-white rounded-2xl border overflow-auto">' +
+                  '<table class="w-full min-w-[1050px] text-sm"><thead class="bg-slate-50"><tr>' +
+                    '<th class="p-3">رقم PO</th><th class="p-3">التاريخ</th><th class="p-3">مسؤول المشتريات</th>' +
+                    '<th class="p-3">المورد</th><th class="p-3">الفرع</th><th class="p-3">موعد التوريد</th>' +
+                    '<th class="p-3">الحالة</th><th class="p-3">القيمة</th><th class="p-3">إجراء</th>' +
+                  '</tr></thead><tbody id="pws-po-rows"></tbody></table>' +
+                '</div>'
+            );
+
+            var body = RW_UI.byId('pws-po-rows');
+            var search = RW_UI.byId('pws-po-search');
+            var statusSelect = RW_UI.byId('pws-po-status');
+
+            function drawRows() {
+                var q = String(search.value || '').trim().toLowerCase();
+                var status = statusSelect.value || '';
+                var rows = self.currentOrders.filter(function(o) {
+                    var haystack = [o.po_code,o.supplier_name,o.created_by,branchMap[o.branch_id]]
+                        .join(' ').toLowerCase();
+                    return (!q || haystack.indexOf(q) !== -1) &&
+                           (!status || o.status === status);
+                });
+
+                if (!rows.length) {
+                    RW_UI.safeHTML(body, '<tr><td colspan="9" class="text-center p-8 text-slate-400">لا توجد أوامر مطابقة.</td></tr>');
+                    return;
+                }
+
+                var html = '';
+                rows.forEach(function(o) {
+                    html += '<tr class="border-t">' +
+                      '<td class="p-3 font-black">' + RW_PurchSupervisorEsc(o.po_code) + '</td>' +
+                      '<td class="p-3">' + RW_PurchSupervisorEsc(o.po_date || '—') + '</td>' +
+                      '<td class="p-3 text-xs">' + RW_PurchSupervisorEsc(o.created_by || '—') + '</td>' +
+                      '<td class="p-3">' + RW_PurchSupervisorEsc(o.supplier_name || '—') + '</td>' +
+                      '<td class="p-3">' + RW_PurchSupervisorEsc(branchMap[o.branch_id] || '—') + '</td>' +
+                      '<td class="p-3">' + RW_PurchSupervisorEsc(o.expected_delivery_date || '—') + '</td>' +
+                      '<td class="p-3 font-bold">' + RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(o.status)) + '</td>' +
+                      '<td class="p-3 font-black">' + Number(o.total_amount || 0).toLocaleString() + ' ' + RW_PurchSupervisorEsc(o.currency || 'EGP') + '</td>' +
+                      '<td class="p-3"><button type="button" data-pws-po-id="' + RW_PurchSupervisorEsc(o.id) + '" class="px-3 py-2 rounded-lg bg-fuchsia-50 text-fuchsia-700 font-black">عرض</button></td>' +
+                    '</tr>';
+                });
+
+                RW_UI.safeHTML(body, html);
+
+                Array.from(body.querySelectorAll('[data-pws-po-id]')).forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        self.openPO(btn.getAttribute('data-pws-po-id'));
+                    });
+                });
+            }
+
+            search.addEventListener('input', drawRows);
+            statusSelect.addEventListener('change', drawRows);
+            drawRows();
+
+        } catch(e) {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),
+                '<div class="p-5 rounded-2xl bg-red-50 text-red-700 font-bold">' +
+                RW_PurchSupervisorEsc(e.message || 'تعذر تحميل جميع أوامر الشراء') +
+                '</div>'
+            );
+        }
+    },
+
+    openPO: async function(poId) {
+        var self = this;
+        var po = this.currentOrders.find(function(x){ return String(x.id) === String(poId); });
+        if (!po) {
+            RW_UI.showError('أمر الشراء غير موجود في القائمة الحالية');
+            return;
+        }
+
+        RW_UI.showLoader('جاري تحميل تفاصيل أمر الشراء...');
+        try {
+            var details = await supabase.from('purchase_order_details')
+                .select('item_code,item_name,unit,qty_ordered,qty_received,unit_price,created_at')
+                .eq('po_id', po.id)
+                .order('created_at', {ascending:true});
+
+            if (details.error) throw details.error;
+
+            var lines = details.data || [];
+            var html = '<div class="text-right space-y-3">' +
+              '<div class="grid grid-cols-2 gap-2">' +
+                '<div class="p-3 bg-slate-50 rounded-xl"><small>المورد</small><div class="font-black">' + RW_PurchSupervisorEsc(po.supplier_name || '—') + '</div></div>' +
+                '<div class="p-3 bg-slate-50 rounded-xl"><small>مسؤول المشتريات</small><div class="font-black">' + RW_PurchSupervisorEsc(po.created_by || '—') + '</div></div>' +
+                '<div class="p-3 bg-slate-50 rounded-xl"><small>الحالة</small><div class="font-black">' + RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(po.status)) + '</div></div>' +
+                '<div class="p-3 bg-slate-50 rounded-xl"><small>موعد التوريد</small><div class="font-black">' + RW_PurchSupervisorEsc(po.expected_delivery_date || '—') + '</div></div>' +
+              '</div>' +
+              '<div class="overflow-auto border rounded-xl"><table class="w-full text-sm"><thead class="bg-slate-50"><tr>' +
+                '<th class="p-2">الصنف</th><th class="p-2">المطلوب</th><th class="p-2">المستلم</th><th class="p-2">المتبقي</th><th class="p-2">السعر</th>' +
+              '</tr></thead><tbody>';
+
+            if (!lines.length) {
+                html += '<tr><td colspan="5" class="p-4 text-center text-slate-400">لا توجد بنود مسجلة في أمر الشراء.</td></tr>';
+            } else {
+                lines.forEach(function(x) {
+                    var ordered = Number(x.qty_ordered || 0);
+                    var received = Number(x.qty_received || 0);
+                    html += '<tr class="border-t">' +
+                      '<td class="p-2"><b>' + RW_PurchSupervisorEsc(x.item_name || x.item_code) + '</b><div class="text-xs text-slate-400">' + RW_PurchSupervisorEsc(x.item_code) + '</div></td>' +
+                      '<td class="p-2 text-center">' + ordered + ' ' + RW_PurchSupervisorEsc(x.unit || '') + '</td>' +
+                      '<td class="p-2 text-center">' + received + '</td>' +
+                      '<td class="p-2 text-center font-black">' + Math.max(0, ordered - received) + '</td>' +
+                      '<td class="p-2 text-center">' + Number(x.unit_price || 0).toLocaleString() + '</td>' +
+                    '</tr>';
+                });
+            }
+
+            html += '</tbody></table></div>' +
+              '<div class="font-black text-lg">الإجمالي: ' + Number(po.total_amount || 0).toLocaleString() + ' ' + RW_PurchSupervisorEsc(po.currency || 'EGP') + '</div>' +
+              '<p class="text-xs text-slate-500">الاعتماد يصرح بالتوريد والاستلام فقط، ولا يثبت استلامًا أو حركة مخزون أو قيدًا ماليًا.</p>' +
+            '</div>';
+
+            RW_UI.hideLoader();
+
+            var canApprove = po.status === 'Draft' && lines.some(function(x){ return Number(x.qty_ordered || 0) > 0; });
+            var result = await Swal.fire({
+                title: 'أمر الشراء ' + RW_PurchSupervisorEsc(po.po_code),
+                html: html,
+                width: '1000px',
+                showCloseButton: true,
+                showCancelButton: canApprove,
+                showConfirmButton: canApprove,
+                confirmButtonText: 'اعتماد أمر الشراء',
+                cancelButtonText: 'إغلاق',
+                confirmButtonColor: '#059669'
+            });
+
+            if (canApprove && result.isConfirmed) {
+                self.approvePO(po.id);
+            }
+        } catch(e) {
+            RW_UI.hideLoader();
+            RW_UI.showError(e.message || 'تعذر تحميل تفاصيل أمر الشراء');
+        }
+    },
+
+    approvePO: function(poId) {
+        var self = this;
+        if (!poId || !this.currentUser) {
+            RW_UI.showError('بيانات الاعتماد غير مكتملة');
+            return;
+        }
+
+        var perms = Array.isArray(this.currentUser.permissions) ? this.currentUser.permissions : [];
+        if (!(this.currentUser.isOwner === true || perms.indexOf('*') !== -1 || perms.indexOf('purchases_supervisor') !== -1)) {
+            RW_UI.showError('اعتماد PO يتطلب صلاحية مشرف المشتريات');
+            return;
+        }
+
+        var operationId = (window.crypto && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : 'PO-APPROVE-' + String(poId) + '-' + String(Date.now());
+
+        RW_UI.showLoader('جاري اعتماد أمر الشراء...');
+        RW_API.call('save-purchase-order', {
+            operation: 'APPROVE_PO',
+            payload: { id: poId },
+            operation_id: operationId
+        }, function(json, err) {
+            RW_UI.hideLoader();
+
+            if (err || !json || json.success !== true) {
+                RW_UI.showError((json && json.msg) || err || 'فشل اعتماد أمر الشراء');
+                return;
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'تم اعتماد أمر الشراء',
+                text: 'أصبح الأمر مصرحًا بتوريده والاستلام به في المخزن.'
+            }).then(function() {
+                self.renderOrders();
+            });
+        });
     },
 
     renderSuppliers: function(){
