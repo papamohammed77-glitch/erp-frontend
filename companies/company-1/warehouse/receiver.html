@@ -196,16 +196,45 @@ var App = {
         else if (tab === 'account') this.renderAccount();
     },
 
-    loadPurchaseOrders: function(){
+    loadPurchaseOrders: async function(){
         var self = this;
+        var companyId = this.currentUser && this.currentUser.company_id;
+        if (!companyId) {
+            RW_UI.showEmptyState('mainContent', 'سياق الشركة غير متاح للمستخدم.', '🔒');
+            return;
+        }
+
         RW_UI.showSkeleton('mainContent', 3, 'card');
 
-        supabase.from('purchase_orders').select('id, po_code, po_date, supplier_name, status, total_amount').in('status', ['Approved', 'Sent', 'Partially Received']).order('po_date', { ascending: false }).limit(50).then(function(res) {
-            self.purchaseOrders = res.data || [];
+        try {
+            var all = [];
+            var offset = 0;
+            var pageSize = 200;
+
+            while (true) {
+                var res = await supabase.from('purchase_orders')
+                    .select('id, company_id, po_code, po_date, supplier_name, status, total_amount, created_at')
+                    .eq('company_id', companyId)
+                    .in('status', ['Approved', 'Sent', 'Partially Received'])
+                    .order('po_date', { ascending: false })
+                    .order('created_at', { ascending: false })
+                    .order('id', { ascending: false })
+                    .range(offset, offset + pageSize - 1);
+
+                if (res.error) throw res.error;
+
+                var batch = res.data || [];
+                all = all.concat(batch);
+                if (batch.length < pageSize) break;
+                offset += pageSize;
+            }
+
+            self.purchaseOrders = all;
             self.renderList();
-        }).catch(function(err) {
-            RW_UI.showEmptyState('mainContent', 'فشل تحميل البيانات. تأكد من الاتصال.', '📡');
-        });
+        } catch (err) {
+            console.error('[Receiver] Failed to load purchase orders:', err);
+            RW_UI.showEmptyState('mainContent', 'تعذر تحميل أوامر الشراء. تحقق من الاتصال والصلاحيات.', '📡');
+        }
     },
 
     renderList: function(){
@@ -250,8 +279,10 @@ var App = {
 
     loadPODetails: function(i, code){
         var self = this;
+        var receiveButton = RW_UI.byId('btn-rec-' + i);
+        if (receiveButton) receiveButton.classList.add('hidden');
         RW_UI.safeHTML(RW_UI.byId('details-' + i), '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
-                var po = self.purchaseOrders.find(function (x) { return x.po_code === code; });
+        var po = self.purchaseOrders.find(function (x) { return x.po_code === code; });
         if (!po || !po.id) {
           RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-rose-600 text-center py-4">تعذر ربط تفاصيل أمر الشراء.</p>');
           return;
@@ -260,19 +291,33 @@ var App = {
           .select('item_code, item_name, qty_ordered, qty_received, unit')
           .eq('po_id', po.id)
           .then(function(r) {
+            if (r.error) {
+                RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-rose-600 text-center py-4">تعذر تحميل تفاصيل أمر الشراء. تحقق من الاتصال والصلاحيات.</p>');
+                return;
+            }
+
             var items = r.data || [];
+            if (!items.length) {
+                RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-slate-400 text-center py-4">لا توجد أصناف مسجلة في هذا الأمر.</p>');
+                return;
+            }
+
             var html = '';
+            var hasRemaining = false;
             for (var j = 0; j < items.length; j++) {
                  var it = items[j];
                  var ordered = Number(it.qty_ordered) || 0;
                  var received = Number(it.qty_received) || 0;
                  var remaining = Math.max(0, ordered - received);
+                 if (remaining > 0) hasRemaining = true;
                  html += '<div class="flex justify-between items-center p-3 border-b"><div><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + it.item_code + ' | مطلوب: ' + ordered + ' | مستلم: ' + received + ' | متبقي: ' + remaining + ' ' + (it.unit || 'حبة') + '</p></div><input type="number" step="0.01" id="qty-' + i + '-' + j + '" value="' + remaining + '" min="0" max="' + remaining + '" class="w-20 p-2 border rounded-xl text-center font-bold text-sm" data-item-code="' + it.item_code + '"></div>';
              }
-            RW_UI.safeHTML(RW_UI.byId('details-' + i), html || '<p class="text-slate-400 text-center py-4">لا توجد أصناف.</p>');
-            var btn = RW_UI.byId('btn-rec-' + i);
-            if (btn) btn.classList.remove('hidden');
-        });
+            RW_UI.safeHTML(RW_UI.byId('details-' + i), html);
+            if (receiveButton && hasRemaining) receiveButton.classList.remove('hidden');
+          })
+          .catch(function() {
+            RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-rose-600 text-center py-4">تعذر تحميل تفاصيل أمر الشراء بسبب خطأ في الاتصال.</p>');
+          });
     },
 
     submitReceiving: function(i, code){
@@ -280,20 +325,38 @@ var App = {
         var items = [];
         var qtyInputs = document.querySelectorAll('#details-' + i + ' input[type="number"]');
         for (var j = 0; j < qtyInputs.length; j++) {
-            var q = parseFloat(qtyInputs[j].value) || 0;
+            var rawQty = String(qtyInputs[j].value == null ? '' : qtyInputs[j].value).trim();
+            var q = rawQty === '' ? 0 : Number(rawQty);
             var itemCode = qtyInputs[j].getAttribute('data-item-code') || '';
-            items.push({ itemCode: itemCode, itemName: '', receivedQty: q, reason: '' });
+            var maxAllowed = Number(qtyInputs[j].getAttribute('max'));
+
+            if (!Number.isFinite(q) || q < 0) {
+                RW_UI.showError('كمية الاستلام يجب أن تكون رقمًا صالحًا غير سالب');
+                return;
+            }
+            if (q > 0 && (!itemCode || (Number.isFinite(maxAllowed) && q > maxAllowed))) {
+                RW_UI.showError('راجع كود الصنف والكمية؛ لا يجوز تجاوز الكمية المتبقية');
+                return;
+            }
+            if (q > 0) {
+                items.push({ itemCode: itemCode, itemName: '', receivedQty: q, reason: '' });
+            }
         }
-        
+
+        if (!items.length) {
+            RW_UI.showError('أدخل كمية موجبة لصنف واحد على الأقل قبل اعتماد الاستلام');
+            return;
+        }
+
         RW_UI.showConfirm('اعتماد استلام ' + code + '؟', function() {
             var confirmBtn = document.querySelector('.swal2-confirm');
             if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerText = 'جارٍ...'; }
-            
+
             RW_UI.showLoader('جاري حفظ الاستلام...');
             RW_API.call('receive-purchase', { po_code: code, itemsReceived: items, notes: '' }, function(json, err) {
                 RW_UI.hideLoader();
-                if (err || !json.success) {
-                    RW_UI.showError(json.msg || err || 'فشل الحفظ');
+                if (err || !json || !json.success) {
+                    RW_UI.showError((json && json.msg) || err || 'فشل الحفظ');
                 } else {
                     Swal.fire({
                         icon: 'success',
