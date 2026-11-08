@@ -887,9 +887,44 @@ var App = {
         html+='</tbody></table></div><h4 class="font-black mt-4 mb-2">الفواتير المرتبطة بهذا الأمر</h4><div class="space-y-1">'+(relatedInvoices.map(function(inv){var remaining=Math.max(0,Number(inv.total_amount||0)-Number(inv.paid_amount||0)),cur=inv.currency||poCurrency;return '<div class="flex flex-wrap justify-between gap-2 p-2 bg-slate-50 rounded-lg text-xs"><span><b>'+buyerEsc(inv.invoice_code)+'</b> · '+buyerStatus(inv.status)+' · '+buyerEsc(inv.created_by||'—')+'</span><span>'+buyerMoney(inv.total_amount,cur)+' · متبقي '+buyerMoney(remaining,cur)+'</span><button type="button" onclick="Swal.close();App.openInvoice(\''+buyerEsc(inv.id)+'\')" class="text-purple-700 font-bold">فتح الفاتورة</button></div>';}).join('')||'<p class="text-xs text-slate-400">لا توجد فواتير مرتبطة.</p>')+'</div><h4 class="font-black mt-4 mb-2">Timeline</h4><div class="space-y-2">'+(history.map(function(h){return '<p class="p-2 bg-slate-50 rounded-lg text-xs">'+buyerEsc(h.from_status||'بداية')+' ← '+buyerEsc(h.to_status||'')+' · '+buyerDate(h.created_at)+' · '+buyerEsc(h.actor_email||'')+'</p>';}).join('')||'<p class="text-xs text-slate-400">لا يوجد سجل حالات معاد</p>')+'</div><p class="text-xs text-slate-500 mt-3">إنشاء PO لا يخصم المخزون ولا يسجل التزام المورد. الاستلام الفعلي فقط يمر عبر مسار المخزن المركزي.</p></div>';
         await Swal.fire({title:'تفاصيل '+buyerEsc(o.po_code),html:html,width:1000,showCloseButton:true,showConfirmButton:false});
     },
+    loadInvoiceItems:async function(){
+        var companyId=String((this.currentUser||{}).company_id||'');
+        if(!companyId)throw new Error('سياق الشركة غير متاح لتحميل دليل الأصناف');
+        if(typeof supabase==='undefined'||!supabase)throw new Error('اتصال قاعدة البيانات غير متاح لتحميل دليل الأصناف');
+        var rows=[],offset=0,pageSize=500;
+        while(true){
+            var result=await supabase.from('items')
+                .select('id,item_code,barcode,name,search_label,unit')
+                .eq('company_id',companyId)
+                .order('name',{ascending:true})
+                .range(offset,offset+pageSize-1);
+            if(result.error)throw result.error;
+            var pageRows=Array.isArray(result.data)?result.data:[];
+            rows=rows.concat(pageRows);
+            if(pageRows.length<pageSize)break;
+            offset+=pageRows.length;
+        }
+        return rows;
+    },
+    searchInvoiceItems:async function(query){
+        var companyId=String((this.currentUser||{}).company_id||'');
+        var term=String(query||'').trim().replace(/[,.%_*()\\'"&:]/g,' ').replace(/\\s+/g,' ').trim();
+        if(!companyId)throw new Error('سياق الشركة غير متاح للبحث عن الأصناف');
+        if(!term)return [];
+        if(typeof supabase==='undefined'||!supabase)throw new Error('اتصال قاعدة البيانات غير متاح للبحث عن الأصناف');
+        var pattern='%'+term+'%';
+        var result=await supabase.from('items')
+            .select('id,item_code,barcode,name,search_label,unit')
+            .eq('company_id',companyId)
+            .or('name.ilike.'+pattern+',item_code.ilike.'+pattern+',barcode.ilike.'+pattern+',search_label.ilike.'+pattern)
+            .order('name',{ascending:true})
+            .limit(20);
+        if(result.error)throw result.error;
+        return Array.isArray(result.data)?result.data:[];
+    },
     createPurchaseInvoice:async function(invoiceId){
         try{
-            var d=await Promise.all([this.data('suppliers'),this.data('items'),this.data('branches'),this.data('purchase_orders'),this.data('purchase_settings'),this.api('GET_SETTINGS',{}),this.data('purchase_invoices'),this.data('purchase_invoice_details')]);
+            var d=await Promise.all([this.data('suppliers'),this.loadInvoiceItems(),this.data('branches'),this.data('purchase_orders'),this.data('purchase_settings'),this.api('GET_SETTINGS',{}),this.data('purchase_invoices'),this.data('purchase_invoice_details')]);
             var suppliers=d[0].filter(function(x){return x.is_active===true;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=String(d[5]&&d[5].currency||'').trim().toUpperCase(),current=invoiceId?d[6].find(function(x){return x.id===invoiceId;}):null,selectedSupplier=null,selectedItem=null,lines=[],invoiceOperationId=buyerOperationId();
             if(!/^[A-Z]{3}$/.test(currency))throw new Error('تعذر قراءة العملة المعتمدة من إعدادات النظام الأم');
             if(invoiceId&&!current)throw new Error('مسودة الفاتورة غير موجودة');
@@ -931,9 +966,32 @@ var App = {
                     sb.innerHTML=found.map(function(x,i){return '<button type="button" data-bpis="'+i+'" class="w-full text-right p-3 border-b hover:bg-amber-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.supplier_code||'')+'</small></button>';}).join('')||'<div class="p-3">لا يوجد مورد مطابق</div>';sb.classList.remove('hidden');
                     Array.from(sb.querySelectorAll('[data-bpis]')).forEach(function(b){b.addEventListener('click',function(){selectedSupplier=found[Number(b.dataset.bpis)];ss.value=selectedSupplier.name;RW_UI.byId('bpi-sid').value=selectedSupplier.id;sb.classList.add('hidden');poOptions();});});
                 });
-                is.addEventListener('input',function(){var q=is.value.trim().toLowerCase();selectedItem=null;var found=items.filter(function(x){return [x.name,x.item_code,x.barcode].join(' ').toLowerCase().includes(q);}).slice(0,20);
-                    ib.innerHTML=found.map(function(x,i){return '<button type="button" data-bpii="'+i+'" class="w-full text-right p-3 border-b hover:bg-blue-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.item_code)+'</small></button>';}).join('')||'<div class="p-3">لا يوجد صنف مطابق</div>';ib.classList.remove('hidden');
-                    Array.from(ib.querySelectorAll('[data-bpii]')).forEach(function(b){b.addEventListener('click',function(){selectedItem=found[Number(b.dataset.bpii)];is.value=selectedItem.item_code+' — '+selectedItem.name;RW_UI.byId('bpi-price').value='';ib.classList.add('hidden');});});
+                var itemSearchTimer=null,itemSearchSequence=0;
+                is.addEventListener('input',function(){
+                    var q=is.value.trim();
+                    selectedItem=null;
+                    if(itemSearchTimer)clearTimeout(itemSearchTimer);
+                    var sequence=++itemSearchSequence;
+                    if(!q){ib.classList.add('hidden');RW_UI.safeHTML(ib,'');return;}
+                    RW_UI.safeHTML(ib,'<div class="p-3 text-xs text-slate-500">جارٍ البحث في دليل الأصناف المركزي...</div>');
+                    ib.classList.remove('hidden');
+                    itemSearchTimer=setTimeout(function(){
+                        self.searchInvoiceItems(q).then(function(found){
+                            if(sequence!==itemSearchSequence||!document.body.contains(ib))return;
+                            ib.innerHTML=found.map(function(x,i){return '<button type="button" data-bpii="'+i+'" class="w-full text-right p-3 border-b hover:bg-blue-50"><b>'+buyerEsc(x.name)+'</b><small class="block">'+buyerEsc(x.item_code)+' · '+buyerEsc(x.barcode||'')+'</small></button>';}).join('')||'<div class="p-3 text-xs text-slate-400">لا يوجد صنف مطابق في دليل الأصناف</div>';
+                            Array.from(ib.querySelectorAll('[data-bpii]')).forEach(function(b){b.addEventListener('click',function(){
+                                itemSearchSequence++;
+                                selectedItem=found[Number(b.dataset.bpii)];
+                                is.value=selectedItem.item_code+' — '+selectedItem.name;
+                                RW_UI.byId('bpi-price').value='';
+                                ib.classList.add('hidden');
+                            });});
+                        }).catch(function(error){
+                            if(sequence!==itemSearchSequence||!document.body.contains(ib))return;
+                            RW_UI.safeHTML(ib,'<div class="p-3 text-xs text-red-700">تعذر البحث في دليل الأصناف: '+buyerEsc(error&&error.message||'خطأ غير معروف')+'</div>');
+                            console.error('[Buyer] Invoice item catalog search failed:',error);
+                        });
+                    },220);
                 });
                 RW_UI.byId('bpi-add').addEventListener('click',function(){if(!selectedItem){Swal.showValidationMessage('اختر صنفًا من نتائج البحث');return;}if(lines.some(function(x){return x.item_code===selectedItem.item_code;})){Swal.showValidationMessage('الصنف مضاف بالفعل');return;}
                     var qtyRaw=String(RW_UI.byId('bpi-qty').value||'').trim(),priceRaw=String(RW_UI.byId('bpi-price').value||'').trim(),qty=Number(qtyRaw),price=Number(priceRaw);if(!qtyRaw||!priceRaw||qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('أدخل الكمية وسعر الوحدة صراحةً؛ الصفر مسموح إذا كان سعرًا متفقًا عليه');return;}
