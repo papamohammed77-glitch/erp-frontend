@@ -1095,7 +1095,7 @@ var App = {
                 RW_UI.byId('bqm-scan').addEventListener('click',function(){
                     buyerScanBarcode(items,function(item){
                         search.value=item.item_code+' — '+item.name;
-                        self.quickAddItem(items.indexOf(item));
+                        self.quickAddItem(items.indexOf(item),items);
                         resultsBox.classList.add('hidden');
                     });
                 });
@@ -1221,15 +1221,20 @@ var App = {
         Array.from(box.querySelectorAll('[data-bqm-item]')).forEach(function(button){
             button.addEventListener('click',function(){
                 var index=Number(button.getAttribute('data-bqm-item'));
-                self.quickAddItem(index);
+                self.quickAddItem(index,items);
                 var search=RW_UI.byId('bqm-search');
                 if(search)search.value=items[index].item_code+' — '+items[index].name;
                 box.classList.add('hidden');
             });
         });
     },
-    quickAddItem:function(index){
-        var items=this.cache.items||[],it=items[index];if(!it)return;
+    quickAddItem:function(index,catalog){
+        // Keep selection bound to the modal's catalogue snapshot. Realtime invalidation
+        // can clear the shared cache while search results remain visible.
+        var items=Array.isArray(catalog)?catalog:(this.cache.items||[]);
+        var numericIndex=Number(index);
+        if(!Number.isInteger(numericIndex)||numericIndex<0||numericIndex>=items.length)return;
+        var it=items[numericIndex];if(!it||!it.item_code)return;
         var existing=this.quickCart.find(function(x){return x.item_code===it.item_code;});
         if(existing){RW_UI.toast('الصنف مضاف بالفعل؛ عدّل كميته من سطره','info');return;}
         this.quickCart.push({item_code:it.item_code,name:it.name,unit:it.unit,qty:1,unit_price:null});
