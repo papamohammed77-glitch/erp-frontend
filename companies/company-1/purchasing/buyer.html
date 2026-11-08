@@ -896,6 +896,7 @@ var App = {
             var result=await supabase.from('items')
                 .select('id,item_code,barcode,name,search_label,unit')
                 .eq('company_id',companyId)
+                .eq('is_active',true)
                 .order('name',{ascending:true})
                 .range(offset,offset+pageSize-1);
             if(result.error)throw result.error;
@@ -906,21 +907,41 @@ var App = {
         }
         return rows;
     },
+    invoiceSearchTokens:function(value){
+        return String(value||'').trim().toLowerCase().replace(/[,|()]/g,' ').split(/\s+/).filter(Boolean).slice(0,4);
+    },
+    invoiceEscapeIlike:function(value){
+        return String(value||'').replace(/\\/g,'\\\\').replace(/%/g,'\\%').replace(/_/g,'\\_');
+    },
     searchInvoiceItems:async function(query){
         var companyId=String((this.currentUser||{}).company_id||'');
-        var term=String(query||'').trim().replace(/[,.%_*()'"&:]/g,' ').replace(/\s+/g,' ').trim();
         if(!companyId)throw new Error('سياق الشركة غير متاح للبحث عن الأصناف');
-        if(!term)return [];
         if(typeof supabase==='undefined'||!supabase)throw new Error('اتصال قاعدة البيانات غير متاح للبحث عن الأصناف');
-        var pattern='%'+term+'%';
-        var result=await supabase.from('items')
-            .select('id,item_code,barcode,name,search_label,unit')
+        var tokens=this.invoiceSearchTokens(query);
+        if(!tokens.length)return [];
+        var q=supabase.from('items')
+            .select('id,item_code,name,unit,barcode,search_label,is_active')
             .eq('company_id',companyId)
-            .or('name.ilike.'+pattern+',item_code.ilike.'+pattern+',barcode.ilike.'+pattern+',search_label.ilike.'+pattern)
-            .order('name',{ascending:true})
-            .limit(20);
+            .eq('is_active',true)
+            .limit(40);
+        for(var i=0;i<tokens.length;i++){
+            var term=this.invoiceEscapeIlike(tokens[i]);
+            q=q.or('item_code.ilike.%'+term+'%,name.ilike.%'+term+'%,barcode.ilike.%'+term+'%,search_label.ilike.%'+term);
+        }
+        var result=await q.order('name',{ascending:true});
         if(result.error)throw result.error;
-        return Array.isArray(result.data)?result.data:[];
+        var search=String(query||'').trim().toLowerCase();
+        return (result.data||[]).sort(function(a,b){
+            function score(x){
+                var code=String(x.item_code||'').toLowerCase();
+                var barcode=String(x.barcode||'').toLowerCase();
+                var name=String(x.name||'').toLowerCase();
+                return (code===search?1000:0)+(barcode===search?900:0)+
+                    (code.indexOf(search)===0?500:0)+(barcode.indexOf(search)===0?450:0)+
+                    (name.indexOf(search)===0?300:0);
+            }
+            return score(b)-score(a);
+        }).slice(0,25);
     },
     createPurchaseInvoice:async function(invoiceId){
         try{
