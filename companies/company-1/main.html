@@ -23220,7 +23220,7 @@ var RW_Finance_Custody=(function(){
  }
  function draw(){
   var em={},bm={},tm={};S.employees.forEach(function(x){em[x.id]=x;});S.branches.forEach(function(x){bm[x.id]=x.name||x.branch_name||x.branch_code||'فرع';});S.treasury.forEach(function(x){tm[x.id]=x.account_name||x.account_code||'خزينة';});
-  var opened=S.custodies.filter(function(x){return x.status!=='Settled'&&x.status!=='Closed';});
+  var opened=S.custodies.filter(function(x){return x.status!=='Settled'&&x.status!=='Closed'&&x.status!=='Cancelled';});
   var totalByCurrency=function(rows,field){var z={};rows.forEach(function(x){var c=x.currency||'EGP';z[c]=(z[c]||0)+Number(x[field]||0);});return Object.keys(z).sort().map(function(c){return z[c].toLocaleString('ar-EG',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+c;}).join(' · ')||'0.00 EGP';};
   var pending=S.expenses.filter(function(x){return x.status==='Submitted';}),approved=S.expenses.filter(function(x){return x.status==='Approved';}),rejected=S.expenses.filter(function(x){return x.status==='Rejected';});
   var awaiting=S.advances.filter(function(x){return !x.acknowledged_at;}),acknowledged=S.advances.filter(function(x){return !!x.acknowledged_at;});
@@ -23255,18 +23255,18 @@ var RW_Finance_Custody=(function(){
   else S.custodies.forEach(function(c){
    var employee=em[c.employee_id],employeeName=employee&&employee.name||c.employee_name||'موظف',branchName=bm[c.branch_id]||'فرع غير محدد';
    var waitingAck=S.advances.some(function(a){return a.custody_id===c.id&&!a.acknowledged_at;});
-   var status=c.status==='Settled'?'تمت التسوية':c.status==='Closed'?'مغلقة':waitingAck?'بانتظار إقرار التسليم':c.status==='UnderReview'?'قيد المراجعة':'مفتوحة';
+   var status=c.status==='Settled'?'تمت التسوية':c.status==='Closed'?'مغلقة':c.status==='Cancelled'?'ملغاة':waitingAck?'بانتظار إقرار التسليم':c.status==='UnderReview'?'قيد المراجعة':'مفتوحة';
    h+='<tr class="border-t hover:bg-indigo-50/40"><td class="p-3 font-black whitespace-nowrap">'+E(c.custody_code||'عهدة')+'</td><td class="p-3">'+E(employeeName)+'</td><td class="p-3">'+E(branchName)+'</td><td class="p-3 whitespace-nowrap">'+E(c.issued_date||'—')+'</td><td class="p-3">'+E(c.purpose||'—')+'</td><td class="p-3 font-bold whitespace-nowrap">'+M(c.issued_amount,c.currency)+'</td><td class="p-3 whitespace-nowrap">'+E(status)+'</td><td class="p-3 text-center"><button type="button" data-custody-open-detail="'+E(c.id)+'" class="px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 font-bold">فتح التفاصيل</button></td></tr>';
   });
   h+='</tbody></table></div><div class="flex flex-wrap items-center justify-between gap-3 text-sm"><div class="text-slate-600">عرض '+firstRow.toLocaleString('ar-EG')+'–'+lastRow.toLocaleString('ar-EG')+' من '+Number(S.totalCount||0).toLocaleString('ar-EG')+' · الصفحة '+(Number(S.page||0)+1).toLocaleString('ar-EG')+' من '+totalPages.toLocaleString('ar-EG')+'</div><div class="flex flex-wrap items-center gap-2"><label class="text-xs font-bold">حجم الصفحة<select id="custody-page-size" class="mr-2 border rounded-lg p-2"><option value="25" '+(S.pageSize===25?'selected':'')+'>25</option><option value="50" '+(S.pageSize===50?'selected':'')+'>50</option><option value="100" '+(S.pageSize===100?'selected':'')+'>100</option><option value="200" '+(S.pageSize===200?'selected':'')+'>200</option></select></label><button type="button" data-custody-page="prev" '+(Number(S.page||0)<=0?'disabled':'')+' class="px-3 py-2 border rounded-lg font-bold disabled:opacity-40">السابق</button><button type="button" data-custody-page="next" '+(Number(S.offset||0)+S.custodies.length>=Number(S.totalCount||0)?'disabled':'')+' class="px-3 py-2 border rounded-lg font-bold disabled:opacity-40">التالي</button></div></div></section>';
-  h+='<p class="text-xs text-slate-500">المؤشرات والتفاصيل أدناه تخص سجلات الصفحة الحالية؛ إجمالي الأرشيف المطابق للبحث ظاهر في جدول المتابعة.</p>';
-  if(S.custodies.length)h+='<details id="custody-full-ledger" class="space-y-3"><summary class="cursor-pointer p-3 rounded-xl border bg-white font-bold">تفاصيل وإجراءات العهد في الصفحة الحالية ('+S.custodies.length+')</summary><div class="space-y-4 pt-3">';
+  h+='<p class="text-xs text-slate-500">اختر «فتح التفاصيل» لعرض ملف العهدة وحركاتها في نافذة مستقلة، مع الاحتفاظ بفلاتر البحث والصفحة الحالية بعد الإغلاق.</p>';
+  if(S.custodies.length)h+='<details id="custody-full-ledger" hidden class="space-y-3"><summary class="cursor-pointer p-3 rounded-xl border bg-white font-bold">تفاصيل وإجراءات العهد في الصفحة الحالية ('+S.custodies.length+')</summary><div class="space-y-4 pt-3">';
   S.custodies.forEach(function(c){
    var es=S.expenses.filter(function(x){return x.custody_id===c.id;}),as=S.advances.filter(function(x){return x.custody_id===c.id;}),ps=S.payments.filter(function(x){return x.custody_id===c.id;}),ss=S.settlements.filter(function(x){return x.custody_id===c.id;});
    var confirmed=as.filter(function(x){return !!x.acknowledged_at;}),waiting=as.filter(function(x){return !x.acknowledged_at;});
    var received=confirmed.reduce(function(n,x){return n+Number(x.amount||0);},0),ap=es.filter(function(x){return x.status==='Approved';}).reduce(function(n,x){return n+Number(x.amount||0);},0),pe=es.filter(function(x){return x.status==='Submitted';}).reduce(function(n,x){return n+Number(x.amount||0);},0),ret=ss.reduce(function(n,x){return n+Number(x.cash_returned||0);},0),balance=received-ap-ret;
-   var ageDays=age(c.issued_date),status=c.status==='Settled'?'تمت التسوية':c.status==='Closed'?'مغلقة':waiting.length?'بانتظار إقرار التسليم':c.status==='UnderReview'?'قيد المراجعة':'مفتوحة';
-   h+='<section data-custody-detail="'+E(c.id)+'" class="bg-white border rounded-2xl p-4 space-y-3"><div class="flex flex-wrap justify-between gap-2"><div><b>'+E(c.custody_code||'عهدة')+'</b> · '+E(em[c.employee_id]&&em[c.employee_id].name||c.employee_name||'موظف')+'<p class="text-xs text-slate-500 mt-1">'+E(bm[c.branch_id]||'فرع غير محدد')+' · '+E(c.purpose||'')+' · '+E(c.issued_date||'—')+' · عمر العهدة '+ageDays+' يوم</p><p class="text-xs mt-1">الحالة: <b>'+E(status)+'</b></p></div><div class="flex gap-2">'+(c.status!=='Settled'&&c.status!=='Closed'?'<button data-custody-advance="'+E(c.id)+'" class="px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold">زيادة عهدة</button><button data-custody-settle="'+E(c.id)+'" class="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold">تسوية ورد نقد</button>':'<span class="text-xs text-emerald-700 font-bold">لا توجد إجراءات على عهدة مغلقة</span>')+'</div></div>'+
+   var ageDays=age(c.issued_date),status=c.status==='Settled'?'تمت التسوية':c.status==='Closed'?'مغلقة':c.status==='Cancelled'?'ملغاة':waiting.length?'بانتظار إقرار التسليم':c.status==='UnderReview'?'قيد المراجعة':'مفتوحة';
+   h+='<section data-custody-detail="'+E(c.id)+'" class="bg-white border rounded-2xl p-4 space-y-3"><div class="flex flex-wrap justify-between gap-2"><div><b>'+E(c.custody_code||'عهدة')+'</b> · '+E(em[c.employee_id]&&em[c.employee_id].name||c.employee_name||'موظف')+'<p class="text-xs text-slate-500 mt-1">'+E(bm[c.branch_id]||'فرع غير محدد')+' · '+E(c.purpose||'')+' · '+E(c.issued_date||'—')+' · عمر العهدة '+ageDays+' يوم</p><p class="text-xs mt-1">الحالة: <b>'+E(status)+'</b></p></div><div class="flex gap-2">'+(c.can_edit===true?'<button data-custody-edit="'+E(c.id)+'" class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold"><i class="fa-solid fa-pen ml-1"></i>تعديل البيانات</button>':'')+(c.can_cancel===true?'<button data-custody-cancel="'+E(c.id)+'" class="px-3 py-2 rounded-lg bg-rose-50 text-rose-700 border border-rose-100 text-xs font-bold"><i class="fa-solid fa-ban ml-1"></i>إلغاء العهدة</button>':'')+(c.status!=='Settled'&&c.status!=='Closed'&&c.status!=='Cancelled'?'<button data-custody-advance="'+E(c.id)+'" class="px-3 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold">زيادة عهدة</button><button data-custody-settle="'+E(c.id)+'" class="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold">تسوية ورد نقد</button>':'<span class="text-xs text-emerald-700 font-bold">لا توجد إجراءات على عهدة مغلقة أو ملغاة</span>')+(c.status==='Issued'&&(c.acknowledged_at||c.received_at)?'<span class="text-xs text-slate-500 self-center">التعديل والإلغاء متاحان قبل إقرار الاستلام فقط</span>':'')+'</div></div>'+
    '<div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs"><div class="bg-slate-50 p-3 rounded-xl">قيمة الإصدار<b class="block mt-1">'+M(c.issued_amount,c.currency)+'</b></div><div class="bg-slate-50 p-3 rounded-xl">نقد تم إقراره<b class="block mt-1">'+M(received,c.currency)+'</b></div><div class="bg-amber-50 p-3 rounded-xl">بانتظار الإقرار<b class="block mt-1">'+M(waiting.reduce(function(n,x){return n+Number(x.amount||0);},0),c.currency)+'</b></div><div class="bg-emerald-50 p-3 rounded-xl">مصروفات معتمدة<b class="block mt-1">'+M(ap,c.currency)+'</b></div><div class="'+(balance<-.005?'bg-rose-50':'bg-indigo-50')+' p-3 rounded-xl">صافي النقد تحت العهدة<b class="block mt-1">'+M(balance,c.currency)+'</b></div></div>'+
    (balance<-.005?'<p class="text-xs text-rose-700 bg-rose-50 p-2 rounded-lg">تنبيه: المصروفات المعتمدة والمرتجعات تتجاوز النقد المؤكد؛ لا تُجرِ تسوية آلية قبل التحقيق.</p>':'')+
    '<details class="border rounded-xl"><summary class="cursor-pointer p-3 text-sm font-bold">تسليم النقد والزيادات ('+as.length+')</summary><div class="p-3 space-y-2">'+(as.length?as.map(function(a){return '<div class="border rounded-lg p-3 text-xs"><div class="flex justify-between"><b>'+(a.advance_type==='Initial'?'العهدة الأصلية':'زيادة عهدة')+'</b><b>'+M(a.amount,a.currency)+'</b></div><p class="text-slate-500 mt-1">'+E(a.advance_date||'—')+' · '+E(tm[a.treasury_id]||'خزينة')+'</p><p class="'+(a.acknowledged_at?'text-emerald-700':'text-amber-700')+' mt-1">'+(a.acknowledged_at?'تم إقرار الاستلام '+E(String(a.acknowledged_at).replace('T',' ').slice(0,16)):'بانتظار إقرار الموظف؛ لا تدخل ضمن النقد المستلم')+'</p>'+(a.reference?'<p>المرجع: '+E(a.reference)+'</p>':'')+(a.notes?'<p>ملاحظة: '+E(a.notes)+'</p>':'')+'</div>';}).join(''):'<p class="text-xs text-slate-500">لا توجد حركات تسليم.</p>')+'</div></details>'+
@@ -23277,13 +23277,130 @@ var RW_Finance_Custody=(function(){
   return h+'</div>';
  }
  function render(){var requestSerial=++_renderSerial,host=byId('finance-content');if(!host)return;safeHTML(host,'<div class="p-6 text-center">جاري تحميل سجل العهد...</div>');load(requestSerial).then(function(){if(requestSerial!==_renderSerial||byId('finance-content')!==host)return;safeHTML(host,draw());bind(host);}).catch(function(x){if(requestSerial!==_renderSerial)return;safeHTML(host,'<div class="p-6 text-red-600">'+E(x.message||x)+'</div>');});}
- function bind(root){var h=root||byId('finance-content');if(!h)return;if(_boundElement){if(_boundElement.onclick===_boundHandler)_boundElement.onclick=null;if(_boundChangeHandler)_boundElement.removeEventListener('change',_boundChangeHandler);}var clickHandler=function(ev){var x=ev.target.closest&&ev.target.closest('[data-custody-apply],[data-custody-reset],[data-custody-page],[data-custody-open-detail],[data-custody-advance],[data-custody-settle],[data-custody-review],[data-custody-doc]');if(!x)return;if(x.hasAttribute('data-custody-apply')){var from=byId('custody-filter-from').value,to=byId('custody-filter-to').value;if(from&&to&&from>to){_showToast('تاريخ البداية يجب ألا يتجاوز تاريخ النهاية','warning');return;}_filters={date_from:from||'',date_to:to||'',employee_id:byId('custody-filter-employee').value||'',search:byId('custody-filter-search').value.trim()};_page=0;render();return;}if(x.hasAttribute('data-custody-reset')){_filters={date_from:'',date_to:'',employee_id:'',search:''};_page=0;render();return;}if(x.hasAttribute('data-custody-page')){var direction=x.getAttribute('data-custody-page');if(direction==='prev'&&_page>0){_page--;render();}else if(direction==='next'&&(_page+1)*_pageSize<Number(S&&S.totalCount||0)){_page++;render();}return;}if(x.hasAttribute('data-custody-open-detail')){var id=x.getAttribute('data-custody-open-detail'),drawer=h.querySelector('#custody-full-ledger'),target=null;if(drawer)drawer.open=true;Array.prototype.forEach.call(h.querySelectorAll('[data-custody-detail]'),function(row){if(row.getAttribute('data-custody-detail')===id)target=row;});if(target&&target.scrollIntoView)target.scrollIntoView({behavior:'smooth',block:'start'});return;}if(x.hasAttribute('data-custody-advance'))advance(x.getAttribute('data-custody-advance'));else if(x.hasAttribute('data-custody-settle'))settle(x.getAttribute('data-custody-settle'));else if(x.hasAttribute('data-custody-review'))review(x.getAttribute('data-custody-review'),x.getAttribute('data-custody-type'));else if(x.hasAttribute('data-custody-doc'))doc(x.getAttribute('data-custody-doc'));};var changeHandler=function(ev){var select=ev.target&&ev.target.closest&&ev.target.closest('#custody-page-size');if(!select)return;var size=Number(select.value);if([25,50,100,200].indexOf(size)<0)return;_pageSize=size;_page=0;render();};h.onclick=clickHandler;h.addEventListener('change',changeHandler);_boundElement=h;_boundHandler=clickHandler;_boundChangeHandler=changeHandler;}
+ function openDetail(id,root){
+  var host=root||byId('finance-content'),record=null,source=null;
+  if(!host||!S||!Array.isArray(S.custodies)){_showToast('تعذر تحميل بيانات العهدة','warning');return;}
+  record=S.custodies.filter(function(c){return String(c.id)===String(id);})[0]||null;
+  if(!record){_showToast('العهدة غير موجودة في الصفحة الحالية؛ حدّث السجل وأعد المحاولة','warning');return;}
+  Array.prototype.forEach.call(host.querySelectorAll('[data-custody-detail]'),function(row){if(String(row.getAttribute('data-custody-detail'))===String(id))source=row;});
+  if(!source){_showToast('تعذر تجهيز تفاصيل العهدة','warning');return;}
+  var code=E(record.custody_code||'عهدة');
+  var intro='<div class="rounded-2xl bg-gradient-to-l from-indigo-50 to-slate-50 border border-indigo-100 p-5"><div class="flex items-center gap-3"><div class="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center"><i class="fa-solid fa-wallet"></i></div><div><div class="text-lg font-black text-slate-900">ملف عهدة الموظف</div><div class="text-sm text-slate-500">الموقف المالي والتسليمات والمطالبات والمستندات. فتح النافذة لا ينشئ حركة مالية أو مخزنية.</div></div></div></div>';
+  Swal.fire({
+   title:'تفاصيل العهدة — '+code,
+   width:'min(1100px, 96vw)',
+   padding:'1rem',
+   html:'<div id="custody-detail-modal-body" dir="rtl" class="text-right space-y-4" style="max-height:calc(100vh - 220px);overflow-y:auto;padding:4px 2px;">'+intro+source.innerHTML+'</div>',
+   showConfirmButton:false,
+   showCloseButton:true,
+   focusConfirm:false,
+   heightAuto:false,
+   customClass:{popup:'rounded-3xl'},
+   didOpen:function(){
+    var popup=Swal.getPopup(),body=popup&&popup.querySelector('#custody-detail-modal-body');
+    if(!body)return;
+    body.addEventListener('click',function(ev){
+     var action=ev.target.closest&&ev.target.closest('[data-custody-edit],[data-custody-cancel],[data-custody-advance],[data-custody-settle],[data-custody-review],[data-custody-doc]');
+     if(!action||!body.contains(action))return;
+     if(action.hasAttribute('data-custody-edit')){var editId=action.getAttribute('data-custody-edit');Swal.close();editCustody(editId);}
+     else if(action.hasAttribute('data-custody-cancel')){var cancelId=action.getAttribute('data-custody-cancel');Swal.close();cancelCustody(cancelId);}
+     else if(action.hasAttribute('data-custody-advance')){var advanceId=action.getAttribute('data-custody-advance');Swal.close();advance(advanceId);}
+     else if(action.hasAttribute('data-custody-settle')){var settleId=action.getAttribute('data-custody-settle');Swal.close();settle(settleId);}
+     else if(action.hasAttribute('data-custody-review')){var expenseId=action.getAttribute('data-custody-review'),expenseType=action.getAttribute('data-custody-type');Swal.close();review(expenseId,expenseType);}
+     else if(action.hasAttribute('data-custody-doc'))doc(action.getAttribute('data-custody-doc'));
+    });
+   }
+  });
+}
+ function bind(root){var h=root||byId('finance-content');if(!h)return;if(_boundElement){if(_boundElement.onclick===_boundHandler)_boundElement.onclick=null;if(_boundChangeHandler)_boundElement.removeEventListener('change',_boundChangeHandler);}var clickHandler=function(ev){var x=ev.target.closest&&ev.target.closest('[data-custody-apply],[data-custody-reset],[data-custody-page],[data-custody-open-detail],[data-custody-advance],[data-custody-settle],[data-custody-review],[data-custody-doc]');if(!x)return;if(x.hasAttribute('data-custody-apply')){var from=byId('custody-filter-from').value,to=byId('custody-filter-to').value;if(from&&to&&from>to){_showToast('تاريخ البداية يجب ألا يتجاوز تاريخ النهاية','warning');return;}_filters={date_from:from||'',date_to:to||'',employee_id:byId('custody-filter-employee').value||'',search:byId('custody-filter-search').value.trim()};_page=0;render();return;}if(x.hasAttribute('data-custody-reset')){_filters={date_from:'',date_to:'',employee_id:'',search:''};_page=0;render();return;}if(x.hasAttribute('data-custody-page')){var direction=x.getAttribute('data-custody-page');if(direction==='prev'&&_page>0){_page--;render();}else if(direction==='next'&&(_page+1)*_pageSize<Number(S&&S.totalCount||0)){_page++;render();}return;}if(x.hasAttribute('data-custody-open-detail')){openDetail(x.getAttribute('data-custody-open-detail'),h);return;}if(x.hasAttribute('data-custody-advance'))advance(x.getAttribute('data-custody-advance'));else if(x.hasAttribute('data-custody-settle'))settle(x.getAttribute('data-custody-settle'));else if(x.hasAttribute('data-custody-review'))review(x.getAttribute('data-custody-review'),x.getAttribute('data-custody-type'));else if(x.hasAttribute('data-custody-doc'))doc(x.getAttribute('data-custody-doc'));};var changeHandler=function(ev){var select=ev.target&&ev.target.closest&&ev.target.closest('#custody-page-size');if(!select)return;var size=Number(select.value);if([25,50,100,200].indexOf(size)<0)return;_pageSize=size;_page=0;render();};h.onclick=clickHandler;h.addEventListener('change',changeHandler);_boundElement=h;_boundHandler=clickHandler;_boundChangeHandler=changeHandler;}
  function issue(){
   var em=S.employees.filter(function(x){return x.id!==S.user.id&&x.status==='Active';}),br=S.branches;if(!em.length||!br.length){_showToast('لا يوجد موظف آخر أو فرع ضمن صلاحياتك','warning');return;}var eo=em.map(function(x){return '<option value="'+E(x.id)+'">'+E(x.name||x.email)+'</option>';}).join(''),bo=br.map(function(x){return '<option value="'+E(x.id)+'">'+E(x.name||x.branch_code)+'</option>';}).join(''),op=O();
   Swal.fire({title:'إصدار عهدة موظف',html:'<div class="text-right"><select id="ci-e" class="swal2-select w-full"><option value="">الموظف</option>'+eo+'</select><select id="ci-b" class="swal2-select w-full"><option value="">الفرع</option>'+bo+'</select><select id="ci-t" class="swal2-select w-full" disabled></select><input id="ci-p" class="swal2-input" placeholder="الغرض"><input id="ci-a" type="number" min="0.01" class="swal2-input" placeholder="المبلغ"><input id="ci-d" type="date" value="'+new Date().toISOString().slice(0,10)+'" class="swal2-input"><input id="ci-r" class="swal2-input" placeholder="مرجع السند"><textarea id="ci-n" class="swal2-textarea"></textarea></div>',showCancelButton:true,confirmButtonText:'تسجيل طلب التسليم',didOpen:function(){var b=byId('ci-b'),t=byId('ci-t');function up(){var a=cash(S.treasury,b.value);t.innerHTML='<option value="">'+(a.length?'اختر خزينة Cash':'لا توجد خزينة لهذا الفرع')+'</option>'+a.map(function(x){return '<option value="'+E(x.id)+'">'+E(x.account_name)+'</option>';}).join('');t.disabled=!a.length;}b.addEventListener('change',up);up();},preConfirm:function(){var b=byId('ci-b').value,t=byId('ci-t').value,em=byId('ci-e').value,p=byId('ci-p').value.trim(),n=Number(byId('ci-a').value||0);if(!b||!t||!em||!p||n<=0||!cash(S.treasury,b).some(function(x){return String(x.id)===String(t);})){Swal.showValidationMessage('أكمل الموظف والفرع والخزينة والغرض والمبلغ');return false;}return {employee_id:em,branch_id:b,treasury_id:t,purpose:p,amount:n,issued_date:byId('ci-d').value,received_reference:byId('ci-r').value.trim()||null,notes:byId('ci-n').value.trim()||null};}}).then(function(r){if(r.isConfirmed)A('ISSUE_CUSTODY',r.value,op).then(render).catch(function(x){_showToast(x.message,'error');});});
  }
  function advance(id){var c=S.custodies.filter(function(x){return x.id===id;})[0];if(!c||!c.branch_id)return;var a=cash(S.treasury,c.branch_id);if(!a.length){_showToast('لا توجد خزينة Cash لهذا الفرع','warning');return;}var op=O(),opts=a.map(function(x){return '<option value="'+E(x.id)+'">'+E(x.account_name)+'</option>';}).join('');Swal.fire({title:'زيادة عهدة',html:'<select id="ca-t" class="swal2-select w-full">'+opts+'</select><input id="ca-a" type="number" min="0.01" class="swal2-input"><input id="ca-d" type="date" value="'+new Date().toISOString().slice(0,10)+'" class="swal2-input"><input id="ca-r" class="swal2-input" placeholder="مرجع"><textarea id="ca-n" class="swal2-textarea"></textarea>',showCancelButton:true,confirmButtonText:'تسجيل الزيادة',preConfirm:function(){var t=byId('ca-t').value,n=Number(byId('ca-a').value||0);if(!t||n<=0)return false;return {custody_id:id,treasury_id:t,amount:n,advance_date:byId('ca-d').value,reference:byId('ca-r').value.trim()||null,notes:byId('ca-n').value.trim()||null};}}).then(function(r){if(r.isConfirmed)A('ADD_CUSTODY_ADVANCE',r.value,op).then(render).catch(function(x){_showToast(x.message,'error');});});}
  function settle(id){var c=S.custodies.filter(function(x){return x.id===id;})[0];if(!c||!c.branch_id)return;var es=S.expenses.filter(function(x){return x.custody_id===id;}),as=S.advances.filter(function(x){return x.custody_id===id;});if(es.some(function(x){return x.status==='Submitted';})||as.some(function(x){return !x.acknowledged_at;})){_showToast('لا يمكن التسوية قبل مراجعة المصروفات وإقرار التسليمات','warning');return;}var u=es.filter(function(x){return x.status==='Approved';}).reduce(function(n,x){return n+Number(x.amount||0);},0),ret=Math.max(0,Number(c.issued_amount||0)-u),a=ret>0?cash(S.treasury,c.branch_id):[];if(ret>0&&!a.length){_showToast('لا توجد خزينة Cash لهذا الفرع لاستلام النقد','warning');return;}var opts=a.map(function(x){return '<option value="'+E(x.id)+'">'+E(x.account_name)+'</option>';}).join('');Swal.fire({title:'تسوية العهدة',html:'<div class="text-right">العهدة '+M(c.issued_amount,c.currency)+'<br>المعتمد '+M(u,c.currency)+'<br>النقد المرتجع '+M(ret,c.currency)+'</div>'+(ret>0?'<select id="cs-t" class="swal2-select w-full">'+opts+'</select>':'')+'<input id="cs-r" value="'+ret.toFixed(2)+'" class="swal2-input" readonly><input id="cs-ref" class="swal2-input" placeholder="مرجع استلام النقد"><textarea id="cs-n" class="swal2-textarea"></textarea>',showCancelButton:true,confirmButtonText:'إثبات استلام النقد والتسوية',preConfirm:function(){var t=ret>0?byId('cs-t').value:null,n=Number(byId('cs-r').value||0);if(Math.abs(n-ret)>0.005||(ret>0&&!t))return false;return {custody_id:id,treasury_id:t,cash_returned:n,finance_reference:byId('cs-ref').value.trim()||null,notes:byId('cs-n').value.trim()||null};}}).then(function(r){if(r.isConfirmed)A('SETTLE_CUSTODY',r.value).then(render).catch(function(x){_showToast(x.message,'error');});});}
+ function custodyEmployeeAllowed(employee,branchId){
+  if(!employee||!branchId)return false;
+  var branch=S.branches.filter(function(x){return String(x.id)===String(branchId);})[0];
+  if(!branch)return false;
+  var allowed=employee.allowed_branch_ids||[];
+  if(typeof allowed==='string'){try{allowed=JSON.parse(allowed);}catch(e){}}
+  return String(employee.default_branch_id||'')===String(branchId)
+    || allowed==='*'
+    || allowed===branch.branch_code
+    || (Array.isArray(allowed)&&(allowed.indexOf('*')>=0||allowed.indexOf(branch.branch_code)>=0));
+ }
+ function editCustody(id){
+  var c=S&&S.custodies.filter(function(x){return String(x.id)===String(id);})[0];
+  if(!c||c.can_edit!==true){_showToast('التعديل متاح فقط قبل إقرار الاستلام وقبل أي ترحيل مالي','warning');return;}
+  var initial=S.advances.filter(function(a){return String(a.custody_id)===String(id)&&a.advance_type==='Initial';})[0]||{};
+  var branches=S.branches||[],employees=(S.employees||[]).filter(function(e){return e.status==='Active'&&String(e.id)!==String(S.user&&S.user.id||'');});
+  if(!branches.length||!employees.length){_showToast('لا توجد فروع أو موظفون نشطون ضمن صلاحياتك','warning');return;}
+  var branchOptions=branches.map(function(b){return '<option value="'+E(b.id)+'" '+(String(b.id)===String(c.branch_id)?'selected':'')+'>'+E(b.name||b.branch_code)+'</option>';}).join('');
+  var selectedBranch=String(c.branch_id||'');
+  function employeeOptionRows(branchId){
+   return employees.filter(function(e){return custodyEmployeeAllowed(e,branchId);})
+    .sort(function(a,b){return String(a.name||a.email||'').localeCompare(String(b.name||b.email||''),'ar');})
+    .map(function(e){return '<option value="'+E(e.id)+'">'+E(e.name||e.email||'موظف')+'</option>';}).join('');
+  }
+  function treasuryOptionRows(branchId,preferred){
+   return cash(S.treasury,branchId).map(function(t){return '<option value="'+E(t.id)+'" '+(String(t.id)===String(preferred||'')?'selected':'')+'>'+E(t.account_name||t.account_code)+'</option>';}).join('');
+  }
+  var employeeOptions=employeeOptionRows(selectedBranch),treasuryOptions=treasuryOptionRows(selectedBranch,initial.treasury_id);
+  if(!employeeOptions||!treasuryOptions){_showToast('لا توجد خيارات موظف أو خزينة نقدية صالحة للفرع المحدد','warning');return;}
+  Swal.fire({
+   title:'تعديل بيانات العهدة — '+E(c.custody_code||'عهدة'),
+   width:980,
+   html:'<div dir="rtl" class="text-right space-y-4">'+
+    '<div class="rounded-2xl bg-gradient-to-l from-indigo-50 to-slate-50 border border-indigo-100 p-5"><div class="flex items-center gap-3"><div class="w-11 h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><i class="fa-solid fa-pen-to-square"></i></div><div><div class="font-black text-lg">تعديل عهدة قبل التسليم</div><div class="text-xs text-slate-500">يسري التعديل على رأس العهدة وحركة الإصدار الأصلية معًا، ولا ينشئ حركة نقدية.</div></div></div></div>'+
+    '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">'+
+    '<label class="block text-sm font-bold">الفرع<select id="ce-branch" class="mt-1 w-full border rounded-xl p-3">'+branchOptions+'</select></label>'+
+    '<label class="block text-sm font-bold">الموظف<select id="ce-employee" class="mt-1 w-full border rounded-xl p-3">'+employeeOptions+'</select></label>'+
+    '<label class="block text-sm font-bold">خزينة الإصدار<select id="ce-treasury" class="mt-1 w-full border rounded-xl p-3">'+treasuryOptions+'</select></label>'+
+    '<label class="block text-sm font-bold">تاريخ الإصدار<input id="ce-date" type="date" value="'+E(c.issued_date||'')+'" class="mt-1 w-full border rounded-xl p-3"></label>'+
+    '<label class="block text-sm font-bold md:col-span-2">الغرض<input id="ce-purpose" maxlength="180" value="'+E(c.purpose||'')+'" class="mt-1 w-full border rounded-xl p-3"></label>'+
+    '<label class="block text-sm font-bold">قيمة العهدة (EGP)<input id="ce-amount" type="number" min="0.01" step="0.01" value="'+E(Number(c.issued_amount||0).toFixed(2))+'" class="mt-1 w-full border rounded-xl p-3"></label>'+
+    '<label class="block text-sm font-bold">مرجع سند الإصدار<input id="ce-reference" maxlength="120" value="'+E(c.received_reference||'')+'" class="mt-1 w-full border rounded-xl p-3"></label>'+
+    '<label class="block text-sm font-bold md:col-span-2">ملاحظات<textarea id="ce-notes" maxlength="1000" class="mt-1 w-full border rounded-xl p-3">'+E(c.notes||'')+'</textarea></label>'+
+    '<label class="block text-sm font-bold md:col-span-2">سبب التعديل — إلزامي<textarea id="ce-reason" maxlength="500" class="mt-1 w-full border rounded-xl p-3" placeholder="اذكر سبب تعديل بيانات العهدة"></textarea></label>'+
+    '</div><p class="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">لا يظهر هذا الإجراء بعد إقرار الموظف بالاستلام أو تسجيل أي صرف نقدي أو قيد محاسبي أو مستند تابع.</p></div>',
+   showCancelButton:true,confirmButtonText:'حفظ التعديلات',cancelButtonText:'إلغاء',confirmButtonColor:'#4f46e5',
+   customClass:{popup:'rounded-3xl'},
+   didOpen:function(){
+    var b=byId('ce-branch'),e=byId('ce-employee'),t=byId('ce-treasury');
+    function refreshOptions(){
+     var oldEmployee=e.value||String(c.employee_id||''),oldTreasury=t.value||String(initial.treasury_id||'');
+     e.innerHTML=employeeOptionRows(b.value);
+     if(Array.prototype.some.call(e.options,function(o){return o.value===oldEmployee;}))e.value=oldEmployee;
+     t.innerHTML=treasuryOptionRows(b.value,oldTreasury);
+     if(!Array.prototype.some.call(t.options,function(o){return o.value===oldTreasury;}))t.selectedIndex=0;
+    }
+    b.addEventListener('change',refreshOptions);refreshOptions();
+   },
+   preConfirm:function(){
+    var employeeId=byId('ce-employee').value,branchId=byId('ce-branch').value,treasuryId=byId('ce-treasury').value;
+    var employee=employees.filter(function(x){return String(x.id)===String(employeeId);})[0];
+    var purpose=byId('ce-purpose').value.trim(),amount=Number(byId('ce-amount').value||0);
+    var date=byId('ce-date').value,reason=byId('ce-reason').value.trim();
+    if(!employee||!custodyEmployeeAllowed(employee,branchId)||!treasuryId||!cash(S.treasury,branchId).some(function(x){return String(x.id)===String(treasuryId);})||!purpose||!date||!isFinite(amount)||amount<=0||!reason){
+     Swal.showValidationMessage('أكمل الفرع والموظف والخزينة والتاريخ والغرض والمبلغ وسبب التعديل، وتأكد من توافق صلاحيات الفرع.');
+     return false;
+    }
+    return {custody_id:id,employee_id:employeeId,branch_id:branchId,treasury_id:treasuryId,purpose:purpose,amount:amount,issued_date:date,received_reference:byId('ce-reference').value.trim()||null,notes:byId('ce-notes').value.trim()||null,reason:reason};
+   }
+  }).then(function(r){if(!r.isConfirmed)return;A('UPDATE_CUSTODY',r.value,O()).then(render).catch(function(x){_showToast(x.message||x,'error');});});
+ }
+ function cancelCustody(id){
+  var c=S&&S.custodies.filter(function(x){return String(x.id)===String(id);})[0];
+  if(!c||c.can_cancel!==true){_showToast('الإلغاء متاح فقط قبل إقرار الاستلام وقبل أي ترحيل مالي','warning');return;}
+  Swal.fire({
+   title:'إلغاء العهدة — '+E(c.custody_code||'عهدة'),width:680,
+   html:'<div dir="rtl" class="text-right space-y-3"><div class="rounded-2xl border border-rose-100 bg-rose-50 p-4"><div class="font-black text-rose-800">إلغاء منطقي مع الاحتفاظ بالسجل</div><p class="text-sm text-rose-700 mt-1">لن تُحذف العهدة أو حركة الإصدار أو سجل التدقيق. ستتحول حالتها إلى «ملغاة»، ولن تقبل أي زيادة أو إقرار أو تسوية لاحقة.</p></div><label class="block text-sm font-bold">سبب الإلغاء — إلزامي<textarea id="cc-reason" maxlength="500" class="mt-1 w-full border rounded-xl p-3" placeholder="اكتب سبب الإلغاء بوضوح"></textarea></label></div>',
+   showCancelButton:true,confirmButtonText:'تأكيد إلغاء العهدة',cancelButtonText:'العودة',confirmButtonColor:'#b91c1c',
+   customClass:{popup:'rounded-3xl'},
+   preConfirm:function(){var reason=byId('cc-reason').value.trim();if(reason.length<5){Swal.showValidationMessage('سبب الإلغاء إلزامي ويجب ألا يقل عن 5 أحرف');return false;}return {custody_id:id,reason:reason};}
+  }).then(function(r){if(!r.isConfirmed)return;A('CANCEL_CUSTODY',r.value,O()).then(render).catch(function(x){_showToast(x.message||x,'error');});});
+ }
  function review(id,type){
   var x=S.expenses.filter(function(a){return a.id===id;})[0];if(!x||x.status!=='Submitted')return;
   var op=type==='OPERATIONAL',ac=S.accounts||[];
