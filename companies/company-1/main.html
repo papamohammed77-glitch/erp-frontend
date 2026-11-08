@@ -1267,7 +1267,7 @@ var meta = user.user_metadata || {};
 
 return RW_SUPABASE_CLIENT
     .from('users')
-    .select('company_id, status, permissions, name')
+    .select('id, company_id, status, permissions, name, default_branch_id, allowed_branch_ids')
     .eq('auth_id', user.id)
     .maybeSingle()
     .then(function(profileRes) {
@@ -1288,11 +1288,14 @@ return RW_SUPABASE_CLIENT
 
         RW_STATE.app.authenticated = true;
         RW_STATE.app.currentUser = {
+            id: profileRes.data.id,
             name: profileRes.data.name || meta.name || user.email,
             email: user.email,
             role: meta.role || 'مدير النظام',
             isOwner: isOwner,
-            permissions: dbPermissions
+            permissions: dbPermissions,
+            default_branch_id: profileRes.data.default_branch_id || null,
+            allowed_branch_ids: profileRes.data.allowed_branch_ids || []
         };
 
         RW_STATE.permissions = dbPermissions;
@@ -1437,6 +1440,9 @@ enterSystem: function() {
         } catch(e) {
             document.body.innerHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;font-family:Cairo;"><h1>RAWAEA ERP</h1><p>حدث خطأ أثناء تشغيل النظام</p><button onclick="location.reload()">إعادة التحميل</button></div>';
         }
+    },
+    getUser: function() {
+        return RW_STATE.app.currentUser || {};
     },
     logout: function() {
         var userEmail = 'unknown';
@@ -23176,6 +23182,7 @@ var RW_Finance_Custody=(function(){
  var S=null;
  var _renderSerial=0,_boundElement=null,_boundHandler=null;
  function E(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+ function _showToast(m,t){try{if(typeof showToast==='function')showToast(m,t||'success');else alert(m);}catch(e){alert(m);}}
  function M(x,c){return Number(x||0).toLocaleString('ar-EG',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+E(c||'EGP');}
  function O(){return window.crypto&&crypto.randomUUID?crypto.randomUUID():'custody-'+Date.now()+'-'+Math.random().toString(36).slice(2,10);}
  function A(op,p,id){
@@ -33466,7 +33473,7 @@ function boot() {
                 RW_STATE.permissions = meta.permissions || ['*'];
                 return RW_SUPABASE_CLIENT
                     .from('users')
-                    .select('company_id, status')
+                    .select('id, company_id, status, default_branch_id, allowed_branch_ids')
                     .eq('auth_id', user.id)
                     .maybeSingle()
                     .then(function(profileRes) {
@@ -33477,6 +33484,10 @@ function boot() {
                         if (profileRes.data.status === 'Inactive') {
                             throw new Error('حساب المستخدم غير نشط');
                         }
+
+                        RW_STATE.app.currentUser.id = profileRes.data.id;
+                        RW_STATE.app.currentUser.default_branch_id = profileRes.data.default_branch_id || null;
+                        RW_STATE.app.currentUser.allowed_branch_ids = profileRes.data.allowed_branch_ids || [];
 
                         RW_STATE.app.company = {
                             id: profileRes.data.company_id,
