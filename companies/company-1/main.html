@@ -23178,7 +23178,25 @@ var RW_Finance_Custody=(function(){
  function E(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
  function M(x,c){return Number(x||0).toLocaleString('ar-EG',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+E(c||'EGP');}
  function O(){return window.crypto&&crypto.randomUUID?crypto.randomUUID():'custody-'+Date.now()+'-'+Math.random().toString(36).slice(2,10);}
- function A(op,p,id){return new Promise(function(ok,no){var b={operation:op,payload:p||{}};if(id)b.operation_id=id;RW_API.call('save-purchase-order',b,function(j,x){if(x||!j||j.success===false)no(new Error((j&&(j.msg||j.error))||x||'فشل محرك العهدة'));else ok(j);});});}
+ function A(op,p,id){
+  var body={operation:op,payload:p||{}};
+  if(id)body.operation_id=id;
+  return supabase.auth.getSession().then(function(sessionResult){
+    var session=sessionResult&&sessionResult.data&&sessionResult.data.session;
+    if(!session||!session.access_token)throw new Error('انتهت الجلسة. يرجى إعادة تسجيل الدخول.');
+    return fetch(RW_SUPABASE_URL+'/functions/v1/save-purchase-order',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token},
+      body:JSON.stringify(body)
+    });
+  }).then(function(response){
+    if(!response)throw new Error('تعذر الاتصال بمحرك العهدة');
+    return response.json().catch(function(){return {};}).then(function(json){
+      if(!response.ok||!json||json.success===false)throw new Error((json&&(json.msg||json.error))||'فشل محرك العهدة');
+      return json;
+    });
+  });
+}
  function actor(){return RW_Auth&&RW_Auth.getUser?RW_Auth.getUser():(RW_STATE&&RW_STATE.user)||{};}
  function branches(rows){var u=actor(),a=u.allowedBranchIds||u.allowed_branch_ids||[];if(typeof a==='string'){try{a=JSON.parse(a);}catch(x){}}return (rows||[]).filter(function(b){var y=u.isOwner===true||String(u.defaultBranchId||u.default_branch_id||'')===String(b.id);if(!y&&a==='*')y=true;if(!y&&typeof a==='string')y=a===b.branch_code;if(!y&&Array.isArray(a))y=a.indexOf('*')>=0||a.indexOf(b.branch_code)>=0;return y&&b.is_active!==false;});}
  function cash(rows,b){return (rows||[]).filter(function(t){return t.is_active!==false&&String(t.type||'').toLowerCase()==='cash'&&String(t.branch_id||'')===String(b||'')&&String(t.account_code||'').indexOf('POS-')!==0;});}
