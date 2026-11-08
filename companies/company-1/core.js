@@ -1005,4 +1005,87 @@ var RW_Realtime = (function() {
 })();
 
 
-console.log('   RW_Auth | RW_DB | RW_API | RW_UI | RW_ImageCache | RW_SW | RW_Realtime');
+
+/* RW_EmployeeCustody — direct self-only RLS reads and ownership-checked RPCs. */
+var RW_EmployeeCustody=(function(){
+ var state={root:null,channel:null,snapshot:null,serial:0};
+ function esc(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+ function money(v,c){return Number(v||0).toLocaleString('ar-EG',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+esc(c||'EGP');}
+ function user(){var u=RW_Auth&&RW_Auth.getUser?RW_Auth.getUser():null;if(!u||!u.id||!u.company_id)throw Error('تعذر التحقق من هوية الموظف ونطاق الشركة');return u;}
+ function rows(r){if(!r||r.error)throw Error(r&&r.error?r.error.message:'فشل تحميل بيانات العهدة');return r.data||[];}
+ function notice(m,t){if(RW_UI&&RW_UI.toast)RW_UI.toast(m,t||'info');else Swal.fire({toast:true,position:'top',icon:t||'info',title:m,timer:2500,showConfirmButton:false});}
+ function fail(x){var m=x&&x.message?x.message:String(x||'خطأ غير معروف');if(RW_UI&&RW_UI.showError)RW_UI.showError(m);else Swal.fire({icon:'error',title:'تعذر تنفيذ العملية',text:m});}
+ function opId(){return window.crypto&&crypto.randomUUID?crypto.randomUUID():'custody-'+Date.now()+'-'+Math.random().toString(36).slice(2,12);}
+ function load(){
+  var u=user();
+  return Promise.all([
+   supabase.from('buyer_custodies').select('*').eq('company_id',u.company_id).eq('employee_id',u.id).order('issued_date',{ascending:false}).limit(100),
+   supabase.from('buyer_custody_advances').select('*').eq('company_id',u.company_id).eq('employee_id',u.id).order('advance_date',{ascending:false}).limit(300),
+   supabase.from('buyer_custody_expenses').select('*').eq('company_id',u.company_id).eq('employee_id',u.id).order('expense_date',{ascending:false}).limit(300)
+  ]).then(function(r){
+   var c=rows(r[0]),a=rows(r[1]),e=rows(r[2]),ids=c.map(function(x){return x.id;}).filter(Boolean);
+   if(!ids.length)return {user:u,custodies:c,advances:a,expenses:e,settlements:[]};
+   return Promise.all([
+    supabase.from('buyer_custody_settlements').select('*').eq('company_id',u.company_id).in('custody_id',ids).limit(200),
+    supabase.from('buyer_custody_payments').select('*').eq('company_id',u.company_id).in('custody_id',ids).limit(300)
+   ]).then(function(x){return {user:u,custodies:c,advances:a,expenses:e,settlements:rows(x[0]),payments:rows(x[1])};});
+  }).then(function(x){state.snapshot=x;return x;});
+ }
+ function status(s){return ({Issued:'صادرة',UnderReview:'قيد المراجعة',Settled:'تمت التسوية',Closed:'مغلقة',Submitted:'مرسلة للمالية',Approved:'معتمدة',Rejected:'مرفوضة'})[s]||s||'—';}
+ function draw(s){
+  var c=s.custodies||[],a=s.advances||[],e=s.expenses||[];
+  var open=c.filter(function(x){return x.status!=='Settled'&&x.status!=='Closed';}).length;
+  var rec=a.filter(function(x){return !!x.acknowledged_at;}).reduce(function(n,x){return n+Number(x.amount||0);},0);
+  var wait=a.filter(function(x){return !x.acknowledged_at;}).reduce(function(n,x){return n+Number(x.amount||0);},0);
+  var pend=e.filter(function(x){return x.status==='Submitted';}).reduce(function(n,x){return n+Number(x.amount||0);},0);
+  var html='<div class="p-4 space-y-4"><div class="flex justify-between items-center gap-2"><div><h2 class="text-xl font-black">عهدتي النقدية</h2><p class="text-xs text-slate-500 mt-1">منفصلة عن رصيد السيارة وحيازة البضاعة</p></div><button data-ec-refresh class="px-3 py-2 rounded-xl bg-sky-50 text-sky-700 text-xs font-bold">تحديث</button></div>'+
+   '<div class="grid grid-cols-2 gap-2"><div class="card"><small>العهد المفتوحة</small><b class="block text-xl mt-1">'+open+'</b></div><div class="card"><small>نقدية مؤكدة الاستلام</small><b class="block text-sm mt-2">'+money(rec,c[0]&&c[0].currency)+'</b></div><div class="card"><small>زيادات تنتظر تأكيدك</small><b class="block text-sm mt-2">'+money(wait,c[0]&&c[0].currency)+'</b></div><div class="card"><small>مصروفات قيد المراجعة</small><b class="block text-sm mt-2">'+money(pend,c[0]&&c[0].currency)+'</b></div></div>'+
+   '<div class="rounded-xl border border-sky-100 bg-sky-50 text-sky-900 p-3 text-xs leading-6">إقرار استلام النقدية هو الذي يثبت الصرف الفعلي من الخزينة. تقديم الإيصال لا يرحّل مصروفًا؛ الاعتماد من المالية هو الذي ينشئ قيد المصروف.</div>';
+  if(!c.length)html+='<div class="card text-center py-10"><i class="fa-solid fa-wallet text-4xl text-slate-300"></i><p class="font-black mt-3">لا توجد عهد نقدية مسجلة باسمك</p><p class="text-xs text-slate-500 mt-2">ستظهر هنا العهد التي تصدرها المالية باسم حسابك.</p></div>';
+  c.forEach(function(x){
+   var aa=a.filter(function(z){return z.custody_id===x.id;}),ee=e.filter(function(z){return z.custody_id===x.id;}),ss=(s.settlements||[]).filter(function(z){return z.custody_id===x.id;});
+   var confirmed=aa.filter(function(z){return !!z.acknowledged_at;}).reduce(function(n,z){return n+Number(z.amount||0);},0);
+   var pending=ee.filter(function(z){return z.status==='Submitted';}).reduce(function(n,z){return n+Number(z.amount||0);},0);
+   var approved=ee.filter(function(z){return z.status==='Approved';}).reduce(function(n,z){return n+Number(z.amount||0);},0);
+   html+='<section class="card space-y-3"><div class="flex justify-between gap-2"><div><b>'+esc(x.custody_code)+'</b><p class="text-xs text-slate-500 mt-1">'+esc(x.purpose)+'</p><p class="text-xs text-slate-400 mt-1">'+esc(x.issued_date||'')+'</p></div><span class="text-[11px] rounded-lg px-2 py-1 bg-slate-100 font-bold">'+esc(x.acknowledged_at?status(x.status):'بانتظار إقرارك')+'</span></div>'+
+    '<div class="grid grid-cols-2 gap-2 text-xs"><div class="bg-slate-50 p-3 rounded-xl"><small>إجمالي العهدة</small><b class="block mt-1">'+money(x.issued_amount,x.currency)+'</b></div><div class="bg-slate-50 p-3 rounded-xl"><small>نقدية مؤكدة</small><b class="block mt-1">'+money(confirmed,x.currency)+'</b></div><div class="bg-amber-50 p-3 rounded-xl"><small>قيد المراجعة</small><b class="block mt-1">'+money(pending,x.currency)+'</b></div><div class="bg-emerald-50 p-3 rounded-xl"><small>مصروفات معتمدة</small><b class="block mt-1">'+money(approved,x.currency)+'</b></div></div>';
+   if(!x.acknowledged_at&&x.status==='Issued')html+='<div class="rounded-xl border border-amber-200 bg-amber-50 p-3"><p class="text-xs mb-2">أكد فقط بعد استلام النقدية فعليًا من المالية.</p><button data-ec-ack-custody="'+esc(x.id)+'" class="w-full rounded-xl bg-emerald-600 text-white py-3 text-sm font-black">تأكيد استلام العهدة</button></div>';
+   if(aa.length){html+='<div><h4 class="font-black text-sm mb-2">التسليمات والزيادات</h4><div class="space-y-2">';aa.forEach(function(z){html+='<div class="flex justify-between items-center gap-2 border rounded-xl p-3"><div><b class="text-xs">'+(z.advance_type==='Initial'?'العهدة الأصلية':'زيادة عهدة')+'</b><p class="text-xs text-slate-500 mt-1">'+esc(z.advance_date||'')+' · '+money(z.amount,z.currency)+'</p><p class="text-[11px] text-slate-400">'+esc(z.reference||'')+'</p></div>'+(z.acknowledged_at?'<span class="text-xs text-emerald-700 font-bold">تم التأكيد</span>':'<button data-ec-ack-advance="'+esc(z.id)+'" class="px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold">تأكيد الاستلام</button>')+'</div>';});html+='</div></div>';}
+   if(ee.length){html+='<div><h4 class="font-black text-sm mb-2">مصروفاتي ومستنداتي</h4><div class="space-y-2">';ee.forEach(function(z){var cat=({TRANSPORTATION:'انتقالات',FUEL:'وقود',TOLLS_PARKING:'طرق ومواقف',OTHER:'أخرى'})[z.expense_category]||(z.expense_type==='PURCHASE_INVOICE'?'فاتورة شراء مرتبطة':'مصروف');html+='<div class="border rounded-xl p-3"><div class="flex justify-between gap-2"><b class="text-xs">'+esc(cat)+'</b><b class="text-xs">'+money(z.amount,z.currency)+'</b></div><p class="text-xs text-slate-600 mt-1">'+esc(z.description)+'</p><div class="flex justify-between items-center gap-2 mt-2"><span class="text-[11px] text-slate-500">'+esc(status(z.status))+'</span>'+(z.document_path?'<button data-ec-open-document="'+esc(z.document_path)+'" class="text-xs text-sky-700 font-bold">عرض الإيصال</button>':'')+'</div>'+(z.review_note?'<p class="text-xs text-rose-700 mt-2">'+esc(z.review_note)+'</p>':'')+'</div>';});html+='</div></div>';}
+   if(ss.length){html+='<div><h4 class="font-black text-sm mb-2">التسوية المالية</h4>';ss.forEach(function(z){html+='<div class="border rounded-xl p-3 text-xs"><div class="flex justify-between"><span>مصروفات معتمدة</span><b>'+money(z.approved_expense_total,x.currency)+'</b></div><div class="flex justify-between mt-1"><span>النقد المرتجع</span><b>'+money(z.cash_returned,x.currency)+'</b></div><p class="text-slate-500 mt-1">'+esc(z.finance_reference||'')+'</p></div>';});html+='</div>';}
+   if(x.acknowledged_at&&x.status!=='Settled'&&x.status!=='Closed')html+='<button data-ec-submit-expense="'+esc(x.id)+'" class="w-full rounded-xl bg-sky-600 text-white py-3 font-black text-sm">تقديم إيصال مصروف</button>';
+   html+='</section>';
+  });
+  return html+'</div>';
+ }
+ function bind(root){root.onclick=function(ev){var b=ev.target&&ev.target.closest?ev.target.closest('button'):null;if(!b||!root.contains(b))return;if(b.hasAttribute('data-ec-refresh'))render(state.root);else if(b.hasAttribute('data-ec-ack-custody'))ack(b.getAttribute('data-ec-ack-custody'),false);else if(b.hasAttribute('data-ec-ack-advance'))ack(b.getAttribute('data-ec-ack-advance'),true);else if(b.hasAttribute('data-ec-submit-expense'))submit(b.getAttribute('data-ec-submit-expense'));else if(b.hasAttribute('data-ec-open-document'))openDoc(b.getAttribute('data-ec-open-document'));};}
+ function render(rootId){
+  state.root=rootId||state.root||'mainContent';var h=document.getElementById(state.root);if(!h)return Promise.resolve(false);var seq=++state.serial;
+  h.innerHTML='<div class="p-8 text-center text-slate-500">جاري تحميل عهدتك النقدية...</div>';
+  return load().then(function(x){if(seq!==state.serial)return false;var t=document.getElementById(state.root);if(!t)return false;t.innerHTML=draw(x);bind(t);realtime(x.user);return true;})
+  .catch(function(x){if(seq!==state.serial)return false;var t=document.getElementById(state.root);if(t){t.innerHTML='<div class="p-8 text-center"><h3 class="font-black">تعذر تحميل عهدتك</h3><p class="text-sm text-slate-500 mt-2">'+esc(x.message||x)+'</p><button data-ec-refresh class="mt-4 px-5 py-3 rounded-xl bg-sky-600 text-white">إعادة المحاولة</button></div>';bind(t);}return false;});
+ }
+ function realtime(u){if(!u||!RW_Realtime||!RW_Realtime.start)return;var key='employee-custody:'+u.company_id;if(state.channel===key)return;if(state.channel)RW_Realtime.stop(state.channel);var started=RW_Realtime.start({appId:'employee-custody',companyId:u.company_id,tables:['buyer_custodies','buyer_custody_advances','buyer_custody_expenses','buyer_custody_payments','buyer_custody_settlements'],debounceMs:500,reconcileMs:30000,onEvent:function(){if(state.root)render(state.root);},onReconcile:function(){if(state.root)render(state.root);}});if(started)state.channel=key;}
+ function ack(id,isAdvance){var u;try{u=user();}catch(x){fail(x);return;}Swal.fire({title:isAdvance?'تأكيد استلام زيادة العهدة':'تأكيد استلام العهدة',text:'أكد فقط إذا استلمت النقدية فعليًا.',icon:'question',showCancelButton:true,confirmButtonText:'نعم، استلمت',cancelButtonText:'إلغاء'}).then(function(r){if(!r.isConfirmed)return;Swal.fire({title:'جاري تسجيل الإقرار...',allowOutsideClick:false,didOpen:function(){Swal.showLoading();}});var rpc=isAdvance?'buyer_custody_acknowledge_advance_atomic':'buyer_custody_acknowledge_atomic',args=isAdvance?{p_company_id:u.company_id,p_advance_id:id}:{p_company_id:u.company_id,p_custody_id:id};supabase.rpc(rpc,args).then(function(x){Swal.close();if(x.error)throw x.error;notice('تم تسجيل إقرار الاستلام','success');render(state.root);}).catch(function(x){Swal.close();fail(x);});});}
+ function submit(custodyId){
+  var s=state.snapshot,c=s&&s.custodies.filter(function(x){return x.id===custodyId;})[0];if(!c||!c.acknowledged_at||['Issued','UnderReview'].indexOf(c.status)<0){fail('لا يمكن تقديم مصروف قبل تأكيد استلام عهدة مفتوحة');return;}
+  var op=opId(),html='<div class="text-right space-y-3"><label class="block text-xs font-bold">فئة المصروف<select id="ec-cat" class="swal2-select w-full"><option value="TRANSPORTATION">انتقالات ومواصلات</option><option value="FUEL">وقود</option><option value="TOLLS_PARKING">رسوم طرق ومواقف</option><option value="OTHER">مصروف تشغيلي آخر</option></select></label><div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ ('+esc(c.currency)+')<input id="ec-amt" type="number" min="0.01" step="0.01" class="swal2-input"></label><label class="text-xs font-bold">التاريخ<input id="ec-date" type="date" value="'+new Date().toISOString().slice(0,10)+'" class="swal2-input"></label></div><label class="block text-xs font-bold">البيان<input id="ec-desc" class="swal2-input"></label><label class="block text-xs font-bold">رقم الإيصال<input id="ec-ref" class="swal2-input"></label><label class="block text-xs font-bold">صورة الإيصال أو PDF<input id="ec-file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" class="swal2-file"></label><p class="text-[11px] text-slate-500">المرفق خاص، بحد أقصى 10 ميجابايت. الإرسال لا يعني الاعتماد.</p></div>';
+  Swal.fire({title:'تقديم إيصال مصروف من العهدة',html:html,width:650,showCancelButton:true,confirmButtonText:'إرسال للمالية',cancelButtonText:'إلغاء',preConfirm:async function(){
+   var u=user(),amt=Number(byId('ec-amt').value||0),desc=byId('ec-desc').value.trim(),date=byId('ec-date').value,ref=byId('ec-ref').value.trim(),cat=byId('ec-cat').value,f=byId('ec-file').files[0],allowed=['application/pdf','image/jpeg','image/png','image/webp'];
+   if(!f||allowed.indexOf(String(f.type||'').toLowerCase())<0||f.size<=0||f.size>10485760){Swal.showValidationMessage('أرفق PDF أو JPG/PNG/WEBP لا يتجاوز 10 ميجابايت');return false;}
+   if(amt<=0||!desc||!date){Swal.showValidationMessage('المبلغ والبيان والتاريخ مطلوبة');return false;}
+   var check=await supabase.from('buyer_custody_expenses').select('id').eq('company_id',u.company_id).eq('operation_id',op).maybeSingle();
+   if(check.error){Swal.showValidationMessage(check.error.message);return false;}if(check.data)return check.data;
+   var name=f.name.replace(/[^a-zA-Z0-9._-]+/g,'_').slice(-90)||'receipt',path=u.company_id+'/'+u.id+'/buyer-custody/'+custodyId+'/'+op+'_'+name;
+   var upload=await supabase.storage.from('employee-documents').upload(path,f,{upsert:false,contentType:f.type});if(upload.error){Swal.showValidationMessage(upload.error.message);return false;}
+   var result=await supabase.rpc('buyer_custody_submit_other_expense_atomic',{p_company_id:u.company_id,p_custody_id:custodyId,p_expense_date:date,p_expense_category:cat,p_expense_reference:ref||null,p_description:desc,p_amount:amt,p_currency:c.currency,p_document_name:f.name,p_document_path:path,p_mime_type:f.type,p_operation_id:op});
+   if(result.error){var verify=await supabase.from('buyer_custody_expenses').select('id').eq('company_id',u.company_id).eq('operation_id',op).maybeSingle();if(!verify.error&&!verify.data)await supabase.storage.from('employee-documents').remove([path]);if(!verify.error&&verify.data)return verify.data;Swal.showValidationMessage(result.error.message);return false;}
+   return result.data;
+  }}).then(function(r){if(r.isConfirmed){notice('تم إرسال الإيصال للمالية دون ترحيل مصروف','success');render(state.root);}});
+ }
+ function openDoc(path){var w=window.open('about:blank','_blank');supabase.storage.from('employee-documents').createSignedUrl(path,300).then(function(r){if(r.error)throw r.error;if(w)w.location=r.data.signedUrl;else notice('المتصفح منع فتح نافذة المستند','warning');}).catch(function(x){if(w)w.close();fail(x);});}
+ function stop(){if(state.channel&&RW_Realtime&&RW_Realtime.stop)RW_Realtime.stop(state.channel);state.channel=null;state.root=null;state.snapshot=null;state.serial++;}
+ return {render:render,refresh:function(){return state.root?render(state.root):Promise.resolve(false);},stop:stop};
+})();
+
+console.log('   RW_Auth | RW_DB | RW_API | RW_UI | RW_ImageCache | RW_SW | RW_Realtime | RW_EmployeeCustody');

@@ -1250,50 +1250,89 @@ var App = {
         });
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
+    custodyCashTreasuries:function(rows,branchId) {
+        return (rows||[]).filter(function(t) {
+            return t.is_active!==false && String(t.type||'').toLowerCase()==='cash' &&
+                String(t.branch_id||'')===String(branchId||'') && String(t.account_code||'').indexOf('POS-')!==0;
+        });
+    },
     issueCustody:async function(){
         try{
             await this.loadSystemCurrency();
-            var snapshot=this.custodySnapshot||await this.api('GET_CUSTODY',{}),employees=snapshot.employees||[];
-            var data=await Promise.all([this.data('branches'),this.data('treasury')]),branches=data[0],treasuries=data[1].filter(function(t){return t.is_active!==false;});
-            if(!employees.length)throw new Error('لا يوجد موظفون نشطون مسجلون في الشركة');
-            if(!treasuries.length)throw new Error('لا توجد خزائن نشطة متاحة لتسليم العهدة');
-            var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">الموظف<select id="bc-employee" class="swal2-select w-full">'+employees.map(function(e){return '<option value="'+buyerEsc(e.id)+'">'+buyerEsc(e.name)+' · '+buyerEsc(e.email)+'</option>';}).join('')+'</select></label>'+
-                '<label class="block text-xs font-bold">الخزينة مصدر التسليم<select id="bc-treasury" class="swal2-select w-full">'+treasuries.map(function(t){return '<option value="'+buyerEsc(t.id)+'">'+buyerEsc(t.account_name)+' · رصيد '+buyerMoney(t.current_balance,this.currency)+'</option>';},this).join('')+'</select></label>'+
-                '<label class="block text-xs font-bold">الغرض<input id="bc-purpose" class="swal2-input" placeholder="مشتريات تشغيلية / مشتريات موردين"></label>'+
-                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bc-amount" type="number" min="0.01" step="0.01" class="swal2-input" placeholder="0.00"></label><label class="text-xs font-bold">العملة<input id="bc-currency" class="swal2-input" value="'+buyerEsc(this.currency||'EGP')+'" readonly></label></div>'+
+            var snapshot=this.custodySnapshot||await this.api('GET_CUSTODY',{});
+            var employees=snapshot.employees||[];
+            var loaded=await Promise.all([this.data('branches'),this.data('treasury')]);
+            var branches=(loaded[0]||[]).filter(function(b){return b.is_active!==false;});
+            var allTreasuries=loaded[1]||[];
+            if(!employees.length)throw new Error('لا يوجد موظفون نشطون لإصدار عهدة لهم');
+            if(!branches.length)throw new Error('لا توجد فروع نشطة');
+            var eo=employees.map(function(e){return '<option value="'+buyerEsc(e.id)+'">'+buyerEsc(e.name)+' · '+buyerEsc(e.email||'')+'</option>';}).join('');
+            var bo=branches.map(function(b){return '<option value="'+buyerEsc(b.id)+'">'+buyerEsc(b.name||b.branch_name||b.branch_code)+'</option>';}).join('');
+            var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">الموظف<select id="bc-employee" class="swal2-select w-full"><option value="">اختر الموظف</option>'+eo+'</select></label>'+
+                '<label class="block text-xs font-bold">الفرع (إلزامي)<select id="bc-branch" class="swal2-select w-full"><option value="">اختر الفرع</option>'+bo+'</select></label>'+
+                '<label class="block text-xs font-bold">خزينة Cash التابعة للفرع<select id="bc-treasury" class="swal2-select w-full" disabled><option value="">اختر الفرع أولًا</option></select></label>'+
+                '<label class="block text-xs font-bold">الغرض<input id="bc-purpose" class="swal2-input" placeholder="الغرض من العهدة"></label>'+
+                '<div class="grid grid-cols-2 gap-2"><label class="text-xs font-bold">المبلغ<input id="bc-amount" type="number" min="0.01" step="0.01" class="swal2-input"></label><label class="text-xs font-bold">العملة<input id="bc-currency" class="swal2-input" value="'+buyerEsc(this.currency||'EGP')+'" readonly></label></div>'+
                 '<label class="block text-xs font-bold">تاريخ التسليم<input id="bc-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label>'+
-                '<label class="block text-xs font-bold">الفرع<select id="bc-branch" class="swal2-select w-full"><option value="">بدون تحديد</option>'+branches.map(function(b){return '<option value="'+buyerEsc(b.id)+'">'+buyerEsc(b.name)+'</option>';}).join('')+'</select></label>'+
-                '<label class="block text-xs font-bold">مرجع سند التسليم اليدوي<input id="bc-reference" class="swal2-input" placeholder="رقم سند/إيصال الصرف"></label>'+
-                '<label class="block text-xs font-bold">ملاحظات<textarea id="bc-notes" class="swal2-textarea"></textarea></label>'+
-                '<p class="text-xs text-amber-700">يجب أن تكون النقدية قد سُلّمت فعليًا. سيُسجل النظام سند صرف من الخزينة إلى حساب عهد الموظفين ويُحدّث رصيد الخزينة والقيد العام.</p></div>';
-            var self=this;
-            var result=await Swal.fire({title:'تسجيل تسليم عهدة مشتريات',html:html,width:680,showCancelButton:true,confirmButtonText:'تسجيل التسليم',cancelButtonText:'إلغاء',preConfirm:async function(){
-                var amount=Number(RW_UI.byId('bc-amount').value||0),purpose=RW_UI.byId('bc-purpose').value.trim(),treasury=RW_UI.byId('bc-treasury').value;
-                if(!purpose||amount<=0||!treasury){Swal.showValidationMessage('اختر الخزينة وأدخل الغرض ومبلغًا أكبر من صفر');return false;}
-                try{return await self.api('ISSUE_CUSTODY',{employee_id:RW_UI.byId('bc-employee').value,branch_id:RW_UI.byId('bc-branch').value||null,treasury_id:treasury,
-                    purpose:purpose,amount:amount,issued_date:RW_UI.byId('bc-date').value||buyerLocalDate(),currency:self.currency,
-                    received_reference:RW_UI.byId('bc-reference').value.trim()||null,notes:RW_UI.byId('bc-notes').value.trim()||null});}
-                catch(e){Swal.showValidationMessage(e.message);return false;}
-            }});
-            if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تسجيل تسليم العهدة وربطه بالخزينة والحسابات','success');}
+                '<label class="block text-xs font-bold">مرجع سند التسليم<input id="bc-reference" class="swal2-input"></label><label class="block text-xs font-bold">ملاحظات<textarea id="bc-notes" class="swal2-textarea"></textarea></label>'+
+                '<p id="bc-treasury-hint" class="text-xs text-amber-700">تُعرض فقط خزائن Cash النشطة التابعة للفرع؛ POS والخزينة المركزية مستبعدتان.</p></div>';
+            var self=this,operation=buyerOperationId();
+            var result=await Swal.fire({title:'تسجيل عهدة لموظف',html:html,width:680,showCancelButton:true,confirmButtonText:'تسجيل طلب التسليم',cancelButtonText:'إلغاء',
+                didOpen:function(){
+                    var branch=RW_UI.byId('bc-branch'),treasury=RW_UI.byId('bc-treasury'),hint=RW_UI.byId('bc-treasury-hint');
+                    function refresh(){
+                        var eligible=self.custodyCashTreasuries(allTreasuries,branch.value);
+                        treasury.innerHTML='<option value="">'+(eligible.length?'اختر خزينة الفرع':'لا توجد خزينة Cash نشطة لهذا الفرع')+'</option>'+
+                            eligible.map(function(t){return '<option value="'+buyerEsc(t.id)+'">'+buyerEsc(t.account_name)+' · '+buyerMoney(t.current_balance,self.currency)+'</option>';}).join('');
+                        treasury.disabled=!eligible.length;
+                        hint.textContent=eligible.length?'يُسمح فقط بخزينة Cash التابعة للفرع المحدد.':'لا توجد خزينة نقدية نشطة لهذا الفرع؛ يلزم تهيئتها وتمويلها بتحويل موثق.';
+                    }
+                    branch.addEventListener('change',refresh);refresh();
+                },
+                preConfirm:async function(){
+                    var employee=RW_UI.byId('bc-employee').value,branch=RW_UI.byId('bc-branch').value,treasury=RW_UI.byId('bc-treasury').value;
+                    var amount=Number(RW_UI.byId('bc-amount').value||0),purpose=RW_UI.byId('bc-purpose').value.trim();
+                    if(!employee||!branch||!treasury||!purpose||amount<=0){Swal.showValidationMessage('أكمل الموظف والفرع والخزينة والغرض والمبلغ');return false;}
+                    if(!self.custodyCashTreasuries(allTreasuries,branch).some(function(t){return String(t.id)===String(treasury);})){
+                        Swal.showValidationMessage('الخزينة لا تتبع الفرع أو ليست خزينة Cash مؤهلة');return false;
+                    }
+                    try{return await self.api('ISSUE_CUSTODY',{
+                        employee_id:employee,branch_id:branch,treasury_id:treasury,purpose:purpose,amount:amount,
+                        issued_date:RW_UI.byId('bc-date').value||buyerLocalDate(),currency:self.currency,
+                        received_reference:RW_UI.byId('bc-reference').value.trim()||null,
+                        notes:RW_UI.byId('bc-notes').value.trim()||null,operation_id:operation
+                    });}catch(e){Swal.showValidationMessage(e.message);return false;}
+                }
+            });
+            if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تسجيل طلب العهدة؛ الصرف الفعلي بعد إقرار الموظف','success');}
         }catch(e){this.notifyError(e);}
     },
     addCustodyAdvance:async function(custodyId){
         try{
-            var treasuries=(await this.data('treasury')).filter(function(t){return t.is_active!==false;});
-            if(!treasuries.length)throw new Error('لا توجد خزائن نشطة متاحة');
-            var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">الخزينة مصدر الزيادة<select id="bca-treasury" class="swal2-select w-full">'+treasuries.map(function(t){return '<option value="'+buyerEsc(t.id)+'">'+buyerEsc(t.account_name)+' · رصيد '+buyerMoney(t.current_balance,this.currency)+'</option>';},this).join('')+'</select></label>'+
+            var custody=(this.custodySnapshot&&this.custodySnapshot.custodies||[]).find(function(c){return c.id===custodyId;});
+            if(!custody||!custody.branch_id)throw new Error('لا يوجد فرع صحيح مرتبط بالعهدة');
+            var treasuries=this.custodyCashTreasuries(await this.data('treasury'),custody.branch_id);
+            if(!treasuries.length)throw new Error('لا توجد خزينة Cash نشطة لهذا الفرع؛ لا يمكن تسجيل زيادة');
+            var options=treasuries.map(function(t){return '<option value="'+buyerEsc(t.id)+'">'+buyerEsc(t.account_name)+' · '+buyerMoney(t.current_balance,custody.currency)+'</option>';}).join('');
+            var html='<div class="text-right space-y-2"><label class="block text-xs font-bold">خزينة الفرع مصدر الزيادة<select id="bca-treasury" class="swal2-select w-full"><option value="">اختر الخزينة</option>'+options+'</select></label>'+
                 '<label class="block text-xs font-bold">المبلغ الإضافي<input id="bca-amount" type="number" min="0.01" step="0.01" class="swal2-input"></label>'+
                 '<label class="block text-xs font-bold">تاريخ التسليم<input id="bca-date" type="date" class="swal2-input" value="'+buyerLocalDate()+'"></label>'+
-                '<label class="block text-xs font-bold">مرجع سند التسليم<input id="bca-reference" class="swal2-input"></label><label class="block text-xs font-bold">ملاحظات<textarea id="bca-notes" class="swal2-textarea"></textarea></label>'+
-                '<p class="text-xs text-amber-700">تُسجل الزيادة كسند صرف مستقل من الخزينة إلى حساب العهدة، ولا تصبح متاحة للمصروفات إلا بعد تأكيد الموظف استلامها.</p></div>';
-            var result=await Swal.fire({title:'زيادة عهدة / تسليم نقدية إضافية',html:html,width:650,showCancelButton:true,confirmButtonText:'تسجيل الزيادة',cancelButtonText:'إلغاء',preConfirm:async function(){
+                '<label class="block text-xs font-bold">مرجع سند التسليم<input id="bca-reference" class="swal2-input"></label><textarea id="bca-notes" class="swal2-textarea" placeholder="ملاحظات"></textarea>'+
+                '<p class="text-xs text-amber-700">لا تصبح الزيادة مستلمة أو متاحة إلا بعد إقرار الموظف.</p></div>';
+            var operation=buyerOperationId();
+            var result=await Swal.fire({title:'زيادة عهدة',html:html,width:650,showCancelButton:true,confirmButtonText:'تسجيل الزيادة',cancelButtonText:'إلغاء',preConfirm:async function(){
                 var amount=Number(RW_UI.byId('bca-amount').value||0),treasury=RW_UI.byId('bca-treasury').value;
-                if(amount<=0||!treasury){Swal.showValidationMessage('اختر الخزينة وأدخل مبلغًا أكبر من صفر');return false;}
-                try{return await App.api('ADD_CUSTODY_ADVANCE',{custody_id:custodyId,treasury_id:treasury,amount:amount,advance_date:RW_UI.byId('bca-date').value||buyerLocalDate(),reference:RW_UI.byId('bca-reference').value.trim()||null,notes:RW_UI.byId('bca-notes').value.trim()||null});}
-                catch(e){Swal.showValidationMessage(e.message);return false;}
+                if(amount<=0||!treasury||!treasuries.some(function(t){return String(t.id)===String(treasury);})){
+                    Swal.showValidationMessage('اختر خزينة الفرع وأدخل مبلغًا صحيحًا');return false;
+                }
+                try{return await App.api('ADD_CUSTODY_ADVANCE',{
+                    custody_id:custodyId,treasury_id:treasury,amount:amount,
+                    advance_date:RW_UI.byId('bca-date').value||buyerLocalDate(),
+                    reference:RW_UI.byId('bca-reference').value.trim()||null,
+                    notes:RW_UI.byId('bca-notes').value.trim()||null,operation_id:operation
+                });}catch(e){Swal.showValidationMessage(e.message);return false;}
             }});
-            if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تسجيل زيادة العهدة وبانتظار تأكيد الموظف','success');}
+            if(result.isConfirmed){this.invalidate();await this.renderCustody();RW_UI.toast('تم تسجيل الزيادة وبانتظار إقرار الموظف','success');}
         }catch(e){this.notifyError(e);}
     },
     acknowledgeCustodyAdvance:async function(advanceId){
@@ -1467,7 +1506,7 @@ var App = {
         var approved=lines.reduce(function(n,e){return n+Number(e.amount||0);},0);
         if(!custody)return;
         var maxReturn=Math.max(0,Number(custody.issued_amount||0)-approved),treasuries=[];
-        if(maxReturn>0){treasuries=(await this.data('treasury')).filter(function(t){return t.is_active!==false;});if(!treasuries.length){this.notifyError(new Error('لا توجد خزائن نشطة لاستلام النقد المرتجع'));return;}}
+        if(maxReturn>0){treasuries=this.custodyCashTreasuries(await this.data('treasury'),custody.branch_id);if(!treasuries.length){this.notifyError(new Error('لا توجد خزينة Cash نشطة تابعة لفرع العهدة لاستلام النقد المرتجع'));return;}}
         var treasuryOptions=treasuries.map(function(t){return '<option value="'+buyerEsc(t.id)+'">'+buyerEsc(t.account_name)+' · رصيد '+buyerMoney(t.current_balance,custody.currency)+'</option>';}).join('');
         var html='<div class="text-right text-sm mb-3">المبلغ المسلّم: <b>'+buyerMoney(custody.issued_amount,custody.currency)+'</b><br>إجمالي المصروفات المعتمدة من العهدة: <b>'+buyerMoney(approved,custody.currency)+'</b><br>النقد المطلوب استلامه لإغلاق العهدة: <b>'+buyerMoney(maxReturn,custody.currency)+'</b></div>'+
             (maxReturn>0?'<label class="block text-xs font-bold text-right">الخزينة المستلمة للنقد المرتجع<select id="bcs-treasury" class="swal2-select w-full"><option value="">اختر الخزينة</option>'+treasuryOptions+'</select></label>':'')+

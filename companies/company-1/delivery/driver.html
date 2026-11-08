@@ -75,6 +75,7 @@
         <button onclick="App.switchTab('map')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-map"><i class="fa-solid fa-map text-lg"></i><span>الخريطة</span></button>
         <button onclick="App.switchTab('stock')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-stock"><i class="fa-solid fa-boxes-stacked text-lg"></i><span>السيارة</span></button>
         <button onclick="App.switchTab('balance')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-balance"><i class="fa-solid fa-scale-balanced text-lg"></i><span>رصيدي</span></button>
+        <button onclick="App.switchTab('cash-custody')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-cash-custody"><i class="fa-solid fa-wallet text-lg"></i><span>عهدتي</span></button>
         <button onclick="App.switchTab('account')" class="tab-btn flex-1 flex flex-col items-center py-2 px-1 text-slate-400 font-bold text-xs" id="tab-account"><i class="fa-solid fa-user text-lg"></i><span>حسابي</span></button>
     </nav>
 </div>
@@ -91,7 +92,7 @@ function toast(m, t) { Swal.fire({ toast: true, position: 'top', icon: t || 'inf
 
 var ITEMS_IMAGE_CACHE = {};
 var App = {
-    currentUser: null, pubUserId: null, currentTab: 'dashboard',
+    currentUser: null, pubUserId: null, companyId: null, currentTab: 'dashboard',
     runsheets: [], activeRunsheet: null, mapObj: null, mapMarkers: [],
     timerInterval: null, orderTimerInterval: null,
     session: null, orderSession: null,
@@ -112,24 +113,35 @@ var App = {
 
     init: function() {
         var self = this;
-        supabase.auth.getSession().then(function(res) {
-            if (res.data && res.data.session) {
-                self.currentUser = res.data.session.user;
-                var meta = self.currentUser.user_metadata || {}, isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك'), perms = meta.permissions || [], hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('delivery') !== -1);
-                if (!hasAccess) { Swal.fire({ title: 'غير مصرح', icon: 'error', customClass: { popup: '!rounded-3xl' } }); supabase.auth.signOut(); return; }
-                supabase.from('users').select('id').eq('email', self.currentUser.email).maybeSingle().then(function(uRes) {
-                    if (uRes.data) { self.pubUserId = uRes.data.id; }
-                    else { supabase.from('users').insert({ email: self.currentUser.email, name: meta.name || self.currentUser.email, role: meta.role || 'مندوب توصيل', permissions: perms, company_id: '00000000-0000-0000-0000-000000000001', status: 'Active' }).select('id').single().then(function(insertRes) { if (insertRes.data) self.pubUserId = insertRes.data.id; }); }
-                    supabase.from('items').select('item_code, image_url, description').then(function(imgRes) { var imgs = imgRes.data || []; for (var j = 0; j < imgs.length; j++) { if (imgs[j].item_code) { ITEMS_IMAGE_CACHE[imgs[j].item_code] = { image_url: imgs[j].image_url || '', description: imgs[j].description || '' }; } } });
-                    supabase.from('app_settings').select('tax_rate, delivery_fee, currency').single().then(function(sRes) { if (sRes.data) { self.settings.tax_rate = Number(sRes.data.tax_rate) || 0; self.settings.delivery_fee = Number(sRes.data.delivery_fee) || 0; self.settings.currency = sRes.data.currency || 'SAR'; } });
-                    safeText(byId('headerUserName'), meta.name || self.currentUser.email);
-                    self.enterApp();
-                });
+        RW_Auth.init(function(profile, error) {
+            if (error || !profile || !profile.id || !profile.company_id) {
+                byId('loginMsg').innerText = error || 'تعذر تحميل ملف الموظف ونطاق الشركة';
+                byId('loginMsg').classList.remove('hidden');
+                return;
             }
+            var permissions = Array.isArray(profile.permissions) ? profile.permissions : [];
+            var permitted = profile.isOwner === true || permissions.indexOf('*') !== -1 || permissions.indexOf('delivery') !== -1;
+            if (!permitted) {
+                Swal.fire({title:'غير مصرح',icon:'error',text:'هذا الحساب لا يملك صلاحية تطبيق التوصيل.',customClass:{popup:'!rounded-3xl'}});
+                RW_Auth.doLogout(); return;
+            }
+            self.pubUserId = profile.id;
+            self.companyId = profile.company_id;
+            self.currentUser = {id:profile.auth_id||null,email:profile.email||'',user_metadata:{name:profile.name||profile.email||'',role:profile.role||'مندوب توصيل',permissions:permissions}};
+            supabase.from('items').select('item_code, image_url, description').eq('company_id',profile.company_id).then(function(imgRes){
+                var imgs=imgRes.data||[];
+                for(var j=0;j<imgs.length;j++)if(imgs[j].item_code)ITEMS_IMAGE_CACHE[imgs[j].item_code]={image_url:imgs[j].image_url||'',description:imgs[j].description||''};
+            });
+            supabase.from('app_settings').select('tax_rate, delivery_fee, currency').eq('company_id',profile.company_id)
+                .order('created_at',{ascending:true}).order('id',{ascending:true}).limit(1).maybeSingle().then(function(sRes){
+                    if(sRes.data){self.settings.tax_rate=Number(sRes.data.tax_rate)||0;self.settings.delivery_fee=Number(sRes.data.delivery_fee)||0;self.settings.currency=sRes.data.currency||'EGP';}
+                });
+            safeText(byId('headerUserName'),profile.name||profile.email||'');
+            self.enterApp();
         });
     },
 
-    enterApp: function() {
+enterApp: function() {
     byId('loginScreen').classList.add('hidden');
     byId('mainApp').classList.remove('hidden');
     this.switchTab('dashboard');
@@ -146,12 +158,14 @@ var App = {
 
 doLogout: function() {
     var self = this;
+    if (typeof RW_EmployeeCustody !== 'undefined') RW_EmployeeCustody.stop();
     if (this.timerInterval) clearInterval(this.timerInterval);
     if (this.orderTimerInterval) clearInterval(this.orderTimerInterval);
     if (this.mapObj) { this.mapObj.remove(); this.mapObj = null; }
     RW_Auth.doLogout(function() {
         self.currentUser = null;
         self.pubUserId = null;
+        self.companyId = null;
         byId('mainApp').classList.add('hidden');
         byId('loginScreen').classList.remove('hidden');
         byId('loginEmail').value = '';
@@ -231,7 +245,7 @@ checkForNewRunsheet: function() {
     switchTab: function(tab) {
         if (tab === 'orderDetail') return;
         this.currentTab = tab;
-        var tabs = ['dashboard', 'orders', 'map', 'stock', 'balance', 'account'];
+        var tabs = ['dashboard', 'orders', 'map', 'stock', 'balance', 'cash-custody', 'account'];
         for (var i = 0; i < tabs.length; i++) { var btn = byId('tab-' + tabs[i]); if (btn) { btn.classList.remove('text-sky-600'); btn.classList.add('text-slate-400'); } }
         var act = byId('tab-' + tab); if (act) { act.classList.add('text-sky-600'); act.classList.remove('text-slate-400'); }
         if (tab === 'dashboard') this.renderDashboard();
@@ -239,6 +253,7 @@ checkForNewRunsheet: function() {
         else if (tab === 'map') this.renderMap();
         else if (tab === 'stock') this.renderStock();
         else if (tab === 'balance') this.renderBalance();
+        else if (tab === 'cash-custody') RW_EmployeeCustody.render('mainContent');
         else if (tab === 'account') this.renderAccount();
     },
 
