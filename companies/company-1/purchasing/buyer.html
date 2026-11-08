@@ -926,7 +926,7 @@ var App = {
             .limit(40);
         for(var i=0;i<tokens.length;i++){
             var term=this.invoiceEscapeIlike(tokens[i]);
-            q=q.or('item_code.ilike.%'+term+'%,name.ilike.%'+term+'%,barcode.ilike.%'+term+'%,search_label.ilike.%'+term);
+            q=q.or('item_code.ilike.%'+term+'%,name.ilike.%'+term+'%,barcode.ilike.%'+term+'%,search_label.ilike.%'+term+'%');
         }
         var result=await q.order('name',{ascending:true});
         if(result.error)throw result.error;
@@ -944,6 +944,7 @@ var App = {
         }).slice(0,25);
     },
     createPurchaseInvoice:async function(invoiceId){
+        var self=this;
         try{
             var d=await Promise.all([this.data('suppliers'),this.loadInvoiceItems(),this.data('branches'),this.data('purchase_orders'),this.data('purchase_settings'),this.api('GET_SETTINGS',{}),this.data('purchase_invoices'),this.data('purchase_invoice_details')]);
             var suppliers=d[0].filter(function(x){return x.is_active===true;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=String(d[5]&&d[5].currency||'').trim().toUpperCase(),current=invoiceId?d[6].find(function(x){return x.id===invoiceId;}):null,selectedSupplier=null,selectedItem=null,lines=[],invoiceOperationId=buyerOperationId();
