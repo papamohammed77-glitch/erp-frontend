@@ -23255,6 +23255,11 @@ RW_Finance._renderEmployeeFinancial360 = async function(){
     }catch(e){safeHTML(host,'<div class="p-6 text-red-600 font-bold">'+esc360(e.message||e)+'</div>');}
 };
 
+RW_Finance._employeeClaimOpId = function(){
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+      var r=Math.random()*16|0,v=c==='x'?r:(r&3|8);return v.toString(16);
+    });
+};
 RW_Finance._renderEmployeeReimbursements = async function(){
     var host=byId('finance-content');if(!host)return;
     function escClaim(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -23308,17 +23313,17 @@ RW_Finance._createEmployeeClaim = async function(){
     var accOpts=accounts.map(function(x){return '<option value="'+esc(x.id)+'">'+esc(x.account_code+' — '+x.account_name)+'</option>';}).join('');
     var r=await Swal.fire({title:'مطالبة مصروف موظف',html:'<div class="text-right space-y-2"><label class="block text-sm">الموظف</label><select id="claim-employee" class="swal2-select w-full">'+empOpts+'</select><label class="block text-sm">حساب المصروف</label><select id="claim-account" class="swal2-select w-full">'+accOpts+'</select><label class="block text-sm">التاريخ</label><input id="claim-date" type="date" class="swal2-input w-full" value="'+new Date().toISOString().slice(0,10)+'"><label class="block text-sm">المبلغ</label><input id="claim-amount" type="number" min="0.01" step="0.01" class="swal2-input w-full" placeholder="0.00"><label class="block text-sm">البيان</label><textarea id="claim-description" class="swal2-textarea w-full" placeholder="وصف المصروف وسبب تحمله شخصيًا"></textarea><label class="block text-sm">رابط المرفق (اختياري)</label><input id="claim-attachment" class="swal2-input w-full" placeholder="رابط الفاتورة أو الإيصال"></div>',showCancelButton:true,confirmButtonText:'إرسال المطالبة',cancelButtonText:'إلغاء',preConfirm:function(){var amount=Number(document.getElementById('claim-amount').value||0),description=document.getElementById('claim-description').value||'';if(amount<=0||!description.trim()){Swal.showValidationMessage('أدخل مبلغًا صحيحًا وبيان المصروف');return false;}return{employee_id:document.getElementById('claim-employee').value,expense_account_id:document.getElementById('claim-account').value,claim_date:document.getElementById('claim-date').value,amount:amount,description:description,attachment_url:document.getElementById('claim-attachment').value||null};}});
     if(!r.isConfirmed)return;
-    var op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():('claim-'+Date.now()+'-'+Math.random());
+    var op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():RW_Finance._employeeClaimOpId();
     var res=await supabase.rpc('finance_employee_expense_claim_atomic',{p_command:'submit',p_company_id:cid,p_claim_id:null,p_employee_id:r.value.employee_id,p_expense_account_id:r.value.expense_account_id,p_amount:r.value.amount,p_claim_date:r.value.claim_date,p_description:r.value.description,p_attachment_url:r.value.attachment_url,p_treasury_id:null,p_operation_id:op,p_rejection_reason:null});
     if(res.error)throw res.error;if(!res.data||!res.data.success)throw new Error((res.data&&res.data.error)||'تعذر إنشاء المطالبة');
     if(typeof showToast==='function')showToast('تم تسجيل المطالبة دون إنشاء حركة نقدية','success');
     return RW_Finance._renderEmployeeReimbursements();
 };
 RW_Finance._approveEmployeeClaim = async function(id){
-    var cid=(RW_STATE&&RW_STATE.app&&RW_STATE.app.company&&RW_STATE.app.company.id)||(RW_STATE&&RW_STATE.app&&RW_STATE.companyId)||(RW_STATE&&RW_STATE.user&&RW_STATE.user.companyId);
+    var cid=(RW_STATE&&RW_STATE.app&&RW_STATE.app.company&&RW_STATE.app.company.id)||(RW_STATE&&RW_STATE.app&&RW_STATE.app.companyId)||(RW_STATE&&RW_STATE.user&&RW_STATE.user.companyId);
     var r=await Swal.fire({title:'اعتماد المطالبة؟',text:'سيُثبت المصروف ومستحق الموظف محاسبيًا دون صرف نقدي.',icon:'question',showCancelButton:true,confirmButtonText:'اعتماد',cancelButtonText:'إلغاء'});
     if(!r.isConfirmed)return;
-    var op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():('claim-approve-'+Date.now());
+    var op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():RW_Finance._employeeClaimOpId();
     var res=await supabase.rpc('finance_employee_expense_claim_atomic',{p_command:'approve',p_company_id:cid,p_claim_id:id,p_operation_id:op});
     if(res.error)throw res.error;if(!res.data||!res.data.success)throw new Error((res.data&&res.data.error)||'تعذر اعتماد المطالبة');
     if(typeof showToast==='function')showToast('تم اعتماد المطالبة وترحيل المستحق','success');
@@ -23340,7 +23345,7 @@ RW_Finance._payEmployeeClaim = async function(id){
     var opts=rows.map(function(x){return '<option value="'+x.id+'">'+String(x.account_name||x.id)+' — '+x.type+' — '+Number(x.current_balance||0).toFixed(2)+'</option>';}).join('');
     var r=await Swal.fire({title:'صرف التعويض عبر سند Payment',html:'<select id="claim-treasury" class="swal2-select w-full">'+opts+'</select>',showCancelButton:true,confirmButtonText:'إنشاء سند الصرف',cancelButtonText:'إلغاء',preConfirm:function(){return document.getElementById('claim-treasury').value;}});
     if(!r.isConfirmed)return;
-    var op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():('claim-pay-'+Date.now());
+    var op=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():RW_Finance._employeeClaimOpId();
     var res=await supabase.rpc('finance_employee_expense_claim_atomic',{p_command:'pay',p_company_id:cid,p_claim_id:id,p_treasury_id:r.value,p_operation_id:op});
     if(res.error)throw res.error;if(!res.data||!res.data.success)throw new Error((res.data&&res.data.error)||'تعذر صرف التعويض');
     if(typeof showToast==='function')showToast('تم الصرف من خلال سند Payments مركزي','success');
