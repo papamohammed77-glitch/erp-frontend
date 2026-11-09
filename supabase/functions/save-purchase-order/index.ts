@@ -65,7 +65,9 @@ serve(async (req) => {
       }
     };
 
-    if (op === "SAVE_SETTINGS") {
+    if (op === "APPROVE_PO") {
+      requireAny(["purchases", "purchases_supervisor"]);
+    } else if (op === "SAVE_SETTINGS") {
       requireAny(["purchases", "settings"]);
     } else if (["POST_INVOICE", "POST_PAYMENT", "POST_RETURN"].includes(op)) {
       requireAll(["purchases", "finance"]);
@@ -75,9 +77,9 @@ serve(async (req) => {
       requireAny(["purchases", "finance", "finance_manager", "reports"]);
     } else if (op === "SAVE_SUPPLIER") {
       requireAny(["purchases", "suppliers"]);
-    } else if (["ISSUE_CUSTODY", "ADD_CUSTODY_ADVANCE", "REVIEW_CUSTODY_EXPENSE", "REVIEW_OTHER_CUSTODY_EXPENSE", "GET_OTHER_CUSTODY_EXPENSE_ACCOUNTS", "SETTLE_CUSTODY"].includes(op)) {
+    } else if (["ISSUE_CUSTODY", "ADD_CUSTODY_ADVANCE", "REVIEW_CUSTODY_EXPENSE", "REVIEW_QUICK_MARKET_CUSTODY_EXPENSE", "REVIEW_OTHER_CUSTODY_EXPENSE", "GET_OTHER_CUSTODY_EXPENSE_ACCOUNTS", "SETTLE_CUSTODY", "RETURN_CUSTODY_CASH", "UPDATE_CUSTODY", "CANCEL_CUSTODY"].includes(op)) {
       requireAny(["finance", "finance_manager"]);
-    } else if (["SUBMIT_CUSTODY_EXPENSE", "SUBMIT_OTHER_CUSTODY_EXPENSE", "VERIFY_CUSTODY_EXPENSE_OPERATION", "ACKNOWLEDGE_CUSTODY", "ACKNOWLEDGE_CUSTODY_ADVANCE"].includes(op)) {
+    } else if (["SUBMIT_CUSTODY_EXPENSE", "SUBMIT_QUICK_MARKET_CUSTODY_EXPENSE", "SUBMIT_OTHER_CUSTODY_EXPENSE", "VERIFY_CUSTODY_EXPENSE_OPERATION", "ACKNOWLEDGE_CUSTODY", "ACKNOWLEDGE_CUSTODY_ADVANCE"].includes(op)) {
       requireAny(["purchases", "finance", "finance_manager"]);
     } else if (op === "GET_CUSTODY") {
       requireAny(["purchases", "finance", "finance_manager"]);
@@ -134,6 +136,10 @@ serve(async (req) => {
         p_company_id: companyId, p_supplier_id: p.supplier_id, p_branch_id: p.branch_id || null,
         p_expected_delivery_date: p.expected_delivery_date || null, p_payment_terms: p.payment_terms || null,
         p_notes: p.notes || null, p_items: p.items || [], p_operation_id: operationId
+      }));
+    } else if (op === "APPROVE_PO") {
+      ({ data, error } = await profileClient.rpc("purchase_approve_po_atomic", {
+        p_po_id: p.id
       }));
     } else if (op === "SUBMIT_REQUEST") {
       ({ data, error } = await call("purchase_submit_request_atomic", {
@@ -489,6 +495,18 @@ serve(async (req) => {
         p_receipt_document_name: p.receipt_document_name, p_receipt_document_path: p.receipt_document_path,
         p_receipt_mime_type: p.receipt_mime_type || null, p_operation_id: operationId
       }));
+    } else if (op === "SUBMIT_QUICK_MARKET_CUSTODY_EXPENSE") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_submit_quick_market_expense_atomic", {
+        p_company_id: companyId, p_custody_id: p.custody_id,
+        p_expense_date: p.expense_date || new Date().toISOString().slice(0, 10),
+        p_supplier_name: p.supplier_name || null, p_invoice_number: p.invoice_number || null,
+        p_description: p.description, p_amount: Number(p.amount || 0), p_currency: await getSystemCurrency(),
+        p_document_name: p.document_name, p_document_path: p.document_path,
+        p_mime_type: p.mime_type || null, p_supplier_id: p.supplier_id,
+        p_purchase_invoice_id: p.purchase_invoice_id, p_receiving_operation_id: p.receiving_operation_id,
+        p_receipt_document_name: p.receipt_document_name, p_receipt_document_path: p.receipt_document_path,
+        p_receipt_mime_type: p.receipt_mime_type || null, p_operation_id: operationId
+      }));
     } else if (op === "SUBMIT_OTHER_CUSTODY_EXPENSE") {
       ({ data, error } = await profileClient.rpc("buyer_custody_submit_other_expense_atomic", {
         p_company_id: companyId, p_custody_id: p.custody_id,
@@ -517,6 +535,11 @@ serve(async (req) => {
         p_company_id: companyId, p_expense_id: p.expense_id,
         p_decision: p.decision, p_review_note: p.review_note || null
       }));
+    } else if (op === "REVIEW_QUICK_MARKET_CUSTODY_EXPENSE") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_review_quick_market_expense_atomic", {
+        p_company_id: companyId, p_expense_id: p.expense_id,
+        p_decision: p.decision, p_review_note: p.review_note || null
+      }));
     } else if (op === "REVIEW_OTHER_CUSTODY_EXPENSE") {
       ({ data, error } = await profileClient.rpc("buyer_custody_review_other_expense_atomic", {
         p_company_id: companyId, p_expense_id: p.expense_id,
@@ -540,53 +563,249 @@ serve(async (req) => {
         p_cash_returned: Number(p.cash_returned || 0),
         p_finance_reference: p.finance_reference || null, p_notes: p.notes || null
       }));
+    } else if (op === "RETURN_CUSTODY_CASH") {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operationId)) {
+        throw new Error("CUSTODY_RETURN_OPERATION_ID_INVALID");
+      }
+      ({ data, error } = await profileClient.rpc("buyer_custody_return_cash_atomic", {
+        p_company_id: companyId, p_custody_id: p.custody_id, p_treasury_id: p.treasury_id,
+        p_amount: Number(p.amount || 0), p_return_date: p.return_date || new Date().toISOString().slice(0, 10),
+        p_reference: p.reference || null, p_notes: p.notes || null, p_operation_id: operationId
+      }));
+    } else if (op === "UPDATE_CUSTODY") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_update_atomic", {
+        p_company_id: companyId, p_custody_id: p.custody_id,
+        p_employee_id: p.employee_id, p_branch_id: p.branch_id, p_treasury_id: p.treasury_id,
+        p_purpose: p.purpose, p_amount: Number(p.amount || 0), p_issued_date: p.issued_date,
+        p_received_reference: p.received_reference || null, p_notes: p.notes || null,
+        p_reason: p.reason, p_operation_id: operationId
+      }));
+    } else if (op === "CANCEL_CUSTODY") {
+      ({ data, error } = await profileClient.rpc("buyer_custody_cancel_atomic", {
+        p_company_id: companyId, p_custody_id: p.custody_id,
+        p_reason: p.reason, p_operation_id: operationId
+      }));
     } else if (op === "GET_CUSTODY") {
       const financeView = hasPermission("finance") || hasPermission("finance_manager");
-      let custodyQuery = sb.from("buyer_custodies").select("*").eq("company_id", companyId)
-        .order("issued_date", { ascending: false }).limit(200);
-      if (!financeView) custodyQuery = custodyQuery.eq("employee_id", profile.id);
-      const custodyResult = await custodyQuery;
-      if (custodyResult.error) throw custodyResult.error;
-      const custodyRows = custodyResult.data || [];
+      const registerMode = p.register === true;
+      if (registerMode && !financeView) throw new Error("صلاحية متابعة العهد المالية مطلوبة");
+
+      const requestedOffset = p.offset == null ? 0 : Number(p.offset);
+      if (!Number.isSafeInteger(requestedOffset) || requestedOffset < 0) {
+        throw new Error("رقم صفحة العهد غير صالح");
+      }
+      const requestedPageSize = Number(p.page_size || 50);
+      const pageSize = [25, 50, 100, 200].includes(requestedPageSize) ? requestedPageSize : 50;
+      const dateFrom = String(p.date_from || "").trim();
+      const dateTo = String(p.date_to || "").trim();
+      if ((dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) ||
+          (dateTo && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo))) {
+        throw new Error("صيغة تاريخ البحث غير صحيحة");
+      }
+      if (dateFrom && dateTo && dateFrom > dateTo) {
+        throw new Error("تاريخ البداية يجب ألا يتجاوز تاريخ النهاية");
+      }
+      const employeeFilter = String(p.employee_id || "").trim();
+      if (employeeFilter && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeFilter)) {
+        throw new Error("اختيار الموظف غير صالح");
+      }
+      const searchText = String(p.search || "").trim().slice(0, 120)
+        .replace(/[^\p{L}\p{N}\s@._-]/gu, " ").replace(/\s+/g, " ").trim();
+
+      // Range pagination is used only to transfer bounded pages. It never caps
+      // the number of custody or child records available in the archive.
+      const fetchAllRows = async (queryFactory: () => any) => {
+        const rows: any[] = [];
+        let offset = 0;
+        let exactCount: number | null = null;
+        while (true) {
+          const result = await queryFactory().range(offset, offset + 499);
+          if (result.error) throw result.error;
+          if (exactCount === null && typeof result.count === "number") exactCount = result.count;
+          const pageRows = result.data || [];
+          if (!pageRows.length) {
+            if (exactCount !== null && offset < exactCount) {
+              throw new Error("تعذر استكمال قراءة سجل العهد؛ أعد المحاولة");
+            }
+            break;
+          }
+          rows.push(...pageRows);
+          offset += pageRows.length;
+          if (exactCount !== null && offset >= exactCount) break;
+        }
+        return rows;
+      };
+
+      let employeeRows: any[] = [];
+      if (financeView) {
+        employeeRows = await fetchAllRows(() => sb.from("users")
+          .select("id,name,email,employee_id,default_branch_id,allowed_branch_ids,status", { count: "exact" })
+          .eq("company_id", companyId).order("name", { ascending: true }).order("id", { ascending: true }));
+      }
+
+      let matchingEmployeeIds: string[] = [];
+      if (registerMode && searchText) {
+        const employeeMatches = await fetchAllRows(() => sb.from("users")
+          .select("id", { count: "exact" }).eq("company_id", companyId)
+          .or('name.ilike."%' + searchText + '%",email.ilike."%' + searchText + '%",employee_id.ilike."%' + searchText + '%"')
+          .order("id", { ascending: true }));
+        matchingEmployeeIds = Array.from(new Set(employeeMatches.map((row: any) => String(row.id)).filter(Boolean)));
+      }
+
+      const buildCustodyQuery = () => {
+        let query = sb.from("buyer_custodies").select("*", { count: "exact" }).eq("company_id", companyId);
+        if (!financeView) query = query.eq("employee_id", profile.id);
+        if (employeeFilter) query = query.eq("employee_id", employeeFilter);
+        if (dateFrom) query = query.gte("issued_date", dateFrom);
+        if (dateTo) query = query.lte("issued_date", dateTo);
+        if (registerMode && searchText) {
+          const terms = [
+            'custody_code.ilike."%' + searchText + '%"',
+            'purpose.ilike."%' + searchText + '%"',
+            'notes.ilike."%' + searchText + '%"',
+            'received_reference.ilike."%' + searchText + '%"'
+          ];
+          if (matchingEmployeeIds.length) terms.push("employee_id.in.(" + matchingEmployeeIds.join(",") + ")");
+          query = query.or(terms.join(","));
+        }
+        return query.order("issued_date", { ascending: false })
+          .order("created_at", { ascending: false }).order("id", { ascending: false });
+      };
+
+      let custodyRows: any[] = [];
+      let totalCount = 0;
+      let offset = 0;
+      let returnedPageSize = 0;
+      let page = 0;
+      if (registerMode) {
+        offset = requestedOffset;
+        returnedPageSize = pageSize;
+        page = Math.floor(offset / pageSize);
+        const custodyResult = await buildCustodyQuery().range(offset, offset + pageSize - 1);
+        if (custodyResult.error) throw custodyResult.error;
+        custodyRows = custodyResult.data || [];
+        totalCount = Number(custodyResult.count || 0);
+      } else {
+        // Backward-compatible Buyer/employee payload: fetch every authorized
+        // custody row, not an arbitrary first-200 slice.
+        custodyRows = await fetchAllRows(buildCustodyQuery);
+        totalCount = custodyRows.length;
+        returnedPageSize = totalCount;
+      }
+
       const custodyIds = custodyRows.map((row: any) => row.id).filter(Boolean);
+      const loadChildRows = async (table: string, orderColumn: string) => {
+        const rows: any[] = [];
+        // Chunk the parent IDs to avoid oversized IN expressions, then page
+        // every chunk until its exact count is exhausted.
+        for (let i = 0; i < custodyIds.length; i += 75) {
+          const ids = custodyIds.slice(i, i + 75);
+          const chunkRows = await fetchAllRows(() => sb.from(table).select("*", { count: "exact" })
+            .eq("company_id", companyId).in("custody_id", ids)
+            .order(orderColumn, { ascending: false }).order("id", { ascending: false }));
+          rows.push(...chunkRows);
+        }
+        return rows;
+      };
+
       let expenseRows: any[] = [];
       let settlementRows: any[] = [];
       let advanceRows: any[] = [];
       let paymentRows: any[] = [];
+      let returnRows: any[] = [];
       if (custodyIds.length) {
-        const [expenseResult, settlementResult, advanceResult, paymentResult] = await Promise.all([
-          sb.from("buyer_custody_expenses").select("*").eq("company_id", companyId)
-            .in("custody_id", custodyIds).order("expense_date", { ascending: false }).limit(500),
-          sb.from("buyer_custody_settlements").select("*").eq("company_id", companyId)
-            .in("custody_id", custodyIds).limit(200),
-          sb.from("buyer_custody_advances").select("*").eq("company_id", companyId)
-            .in("custody_id", custodyIds).order("advance_date", { ascending: false }).limit(500),
-          sb.from("buyer_custody_payments").select("*").eq("company_id", companyId)
-            .in("custody_id", custodyIds).order("payment_date", { ascending: false }).limit(500)
+        [expenseRows, settlementRows, advanceRows, paymentRows, returnRows] = await Promise.all([
+          loadChildRows("buyer_custody_expenses", "expense_date"),
+          loadChildRows("buyer_custody_settlements", "recorded_at"),
+          loadChildRows("buyer_custody_advances", "advance_date"),
+          loadChildRows("buyer_custody_payments", "payment_date"),
+          loadChildRows("buyer_custody_returns", "return_date")
         ]);
-        if (expenseResult.error) throw expenseResult.error;
-        if (settlementResult.error) throw settlementResult.error;
-        if (advanceResult.error) throw advanceResult.error;
-        if (paymentResult.error) throw paymentResult.error;
-        expenseRows = expenseResult.data || [];
-        settlementRows = settlementResult.data || [];
-        advanceRows = advanceResult.data || [];
-        paymentRows = paymentResult.data || [];
       }
-      let employeeRows: any[] = [];
-      if (financeView) {
-        const employeeResult = await sb.from("users").select("id,name,email,employee_id,default_branch_id")
-          .eq("company_id", companyId).eq("status", "Active").order("name").limit(500);
-        if (employeeResult.error) throw employeeResult.error;
-        employeeRows = employeeResult.data || [];
+
+      const linkedInvoiceRows: any[] = [];
+      for (let i = 0; i < custodyIds.length; i += 75) {
+        const ids = custodyIds.slice(i, i + 75);
+        const invoices = await fetchAllRows(() => sb.from("purchase_invoices")
+          .select("id,cash_custody_id", { count: "exact" })
+          .eq("company_id", companyId).in("cash_custody_id", ids)
+          .order("id", { ascending: true }));
+        linkedInvoiceRows.push(...invoices);
       }
+
+      // Audit data is returned only through a permission-checked, caller-JWT RPC.
+      // Never use the service-role client to read the protected audit_log table.
+      const cancelAuditRows: any[] = [];
+      if (custodyIds.length) {
+        const cancellationResult = await profileClient.rpc("buyer_custody_cancellation_audit_read", {
+          p_company_id: companyId,
+          p_custody_ids: custodyIds
+        });
+        if (cancellationResult.error) throw cancellationResult.error;
+        cancelAuditRows.push(...(cancellationResult.data || []));
+      }
+
       const employeeNames = new Map(employeeRows.map((row: any) => [row.id, row.name]));
+      const advancesByCustody = new Map<string, any[]>();
+      const expensesByCustody = new Set(expenseRows.map((row: any) => String(row.custody_id)));
+      const paymentsByCustody = new Set(paymentRows.map((row: any) => String(row.custody_id)));
+      const settlementsByCustody = new Set(settlementRows.map((row: any) => String(row.custody_id)));
+      const invoicesByCustody = new Set(linkedInvoiceRows.map((row: any) => String(row.cash_custody_id)));
+      const cancellationByCustody = new Map<string, any>();
+      for (const row of advanceRows) {
+        const key = String(row.custody_id);
+        if (!advancesByCustody.has(key)) advancesByCustody.set(key, []);
+        advancesByCustody.get(key)!.push(row);
+      }
+      for (const row of cancelAuditRows) {
+        const key = String(row.custody_id);
+        if (!cancellationByCustody.has(key)) cancellationByCustody.set(key, row);
+      }
       for (const custody of custodyRows) {
+        const key = String(custody.id);
+        const custodyAdvances = advancesByCustody.get(key) || [];
+        const initialOnly = custodyAdvances.length === 1
+          && custodyAdvances[0].advance_type === "Initial"
+          && !custodyAdvances[0].acknowledged_at
+          && !custodyAdvances[0].cash_box_id
+          && !custodyAdvances[0].journal_entry_id;
+        const actionSafe = financeView
+          && custody.status === "Issued"
+          && !custody.acknowledged_at
+          && !custody.received_at
+          && initialOnly
+          && !expensesByCustody.has(key)
+          && !paymentsByCustody.has(key)
+          && !settlementsByCustody.has(key)
+          && !invoicesByCustody.has(key);
+        custody.can_edit = actionSafe;
+        custody.can_cancel = actionSafe;
+        const cancellation = cancellationByCustody.get(key);
+        if (cancellation) {
+          custody.cancellation_reason = cancellation.cancellation_reason || null;
+          custody.cancelled_by = cancellation.cancelled_by || null;
+          custody.cancelled_at = cancellation.cancelled_at || null;
+        }
         custody.employee_name = employeeNames.get(custody.employee_id) ||
           (custody.employee_id === profile.id ? profile.name : "موظف");
       }
-      data = { success: true, custodies: custodyRows, expenses: expenseRows, advances: advanceRows, payments: paymentRows,
-        settlements: settlementRows, employees: employeeRows, is_finance: financeView };
+      data = {
+        success: true,
+        custodies: custodyRows,
+        expenses: expenseRows,
+        advances: advanceRows,
+        payments: paymentRows,
+        settlements: settlementRows,
+        returns: returnRows,
+        employees: employeeRows,
+        is_finance: financeView,
+        total_count: totalCount,
+        offset,
+        page_size: returnedPageSize,
+        page,
+        register_mode: registerMode,
+        filters: { date_from: dateFrom || null, date_to: dateTo || null, employee_id: employeeFilter || null, search: searchText || null }
+      };
     } else if (op === "GET_SETTINGS") {
       data = { success: true, currency: await getSystemCurrency() };
     } else if (op === "GET_DATA") {
