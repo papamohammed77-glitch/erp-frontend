@@ -837,6 +837,7 @@ serve(async (req) => {
         "fleet_vehicle_assignments",
         "vehicles",
         "receiving",
+        "receiving_details",
         "treasury",
         "stock_branches",
         "suppliers",
@@ -873,6 +874,37 @@ serve(async (req) => {
         if (byCreator.error) throw byCreator.error;
         return Array.from(new Set([...(byPurchaser.data || []), ...(byCreator.data || [])]
           .map((x: any) => x.id).filter(Boolean)));
+      };
+      const getVisibleReceivingRows = async () => {
+        const invoiceIds = await getVisibleInvoiceIds();
+        if (!invoiceIds.length) return [];
+        const invoiceRows = await sb.from("purchase_invoices").select("purchase_order_id")
+          .eq("company_id", companyId).in("id", invoiceIds).limit(500);
+        if (invoiceRows.error) throw invoiceRows.error;
+        const poIds = Array.from(new Set((invoiceRows.data || []).map((x: any) => x.purchase_order_id).filter(Boolean)));
+        let poCodes: string[] = [];
+        if (poIds.length) {
+          const poRows = await sb.from("purchase_orders").select("po_code")
+            .eq("company_id", companyId).in("id", poIds).limit(500);
+          if (poRows.error) throw poRows.error;
+          poCodes = Array.from(new Set((poRows.data || []).map((x: any) => x.po_code).filter(Boolean)));
+        }
+        const byInvoice = await sb.from("receiving").select("*")
+          .eq("company_id", companyId).in("purchase_invoice_id", invoiceIds).limit(500);
+        if (byInvoice.error) throw byInvoice.error;
+        let byPo: any = { data: [], error: null };
+        if (poCodes.length) {
+          byPo = await sb.from("receiving").select("*")
+            .eq("company_id", companyId).in("po_number", poCodes).limit(500);
+          if (byPo.error) throw byPo.error;
+        }
+        const merged = new Map<string, any>();
+        for (const row of [...(byInvoice.data || []), ...(byPo.data || [])]) {
+          merged.set(String(row.operation_id || row.id), row);
+        }
+        return Array.from(merged.values())
+          .sort((a: any, b: any) => String(b.date || "").localeCompare(String(a.date || "")))
+          .slice(0, rowLimit);
       };
       let r: any;
       if (table === "fleet_vehicle_assignments") {
@@ -928,6 +960,26 @@ serve(async (req) => {
         else {
           r = await sb.from("purchase_invoice_details").select("*")
             .in("invoice_id", invoiceIds).limit(rowLimit);
+          if (r.error) throw r.error;
+          data = { success: true, items: r.data || [], table };
+        }
+      } else if (table === "receiving" && !canViewAllInvoices) {
+        data = { success: true, items: await getVisibleReceivingRows(), table };
+      } else if (table === "receiving_details") {
+        let operationIds: string[] = [];
+        if (canViewAllInvoices) {
+          const headers = await sb.from("receiving").select("operation_id")
+            .eq("company_id", companyId).limit(500);
+          if (headers.error) throw headers.error;
+          operationIds = Array.from(new Set((headers.data || []).map((x: any) => x.operation_id).filter(Boolean)));
+        } else {
+          const headers = await getVisibleReceivingRows();
+          operationIds = Array.from(new Set(headers.map((x: any) => x.operation_id).filter(Boolean)));
+        }
+        if (!operationIds.length) data = { success: true, items: [], table };
+        else {
+          r = await sb.from("receiving_details").select("*")
+            .in("operation_id", operationIds).limit(rowLimit);
           if (r.error) throw r.error;
           data = { success: true, items: r.data || [], table };
         }
