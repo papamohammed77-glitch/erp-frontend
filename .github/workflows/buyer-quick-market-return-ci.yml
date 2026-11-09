@@ -8,12 +8,22 @@ on:
       - 'supabase/migrations/20261109201500_buyer_quick_market_supplier_return_custody.sql'
       - 'tests/buyer_quick_market_supplier_return_contract.test.mjs'
       - '.github/workflows/buyer-quick-market-return-ci.yml'
+  push:
+    branches:
+      - 'fix/buyer-quick-market-supplier-return-lve675'
+    paths:
+      - 'companies/company-1/purchasing/buyer.html'
+      - 'supabase/functions/save-purchase-order/index.ts'
+      - 'supabase/migrations/20261109201500_buyer_quick_market_supplier_return_custody.sql'
+      - 'tests/buyer_quick_market_supplier_return_contract.test.mjs'
+      - '.github/workflows/buyer-quick-market-return-ci.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: buyer-qmp-return-${{ github.event.pull_request.number }}
+  group: buyer-qmp-return-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,10 +31,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout exact PR revision
+      - name: Checkout exact revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
 
       - name: Setup Node
@@ -32,7 +42,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Buyer modal, idempotency and SQL contract scenarios
+      - name: Buyer modal, custody and SQL contract scenarios
         run: node tests/buyer_quick_market_supplier_return_contract.test.mjs
 
       - name: Compile Edge Function TypeScript syntax
