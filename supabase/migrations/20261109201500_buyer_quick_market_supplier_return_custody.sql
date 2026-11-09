@@ -588,6 +588,7 @@ BEGIN
         )
       )
     ) ORDER BY d.item_code),'[]'::jsonb)
+    INTO v_items
     FROM public.purchase_invoice_details d
     JOIN public.items it ON it.id=d.item_id AND it.company_id=p_company_id
     LEFT JOIN LATERAL (
@@ -623,22 +624,6 @@ BEGIN
         d.qty
         -GREATEST(COALESCE(d.received_qty,0),COALESCE(w.warehouse_event_qty,0))
         -COALESCE(r.supplier_returned_qty,0),0
-      )>0
-    INTO v_items
-    FROM public.purchase_invoice_details d
-    JOIN public.items it ON it.id=d.item_id AND it.company_id=p_company_id
-    WHERE d.invoice_id=v_invoice.id
-      AND LEAST(
-        GREATEST(0,d.qty-COALESCE(d.received_qty,0)),
-        GREATEST(0,COALESCE((
-          SELECT SUM(e.qty_delta)
-          FROM public.buyer_goods_custody_events e
-          WHERE e.company_id=p_company_id
-            AND e.source_document_type='PurchaseInvoice'
-            AND e.source_document_id=v_invoice.id
-            AND e.source_line_id=d.id
-            AND e.event_type IN ('SUPPLIER_TO_BUYER_QUICK_MARKET','BUYER_TO_WAREHOUSE_ACCEPTED')
-        ),0))
       )>0;
 
     IF jsonb_array_length(COALESCE(v_items,'[]'::jsonb))>0 THEN
