@@ -4865,6 +4865,20 @@ openSupplierReturnContract:function(done){
             })
         :Promise.resolve(null);
 
+    var receiverPromise=
+        (s.mode==='edit'&&s.editVoucherCode)
+            ?supabase.from('stock_vouchers')
+                .select('receiver_user_id')
+                .eq('company_id',s.company)
+                .eq('voucher_code',s.editVoucherCode)
+                .maybeSingle()
+            :Promise.resolve({data:null,error:null});
+
+    var recipientsPromise=supabase.rpc(
+        'get_buyer_custody_recipients_atomic',
+        {p_company_id:s.company}
+    );
+
     Promise.all([
         existingPromise,
 
@@ -4894,7 +4908,10 @@ openSupplierReturnContract:function(done){
                 'created_at',
                 {ascending:false}
             )
-            .limit(100)
+            .limit(100),
+
+        receiverPromise,
+        recipientsPromise
     ])
     .then(function(parts){
 
@@ -4913,6 +4930,12 @@ openSupplierReturnContract:function(done){
                 parts[2].data
             )||
             [];
+        if(parts[3]&&parts[3].error)throw parts[3].error;
+        if(parts[4]&&parts[4].error)throw parts[4].error;
+        var receiverInfo=(parts[3]&&parts[3].data)||{};
+        var recipientsData=(parts[4]&&parts[4].data)||{};
+        var buyerRecipients=Array.isArray(recipientsData.recipients)?recipientsData.recipients:[];
+        if(existing)existing.receiver_user_id=receiverInfo.receiver_user_id||'';
 
         var sessionDraft=
             s.supplierReturnDraft &&
@@ -4937,6 +4960,7 @@ openSupplierReturnContract:function(done){
                 supplier_rma_ref:'',
                 purchase_invoice_id:'',
                 purchase_order_id:'',
+                receiver_user_id:receiverInfo.receiver_user_id||'',
                 return_to_address:
                     supplier.address||
                     '',
@@ -5016,6 +5040,15 @@ openSupplierReturnContract:function(done){
                             ''
                         )+
                     '" placeholder="رقم RMA إن وجد">'+
+                '</div>'+
+
+                '<div class="sm:col-span-2 rounded-xl border border-violet-200 bg-violet-50 p-3">'+
+                    '<label class="text-[10px] text-violet-900 block mb-1 font-black">المشتري المفوض لحيازة بضاعة المرتجع — اختياري</label>'+
+                    '<select id="srBuyerReceiver" class="smart-input w-full">'+
+                        '<option value="">بدون مشتري مفوض — مسار المرتجع المعتاد</option>'+
+                        buyerRecipients.map(function(x){return '<option value="'+s.esc(x.id)+'" '+(String(x.id)===String(draft.receiver_user_id||'')?'selected':'')+'>'+s.esc(x.name||x.email)+' · '+s.esc(x.role||'مسؤول مشتريات')+'</option>';}).join('')+
+                    '</select>'+
+                    '<p class="text-[10px] text-violet-800 mt-1">عند اختيار مشتري، ينشأ رصيد حيازة له عند إرسال إذن SupplierReturn من المخزن، ويُخصم عند إكمال قبول المورد للمرتجع. لا تُنشأ حيازة من المسودة.</p>'+
                 '</div>'+
 
                 '<div>'+
@@ -5232,6 +5265,8 @@ openSupplierReturnContract:function(done){
                     disposition.value=
                         draft.disposition||
                         'return_to_supplier';
+                var buyerReceiver=RW_UI.byId('srBuyerReceiver');
+                if(buyerReceiver)buyerReceiver.value=draft.receiver_user_id||'';
 
             },
             preConfirm:function(){
@@ -5360,6 +5395,14 @@ openSupplierReturnContract:function(done){
                         (
                             RW_UI.byId(
                                 'srPO'
+                            )||
+                            {}
+                        ).value||
+                        null,
+                    receiver_user_id:
+                        (
+                            RW_UI.byId(
+                                'srBuyerReceiver'
                             )||
                             {}
                         ).value||
