@@ -76,10 +76,6 @@ serve(async(req)=>{
         throw new Error('سبب اختلاف الكمية المرسلة والمقبولة مطلوب لكل صنف')
       }
     }
-    if(!items.some((x:any)=>Number(x.received_qty)>0)){
-      throw new Error('يجب قبول كمية موجبة لصنف واحد على الأقل')
-    }
-
     const bodyOperationId=String(b?.operation_id||'').trim()
     const headerOperationId=String(req.headers.get('Idempotency-Key')||'').trim()
     if(bodyOperationId&&headerOperationId&&bodyOperationId.toLowerCase()!==headerOperationId.toLowerCase()){
