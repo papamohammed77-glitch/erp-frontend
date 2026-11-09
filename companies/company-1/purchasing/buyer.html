@@ -1497,9 +1497,9 @@ var App = {
         var currencyGroups={};
         activePersonal.forEach(function(c){
             var m=getMetrics(c),currency=String(c.currency||self.currency||'EGP').toUpperCase();
-            if(!currencyGroups[currency])currencyGroups[currency]={currency:currency,count:0,received:0,approved:0,pending:0,reserved:0,returned:0,available:0};
+            if(!currencyGroups[currency])currencyGroups[currency]={currency:currency,count:0,issued:0,received:0,approved:0,pending:0,reserved:0,returned:0,available:0};
             var g=currencyGroups[currency];
-            g.count++;g.received+=m.acknowledged;g.approved+=m.approved;g.pending+=m.pending;
+            g.count++;g.issued+=Number(c.issued_amount||0);g.received+=m.acknowledged;g.approved+=m.approved;g.pending+=m.pending;
             g.reserved+=m.reserved;g.returned+=m.returned;g.available+=m.available;
         });
         var currencies=Object.keys(currencyGroups).sort();
@@ -1519,7 +1519,7 @@ var App = {
                     '<div class="buyer-custody-metric"><small>قيد المراجعة</small><b>'+buyerMoney(g.pending,currency)+'</b></div>'+
                     '<div class="buyer-custody-metric"><small>حجوزات فواتير السوق</small><b>'+buyerMoney(g.reserved,currency)+'</b></div>'+
                     '<div class="buyer-custody-metric"><small>نقد مرتجع للخزينة</small><b>'+buyerMoney(g.returned,currency)+'</b></div>'+
-                    '<div class="buyer-custody-metric"><small>مصروفات معتمدة + معلقة</small><b>'+buyerMoney(g.approved+g.pending,currency)+'</b></div></div></div>';
+                    '<div class="buyer-custody-metric"><small>قيمة العهدة المسجلة</small><b>'+buyerMoney(g.issued,currency)+'</b></div></div></div>';
             }).join('')+'</div>';
         }else{
             html+='<div class="mt-5 rounded-2xl bg-white/10 border border-white/15 p-5"><b class="block text-lg">لا توجد عهدة مفتوحة باسمك حاليًا</b><p class="buyer-custody-muted text-xs mt-2">ستظهر هنا فور تسجيل عهدة لك وتأكيد استلام النقد فعليًا.</p></div>';
@@ -1564,7 +1564,7 @@ var App = {
             var unacknowledgedRows=m.advances.filter(function(a){return !a.acknowledged_at||!a.cash_box_id||!a.journal_entry_id;});
             var canSettle=finance&&c.employee_id!==currentEmployeeId&&isOpen(c)&&
                 m.pendingCount===0&&m.unacknowledged===0&&m.openQmpCount===0&&!m.mismatch&&m.approved<=m.acknowledged+0.005;
-            var canSubmit=c.employee_id===currentEmployeeId&&isOpen(c)&&m.acknowledged>0.005&&!negative;
+            var canSubmit=c.employee_id===currentEmployeeId&&isOpen(c)&&m.acknowledged>0.005&&m.available>0.005;
             var html='<article class="buyer-custody-record"><div class="buyer-custody-record-head"><div><b class="text-sm text-purple-800">'+buyerEsc(c.custody_code)+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(c.employee_name||'عهدتي')+' · '+buyerDate(c.issued_date)+(c.purpose?' · '+buyerEsc(c.purpose):'')+'</p></div><div class="flex flex-wrap items-center gap-2"><span class="text-xs rounded-full px-3 py-1 bg-slate-100 font-bold">'+buyerStatus(c.status)+'</span><span class="text-xs rounded-full px-3 py-1 bg-purple-50 text-purple-700 font-bold">'+buyerEsc(currency)+'</span></div></div>';
             html+='<div class="buyer-custody-record-hero '+(negative?'is-negative':'')+'"><div><small class="block text-xs text-slate-500 font-bold">'+(negative?'عجز نقدي يحتاج مراجعة':'الرصيد المتبقي المتاح في هذه العهدة')+'</small><strong class="mt-1">'+buyerMoney(Math.abs(m.available),currency)+(negative?' عجز':'')+'</strong><p class="text-[11px] text-slate-500 mt-1">'+(negative?'راجع المصروفات والحجوزات؛ لم نخفِ التجاوز داخل الصفر.':'الرصيد بعد جميع المصروفات والحجوزات وردود النقد المثبتة.')+'</p></div><div class="text-left"><small class="block text-xs text-slate-500">قيمة العهدة المسجلة</small><b class="text-base">'+buyerMoney(c.issued_amount,currency)+'</b></div></div>';
             html+='<div class="buyer-custody-record-stats">'+
@@ -1608,6 +1608,8 @@ var App = {
                 html+='<p class="w-full text-xs text-amber-700">سجّل تأكيد استلام النقد أولًا قبل تقديم أي مصروف.</p>';
             }else if(c.employee_id===currentEmployeeId&&isOpen(c)&&negative){
                 html+='<p class="w-full text-xs text-rose-700">لا يمكن تقديم مصروفات إضافية قبل معالجة التجاوز في الرصيد.</p>';
+            }else if(c.employee_id===currentEmployeeId&&isOpen(c)&&m.acknowledged>0.005&&m.available<=0.005){
+                html+='<p class="w-full text-xs text-amber-700">لا يوجد رصيد نقدي متاح حاليًا؛ راجع المصروفات والحجوزات المفتوحة.</p>';
             }
             if(finance&&isStaff&&isOpen(c)){
                 html+='<button type="button" onclick="App.addCustodyAdvance(\''+c.id+'\')" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">زيادة عهدة / تسليم نقدية</button>';
