@@ -29,7 +29,16 @@
         .slide-in{animation:slideIn 0.3s ease}
         @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
-        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        .tab-btn.active{background:#ecfdf5;color:#047857;box-shadow:inset 0 0 0 1px #a7f3d0}
+        .source-filter{border:1px solid #e2e8f0;border-radius:999px;padding:.55rem .9rem;font-size:.75rem;font-weight:800;color:#64748b;background:#fff;white-space:nowrap}
+        .source-filter.active{background:#064e3b;color:#fff;border-color:#064e3b;box-shadow:0 5px 14px rgba(6,78,59,.16)}
+        .receipt-line{border:1px solid #e2e8f0;border-radius:20px;background:#fff;padding:14px}
+        .receipt-field{width:100%;min-width:0;border:1px solid #cbd5e1;border-radius:12px;padding:10px 8px;text-align:center;font-weight:900;font-variant-numeric:tabular-nums;outline:none}
+        .receipt-field:focus{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.12)}
+        .item-photo{width:64px;height:64px;object-fit:cover;border-radius:16px;border:1px solid #e2e8f0;background:#f8fafc}
+        .metric-card{background:linear-gradient(145deg,#fff,#f8fafc);border:1px solid #e2e8f0;border-radius:20px;padding:14px}
+        .doc-card{border:1px solid #e2e8f0;border-radius:22px;background:#fff;box-shadow:0 6px 22px rgba(15,23,42,.04);overflow:hidden}
+        .muted-label{font-size:11px;font-weight:800;color:#94a3b8}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -55,17 +64,17 @@
 <div id="mainApp" class="hidden flex flex-col h-full">
     <header class="bg-gradient-to-r from-emerald-700 to-emerald-600 text-white p-4 flex items-center justify-between sticky top-0 z-30 shadow-md flex-shrink-0">
         <span class="font-black text-base">📦 مسؤول الاستلام</span>
-        <div class="flex items-center gap-2">
-            <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-            <span id="connLabel" class="text-xs font-bold">متصل</span>
-            <button onclick="App.doLogout()" class="bg-white/15 w-9 h-9 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
+        <div class="flex items-center gap-3">
+            <div class="hidden sm:flex flex-col items-end leading-tight"><span id="headerUserName" class="text-xs font-black"></span><span class="text-[10px] text-emerald-100/80">مراقبة الاستلام الفعلي</span></div>
+            <span id="connDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span><span id="connLabel" class="text-xs font-bold">متصل</span>
+            <button type="button" onclick="App.doLogout()" aria-label="تسجيل الخروج" class="bg-white/15 w-10 h-10 rounded-2xl"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button>
         </div>
     </header>
 
     <div class="flex gap-1.5 p-2 bg-white border-b border-slate-100 overflow-x-auto flex-shrink-0">
-        <button onclick="App.switchTab('pending')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm active" id="tab-pending">📋 قيد الاستلام</button>
-        <button onclick="App.switchTab('completed')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-completed">✅ مكتملة</button>
-        <button onclick="App.switchTab('account')" class="tab-btn whitespace-nowrap px-5 py-2.5 rounded-2xl font-bold text-sm text-slate-400" id="tab-account">⚙️ حسابي</button>
+        <button onclick="App.switchTab('pending')" class="tab-btn whitespace-nowrap px-5 py-3 rounded-2xl font-black text-sm active" id="tab-pending">📥 قيد الاستلام</button>
+        <button onclick="App.switchTab('completed')" class="tab-btn whitespace-nowrap px-5 py-3 rounded-2xl font-black text-sm text-slate-400" id="tab-completed">🧾 سجل الاستلام</button>
+        <button onclick="App.switchTab('account')" class="tab-btn whitespace-nowrap px-5 py-3 rounded-2xl font-black text-sm text-slate-400" id="tab-account">👤 حسابي</button>
     </div>
 
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
@@ -79,6 +88,146 @@ var App = {
     purchaseOrders: [],
     activeTimers: {},
     realtimeKey: null,
+    branchMap: {},
+    allowedBranchIds: null,
+    unrestrictedBranchScope: false,
+    mainBranchId: null,
+    currentSourceFilter: 'ALL',
+    searchQuery: '',
+    historyRows: [],
+    eventsBound: false,
+    loadSequence: 0,
+
+    escapeHTML: function(value){
+        return String(value==null?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    },
+    safeImageUrl: function(value){
+        try{var url=new URL(String(value||''));return url.protocol==='https:'?url.href:'';}catch(e){return '';}
+    },
+    formatQty: function(value){
+        var n=Number(value||0);
+        return Number.isFinite(n)?n.toLocaleString('ar-EG',{maximumFractionDigits:4}):'0';
+    },
+    docCode: function(row){
+        return row&&row.doc_type==='QUICK_MARKET'?(row.invoice_code||row.po_code||'—'):(row&&row.po_code||'—');
+    },
+    newOperationId: function(){
+        if(window.crypto&&typeof window.crypto.randomUUID==='function') return window.crypto.randomUUID();
+        if(!window.crypto||!window.crypto.getRandomValues) throw new Error('المتصفح لا يدعم إنشاء معرف آمن لعملية الاستلام');
+        var bytes=new Uint8Array(16);window.crypto.getRandomValues(bytes);
+        bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+        var h=Array.prototype.map.call(bytes,function(x){return x.toString(16).padStart(2,'0');}).join('');
+        return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+    },
+    receiptFingerprint: function(doc,items){
+        return String(doc.doc_type)+'|'+String(doc.id)+'|'+items.slice().sort(function(a,b){return String(a.itemCode).localeCompare(String(b.itemCode));})
+            .map(function(x){return [x.itemCode,Number(x.sentQty).toFixed(4),Number(x.receivedQty).toFixed(4),x.reason||''].join(':');}).join('|');
+    },
+    pendingOperationKey: function(doc){
+        return 'rw.receiver.pending.'+String(this.currentUser.company_id)+'.'+String(doc.doc_type)+'.'+String(doc.id);
+    },
+    getPendingOperation: function(doc){
+        try{var raw=window.localStorage.getItem(this.pendingOperationKey(doc));return raw?JSON.parse(raw):null;}catch(e){return null;}
+    },
+    storePendingOperation: function(doc,id,fingerprint){
+        try{window.localStorage.setItem(this.pendingOperationKey(doc),JSON.stringify({operation_id:id,fingerprint:fingerprint,created_at:new Date().toISOString()}));return true;}
+        catch(e){console.error('[Receiver] Could not persist pending operation identity:',e);return false;}
+    },
+    clearPendingOperation: function(doc){
+        try{window.localStorage.removeItem(this.pendingOperationKey(doc));}catch(e){console.error('[Receiver] Could not clear pending operation identity:',e);}
+    },
+    bindEvents: function(){
+        if(this.eventsBound) return;
+        var self=this,main=RW_UI.byId('mainContent');if(!main)return;
+        main.addEventListener('click',function(event){
+            var target=event.target&&event.target.closest?event.target.closest('[data-action]'):null;
+            if(!target||!main.contains(target))return;
+            var action=target.getAttribute('data-action'),index=Number(target.getAttribute('data-index'));
+            if(action==='toggle-doc')self.toggleAccordion(index);
+            else if(action==='submit-receipt')self.submitReceiving(index);
+            else if(action==='preview-image')self.previewImage(target.getAttribute('data-image'),target.getAttribute('data-title'));
+            else if(action==='source-filter'){
+                self.currentSourceFilter=target.getAttribute('data-filter')||'ALL';
+                main.querySelectorAll('[data-action="source-filter"]').forEach(function(button){button.classList.toggle('active',button.getAttribute('data-filter')===self.currentSourceFilter);});
+                self.renderDocumentCards();
+            }else if(action==='refresh'){
+                if(self.currentTab==='pending')self.loadPurchaseOrders();else if(self.currentTab==='completed')self.renderCompleted();
+            }
+        });
+        main.addEventListener('input',function(event){
+            var target=event.target;if(!target)return;
+            if(target.getAttribute('data-role')==='search'){
+                self.searchQuery=target.value||'';
+                if(self.currentTab==='pending')self.renderDocumentCards();else if(self.currentTab==='completed')self.renderHistoryCards();
+                return;
+            }
+            if(target.getAttribute('data-role')==='sent-qty'||target.getAttribute('data-role')==='received-qty'){
+                var row=target.closest('.receipt-line');if(!row)return;
+                var sent=Number(row.querySelector('[data-role="sent-qty"]').value||0),accepted=Number(row.querySelector('[data-role="received-qty"]').value||0);
+                var diff=row.querySelector('[data-role="difference"]');
+                if(diff){diff.textContent=self.formatQty(accepted-sent);diff.className='font-black tabular-nums '+(accepted===sent?'text-emerald-600':'text-rose-600');}
+            }
+        });
+        main.addEventListener('error',function(event){
+            var image=event.target;
+            if(image&&image.tagName==='IMG'&&image.getAttribute('data-role')==='product-image'){
+                var fallback=document.createElement('div');fallback.className='item-photo flex items-center justify-center text-slate-300';fallback.textContent='📦';image.replaceWith(fallback);
+            }
+        },true);
+        this.eventsBound=true;
+    },
+    resolveBranchScope: async function(){
+        var user=this.currentUser||{};this.branchMap={};this.mainBranchId=null;
+        if(user.isOwner===true){this.allowedBranchIds=null;this.unrestrictedBranchScope=true;}
+        else{
+            var raw=[];if(user.defaultBranchId)raw.push(String(user.defaultBranchId));
+            if(Array.isArray(user.allowedBranchIds))raw=raw.concat(user.allowedBranchIds.map(String));
+            else if(typeof user.allowedBranchIds==='string'&&user.allowedBranchIds.trim())raw.push(user.allowedBranchIds.trim());
+            if(raw.indexOf('*')!==-1){this.allowedBranchIds=null;this.unrestrictedBranchScope=true;}
+            else{
+                this.unrestrictedBranchScope=false;
+                var branches=await supabase.from('branches').select('id,branch_code,name').eq('company_id',user.company_id).eq('is_active',true);
+                var branchRows=branches.error?[]:(branches.data||[]);
+                branchRows.forEach(function(b){this.branchMap[String(b.id)]=b;this.branchMap[String(b.branch_code)]=b;},this);
+                var ids=[];raw.forEach(function(value){
+                    var match=this.branchMap[value],id=match?String(match.id):value;
+                    if(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id)&&ids.indexOf(id)===-1)ids.push(id);
+                },this);
+                if(!ids.length)throw new Error('نطاق فروع المستلم غير محدد. أوقفنا عرض أوامر الشراء لحماية الفروع الأخرى.');
+                this.allowedBranchIds=ids;
+            }
+        }
+        var settings=await supabase.from('app_settings').select('main_branch_id').eq('company_id',user.company_id).limit(1);
+        if(!settings.error&&settings.data&&settings.data[0])this.mainBranchId=settings.data[0].main_branch_id||null;
+        if(this.mainBranchId&&!this.branchMap[String(this.mainBranchId)]){
+            var branch=await supabase.from('branches').select('id,branch_code,name').eq('company_id',user.company_id).eq('id',this.mainBranchId).maybeSingle();
+            if(!branch.error&&branch.data){this.branchMap[String(branch.data.id)]=branch.data;this.branchMap[String(branch.data.branch_code)]=branch.data;}
+        }
+    },
+    enrichItemLines: async function(lines){
+        var companyId=this.currentUser&&this.currentUser.company_id,ids=[],codes=[],map={};
+        (lines||[]).forEach(function(item){
+            if(item.item_id&&ids.indexOf(String(item.item_id))===-1)ids.push(String(item.item_id));
+            if(item.item_code&&codes.indexOf(String(item.item_code))===-1)codes.push(String(item.item_code));
+        });
+        for(var start=0;start<ids.length;start+=500){
+            var result=await supabase.from('items').select('id,item_code,barcode,name,description,image_url,unit').eq('company_id',companyId).in('id',ids.slice(start,start+500));
+            if(result.error)throw result.error;(result.data||[]).forEach(function(item){map[String(item.id)]=item;});
+        }
+        var missing=codes.filter(function(code){return !(lines||[]).some(function(item){return String(item.item_code)===code&&item.item_id&&map[String(item.item_id)];});});
+        if(missing.length){
+            var codeResult=await supabase.from('items').select('id,item_code,barcode,name,description,image_url,unit').eq('company_id',companyId).in('item_code',missing);
+            if(!codeResult.error)(codeResult.data||[]).forEach(function(item){map[String(item.item_code)]=item;});
+        }
+        return (lines||[]).map(function(line){
+            var master=map[String(line.item_id)]||map[String(line.item_code)]||{};
+            return Object.assign({},line,{item_name:master.name||line.item_name||line.item_code,unit:line.unit||master.unit||'حبة',barcode:master.barcode||'',description:master.description||'',image_url:this.safeImageUrl(master.image_url||line.image_url||'')});
+        },this);
+    },
+    previewImage: function(url,title){
+        var safe=this.safeImageUrl(url);if(!safe){RW_UI.showError('لا توجد صورة آمنة متاحة لهذا الصنف');return;}
+        Swal.fire({imageUrl:safe,imageAlt:String(title||'صورة الصنف'),titleText:String(title||'تفاصيل الصنف'),showConfirmButton:false,showCloseButton:true,customClass:{popup:'!rounded-3xl'}});
+    },
 
     togglePass: function(){
         var p = RW_UI.byId('loginPass');
@@ -133,40 +282,28 @@ var App = {
         RW_UI.updateConnectionStatus('connDot', 'connLabel');
         window.addEventListener('online', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
         window.addEventListener('offline', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
+        this.bindEvents();
         this.switchTab('pending');
         this.startRealtime();
     },
 
     startRealtime: function(){
-        var self = this;
-        if (!this.currentUser || !this.currentUser.company_id || typeof RW_Realtime === 'undefined') {
-            console.error('[Receiver] Realtime not started: verified company profile is unavailable.');
-            return;
-        }
-        if (this.realtimeKey) RW_Realtime.stop(this.realtimeKey);
-        this.realtimeKey = RW_Realtime.start({
-            appId: 'warehouse-receiver',
-            companyId: this.currentUser.company_id,
-            tables: ['purchase_orders','receiving','receiving_details'],
-            debounceMs: 500,
-            reconcileMs: 30000,
-            onEvent: function(event){
-                if (['purchase_orders','receiving','receiving_details'].indexOf(event.table)===-1) return;
-                if (self.currentTab === 'pending') self.loadPurchaseOrders();
-                else if (self.currentTab === 'completed') self.renderCompleted();
+        var self=this;
+        if(!this.currentUser||!this.currentUser.company_id||typeof RW_Realtime==='undefined'){console.error('[Receiver] Realtime not started: verified company profile unavailable.');return;}
+        if(this.realtimeKey)RW_Realtime.stop(this.realtimeKey);
+        this.realtimeKey=RW_Realtime.start({
+            appId:'warehouse-receiver',companyId:this.currentUser.company_id,
+            tables:['purchase_orders','purchase_invoices','buyer_goods_custody_events','items'],
+            debounceMs:500,reconcileMs:30000,
+            onEvent:function(event){
+                if(['purchase_orders','purchase_invoices','buyer_goods_custody_events','items'].indexOf(event.table)===-1)return;
+                if(self.currentTab==='pending')self.loadPurchaseOrders();else if(self.currentTab==='completed')self.renderCompleted();
             },
-            onReconcile: function(){
-                if (self.currentTab === 'pending') self.loadPurchaseOrders();
-                else if (self.currentTab === 'completed') self.renderCompleted();
-            },
-            onStatus: function(status){
-                console.log('[Receiver] Realtime:', status.status);
-            }
+            onReconcile:function(){if(self.currentTab==='pending')self.loadPurchaseOrders();else if(self.currentTab==='completed')self.renderCompleted();},
+            onStatus:function(status){console.log('[Receiver] Realtime:',status.status);}
         });
-        if (!this.realtimeKey) console.error('[Receiver] Realtime subscription rejected; check authenticated company scope.');
-    },
-
-    stopRealtime: function(){
+        if(!this.realtimeKey)console.error('[Receiver] Realtime subscription rejected; check authenticated company scope.');
+    },    stopRealtime: function(){
         if (this.realtimeKey && typeof RW_Realtime !== 'undefined') {
             RW_Realtime.stop(this.realtimeKey);
             this.realtimeKey = null;
@@ -182,60 +319,53 @@ var App = {
     },
 
     switchTab: function(tab){
-        this.currentTab = tab;
-        var tabs = ['pending', 'completed', 'account'];
-        for (var i = 0; i < tabs.length; i++) {
-            var btn = RW_UI.byId('tab-' + tabs[i]);
-            if (btn) { btn.classList.remove('active'); btn.classList.add('text-slate-400'); }
-        }
-        var activeBtn = RW_UI.byId('tab-' + tab);
-        if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-slate-400'); }
-        
-        if (tab === 'pending') this.loadPurchaseOrders();
-        else if (tab === 'completed') this.renderCompleted();
-        else if (tab === 'account') this.renderAccount();
-    },
-
-    loadPurchaseOrders: async function(){
-        var self = this;
-        var companyId = this.currentUser && this.currentUser.company_id;
-        if (!companyId) {
-            RW_UI.showEmptyState('mainContent', 'سياق الشركة غير متاح للمستخدم.', '🔒');
-            return;
-        }
-        RW_UI.showSkeleton('mainContent', 3, 'card');
-        try {
-            var all = [];
-            var offset = 0;
-            var pageSize = 200;
-            while (true) {
-                var res = await supabase.from('purchase_orders')
-                    .select('id, company_id, po_code, po_date, supplier_name, status, total_amount, created_at')
-                    .eq('company_id', companyId)
-                    .in('status', ['Approved', 'Sent', 'Partially Received'])
-                    .order('po_date', { ascending: false })
-                    .order('created_at', { ascending: false })
-                    .order('id', { ascending: false })
-                    .range(offset, offset + pageSize - 1);
-                if (res.error) throw res.error;
-                var batch = (res.data || []).map(function(row){row.doc_type='PURCHASE_ORDER';return row;});
-                all = all.concat(batch);
-                if (batch.length < pageSize) break;
-                offset += pageSize;
+        this.currentTab=tab;
+        var tabs=['pending','completed','account'];
+        for(var i=0;i<tabs.length;i++){var btn=RW_UI.byId('tab-'+tabs[i]);if(btn){btn.classList.remove('active');btn.classList.add('text-slate-400');}}
+        var active=RW_UI.byId('tab-'+tab);if(active){active.classList.add('active');active.classList.remove('text-slate-400');}
+        if(tab==='pending')this.loadPurchaseOrders();else if(tab==='completed')this.renderCompleted();else if(tab==='account')this.renderAccount();
+    },    loadPurchaseOrders: async function(){
+        var self=this,companyId=this.currentUser&&this.currentUser.company_id;
+        if(!companyId){RW_UI.showEmptyState('mainContent','سياق الشركة غير متاح للمستخدم.','🔒');return;}
+        var sequence=++this.loadSequence;RW_UI.showSkeleton('mainContent',3,'card');
+        try{
+            await this.resolveBranchScope();
+            var all=[],offset=0,pageSize=200;
+            while(true){
+                var res=await supabase.from('purchase_orders').select('id,company_id,po_code,po_date,supplier_name,status,total_amount,created_at,branch_id,supplier_id')
+                    .eq('company_id',companyId).in('status',['Approved','Sent','Partially Received'])
+                    .order('po_date',{ascending:false}).order('created_at',{ascending:false}).order('id',{ascending:false}).range(offset,offset+pageSize-1);
+                if(res.error)throw res.error;
+                all=all.concat((res.data||[]).map(function(row){row.doc_type='PURCHASE_ORDER';return row;}));
+                if((res.data||[]).length<pageSize)break;offset+=pageSize;
             }
-            var qmp = await supabase.rpc('get_quick_market_receiving_queue_atomic',{p_company_id:companyId});
-            if(qmp.error) throw qmp.error;
+            all=all.filter(function(row){var branchId=row.branch_id||self.mainBranchId;return self.unrestrictedBranchScope||!!(branchId&&self.allowedBranchIds.indexOf(String(branchId))!==-1);});
+            var qmp=await supabase.rpc('get_quick_market_receiving_queue_atomic',{p_company_id:companyId});
+            if(qmp.error)throw qmp.error;
             var qmpRows=qmp.data&&Array.isArray(qmp.data.invoices)?qmp.data.invoices:[];
+            qmpRows=qmpRows.filter(function(row){return self.unrestrictedBranchScope||!!(row.branch_id&&self.allowedBranchIds.indexOf(String(row.branch_id))!==-1);});
             all=all.concat(qmpRows);
-            self.purchaseOrders = all;
-            self.renderList();
-        } catch (err) {
-            console.error('[Receiver] Failed to load purchase and quick-market receiving queue:', err);
-            RW_UI.showEmptyState('mainContent', 'تعذر تحميل أوامر الشراء وفواتير السوق. تحقق من الاتصال والصلاحيات.', '📡');
+            var poIds=all.filter(function(row){return row.doc_type!=='QUICK_MARKET';}).map(function(row){return row.id;}),lineMap={};
+            for(var p=0;p<poIds.length;p+=100){
+                var detail=await supabase.from('purchase_order_details').select('po_id,item_id,item_code,item_name,qty_ordered,qty_received,unit').in('po_id',poIds.slice(p,p+100));
+                if(detail.error)throw detail.error;
+                (detail.data||[]).forEach(function(line){if(!lineMap[String(line.po_id)])lineMap[String(line.po_id)]=[];lineMap[String(line.po_id)].push(line);});
+            }
+            all.forEach(function(row){if(row.doc_type!=='QUICK_MARKET')row.items=lineMap[String(row.id)]||[];});
+            var lines=[];all.forEach(function(row){lines=lines.concat(row.items||[]);});
+            var enriched=await this.enrichItemLines(lines),cursor=0;
+            all.forEach(function(row){
+                var count=(row.items||[]).length;row.items=enriched.slice(cursor,cursor+count);cursor+=count;
+                var branch=row.branch_id?self.branchMap[String(row.branch_id)]:null;row.branch_name=branch?branch.name:'';
+                row.search_blob=[self.docCode(row),row.invoice_code,row.supplier_invoice_no,row.supplier_name,row.branch_name,
+                    (row.items||[]).map(function(item){return [item.item_code,item.item_name,item.barcode,item.description].join(' ');}).join(' ')].join(' ').toLowerCase();
+            });
+            if(sequence!==this.loadSequence)return;this.purchaseOrders=all;this.renderList();
+        }catch(err){
+            if(sequence!==this.loadSequence)return;console.error('[Receiver] Failed to load receiving queue:',err);
+            RW_UI.showEmptyState('mainContent',err&&err.message?err.message:'تعذر تحميل مستندات الاستلام. تحقق من الاتصال والصلاحيات.','📡');
         }
-    },
-
-    renderList: function(){
+    },    renderList: function(){
         var filtered = this.purchaseOrders.slice();
         var html = '';
         html += '<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">' + (this.currentUser.name || 'زميل') + '</span> 👋</p></div>';
