@@ -12978,35 +12978,245 @@ var RW_PurchaseGold = (function () {
     }
   }
 
+  var quotationFilters = { query: '', status: '', from: '', to: '' };
+
+  function quotationStatusLabel(status) {
+    return ({
+      Draft: 'مسودة',
+      Submitted: 'مقدم للمراجعة',
+      Accepted: 'مقبول',
+      Rejected: 'مرفوض',
+      Converted: 'تحول إلى أمر شراء',
+      Cancelled: 'ملغي'
+    })[status] || status || '—';
+  }
+
+  function quotationStatusClass(status) {
+    return ({
+      Draft: 'bg-slate-100 text-slate-700',
+      Submitted: 'bg-blue-50 text-blue-700',
+      Accepted: 'bg-emerald-50 text-emerald-700',
+      Rejected: 'bg-rose-50 text-rose-700',
+      Converted: 'bg-violet-50 text-violet-700',
+      Cancelled: 'bg-slate-100 text-slate-500'
+    })[status] || 'bg-slate-100 text-slate-700';
+  }
+
+  function quotationDateLabel(value) {
+    if (!value) return '—';
+    var raw = String(value);
+    var date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw);
+    return isNaN(date.getTime()) ? esc(raw) : date.toLocaleDateString('ar-EG');
+  }
+
+  function quotationMoney(value, currency) {
+    var amount = Number(value || 0);
+    return amount.toLocaleString('en-EG', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }) + ' ' + esc(String(currency || 'EGP').toUpperCase());
+  }
+
+  function filterQuotations() {
+    quotationFilters = {
+      query: String((byId('pg-quotation-query') || {}).value || '').trim(),
+      status: String((byId('pg-quotation-status') || {}).value || ''),
+      from: String((byId('pg-quotation-from') || {}).value || ''),
+      to: String((byId('pg-quotation-to') || {}).value || '')
+    };
+    return refresh();
+  }
+
   async function quotations(host) {
-    var rows = await getData('purchase_quotations');
+    var loaded = await Promise.all([
+      getData('purchase_quotations', function (q) {
+        return q.order('quotation_date', { ascending: false });
+      }),
+      getData('suppliers'),
+      getData('purchase_rfqs')
+    ]);
+    var allRows = loaded[0] || [];
+    var supplierIndex = {}, rfqIndex = {};
+    loaded[1].forEach(function (x) { supplierIndex[x.id] = x; });
+    loaded[2].forEach(function (x) { rfqIndex[x.id] = x; });
+
+    var f = quotationFilters || { query: '', status: '', from: '', to: '' };
+    var qtext = String(f.query || '').toLowerCase();
+    var today = purchaseToday();
+    var rows = allRows.filter(function (x) {
+      var supplier = supplierIndex[x.supplier_id] || {};
+      var rfq = rfqIndex[x.rfq_id] || {};
+      var date = String(x.quotation_date || x.created_at || '').slice(0, 10);
+      var search = [
+        x.quotation_code, supplier.name, supplier.supplier_code,
+        rfq.rfq_code, x.status, x.created_by, x.accepted_by
+      ].join(' ').toLowerCase();
+      return (!qtext || search.indexOf(qtext) !== -1) &&
+        (!f.status || x.status === f.status) &&
+        (!f.from || date >= f.from) &&
+        (!f.to || date <= f.to);
+    }).sort(function (a, b) {
+      return String(b.quotation_date || b.created_at || '')
+        .localeCompare(String(a.quotation_date || a.created_at || ''));
+    });
+
+    var submitted = allRows.filter(function (x) { return x.status === 'Submitted'; }).length;
+    var accepted = allRows.filter(function (x) { return x.status === 'Accepted'; }).length;
+    var converted = allRows.filter(function (x) { return x.status === 'Converted'; }).length;
+    var expired = allRows.filter(function (x) {
+      return x.status === 'Submitted' && x.valid_until && String(x.valid_until).slice(0, 10) < today;
+    }).length;
 
     var h =
-      '<div class="flex justify-between items-center mb-4">' +
-      '<h2 class="text-xl font-black">عروض الموردين</h2>' +
-      '<button onclick="RW_PurchaseGold.createQuotation()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black">إضافة عرض</button>' +
+      '<div class="flex flex-wrap justify-between items-center gap-3 mb-5">' +
+        '<div><h2 class="text-xl font-black">عروض الموردين</h2>' +
+        '<p class="text-xs text-slate-500 mt-1">سجل موحد لعروض Buyer والنظام الأم من نفس مصدر البيانات، مع تفاصيل الأسعار والبنود وسجل الحالة.</p></div>' +
+        '<button type="button" onclick="RW_PurchaseGold.createQuotation()" class="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black">+ تسجيل عرض مورد</button>' +
       '</div>' +
-      '<div class="bg-white border rounded-2xl overflow-auto"><table class="w-full text-sm">' +
-      '<thead class="bg-slate-50"><tr><th class="p-3">الكود</th><th class="p-3">المورد</th><th class="p-3">القيمة</th><th class="p-3">الحالة</th><th class="p-3">إجراء</th></tr></thead><tbody>';
+      '<div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">' +
+        '<div class="bg-white border rounded-2xl p-4"><small class="text-slate-500">إجمالي العروض</small><div class="text-2xl font-black mt-1">' + allRows.length + '</div></div>' +
+        '<div class="bg-white border rounded-2xl p-4"><small class="text-slate-500">بانتظار المقارنة/القرار</small><div class="text-2xl font-black text-blue-700 mt-1">' + submitted + '</div></div>' +
+        '<div class="bg-white border rounded-2xl p-4"><small class="text-slate-500">عروض مقبولة</small><div class="text-2xl font-black text-emerald-700 mt-1">' + accepted + '</div></div>' +
+        '<div class="bg-white border rounded-2xl p-4"><small class="text-slate-500">تحولت إلى أوامر شراء</small><div class="text-2xl font-black text-violet-700 mt-1">' + converted + '</div></div>' +
+      '</div>' +
+      '<div class="bg-white border rounded-2xl p-4 mb-4">' +
+        '<div class="grid grid-cols-1 md:grid-cols-4 gap-2">' +
+          '<input id="pg-quotation-query" value="' + esc(f.query || '') + '" onkeydown="if(event.key===\'Enter\')RW_PurchaseGold.filterQuotations()" class="border rounded-xl p-3 text-sm" placeholder="رقم العرض / المورد / RFQ / المنشئ">' +
+          '<select id="pg-quotation-status" class="border rounded-xl p-3 text-sm"><option value="">كل الحالات</option>' +
+            ['Draft', 'Submitted', 'Accepted', 'Rejected', 'Converted', 'Cancelled'].map(function (s) {
+              return '<option value="' + s + '" ' + (f.status === s ? 'selected' : '') + '>' + quotationStatusLabel(s) + '</option>';
+            }).join('') +
+          '</select>' +
+          '<label class="text-xs font-bold text-slate-600">من تاريخ<input id="pg-quotation-from" type="date" value="' + esc(f.from || '') + '" class="block w-full border rounded-xl p-3 mt-1"></label>' +
+          '<label class="text-xs font-bold text-slate-600">إلى تاريخ<input id="pg-quotation-to" type="date" value="' + esc(f.to || '') + '" class="block w-full border rounded-xl p-3 mt-1"></label>' +
+        '</div><div class="flex flex-wrap gap-2 mt-3">' +
+          '<button type="button" onclick="RW_PurchaseGold.filterQuotations()" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-bold">تطبيق البحث</button>' +
+          '<button type="button" onclick="RW_PurchaseGold.clearQuotationFilters()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold">مسح التصفية</button>' +
+        '</div>' +
+      '</div>';
 
-    for (var i = 0; i < rows.length; i++) {
-      var x = rows[i];
-      h += '<tr class="border-t">' +
-        '<td class="p-3 font-black">' + esc(x.quotation_code) + '</td>' +
-        '<td class="p-3">' + esc(x.supplier_id) + '</td>' +
-        '<td class="p-3">' + Number(x.total_amount || 0).toLocaleString() + '</td>' +
-        '<td class="p-3">' + esc(x.status) + '</td>' +
-        '<td class="p-3 flex gap-2">' +
-        (x.status === 'Submitted'
-          ? '<button type="button" onclick="RW_PurchaseGold.acceptQuotation(\'' + esc(x.id) + '\')" class="px-3 py-1 rounded-lg bg-emerald-600 text-white">قبول</button>'
-          : '') +
-        (x.status === 'Accepted' || x.status === 'Submitted'
-          ? '<button type="button" onclick="RW_PurchaseGold.convertQuotation(\'' + esc(x.id) + '\')" class="px-3 py-1 rounded-lg bg-blue-600 text-white">تحويل لأمر شراء</button>'
-          : '') +
-        '</td></tr>';
+    h += '<div class="bg-white border rounded-2xl overflow-x-auto shadow-sm">' +
+      '<table class="w-full min-w-[1250px] text-sm"><thead class="bg-slate-50"><tr>' +
+      '<th class="p-3 text-right">رقم العرض</th><th class="p-3 text-right">المورد</th><th class="p-3">طلب RFQ</th>' +
+      '<th class="p-3">تاريخ العرض</th><th class="p-3">صالح حتى</th><th class="p-3 text-right">القيمة والعملة</th>' +
+      '<th class="p-3 text-right">منشئ العرض</th><th class="p-3">الحالة</th><th class="p-3">الإجراءات</th>' +
+      '</tr></thead><tbody>';
+
+    rows.forEach(function (x) {
+      var supplier = supplierIndex[x.supplier_id] || {};
+      var rfq = rfqIndex[x.rfq_id] || {};
+      var isExpired = x.status === 'Submitted' && x.valid_until && String(x.valid_until).slice(0, 10) < today;
+      h += '<tr class="border-t hover:bg-slate-50 align-top">' +
+        '<td class="p-3"><b class="text-slate-900">' + esc(x.quotation_code || '—') + '</b><small class="block text-slate-400 mt-1">' + esc(x.id) + '</small></td>' +
+        '<td class="p-3"><b>' + esc(supplier.name || 'مورد غير محدد') + '</b><small class="block text-slate-500 mt-1">' + esc(supplier.supplier_code || '') + (supplier.phone ? ' · ' + esc(supplier.phone) : '') + '</small></td>' +
+        '<td class="p-3">' + (rfq.rfq_code ? esc(rfq.rfq_code) : '<span class="text-slate-400">عرض مستقل</span>') + '</td>' +
+        '<td class="p-3">' + quotationDateLabel(x.quotation_date || x.created_at) + '</td>' +
+        '<td class="p-3">' + quotationDateLabel(x.valid_until) + (isExpired ? '<small class="block text-rose-600 font-bold mt-1">انتهت الصلاحية</small>' : '') + '</td>' +
+        '<td class="p-3 font-black whitespace-nowrap">' + quotationMoney(x.total_amount, x.currency) + '</td>' +
+        '<td class="p-3 text-xs">' + esc(x.created_by || '—') + '</td>' +
+        '<td class="p-3"><span class="inline-flex rounded-full px-3 py-1 text-xs font-black ' + quotationStatusClass(x.status) + '">' + quotationStatusLabel(x.status) + '</span></td>' +
+        '<td class="p-3"><div class="flex flex-wrap gap-2">' +
+          '<button type="button" onclick="RW_PurchaseGold.openQuotation(\'' + esc(x.id) + '\')" class="px-3 py-2 rounded-lg bg-slate-100 text-slate-800 font-bold">التفاصيل</button>' +
+          (x.status === 'Submitted' ? '<button type="button" onclick="RW_PurchaseGold.acceptQuotation(\'' + esc(x.id) + '\')" class="px-3 py-2 rounded-lg bg-emerald-600 text-white font-bold">قبول</button>' : '') +
+          (x.status === 'Accepted' || x.status === 'Submitted' ? '<button type="button" onclick="RW_PurchaseGold.convertQuotation(\'' + esc(x.id) + '\')" class="px-3 py-2 rounded-lg bg-blue-600 text-white font-bold">تحويل إلى PO</button>' : '') +
+        '</div></td></tr>';
+    });
+
+    if (!rows.length) {
+      h += '<tr><td colspan="9" class="p-10 text-center"><div class="text-slate-400 font-bold">لا توجد عروض مطابقة للتصفية</div><p class="text-xs text-slate-400 mt-2">تظهر هنا عروض الموردين المنشأة من تطبيق Buyer والنظام الأم بعد حفظها في دورة المشتريات.</p></td></tr>';
     }
 
-    safeHTML(host, h + '</tbody></table></div>');
+    safeHTML(host, h + '</tbody></table></div>' +
+      '<p class="text-[11px] text-slate-500 mt-3">تُعرض قيمة كل عرض بعملته المسجلة؛ لا تُجمع عملات مختلفة في إجمالي واحد. تسجيل العرض أو قبوله أو تحويله إلى PO لا يرحّل مخزونًا أو خزينة أو مديونية مورد؛ الاستلام والفاتورة والدفع مستندات مستقلة.</p>');
+  }
+
+  async function openQuotation(id) {
+    var loaded = await Promise.all([
+      getData('purchase_quotations', function (q) { return q.eq('id', id); }),
+      getData('suppliers'),
+      getData('purchase_rfqs')
+    ]);
+    var quote = (loaded[0] || [])[0];
+    if (!quote) throw new Error('عرض المورد غير موجود أو ليس ضمن نطاق الشركة الحالية');
+
+    var detailResult = await supabase.from('purchase_quotation_details')
+      .select('*')
+      .eq('quotation_id', quote.id)
+      .order('created_at', { ascending: true });
+    if (detailResult.error) throw detailResult.error;
+
+    var historyResult = await supabase.from('purchase_status_history')
+      .select('*')
+      .eq('company_id', companyId())
+      .eq('document_type', 'Quotation')
+      .eq('document_id', quote.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    var history = historyResult.error ? [] : (historyResult.data || []);
+    if (historyResult.error) console.warn('[PurchaseGold] Quotation status history unavailable:', historyResult.error);
+
+    var supplier = (loaded[1] || []).find(function (x) { return x.id === quote.supplier_id; }) || {};
+    var rfq = (loaded[2] || []).find(function (x) { return x.id === quote.rfq_id; }) || {};
+    var currency = String(quote.currency || 'EGP').toUpperCase();
+
+    var h = '<div dir="rtl" class="text-right space-y-4">' +
+      '<div class="grid grid-cols-1 md:grid-cols-4 gap-2">' +
+        '<div class="rounded-xl bg-slate-50 border p-3"><small class="text-slate-500">المورد</small><b class="block mt-1">' + esc(supplier.name || '—') + '</b><small class="block text-slate-500">' + esc(supplier.supplier_code || '') + '</small></div>' +
+        '<div class="rounded-xl bg-slate-50 border p-3"><small class="text-slate-500">حالة العرض</small><b class="block mt-1">' + quotationStatusLabel(quote.status) + '</b></div>' +
+        '<div class="rounded-xl bg-slate-50 border p-3"><small class="text-slate-500">تاريخ العرض</small><b class="block mt-1">' + quotationDateLabel(quote.quotation_date) + '</b></div>' +
+        '<div class="rounded-xl bg-slate-50 border p-3"><small class="text-slate-500">الصلاحية</small><b class="block mt-1">' + quotationDateLabel(quote.valid_until) + '</b></div>' +
+      '</div>' +
+      '<div class="rounded-2xl border p-4 bg-white"><div class="flex flex-wrap justify-between gap-3"><div><b class="text-lg">' + esc(quote.quotation_code) + '</b><p class="text-xs text-slate-500 mt-1">RFQ: ' + esc(rfq.rfq_code || 'عرض مستقل') + '</p></div><div class="text-left"><small class="block text-slate-500">إجمالي العرض</small><b class="text-2xl">' + quotationMoney(quote.total_amount, currency) + '</b></div></div>' +
+      '<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4 text-xs">' +
+        '<div><small class="text-slate-500 block">قبل الخصم والضريبة</small><b>' + quotationMoney(quote.subtotal, currency) + '</b></div>' +
+        '<div><small class="text-slate-500 block">إجمالي الخصم</small><b>' + quotationMoney(quote.discount_amount, currency) + '</b></div>' +
+        '<div><small class="text-slate-500 block">إجمالي الضريبة</small><b>' + quotationMoney(quote.tax_amount, currency) + '</b></div>' +
+        '<div><small class="text-slate-500 block">العملة</small><b>' + esc(currency) + '</b></div>' +
+      '</div></div>' +
+      '<div class="rounded-2xl border bg-white overflow-hidden"><div class="p-4 font-black">تفاصيل الأصناف والأسعار</div><div class="overflow-x-auto"><table class="w-full min-w-[850px] text-xs"><thead class="bg-slate-50"><tr>' +
+        '<th class="p-3 text-right">الصنف</th><th class="p-3">الكمية</th><th class="p-3">الوحدة</th><th class="p-3">سعر الوحدة</th><th class="p-3">الخصم</th><th class="p-3">الضريبة</th><th class="p-3">إجمالي السطر</th>' +
+      '</tr></thead><tbody>';
+
+    (detailResult.data || []).forEach(function (line) {
+      h += '<tr class="border-t">' +
+        '<td class="p-3"><b>' + esc(line.item_name || line.item_code) + '</b><small class="block text-slate-400">' + esc(line.item_code) + '</small></td>' +
+        '<td class="p-3 text-center">' + Number(line.qty || 0).toLocaleString('en-EG') + '</td>' +
+        '<td class="p-3 text-center">' + esc(line.unit || '—') + '</td>' +
+        '<td class="p-3 text-center">' + quotationMoney(line.unit_price, currency) + '</td>' +
+        '<td class="p-3 text-center">' + esc(line.discount_percent || 0) + '% (' + quotationMoney(line.discount_amount, currency) + ')</td>' +
+        '<td class="p-3 text-center">' + esc(line.tax_rate || 0) + '% (' + quotationMoney(line.tax_amount, currency) + ')</td>' +
+        '<td class="p-3 text-center font-black">' + quotationMoney(line.line_total, currency) + '</td></tr>';
+    });
+
+    if (!(detailResult.data || []).length) {
+      h += '<tr><td colspan="7" class="p-6 text-center text-slate-400">لا توجد بنود مرتبطة بهذا العرض.</td></tr>';
+    }
+    h += '</tbody></table></div></div>' +
+      '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">' +
+        '<div class="rounded-xl bg-slate-50 p-3"><b>أنشأه</b><p class="mt-1">' + esc(quote.created_by || '—') + '</p></div>' +
+        '<div class="rounded-xl bg-slate-50 p-3"><b>اعتمده</b><p class="mt-1">' + esc(quote.accepted_by || 'لم يعتمد بعد') + (quote.accepted_at ? ' · ' + quotationDateLabel(quote.accepted_at) : '') + '</p></div>' +
+      '</div>' +
+      (quote.terms ? '<div class="rounded-xl border p-3"><b class="text-xs">الشروط التجارية</b><p class="text-xs text-slate-600 mt-1 whitespace-pre-wrap">' + esc(quote.terms) + '</p></div>' : '') +
+      (quote.notes ? '<div class="rounded-xl border p-3"><b class="text-xs">ملاحظات</b><p class="text-xs text-slate-600 mt-1 whitespace-pre-wrap">' + esc(quote.notes) + '</p></div>' : '') +
+      '<div class="rounded-xl border p-3"><b class="text-sm">السجل الزمني للحالة</b><div class="mt-2 space-y-2">' +
+        (history.map(function (event) {
+          return '<div class="border-r-2 border-violet-300 pr-3 py-1"><b class="text-xs">' + esc(event.action || 'تحديث حالة') + '</b><p class="text-xs text-slate-500 mt-1">' +
+            esc(quotationStatusLabel(event.from_status || '—')) + ' ← ' + esc(quotationStatusLabel(event.to_status || '—')) +
+            ' · ' + esc(event.actor_email || '—') + ' · ' + quotationDateLabel(event.created_at) +
+            (event.note ? '<br>' + esc(event.note) : '') + '</p></div>';
+        }).join('') || '<p class="text-xs text-slate-400">لا توجد أحداث حالة مسجلة لهذا العرض.</p>') +
+      '</div></div>' +
+      '<p class="text-[11px] text-slate-500 border-t pt-3">هذا مستند مقارنة تجاري. لا يثبت استلامًا ولا يغيّر مخزون الفرع أو حساب المورد أو الخزينة أو دفتر الأستاذ. أي حركة لاحقة تتطلب مستندها المستقل وصلاحياتها.</p>' +
+    '</div>';
+
+    await Swal.fire({
+      title: 'ملف عرض المورد ' + esc(quote.quotation_code),
+      html: h,
+      width: 1100,
+      showCloseButton: true,
+      showConfirmButton: false,
+      allowEscapeKey: true
+    });
   }
 
   async function createQuotation() {
@@ -14495,6 +14705,12 @@ var RW_PurchaseGold = (function () {
     createRFQ: createRFQ,
     sendRFQ: sendRFQ,
     createQuotation: createQuotation,
+    openQuotation: openQuotation,
+    filterQuotations: filterQuotations,
+    clearQuotationFilters: function () {
+      quotationFilters = { query: '', status: '', from: '', to: '' };
+      return refresh();
+    },
     acceptQuotation: acceptQuotation,
     convertQuotation: convertQuotation,
     createInvoice: createInvoice,

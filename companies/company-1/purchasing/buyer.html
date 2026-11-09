@@ -797,6 +797,38 @@ var App = {
         var supplierOwned=balances.filter(function(x){return x.ownership_class==='SUPPLIER_OWNED';});
         var companyReturns=balances.filter(function(x){return x.ownership_class==='COMPANY_OWNED_SUPPLIER_RETURN';});
         var unclassified=balances.filter(function(x){return !x.ownership_class||x.ownership_class==='UNCLASSIFIED';});
+        // Show a return action only for a positive PurchaseInvoice custody balance whose current owner
+        // is this Buyer and whose persisted invoice source/status is eligible. The mutation handler
+        // independently rechecks live progress, quantities, ownership and evidence before recording.
+        var eligibleQuickMarketInvoiceIds={},supplierReturnGroups={},returnEligibilityReadFailed=false;
+        if(supplierOwned.length){
+            try{
+                var buyerInvoices=await this.data('purchase_invoices');
+                buyerInvoices.forEach(function(inv){
+                    if(inv.purchase_source==='QUICK_MARKET'&&
+                       ['Draft','PartiallyPaid'].indexOf(inv.status)!==-1&&
+                       inv.purchaser_user_id===(App.currentUser||{}).id){
+                        eligibleQuickMarketInvoiceIds[inv.id]=true;
+                    }
+                });
+            }catch(returnReadError){
+                returnEligibilityReadFailed=true;
+                console.warn('[Buyer] Supplier-return actions hidden because invoice eligibility could not be verified:',returnReadError);
+            }
+        }
+        supplierOwned.forEach(function(row){
+            var sourceId=String(row.source_document_id||'');
+            if(row.source_document_type!=='PurchaseInvoice'||
+               !/^[0-9a-f-]{36}$/i.test(sourceId)||
+               !eligibleQuickMarketInvoiceIds[sourceId]||
+               row.custodian_user_id!==(App.currentUser||{}).id||
+               Number(row.balance_qty||0)<=0.0001)return;
+            var group=supplierReturnGroups[sourceId]||(supplierReturnGroups[sourceId]={
+                id:sourceId,code:row.source_document_code||'فاتورة شراء',supplier:row.supplier_name||'مورد غير محدد',
+                supplierInvoice:row.supplier_invoice_no||'',lines:[]
+            });
+            group.lines.push({name:row.item_name||row.item_code||'صنف',qty:Number(row.balance_qty||0),unit:row.unit||''});
+        });
         var supplierCount=function(rows){
             var ids=[];
             rows.forEach(function(x){if(x.supplier_id&&ids.indexOf(x.supplier_id)===-1)ids.push(x.supplier_id);});
@@ -807,6 +839,24 @@ var App = {
             '<div class="card"><small class="text-slate-500">بضاعة مملوكة للمورد</small><b class="block text-xl mt-1">'+supplierOwned.length+'</b><small class="text-slate-400">'+supplierCount(supplierOwned)+' موردين مرتبطين</small></div>'+
             '<div class="card"><small class="text-slate-500">مرتجعات شركة لدى المشتري</small><b class="block text-xl mt-1">'+companyReturns.length+'</b><small class="text-slate-400">'+supplierCount(companyReturns)+' موردين مرتبطين</small></div>'+
             '<div class="card"><small class="text-slate-500">أحداث دفتر الحيازة</small><b class="block text-xl mt-1">'+events.length+'</b></div></div>';
+        var returnGroupIds=Object.keys(supplierReturnGroups).sort(function(a,b){
+            return String(supplierReturnGroups[a].code).localeCompare(String(supplierReturnGroups[b].code));
+        });
+        html+='<section class="card mb-3 border border-amber-200 bg-amber-50/30"><div class="flex flex-wrap items-center justify-between gap-2 mb-3"><div><h3 class="font-black text-amber-900">مرتجع المورد من عهدة بضاعتي</h3><p class="text-xs text-slate-600 mt-1">يظهر الإجراء لفواتير شراء السوق السريع المسجلة باسمك ذات الرصيد الموجب فقط. لا تسجل المرتجع إلا بعد التسليم وقبول المورد الفعلي، مع إرفاق الإثبات.</p></div><span class="rounded-full bg-amber-100 text-amber-900 px-3 py-1 text-xs font-black">'+returnGroupIds.length+' فواتير مؤهلة</span></div>';
+        if(returnGroupIds.length){
+            html+='<div class="grid grid-cols-1 xl:grid-cols-2 gap-3">'+returnGroupIds.map(function(id){
+                var group=supplierReturnGroups[id];
+                var lines=group.lines.map(function(line){
+                    return '<li class="flex justify-between gap-2 text-xs py-1 border-b border-amber-100"><span>'+buyerEsc(line.name)+'</span><b class="shrink-0">'+buyerEsc(line.qty.toLocaleString('en-US'))+' '+buyerEsc(line.unit)+'</b></li>';
+                }).join('');
+                return '<article class="rounded-xl border border-amber-200 bg-white p-3"><div class="flex justify-between gap-3 items-start"><div><b class="text-sm">'+buyerEsc(group.code)+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(group.supplier)+'</p>'+(group.supplierInvoice?'<small class="text-slate-400">فاتورة المورد: '+buyerEsc(group.supplierInvoice)+'</small>':'')+'</div><span class="text-[10px] font-black text-amber-800 bg-amber-50 rounded-lg px-2 py-1">حيازة مورّد</span></div><ul class="mt-2">'+lines+'</ul><button type="button" data-buyer-supplier-return="'+id+'" class="mt-3 w-full rounded-xl bg-amber-700 hover:bg-amber-800 text-white px-4 py-3 text-sm font-black"><i class="fa-solid fa-rotate-left ml-2"></i>مرتجع مورد — بعد القبول الفعلي</button></article>';
+            }).join('')+'</div>';
+        }else{
+            html+='<div class="rounded-xl border border-dashed border-amber-200 bg-white p-4 text-center text-xs text-slate-500">'+
+                (returnEligibilityReadFailed?'تعذر التحقق من أهلية الفواتير الآن؛ أعد تحميل الدفتر قبل تسجيل أي مرتجع.':'لا توجد فاتورة سوق سريع مؤهلة للمرتجع في عهدتك حاليًا.')+
+            '</div>';
+        }
+        html+='<p class="text-[11px] text-slate-500 mt-3">اعتماد المرتجع يخصم الكمية المقبولة من حيازتك فقط. لا ينشئ إذن مخزن أو خصمًا من مخزون الفرع أو تسوية حساب المورد أو حركة خزينة/قيدًا محاسبيًا. مرتجعات الشركة الصادرة من المخزن تظل في مسارها المستندي المستقل.</p></section>';
         function renderBalanceSection(title,description,rows,style){
             var out='<section class="card mb-3 '+style+'"><div class="flex flex-wrap justify-between items-center gap-2 mb-3"><div><h3 class="font-black">'+title+'</h3><p class="text-xs text-slate-500 mt-1">'+description+'</p></div><b class="text-xs">'+rows.length+' مجموعات مصدر</b></div>';
             if(!rows.length)return out+'<p class="text-xs text-slate-400">لا توجد أرصدة مثبتة في هذا التصنيف حاليًا.</p></section>';
@@ -846,6 +896,12 @@ var App = {
         }).join('')+'</div>':'<p class="text-xs text-slate-400">قد يظهر رصيد عهدة بضاعتي مباشرة من بنود فواتير الشراء السريع؛ لا يُشترط إنشاء حدث منفصل لبدء الحيازة.</p>';
         html+='<p class="text-[11px] text-slate-500 border-t mt-3 pt-3">رصيد شراء السوق السريع يُشتق من أصناف وكميات الفاتورة المسجلة باسم المشتري، ثم يُخصم عند قبول المخزن للكمية أو قبول المورد للمرتجع. هذا الدفتر لا يضيف مخزون الفرع ولا يُنشئ مديونية مورد أو حركة نقدية.</p></section>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+        Array.from(RW_UI.byId('mainContent').querySelectorAll('[data-buyer-supplier-return]')).forEach(function(button){
+            button.addEventListener('click',function(){
+                var invoiceId=button.getAttribute('data-buyer-supplier-return');
+                if(invoiceId)App.recordQuickMarketSupplierReturn(invoiceId);
+            });
+        });
     },
     applyPOFilters:function(){
         this.poFilters={
@@ -1389,7 +1445,13 @@ var App = {
                     return false;
                 }
             }});
-            if(result.isConfirmed){this.invalidate();RW_UI.toast('تم تسجيل قبول المورد وخصم الكمية من عهدة البضاعة فقط','success');await this.openInvoice(invoiceId);}
+            if(result.isConfirmed){
+                this.invalidate();
+                RW_UI.toast('تم تسجيل قبول المورد وخصم الكمية من عهدة البضاعة فقط','success');
+                if(this.currentTab==='vehicle')await this.renderVehicleBalance();
+                else if(this.currentTab==='custody')await this.renderCustody();
+                else await this.openInvoice(invoiceId);
+            }
         }catch(e){this.notifyError(e);}
     },
         renderQuickSearch:function(items,q){
