@@ -199,7 +199,7 @@ assert.match(edge, /event\.operation_id === operationId && event\.evidence_path 
 const vehicleStart = buyer.indexOf("renderVehicleBalance:async function(){");
 const vehicleEnd = buyer.indexOf("applyPOFilters:function()", vehicleStart);
 assert.ok(vehicleStart >= 0 && vehicleEnd > vehicleStart, "Buyer goods-custody renderer boundaries not found");
-const vehicleMember = buyer.slice(vehicleStart, vehicleEnd).trim().replace(/,\\s*$/, "");
+const vehicleMember = buyer.slice(vehicleStart, vehicleEnd).trim().replace(/,\s*$/, "");
 let renderedCustodyHtml = "";
 const vehicleContext = {
   buyerEsc: value => String(value == null ? "" : value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"),
