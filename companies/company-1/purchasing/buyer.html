@@ -807,6 +807,27 @@ var App = {
         var supplierOwned=balances.filter(function(x){return x.ownership_class==='SUPPLIER_OWNED';});
         var companyReturns=balances.filter(function(x){return x.ownership_class==='COMPANY_OWNED_SUPPLIER_RETURN';});
         var unclassified=balances.filter(function(x){return !x.ownership_class||x.ownership_class==='UNCLASSIFIED';});
+        var itemSummaryMap={};
+        supplierOwned.forEach(function(x){
+            var key=[x.item_id||x.item_code||'',x.unit||'',x.branch_id||''].join('|');
+            var row=itemSummaryMap[key];
+            if(!row){
+                row=itemSummaryMap[key]={
+                    item_id:x.item_id,item_code:x.item_code,item_name:x.item_name,unit:x.unit,
+                    branch_id:x.branch_id,branch_name:x.branch_name,qty:0,sources:[],suppliers:[]
+                };
+            }
+            row.qty+=Number(x.balance_qty||0);
+            if(x.source_document_id&&!row.sources.some(function(d){return d.id===x.source_document_id;})){
+                row.sources.push({id:x.source_document_id,code:x.source_document_code||'فاتورة شراء'});
+            }
+            if(x.supplier_id&&!row.suppliers.some(function(v){return v.id===x.supplier_id;})){
+                row.suppliers.push({id:x.supplier_id,name:x.supplier_name||'مورد'});
+            }
+        });
+        var supplierItemSummary=Object.keys(itemSummaryMap).map(function(key){return itemSummaryMap[key];})
+            .filter(function(x){return Math.abs(x.qty)>0.0001;})
+            .sort(function(a,b){return String(a.item_name||a.item_code).localeCompare(String(b.item_name||b.item_code),'ar');});
         var supplierCount=function(rows){
             var ids=[];
             rows.forEach(function(x){if(x.supplier_id&&ids.indexOf(x.supplier_id)===-1)ids.push(x.supplier_id);});
@@ -820,6 +841,24 @@ var App = {
             '<div class="card"><small class="text-slate-500">أصناف بعهدتي</small><b class="block text-2xl mt-1">'+uniqueItems(supplierOwned)+'</b><small class="text-slate-400">كود صنف دون تكرار</small></div>'+
             '<div class="card"><small class="text-slate-500">موردون مرتبطون</small><b class="block text-2xl mt-1">'+supplierCount(supplierOwned)+'</b><small class="text-slate-400">فواتير شراء سوق سريع</small></div>'+
             '<div class="card"><small class="text-slate-500">مرتجعات الشركة بعهدتي</small><b class="block text-2xl mt-1">'+buyerEsc(companyReturnUnits.toLocaleString('en-US'))+'</b><small class="text-slate-400">'+companyReturns.length+' مجموعات مصدر</small></div></div>';
+        html+='<section class="card mb-3 border border-emerald-100"><div class="flex flex-wrap justify-between items-center gap-2 mb-3"><div><h3 class="font-black">رصيد الأصناف في عهدتي</h3><p class="text-xs text-slate-500 mt-1">تجميع صافي بضاعة فواتير الشراء المباشر السريع حسب الصنف والوحدة والفرع، مع الاحتفاظ بروابط كل فاتورة مصدر</p></div><div class="text-xs font-bold text-emerald-700">'+supplierItemSummary.length+' أصناف · '+supplierOwned.length+' سطور مصدر</div></div>';
+        if(!supplierItemSummary.length){
+            html+='<p class="text-xs text-slate-400">لا توجد كميات شراء مباشر سريع متبقية في عهدتك حاليًا.</p>';
+        }else{
+            html+='<div class="overflow-auto"><table class="w-full text-xs"><thead class="bg-emerald-50"><tr><th class="p-2 text-right">الصنف</th><th class="p-2 text-right">الفرع</th><th class="p-2">صافي الكمية بعهدتي</th><th class="p-2 text-right">الموردون</th><th class="p-2 text-right">فواتير المصدر</th></tr></thead><tbody>';
+            html+=supplierItemSummary.map(function(x){
+                var sourceLinks=x.sources.map(function(d){
+                    return '<button type="button" onclick="App.openInvoice(\\''+buyerEsc(d.id)+'\\')" class="text-purple-700 underline font-bold ml-2">'+buyerEsc(d.code)+'</button>';
+                }).join('');
+                return '<tr class="border-t align-top"><td class="p-2"><b>'+buyerEsc(x.item_name||'—')+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code||'')+'</small></td>'+
+                    '<td class="p-2">'+buyerEsc(x.branch_name||'—')+'</td>'+
+                    '<td class="p-2 text-center font-black text-emerald-700">'+buyerEsc(Number(x.qty.toFixed(4)).toLocaleString('en-US'))+' '+buyerEsc(x.unit||'')+'</td>'+
+                    '<td class="p-2">'+buyerEsc(x.suppliers.map(function(v){return v.name;}).join('، ')||'—')+'</td>'+
+                    '<td class="p-2">'+(sourceLinks||'—')+'</td></tr>';
+            }).join('');
+            html+='</tbody></table></div>';
+        }
+        html+='</section>';
         function renderBalanceSection(title,description,rows,style){
             var out='<section class="card mb-3 '+style+'"><div class="flex flex-wrap justify-between items-center gap-2 mb-3"><div><h3 class="font-black">'+title+'</h3><p class="text-xs text-slate-500 mt-1">'+description+'</p></div><b class="text-xs">'+rows.length+' مجموعات مصدر</b></div>';
             if(!rows.length)return out+'<p class="text-xs text-slate-400">لا توجد كميات متبقية في هذا التصنيف حاليًا.</p></section>';
