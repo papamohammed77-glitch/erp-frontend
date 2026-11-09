@@ -671,8 +671,10 @@ var App = {
         var invoiceOwner=invoice.purchase_source==='PURCHASE_ORDER'||invoice.purchase_source==='QUICK_MARKET'
             ?invoice.purchaser_user_id===(this.currentUser||{}).id
             :(String(invoice.created_by||'').toLowerCase()===currentEmail||isOwner);
-        var canEdit=invoice.status==='Draft'&&!invoice.is_received&&!invoice.received_date&&Number(invoice.paid_amount||0)===0&&lines.every(function(x){return Number(x.received_qty||0)===0;})&&invoiceOwner&&(!isQuickMarket||!hasHandover);
+        var canEdit=invoice.status==='Draft'&&!invoice.is_received&&!invoice.received_date&&Number(invoice.paid_amount||0)===0&&lines.every(function(x){return Number(x.received_qty||0)===0;})&&invoiceOwner&&!isQuickMarket;
         var canDelete=canEdit||(isOwner&&invoice.status==='Draft'&&!invoice.is_received&&!invoice.received_date&&Number(invoice.paid_amount||0)===0&&!isQuickMarket);
+        var hasReturnableCustody=isQuickMarket&&(handover.lines||[]).some(function(x){return Number(x.current_custody_qty||0)>0;});
+        var canReturnSupplier=isQuickMarket&&['Draft','PartiallyPaid'].indexOf(invoice.status)!==-1&&!invoice.is_received&&!invoice.received_date&&invoiceOwner&&hasReturnableCustody;
         var editable=canEdit,currency=invoice.currency||this.currency||'EGP',paid=Number(invoice.paid_amount||0),remaining=Math.max(0,Number(invoice.total_amount||0)-paid);
         var html='<div class="text-right space-y-3"><div class="grid grid-cols-2 md:grid-cols-4 gap-2"><div class="p-3 bg-slate-50 rounded-xl"><small>المورد</small><b class="block">'+buyerEsc(supplier.name||'—')+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>الحالة</small><b class="block">'+buyerStatus(invoice.status)+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>التاريخ</small><b class="block">'+buyerDate(invoice.invoice_date)+'</b></div><div class="p-3 bg-slate-50 rounded-xl"><small>رقم فاتورة المورد</small><b class="block">'+buyerEsc(invoice.supplier_invoice_no||'—')+'</b></div></div>';
         html+='<div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm"><p><b>رقم النظام:</b> '+buyerEsc(invoice.invoice_code)+'</p><p><b>الفرع:</b> '+buyerEsc(branch.name||'—')+'</p><p><b>المنشئ:</b> '+buyerEsc(invoice.created_by||'—')+'</p><p><b>الاستحقاق:</b> '+buyerDate(invoice.due_date)+'</p><p><b>أمر الشراء:</b> '+buyerEsc(po.po_code||'بدون PO')+'</p><p><b>العملة:</b> '+buyerEsc(currency)+'</p><p><b>الإجمالي:</b> '+buyerMoney(invoice.total_amount,currency)+'</p><p><b>المسدد:</b> '+buyerMoney(paid,currency)+'</p><p><b>المتبقي:</b> '+buyerMoney(remaining,currency)+'</p></div>';
@@ -684,7 +686,14 @@ var App = {
         html+='<h4 class="font-black">بنود الفاتورة</h4><div class="overflow-auto"><table class="w-full text-xs"><thead class="bg-slate-50"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">المستلم</th><th class="p-2">السعر</th><th class="p-2">خصم</th><th class="p-2">ضريبة</th><th class="p-2">الإجمالي</th></tr></thead><tbody>';
         html+=lines.map(function(x){return '<tr class="border-t"><td class="p-2">'+buyerEsc(x.item_name||x.item_code)+'</td><td class="p-2">'+buyerEsc(x.qty)+'</td><td class="p-2">'+buyerEsc(x.received_qty||0)+'</td><td class="p-2">'+buyerMoney(x.unit_price,currency)+'</td><td class="p-2">'+buyerEsc(x.discount_percent||0)+'%</td><td class="p-2">'+buyerEsc(x.tax_rate||0)+'%</td><td class="p-2 font-bold">'+buyerMoney(x.line_total,currency)+'</td></tr>';}).join('')||'<tr><td colspan="7" class="p-3 text-center">لا توجد تفاصيل</td></tr>';
         html+='</tbody></table></div>';
-        if(isQuickMarket)html+='<div class="rounded-xl bg-purple-50 border border-violet-100 p-3 text-xs"><b>حيازة البضاعة لدى المشتري</b><div class="mt-2 space-y-1">'+(handover.lines||[]).map(function(x){return '<div class="flex justify-between gap-2"><span>'+buyerEsc(x.item_name)+' · '+buyerEsc(x.item_code)+'</span><b>'+buyerEsc(x.handed_over_qty)+' / '+buyerEsc(x.invoice_qty)+' '+buyerEsc(x.unit||'')+' · متبقٍ '+buyerEsc(x.remaining_qty)+'</b></div>';}).join('')+'</div><p class="mt-2 text-slate-500">الحيازة لا تزيد مخزون الفرع ولا تشترط وجود مركبة.</p>'+(canDelete?'<button type="button" onclick="Swal.close();App.deleteDraftInvoice(\''+buyerEsc(id)+'\')" class="mt-3 text-xs text-red-700 underline font-bold">حذف مسودة السوق السريع</button>':'')+'</div>';
+        if(isQuickMarket){
+            html+='<div class="rounded-xl bg-purple-50 border border-violet-100 p-3 text-xs"><div class="flex flex-wrap justify-between gap-2 items-center"><b>حيازة البضاعة لدى المشتري</b><span class="text-slate-600">دفتر الحيازة المركزي</span></div>'+
+                '<div class="mt-2 space-y-2">'+(handover.lines||[]).map(function(x){return '<div class="rounded-lg bg-white/80 p-2"><div class="flex justify-between gap-2"><b>'+buyerEsc(x.item_name)+' · '+buyerEsc(x.item_code)+'</b><b class="text-purple-800">متاح بعهدتك '+buyerEsc(x.current_custody_qty||0)+' '+buyerEsc(x.unit||'')+'</b></div><div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-[11px] text-slate-600"><span>الفاتورة: '+buyerEsc(x.invoice_qty)+'</span><span>استلمت من المورد: '+buyerEsc(x.handed_over_qty)+'</span><span>استلم المخزن: '+buyerEsc(x.warehouse_accepted_qty||0)+'</span><span>مرتجع للمورد: '+buyerEsc(x.supplier_returned_qty||0)+'</span></div></div>';}).join('')+
+                '</div><p class="mt-2 text-slate-500">فاتورة الشراء المباشر السريع تثبت أن كمياتها أصبحت بعهدتك. ينخفض رصيد بضاعتي فقط بالكميات التي استلمها المخزن فعليًا أو قبل المورد استلامها كمرتجع. لا تُضاف إلى مخزون الفرع قبل اعتماد استلام المخزن.</p>'+
+
+                (canReturnSupplier?'<button type="button" onclick="Swal.close();App.recordQuickMarketSupplierReturn(\''+buyerEsc(id)+'\')" class="mt-3 ml-2 rounded-lg bg-amber-700 text-white px-3 py-2 text-xs font-bold">مرتجع مورد — بعد القبول</button>':'')+
+                (canDelete?'<button type="button" onclick="Swal.close();App.deleteDraftInvoice(\''+buyerEsc(id)+'\')" class="mt-3 text-xs text-red-700 underline font-bold">حذف مسودة السوق السريع</button>':'')+'</div>';
+        }
         html+='<h4 class="font-black">سجل المستند</h4><div class="space-y-1">'+(history.map(function(h){return '<div class="p-2 bg-slate-50 rounded-lg text-xs">'+buyerEsc(h.action||'تحديث')+' · '+buyerEsc(h.from_status||'—')+' ← '+buyerEsc(h.to_status||'—')+' · '+buyerDate(h.created_at)+' · '+buyerEsc(h.actor_email||'')+(h.note?'<p class="text-slate-500 mt-1">'+buyerEsc(h.note)+'</p>':'')+'</div>';}).join('')||'<p class="text-xs text-slate-400">لا توجد أحداث مسجلة.</p>')+'</div>';
         html+='<div class="p-3 rounded-xl '+(editable?'bg-amber-50 text-amber-800':'bg-slate-50 text-slate-600')+' text-xs">'+(editable?'هذه مسودة غير مستلمة وغير مرحلة؛ يمكن تعديلها أو حذفها وفق الصلاحيات.':'فاتورة غير قابلة للتعديل أو الحذف من هذه الشاشة. أي تصحيح بعد الترحيل يكون عبر مسار عكس معتمد.')+'</div></div>';
         var hasRemainingHandover=isQuickMarket&&(handover.lines||[]).some(function(x){return Number(x.remaining_qty||0)>0;});
@@ -834,8 +843,8 @@ var App = {
                 (e.evidence_path?'<button type="button" onclick="App.viewCustodyDocument(\''+buyerEsc(e.evidence_path)+'\')" class="text-blue-700 underline">فتح الإثبات</button>':'')+'</div>'+
                 (e.vehicle_id?'<p class="text-[11px] text-slate-400 mt-1">مرتبطة بمركبة/حيازة ميدانية</p>':'<p class="text-[11px] text-slate-400 mt-1">حيازة مباشرة دون مركبة</p>')+
                 (e.notes?'<p class="text-xs text-slate-500 mt-1">'+buyerEsc(e.notes)+'</p>':'')+'</div>';
-        }).join('')+'</div>':'<p class="text-xs text-slate-400">لا توجد أحداث حيازة مسجلة بعد. يبدأ الرصيد فور تسجيل تسليم المورد أو إسناد مرتجع مورد إلى عهدة المشتري.</p>';
-        html+='<p class="text-[11px] text-slate-500 border-t mt-3 pt-3">تسليم البضاعة للمخزن أو قبول المورد للمرتجع لا يُثبت بمجرد وجود طلب أو إذن مسودة؛ لا تتغير الحيازة إلا بحركة قبول فعلية مرتبطة بالمستند. هذا الدفتر لا ينشئ حركة مخزون أو مديونية مورد بذاته.</p></section>';
+        }).join('')+'</div>':'<p class="text-xs text-slate-400">قد يظهر رصيد عهدة بضاعتي مباشرة من بنود فواتير الشراء السريع؛ لا يُشترط إنشاء حدث منفصل لبدء الحيازة.</p>';
+        html+='<p class="text-[11px] text-slate-500 border-t mt-3 pt-3">رصيد شراء السوق السريع يُشتق من أصناف وكميات الفاتورة المسجلة باسم المشتري، ثم يُخصم عند قبول المخزن للكمية أو قبول المورد للمرتجع. هذا الدفتر لا يضيف مخزون الفرع ولا يُنشئ مديونية مورد أو حركة نقدية.</p></section>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     applyPOFilters:function(){
@@ -1342,7 +1351,48 @@ var App = {
             }
         }catch(e){this.notifyError(e);}
     },
-    renderQuickSearch:function(items,q){
+    recordQuickMarketSupplierReturn:async function(invoiceId){
+        var self=this;
+        try{
+            var progress=await this.api('GET_QUICK_MARKET_HANDOVER_PROGRESS',{invoice_id:invoiceId});
+            if(progress.purchaser_user_id!==(this.currentUser||{}).id)throw new Error('لا تملك صلاحية تسجيل مرتجع هذه الفاتورة');
+            if(['Draft','PartiallyPaid'].indexOf(progress.status)===-1)throw new Error('حالة الفاتورة لا تسمح بمرتجع سوق سريع مباشر');
+            var lines=(progress.lines||[]).filter(function(x){return Number(x.current_custody_qty||0)>0;});
+            if(!lines.length)throw new Error('لا توجد بضاعة مثبتة في عهدتك ومتاحة للمرتجع');
+            var operationId=buyerOperationId();
+            var fields=lines.map(function(x,i){
+                return '<div class="grid grid-cols-1 md:grid-cols-2 gap-2 items-center border-b py-3 text-xs"><div><b>'+buyerEsc(x.item_name)+'</b><small class="block text-slate-500">'+buyerEsc(x.item_code)+' · أصل الفاتورة '+buyerEsc(x.invoice_qty)+' · استلمت من المورد '+buyerEsc(x.handed_over_qty)+' · استلم المخزن '+buyerEsc(x.warehouse_accepted_qty)+' · مرتجع سابق '+buyerEsc(x.supplier_returned_qty)+' · المتاح '+buyerEsc(x.current_custody_qty)+' '+buyerEsc(x.unit||'')+'</small></div><label class="font-bold">الكمية التي قبلها المورد<input data-bsr-qty="'+i+'" data-bsr-line="'+buyerEsc(x.invoice_detail_id)+'" type="number" min="0" max="'+buyerEsc(x.current_custody_qty)+'" step="0.0001" value="'+buyerEsc(x.current_custody_qty)+'" class="w-full border rounded-lg p-2 mt-1"></label></div>';
+            }).join('');
+            var html='<div class="text-right space-y-3"><div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">لا تسجل المرتجع إلا بعد تسليم البضاعة وقبول المورد الفعلي لها. هذه الحركة تخصم من حيازة المشتري فقط؛ لا تنشئ حركة مخزون أو تسوية مورد أو حركة نقدية.</div><div class="border rounded-xl p-3"><b class="text-sm">الكميات المتاحة للمرتجع</b>'+fields+'</div><label class="block text-xs font-bold">سبب المرتجع<textarea id="bsr-reason" maxlength="1000" class="swal2-textarea" placeholder="اذكر سبب المرتجع وما تم الاتفاق عليه مع المورد"></textarea></label><label class="block text-xs font-bold">إثبات قبول المورد (PDF / صورة)<input id="bsr-file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" class="swal2-file"></label><p class="text-[11px] text-slate-500">الحد الأقصى 10 ميجابايت.</p></div>';
+            var result=await Swal.fire({title:'تسجيل مرتجع مورد مقبول فعليًا',html:html,width:760,showCancelButton:true,confirmButtonText:'تأكيد قبول المورد وتسجيل الحركة',cancelButtonText:'إلغاء',preConfirm:async function(){
+                var selected=Array.from(document.querySelectorAll('[data-bsr-qty]')).map(function(el){return {invoice_detail_id:el.getAttribute('data-bsr-line'),qty:Number(el.value||0)};}).filter(function(x){return x.qty>0;});
+                if(!selected.length){Swal.showValidationMessage('حدد كمية موجبة واحدة على الأقل');return false;}
+                for(var i=0;i<selected.length;i++){
+                    var line=lines.find(function(x){return x.invoice_detail_id===selected[i].invoice_detail_id;});
+                    if(!line||!Number.isFinite(selected[i].qty)||selected[i].qty<=0||selected[i].qty>Number(line.current_custody_qty)+0.0001){Swal.showValidationMessage('الكمية تتجاوز صافي الحيازة المتاحة في أحد البنود');return false;}
+                }
+                var reason=String((RW_UI.byId('bsr-reason')||{}).value||'').trim();
+                if(reason.length<5){Swal.showValidationMessage('اكتب سببًا واضحًا للمرتجع لا يقل عن 5 أحرف');return false;}
+                var file=RW_UI.byId('bsr-file').files[0];
+                if(!file||file.size<=0||file.size>10*1024*1024||['application/pdf','image/jpeg','image/png','image/webp'].indexOf(file.type)===-1){Swal.showValidationMessage('أرفق PDF أو صورة JPG/PNG/WebP لا تتجاوز 10 ميجابايت');return false;}
+                var safe=file.name.replace(/[^A-Za-z0-9._-]/g,'_').slice(-80)||'evidence';
+                var evidencePath=self.currentUser.company_id+'/'+self.currentUser.id+'/buyer-goods/'+invoiceId+'/supplier-return-'+Date.now()+'_'+safe;
+                var uploaded=await supabase.storage.from('employee-documents').upload(evidencePath,file,{cacheControl:'3600',upsert:false,contentType:file.type});
+                if(uploaded.error){Swal.showValidationMessage('تعذر رفع إثبات قبول المورد: '+uploaded.error.message);return false;}
+                try{return await self.api('REGISTER_QUICK_MARKET_SUPPLIER_RETURN',{invoice_id:invoiceId,items:selected,evidence_path:evidencePath,reason:reason,operation_id:operationId});}
+                catch(e){
+                    var after=null;try{after=await self.api('GET_QUICK_MARKET_HANDOVER_PROGRESS',{invoice_id:invoiceId});}catch(checkError){}
+                    var matching=after&&(after.return_events||[]).find(function(x){return x.operation_id===operationId;});
+                    if(matching&&matching.evidence_path===evidencePath)return {success:true,duplicate:true};
+                    if(matching&&matching.evidence_path!==evidencePath){Swal.showValidationMessage('رقم العملية مرتبط بإثبات آخر؛ راجع سجل المرتجعات.');return false;}
+                    Swal.showValidationMessage(after?(e.message||'لم تُسجل الحركة؛ تحقق من الكمية المتاحة.'):'تعذر التحقق من نتيجة الاتصال. احتفظنا بالإثبات ولم نكرر العملية؛ راجع سجل الحيازة.');
+                    return false;
+                }
+            }});
+            if(result.isConfirmed){this.invalidate();RW_UI.toast('تم تسجيل قبول المورد وخصم الكمية من عهدة البضاعة فقط','success');await this.openInvoice(invoiceId);}
+        }catch(e){this.notifyError(e);}
+    },
+        renderQuickSearch:function(items,q){
         var box=RW_UI.byId('bq-results');if(!box)return;
         var tokens=this.invoiceSearchTokens(q);
         if(!tokens.length){RW_UI.safeHTML(box,'');box.classList.add('hidden');return;}
