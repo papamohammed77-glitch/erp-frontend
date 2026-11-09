@@ -97,6 +97,11 @@ var App = {
     historyRows: [],
     eventsBound: false,
     loadSequence: 0,
+    refreshTimer: null,
+    refreshPending: false,
+    isSubmittingReceipt: false,
+    queueLoaded: false,
+    queueSignature: null,
 
     escapeHTML: function(value){
         return String(value==null?'':value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -148,6 +153,7 @@ var App = {
                 self.activeDocumentIndex=null;
                 self.documentOpenSequence++;
                 self.renderList();
+                self.requestQueueRefresh('back-to-list',true);
             }
             else if(action==='submit-receipt')self.submitReceiving(index);
             else if(action==='preview-image')self.previewImage(target.getAttribute('data-image'),target.getAttribute('data-title'));
@@ -156,7 +162,7 @@ var App = {
                 main.querySelectorAll('[data-action="source-filter"]').forEach(function(button){button.classList.toggle('active',button.getAttribute('data-filter')===self.currentSourceFilter);});
                 self.renderDocumentCards();
             }else if(action==='refresh'){
-                if(self.currentTab==='pending')self.loadPurchaseOrders();else if(self.currentTab==='completed')self.renderCompleted();
+                if(self.currentTab==='pending')self.requestQueueRefresh('manual',true);else if(self.currentTab==='completed')self.renderCompleted();
             }
         });
         main.addEventListener('input',function(event){
@@ -302,9 +308,9 @@ var App = {
             debounceMs:500,reconcileMs:30000,
             onEvent:function(event){
                 if(['purchase_orders','purchase_invoices','buyer_goods_custody_events','items'].indexOf(event.table)===-1)return;
-                if(self.currentTab==='pending')self.loadPurchaseOrders();else if(self.currentTab==='completed')self.renderCompleted();
+                self.requestQueueRefresh('realtime:'+event.table,false);
             },
-            onReconcile:function(){if(self.currentTab==='pending')self.loadPurchaseOrders();else if(self.currentTab==='completed')self.renderCompleted();},
+            onReconcile:function(){self.requestQueueRefresh('reconcile',false)},
             onStatus:function(status){console.log('[Receiver] Realtime:',status.status);}
         });
         if(!this.realtimeKey)console.error('[Receiver] Realtime subscription rejected; check authenticated company scope.');
@@ -327,16 +333,49 @@ var App = {
     switchTab: function(tab){
         this.activeDocumentIndex=null;
         this.documentOpenSequence++;
+        this.loadSequence++;
+        if(this.refreshTimer){clearTimeout(this.refreshTimer);this.refreshTimer=null;}
         this.currentTab=tab;
         var tabs=['pending','completed','account'];
         for(var i=0;i<tabs.length;i++){var btn=RW_UI.byId('tab-'+tabs[i]);if(btn){btn.classList.remove('active');btn.classList.add('text-slate-400');}}
         var active=RW_UI.byId('tab-'+tab);if(active){active.classList.add('active');active.classList.remove('text-slate-400');}
         if(tab==='pending')this.loadPurchaseOrders();else if(tab==='completed')this.renderCompleted();else if(tab==='account')this.renderAccount();
     },
-    loadPurchaseOrders: async function(){
+    requestQueueRefresh: function(source,immediate){
+        if(this.currentTab==='pending'&&(this.activeDocumentIndex!==null||this.isSubmittingReceipt)){
+            this.refreshPending=true;
+            return;
+        }
+        if(this.currentTab==='completed'){
+            if(this.refreshTimer)clearTimeout(this.refreshTimer);
+            var historySelf=this;
+            this.refreshTimer=setTimeout(function(){historySelf.refreshTimer=null;if(historySelf.currentTab==='completed')historySelf.renderCompleted();},immediate?0:1200);
+            return;
+        }
+        if(this.currentTab!=='pending')return;
+        if(this.refreshTimer)clearTimeout(this.refreshTimer);
+        var self=this;
+        this.refreshTimer=setTimeout(function(){
+            self.refreshTimer=null;
+            if(self.currentTab!=='pending')return;
+            if(self.activeDocumentIndex!==null||self.isSubmittingReceipt){self.refreshPending=true;return;}
+            self.refreshPending=false;
+            self.loadPurchaseOrders({silent:true,source:source||'realtime'});
+        },immediate?0:1200);
+    },
+    queueDataSignature: function(rows){
+        return JSON.stringify((rows||[]).map(function(row){
+            return [row.doc_type,row.id,row.po_code,row.invoice_code,row.supplier_invoice_no,row.status,row.branch_id,row.supplier_name,
+                (row.items||[]).map(function(item){return [item.item_id,item.item_code,item.item_name,item.qty_ordered,item.qty_received,item.remaining_to_receive,item.handover_available,item.barcode,item.description,item.image_url].join('~');}).join('|')].join('^');
+        }));
+    },
+    loadPurchaseOrders: async function(options){
+        options=options||{};
+        if(this.currentTab!=='pending'||this.activeDocumentIndex!==null||this.isSubmittingReceipt){this.refreshPending=true;return;}
         var self=this,companyId=this.currentUser&&this.currentUser.company_id;
-        if(!companyId){RW_UI.showEmptyState('mainContent','سياق الشركة غير متاح للمستخدم.','🔒');return;}
-        var sequence=++this.loadSequence;RW_UI.showSkeleton('mainContent',3,'card');
+        if(!companyId){if(!this.queueLoaded)RW_UI.showEmptyState('mainContent','سياق الشركة غير متاح للمستخدم.','🔒');return;}
+        var sequence=++this.loadSequence;
+        if(!this.queueLoaded&&!options.silent)RW_UI.showSkeleton('mainContent',3,'card');
         try{
             await this.resolveBranchScope();
             var all=[],offset=0,pageSize=200;
@@ -369,10 +408,15 @@ var App = {
                 row.search_blob=[self.docCode(row),row.invoice_code,row.supplier_invoice_no,row.supplier_name,row.branch_name,
                     (row.items||[]).map(function(item){return [item.item_code,item.item_name,item.barcode,item.description].join(' ');}).join(' ')].join(' ').toLowerCase();
             });
-            if(sequence!==this.loadSequence)return;this.purchaseOrders=all;this.renderList();
+            if(sequence!==this.loadSequence)return;
+            if(this.currentTab!=='pending'||this.activeDocumentIndex!==null||this.isSubmittingReceipt){this.refreshPending=true;return;}
+            var signature=this.queueDataSignature(all),changed=signature!==this.queueSignature;
+            this.purchaseOrders=all;this.queueLoaded=true;this.queueSignature=signature;
+            if(changed)this.renderList();
         }catch(err){
             if(sequence!==this.loadSequence)return;console.error('[Receiver] Failed to load receiving queue:',err);
-            RW_UI.showEmptyState('mainContent',err&&err.message?err.message:'تعذر تحميل مستندات الاستلام. تحقق من الاتصال والصلاحيات.','📡');
+            if(!this.queueLoaded)RW_UI.showEmptyState('mainContent',err&&err.message?err.message:'تعذر تحميل مستندات الاستلام. تحقق من الاتصال والصلاحيات.','📡');
+            else console.warn('[Receiver] Refresh failed; preserving the current worklist/document view.');
         }
     },
     renderList: function(){
@@ -413,6 +457,8 @@ var App = {
     openDocument: function(index){
         var doc=this.purchaseOrders[index];
         if(!doc)return;
+        this.loadSequence++;
+        if(this.refreshTimer){clearTimeout(this.refreshTimer);this.refreshTimer=null;this.refreshPending=true;}
         this.activeDocumentIndex=index;
         this.loadPODetails(index);
     },
@@ -487,6 +533,7 @@ var App = {
     },
     submitReceiving: function(index){
         var self=this,doc=this.purchaseOrders[index],detail=RW_UI.byId('details-'+index);
+        if(this.isSubmittingReceipt){RW_UI.showError('عملية الاستلام قيد التنفيذ بالفعل.');return;}
         if(!doc||!detail){RW_UI.showError('مستند الاستلام غير متاح');return;}
         var items=[],rows=detail.querySelectorAll('.receipt-line');
         for(var i=0;i<rows.length;i++){
@@ -516,12 +563,15 @@ var App = {
             ?'تأكيد قبول '+this.formatQty(acceptedTotal)+' وحدة من '+this.docCode(doc)+'؟'
             :'تسجيل رفض كامل الشحنة الواردة للمستند '+this.docCode(doc)+' دون إضافة مخزون؟';
         RW_UI.showConfirm(confirmation,function(){
-            if(!self.storePendingOperation(doc,operationId,fingerprint)){RW_UI.showError('تعذر حفظ معرّف العملية محليًا. لا يمكن الإرسال دون ضمان إعادة المحاولة الآمنة.');return;}
+            if(self.isSubmittingReceipt)return;
+            self.isSubmittingReceipt=true;
+            if(!self.storePendingOperation(doc,operationId,fingerprint)){self.isSubmittingReceipt=false;RW_UI.showError('تعذر حفظ معرّف العملية محليًا. لا يمكن الإرسال دون ضمان إعادة المحاولة الآمنة.');return;}
             RW_UI.showLoader('جاري التحقق من الاستلام وترحيل الكمية المقبولة...');
             var payload={operation_id:operationId,itemsReceived:items,notes:'Receiver physical receipt; sent and accepted quantities captured separately'};
             if(doc.doc_type==='QUICK_MARKET')payload.invoice_id=doc.id;else payload.po_code=doc.po_code;
             RW_API.call('receive-purchase',payload,function(json,err){
                 RW_UI.hideLoader();
+                self.isSubmittingReceipt=false;
                 if(err||!json||!json.success){
                     var message=(json&&json.msg)||err||'تعذر تأكيد الاستلام';
                     var uncertain=/failed to fetch|networkerror|load failed|connection.*(lost|reset|timed out)/i.test(String(err||message));
@@ -535,6 +585,8 @@ var App = {
                         ?'المستند '+self.docCode(doc)+' — المقبول '+self.formatQty(actualAccepted)+' وحدة. تم تحديث المخزون بالكمية المقبولة فقط.'
                         :'تم حفظ الكميات المرسلة والمرفوضة وأسباب الرفض. لم تتم إضافة أي كمية للمخزون ولم تتغير حالة المستند أو عهدة المشتري.',
                     confirmButtonText:'حسنًا',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-emerald-600'}});
+                self.activeDocumentIndex=null;
+                self.documentOpenSequence++;
                 self.loadPurchaseOrders();
             });
         });
