@@ -4878,6 +4878,10 @@ openSupplierReturnContract:function(done){
         'get_buyer_custody_recipients_atomic',
         {p_company_id:s.company}
     );
+    var currencyPromise=supabase.from('app_settings')
+        .select('currency')
+        .eq('company_id',s.company)
+        .maybeSingle();
 
     Promise.all([
         existingPromise,
@@ -4911,7 +4915,8 @@ openSupplierReturnContract:function(done){
             .limit(100),
 
         receiverPromise,
-        recipientsPromise
+        recipientsPromise,
+        currencyPromise
     ])
     .then(function(parts){
 
@@ -4935,7 +4940,10 @@ openSupplierReturnContract:function(done){
         var receiverInfo=(parts[3]&&parts[3].data)||{};
         var recipientsData=(parts[4]&&parts[4].data)||{};
         var buyerRecipients=Array.isArray(recipientsData.recipients)?recipientsData.recipients:[];
-        if(existing)existing.receiver_user_id=receiverInfo.receiver_user_id||'';
+        if(parts[5]&&parts[5].error)throw parts[5].error;
+        var systemCurrency=String(parts[5]&&parts[5].data&&parts[5].data.currency||'').trim().toUpperCase();
+        if(!systemCurrency)throw new Error('عملة الشركة غير متاحة؛ تعذر فتح عقد المرتجع بأمان.');
+        if(existing){existing.receiver_user_id=receiverInfo.receiver_user_id||'';existing.currency=systemCurrency;}
 
         var sessionDraft=
             s.supplierReturnDraft &&
@@ -4968,12 +4976,13 @@ openSupplierReturnContract:function(done){
                     'not_required',
                 disposition:
                     'return_to_supplier',
-                currency:'SAR',
+                currency:systemCurrency,
                 items_fingerprint:
                     s.supplierReturnFingerprint(),
                 lines:[]
             };
 
+        draft.currency=systemCurrency;
         var html=
             '<div class="text-right space-y-4">'+
 
@@ -5424,7 +5433,7 @@ openSupplierReturnContract:function(done){
                             {}
                         ).value||
                         'return_to_supplier',
-                    currency:'SAR',
+                    currency:systemCurrency,
                     items_fingerprint:
                         s.supplierReturnFingerprint(),
                     lines:lines
