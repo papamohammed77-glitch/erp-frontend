@@ -752,14 +752,18 @@ var App = {
         var supplierOwned=balances.filter(function(x){return x.ownership_class==='SUPPLIER_OWNED';});
         var companyReturns=balances.filter(function(x){return x.ownership_class==='COMPANY_OWNED_SUPPLIER_RETURN';});
         var unclassified=balances.filter(function(x){return !x.ownership_class||x.ownership_class==='UNCLASSIFIED';});
-        var totalQty=function(rows){return rows.reduce(function(n,x){return n+Number(x.balance_qty||0);},0);};
+        var supplierCount=function(rows){
+            var ids=[];
+            rows.forEach(function(x){if(x.supplier_id&&ids.indexOf(x.supplier_id)===-1)ids.push(x.supplier_id);});
+            return ids.length;
+        };
         html+='<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">'+
             '<div class="card"><small class="text-slate-500">إجمالي مجموعات الحيازة</small><b class="block text-2xl mt-1">'+balances.length+'</b></div>'+
-            '<div class="card"><small class="text-slate-500">بضاعة مملوكة للمورد</small><b class="block text-xl mt-1">'+supplierOwned.length+'</b><small class="text-slate-400">'+buyerEsc(totalQty(supplierOwned))+' وحدة صافية</small></div>'+
-            '<div class="card"><small class="text-slate-500">مرتجعات شركة لدى المشتري</small><b class="block text-xl mt-1">'+companyReturns.length+'</b><small class="text-slate-400">'+buyerEsc(totalQty(companyReturns))+' وحدة صافية</small></div>'+
+            '<div class="card"><small class="text-slate-500">بضاعة مملوكة للمورد</small><b class="block text-xl mt-1">'+supplierOwned.length+'</b><small class="text-slate-400">'+supplierCount(supplierOwned)+' موردين مرتبطين</small></div>'+
+            '<div class="card"><small class="text-slate-500">مرتجعات شركة لدى المشتري</small><b class="block text-xl mt-1">'+companyReturns.length+'</b><small class="text-slate-400">'+supplierCount(companyReturns)+' موردين مرتبطين</small></div>'+
             '<div class="card"><small class="text-slate-500">أحداث دفتر الحيازة</small><b class="block text-xl mt-1">'+events.length+'</b></div></div>';
         function renderBalanceSection(title,description,rows,style){
-            var out='<section class="card mb-3 '+style+'"><div class="flex flex-wrap justify-between items-center gap-2 mb-3"><div><h3 class="font-black">'+title+'</h3><p class="text-xs text-slate-500 mt-1">'+description+'</p></div><b class="text-xs">'+rows.length+' مجموعات · '+buyerEsc(totalQty(rows))+' وحدة صافية</b></div>';
+            var out='<section class="card mb-3 '+style+'"><div class="flex flex-wrap justify-between items-center gap-2 mb-3"><div><h3 class="font-black">'+title+'</h3><p class="text-xs text-slate-500 mt-1">'+description+'</p></div><b class="text-xs">'+rows.length+' مجموعات مصدر</b></div>';
             if(!rows.length)return out+'<p class="text-xs text-slate-400">لا توجد أرصدة مثبتة في هذا التصنيف حاليًا.</p></section>';
             out+='<div class="overflow-auto"><table class="w-full text-xs"><thead class="bg-slate-50"><tr><th class="p-2 text-right">الصنف</th><th class="p-2 text-right">المورد والمستند المصدر</th><th class="p-2">الفرع</th><th class="p-2">الرصيد</th><th class="p-2">آخر حركة</th></tr></thead><tbody>';
             out+=rows.map(function(x){
