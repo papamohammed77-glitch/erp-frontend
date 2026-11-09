@@ -278,7 +278,7 @@ var App = {
                     requests:['purchase_requests','purchase_request_details','purchase_rfqs','purchase_rfq_details','purchase_rfq_suppliers','purchase_quotations','purchase_quotation_details','purchase_status_history'],
                     orders:['suppliers','purchase_quotations','purchase_quotation_details','purchase_orders','purchase_order_details','purchase_status_history','purchase_attachments','purchase_document_links'],
                     account:['purchase_invoices','purchase_invoice_details','purchase_payments','purchase_payment_allocations','purchase_returns','purchase_return_details','purchase_status_history','purchase_attachments','purchase_document_links','purchase_settings','suppliers'],
-                    custody:['buyer_custodies','buyer_custody_advances','buyer_custody_expenses','buyer_custody_payments','buyer_custody_settlements','purchase_invoices','purchase_invoice_details','receiving','receiving_details'],
+                    custody:['buyer_custodies','buyer_custody_advances','buyer_custody_expenses','buyer_custody_payments','buyer_custody_settlements','purchase_orders','purchase_invoices','purchase_invoice_details','receiving','receiving_details'],
                     quotations:['purchase_quotations','purchase_quotation_details','purchase_status_history'],
                     invoices:['purchase_invoices','purchase_invoice_details','purchase_status_history','purchase_attachments','purchase_document_links','purchase_payments','purchase_payment_allocations','buyer_goods_custody_events'],
                     vehicle:['buyer_goods_custody_events','purchase_invoices','purchase_invoice_details']
@@ -737,7 +737,9 @@ var App = {
     },
     renderVehicleBalance:async function(){
         this.pageLoading('تحميل دفتر حيازة البضاعة');
-        var result=await this.api('GET_BUYER_GOODS_CUSTODY_BALANCES',{}),balances=result.balances||[],events=result.events||[];
+        var result=await this.api('GET_BUYER_GOODS_CUSTODY_BALANCES',{}),
+            balances=Array.isArray(result.balances)?result.balances:[],
+            events=Array.isArray(result.events)?result.events:[];
         var labels={
             SUPPLIER_TO_BUYER_QUICK_MARKET:'استلام من المورد إلى عهدة المشتري',
             WAREHOUSE_TO_BUYER_SUPPLIER_RETURN:'مرتجع مورد من المخزن إلى عهدة المشتري',
@@ -746,13 +748,54 @@ var App = {
             BUYER_TO_WAREHOUSE_RETURN:'إعادة بضاعة إلى المخزن',
             BUYER_CUSTODY_CORRECTION:'تسوية/تصحيح عكسي'
         };
-        var html='<div class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h2 class="text-xl font-black">عهدة بضاعتي</h2><p class="text-xs text-slate-500 mt-1">رصيد الحيازة الفعلي من دفتر الأحداث المركزي؛ المركبة اختيارية ولا تمثل مفتاح الرصيد</p></div><button onclick="App.switchTab(\'invoices\')" class="px-3 py-2 rounded-xl bg-purple-700 text-white text-xs font-bold">فواتيري</button></div>';
-        html+='<div class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3"><div class="card"><small class="text-slate-500">بنود برصيد حيازة</small><b class="block text-2xl mt-1">'+balances.length+'</b></div><div class="card"><small class="text-slate-500">أحداث معروضة</small><b class="block text-2xl mt-1">'+events.length+'</b></div><div class="card"><small class="text-slate-500">المركبة</small><b class="block text-sm mt-2">اختيارية</b></div></div>';
-        html+='<section class="card mb-3"><h3 class="font-black mb-3">الرصيد الحالي حسب الصنف والفرع</h3>';
-        html+=balances.length?'<div class="overflow-auto"><table class="w-full text-sm"><thead class="bg-slate-50"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الفرع</th><th class="p-2">الرصيد</th><th class="p-2">آخر حركة</th></tr></thead><tbody>'+balances.map(function(x){return '<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_name)+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code)+'</small></td><td class="p-2">'+buyerEsc(x.branch_name||'—')+'</td><td class="p-2 font-black">'+buyerEsc(x.balance_qty)+' '+buyerEsc(x.unit||'')+'</td><td class="p-2 text-xs">'+buyerDate(x.last_movement_at)+'</td></tr>';}).join('')+'</tbody></table></div>':'<p class="text-xs text-slate-400">لا توجد أصناف مثبتة في عهدتك حاليًا.</p>';
-        html+='</section><section class="card"><h3 class="font-black mb-3">آخر أحداث الحيازة</h3>';
-        html+=events.length?'<div class="space-y-2">'+events.map(function(e){return '<div class="p-3 rounded-xl bg-slate-50"><div class="flex flex-wrap justify-between gap-2"><b class="text-sm">'+buyerEsc(e.item_name||e.item_code)+'</b><b class="'+(Number(e.qty_delta)>0?'text-emerald-700':'text-blue-700')+'">'+(Number(e.qty_delta)>0?'+':'')+buyerEsc(e.qty_delta)+' '+buyerEsc(e.unit||'')+'</b></div><p class="text-xs text-slate-500 mt-1">'+buyerEsc(labels[e.event_type]||e.event_type)+' · '+buyerEsc(e.branch_name||'')+' · '+buyerDate(e.created_at)+'</p>'+(e.invoice_code?'<button onclick="App.openInvoice(\''+buyerEsc(e.source_document_id)+'\')" class="text-xs text-purple-700 underline mt-2">فتح الفاتورة '+buyerEsc(e.invoice_code)+'</button>':'')+(e.vehicle_id?'<p class="text-[11px] text-slate-400 mt-1">مركبة مرتبطة بالحدث</p>':'<p class="text-[11px] text-slate-400 mt-1">حيازة مباشرة دون مركبة</p>')+(e.notes?'<p class="text-xs text-slate-500 mt-1">'+buyerEsc(e.notes)+'</p>':'')+'</div>';}).join('')+'</div>':'<p class="text-xs text-slate-400">لا توجد أحداث حيازة مسجلة.</p>';
-        html+='<p class="text-[11px] text-slate-500 border-t mt-3 pt-3">هذا الرصيد لا يغيّر مخزون الفرع ولا حساب المورد. إثبات التسليم للمخزن أو للمورد يتطلب مستند قبول منفصلًا، وسيضاف مساره في المرحلة اللاحقة.</p></section>';
+        var html='<div class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h2 class="text-xl font-black">عهدة بضاعتي</h2><p class="text-xs text-slate-500 mt-1">دفتر الحيازة الفعلي، مفصول حسب مالك البضاعة والمورد والمستند المصدر؛ لا تختلط الحيازة بمخزون الفرع أو النقدية</p></div><button onclick="App.switchTab(\'invoices\')" class="px-3 py-2 rounded-xl bg-purple-700 text-white text-xs font-bold">فواتيري</button></div>';
+        var supplierOwned=balances.filter(function(x){return x.ownership_class==='SUPPLIER_OWNED';});
+        var companyReturns=balances.filter(function(x){return x.ownership_class==='COMPANY_OWNED_SUPPLIER_RETURN';});
+        var unclassified=balances.filter(function(x){return !x.ownership_class||x.ownership_class==='UNCLASSIFIED';});
+        var totalQty=function(rows){return rows.reduce(function(n,x){return n+Number(x.balance_qty||0);},0);};
+        html+='<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">'+
+            '<div class="card"><small class="text-slate-500">إجمالي مجموعات الحيازة</small><b class="block text-2xl mt-1">'+balances.length+'</b></div>'+
+            '<div class="card"><small class="text-slate-500">بضاعة مملوكة للمورد</small><b class="block text-xl mt-1">'+supplierOwned.length+'</b><small class="text-slate-400">'+buyerEsc(totalQty(supplierOwned))+' وحدة صافية</small></div>'+
+            '<div class="card"><small class="text-slate-500">مرتجعات شركة لدى المشتري</small><b class="block text-xl mt-1">'+companyReturns.length+'</b><small class="text-slate-400">'+buyerEsc(totalQty(companyReturns))+' وحدة صافية</small></div>'+
+            '<div class="card"><small class="text-slate-500">أحداث دفتر الحيازة</small><b class="block text-xl mt-1">'+events.length+'</b></div></div>';
+        function renderBalanceSection(title,description,rows,style){
+            var out='<section class="card mb-3 '+style+'"><div class="flex flex-wrap justify-between items-center gap-2 mb-3"><div><h3 class="font-black">'+title+'</h3><p class="text-xs text-slate-500 mt-1">'+description+'</p></div><b class="text-xs">'+rows.length+' مجموعات · '+buyerEsc(totalQty(rows))+' وحدة صافية</b></div>';
+            if(!rows.length)return out+'<p class="text-xs text-slate-400">لا توجد أرصدة مثبتة في هذا التصنيف حاليًا.</p></section>';
+            out+='<div class="overflow-auto"><table class="w-full text-xs"><thead class="bg-slate-50"><tr><th class="p-2 text-right">الصنف</th><th class="p-2 text-right">المورد والمستند المصدر</th><th class="p-2">الفرع</th><th class="p-2">الرصيد</th><th class="p-2">آخر حركة</th></tr></thead><tbody>';
+            out+=rows.map(function(x){
+                var code=x.source_document_code||'مستند غير محدد';
+                var doc=x.source_document_type==='PurchaseInvoice'
+                    ?'<button type="button" onclick="App.openInvoice(\''+buyerEsc(x.source_document_id)+'\')" class="text-purple-700 underline font-bold">'+buyerEsc(code)+'</button>'
+                    :'<b>'+buyerEsc(code)+'</b>';
+                return '<tr class="border-t align-top"><td class="p-2"><b>'+buyerEsc(x.item_name||'—')+'</b><small class="block text-slate-400">'+buyerEsc(x.item_code||'')+'</small></td>'+
+                    '<td class="p-2"><b>'+buyerEsc(x.supplier_name||'مورد غير محدد')+'</b><small class="block mt-1">'+doc+'</small>'+
+                    (x.supplier_invoice_no?'<small class="block text-slate-400 mt-1">فاتورة المورد: '+buyerEsc(x.supplier_invoice_no)+'</small>':'')+
+                    (x.evidence_path?'<button type="button" onclick="App.viewCustodyDocument(\''+buyerEsc(x.evidence_path)+'\')" class="text-blue-700 underline mt-1">عرض إثبات الحيازة</button>':'')+'</td>'+
+                    '<td class="p-2">'+buyerEsc(x.branch_name||'—')+'</td>'+
+                    '<td class="p-2 font-black">'+buyerEsc(Number(x.balance_qty||0).toLocaleString('en-US'))+' '+buyerEsc(x.unit||'')+'</td>'+
+                    '<td class="p-2">'+buyerDate(x.last_movement_at)+'</td></tr>';
+            }).join('');
+            return out+'</tbody></table></div></section>';
+        }
+        html+=renderBalanceSection('بضاعة مملوكة للمورد','بضاعة شراء السوق التي تسلمها المشتري من المورد ولم يثبت قبول المخزن لها بعد.',supplierOwned,'border border-amber-100');
+        html+=renderBalanceSection('مرتجعات الشركة بعهدة المشتري','بضاعة مملوكة للشركة خرجت من المخزن في مرتجع مورد؛ تبقى على عهدة المشتري حتى يثبت قبول المورد أو إعادتها للمخزن بمستند مستقل.',companyReturns,'border border-blue-100');
+        if(unclassified.length)html+=renderBalanceSection('حركات تحتاج تصنيفًا ومراجعة','أحداث لم يمكن إسنادها إلى مصدر ملكية مؤكد؛ تُعرض منفصلة ولا تدمج مع أي من الرصيدين السابقين.',unclassified,'border border-amber-300');
+        html+='<section class="card"><div class="flex flex-wrap justify-between gap-2 items-center mb-3"><div><h3 class="font-black">سجل أحداث الحيازة</h3><p class="text-xs text-slate-500 mt-1">أثر زمني غير قابل للاستبدال؛ كل حركة مرتبطة بمصدرها وإثباتها عند توفره</p></div><span class="text-xs text-slate-500">'+events.length+' حدثًا</span></div>';
+        html+=events.length?'<div class="space-y-2">'+events.map(function(e){
+            var code=e.source_document_code||e.invoice_code||e.voucher_code||'مستند غير محدد';
+            var source=e.source_document_type==='PurchaseInvoice'
+                ?'<button type="button" onclick="App.openInvoice(\''+buyerEsc(e.source_document_id)+'\')" class="text-purple-700 underline">فتح الفاتورة '+buyerEsc(code)+'</button>'
+                :'<span class="font-bold">المستند: '+buyerEsc(code)+'</span>';
+            var ownership=e.ownership_class==='SUPPLIER_OWNED'?'ملكية المورد':e.ownership_class==='COMPANY_OWNED_SUPPLIER_RETURN'?'ملكية الشركة — مرتجع مورد':'غير مصنف';
+            return '<div class="p-3 rounded-xl bg-slate-50"><div class="flex flex-wrap justify-between gap-2"><div><b class="text-sm">'+buyerEsc(e.item_name||e.item_code||'صنف')+'</b><small class="block text-slate-500 mt-1">'+buyerEsc(ownership)+' · '+buyerEsc(e.supplier_name||'مورد غير محدد')+'</small></div><b class="'+(Number(e.qty_delta)>0?'text-emerald-700':'text-blue-700')+'">'+(Number(e.qty_delta)>0?'+':'')+buyerEsc(Number(e.qty_delta||0).toLocaleString('en-US'))+' '+buyerEsc(e.unit||'')+'</b></div>'+
+                '<p class="text-xs text-slate-500 mt-2">'+buyerEsc(labels[e.event_type]||e.event_type||'حركة')+' · '+buyerEsc(e.branch_name||'')+' · '+buyerDate(e.created_at)+'</p>'+
+                '<div class="flex flex-wrap gap-3 items-center mt-2 text-xs">'+source+
+                (e.supplier_invoice_no?'<span>رقم فاتورة المورد: '+buyerEsc(e.supplier_invoice_no)+'</span>':'')+
+                (e.evidence_path?'<button type="button" onclick="App.viewCustodyDocument(\''+buyerEsc(e.evidence_path)+'\')" class="text-blue-700 underline">فتح الإثبات</button>':'')+'</div>'+
+                (e.vehicle_id?'<p class="text-[11px] text-slate-400 mt-1">مرتبطة بمركبة/حيازة ميدانية</p>':'<p class="text-[11px] text-slate-400 mt-1">حيازة مباشرة دون مركبة</p>')+
+                (e.notes?'<p class="text-xs text-slate-500 mt-1">'+buyerEsc(e.notes)+'</p>':'')+'</div>';
+        }).join('')+'</div>':'<p class="text-xs text-slate-400">لا توجد أحداث حيازة مسجلة بعد. يبدأ الرصيد فور تسجيل تسليم المورد أو إسناد مرتجع مورد إلى عهدة المشتري.</p>';
+        html+='<p class="text-[11px] text-slate-500 border-t mt-3 pt-3">تسليم البضاعة للمخزن أو قبول المورد للمرتجع لا يُثبت بمجرد وجود طلب أو إذن مسودة؛ لا تتغير الحيازة إلا بحركة قبول فعلية مرتبطة بالمستند. هذا الدفتر لا ينشئ حركة مخزون أو مديونية مورد بذاته.</p></section>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     applyPOFilters:function(){
@@ -1575,6 +1618,16 @@ var App = {
                 '<label class="block text-xs font-bold">صورة إذن استلام المخزن (PDF / صورة)<input id="bce-receipt-file" type="file" accept="application/pdf,image/*" class="swal2-file"></label>'+
                 '<p class="text-xs text-amber-700">لفواتير السوق السريع: يُحسب مبلغ التسوية من الكميات المقبولة في إذن الاستلام المحدد فقط، ويمكن تسوية الاستلامات الجزئية تباعًا. عند اعتماد المالية يُثبت مخزون مقابل عهدة الموظف، دون مديونية أو دفعة مورد ثانية. الحد الأقصى لكل ملف 10 ميجابايت.</p></div>';
             var self=this;
+            var activeInvoiceClaims=(this.custodySnapshot&&Array.isArray(this.custodySnapshot.expenses)?this.custodySnapshot.expenses:[])
+                .filter(function(e){return e.expense_type==='PURCHASE_INVOICE'&&['Submitted','Approved'].indexOf(e.status)!==-1;});
+            function receiptAlreadyClaimed(invoice,receiptOperationId){
+                return activeInvoiceClaims.some(function(e){
+                    if(e.purchase_invoice_id!==invoice.id)return false;
+                    return invoice.purchase_source==='QUICK_MARKET'
+                        ?e.receiving_operation_id===receiptOperationId
+                        :true;
+                });
+            }
             var result=await Swal.fire({title:'تقديم فاتورة وإذن استلام للتسوية',html:html,width:750,showCancelButton:true,confirmButtonText:'إرسال للمالية',cancelButtonText:'إلغاء',didOpen:function(){
                 function updateReceiptOptions(){
                     var invoiceId=RW_UI.byId('bce-invoice').value;
@@ -1585,9 +1638,10 @@ var App = {
                     RW_UI.byId('bce-amount').value='';
                     var options=receipts.filter(function(r){
                         if(!invoice)return false;
-                        if(invoice.purchase_source==='QUICK_MARKET')return r.purchase_invoice_id===invoice.id;
-                        var po=orders.find(function(x){return x.id===invoice.purchase_order_id;});
-                        return !!po&&r.po_number===po.po_code;
+                        var linked=invoice.purchase_source==='QUICK_MARKET'
+                            ?r.purchase_invoice_id===invoice.id
+                            :(function(){var po=orders.find(function(x){return x.id===invoice.purchase_order_id;});return !!po&&r.po_number===po.po_code;})();
+                        return linked&&!receiptAlreadyClaimed(invoice,r.operation_id);
                     });
                     RW_UI.byId('bce-receipt').innerHTML='<option value="">اختر إذن الاستلام</option>'+options.map(function(r){return '<option value="'+buyerEsc(r.operation_id)+'">'+buyerEsc(r.po_number||invoice.invoice_code)+' · '+buyerDate(r.date)+' · '+buyerEsc(r.responsible||'')+'</option>';}).join('');
                     if(invoice&&invoice.purchase_source!=='QUICK_MARKET')RW_UI.byId('bce-amount').value=Number(invoice.total_amount||0).toFixed(2);
