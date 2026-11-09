@@ -927,7 +927,7 @@ USING (
   )
 );
 
-REVOKE ALL ON FUNCTION public.buyer_goods_custody_register_quick_market_supplier_return_atomic(uuid,uuid,jsonb,text,text,text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.buyer_goods_custody_register_quick_market_supplier_return_atomic(uuid,uuid,jsonb,text,text,text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION public.buyer_goods_custody_register_quick_market_supplier_return_atomic(uuid,uuid,jsonb,text,text,text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.buyer_goods_custody_register_quick_market_supplier_return_atomic(uuid,uuid,jsonb,text,text,text) TO authenticated;
 
 COMMIT;
