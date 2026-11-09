@@ -48,6 +48,7 @@ let lastValidation = "";
 let modalHtml = "";
 let controls = {};
 let queryRows = [];
+let uploadedPath = "";
 let registerCalls = [];
 let apiCalls = [];
 let mockApi;
@@ -71,7 +72,7 @@ const context = {
   supabase: {
     storage: {
       from: bucket => ({
-        upload: async (filePath, file, options) => ({ data: { path: filePath }, error: null })
+        upload: async (filePath, file, options) => { uploadedPath = filePath; return { data: { path: filePath }, error: null }; }
       })
     }
   },
@@ -97,7 +98,7 @@ function baseProgress() {
   };
 }
 async function scenario({qty=2, progress=baseProgress(), registerError=null, verifyMatch=false, fileType="application/pdf"}={}) {
-  lastValidation = ""; modalHtml = ""; registerCalls = []; apiCalls = []; queryRows = [];
+  lastValidation = ""; modalHtml = ""; registerCalls = []; apiCalls = []; queryRows = []; uploadedPath = "";
   let invalidated = 0, opened = 0, errors = [];
   const input = { getAttribute: name => name === "data-bsr-line" ? "line-001" : null, value: String(qty) };
   queryRows = [input];
@@ -105,7 +106,6 @@ async function scenario({qty=2, progress=baseProgress(), registerError=null, ver
     "bsr-reason": { value: "تالف ووافق المورد على استلامه" },
     "bsr-file": { files: [{ name: "supplier-return.pdf", size: 2048, type: fileType }] }
   };
-  const storageApi = context.supabase.storage.from;
   const api = async (operation, payload) => {
     apiCalls.push({operation,payload});
     if (operation === "GET_QUICK_MARKET_HANDOVER_PROGRESS") {
@@ -114,7 +114,7 @@ async function scenario({qty=2, progress=baseProgress(), registerError=null, ver
         const ret = payload || {};
         return { ...baseProgress(), return_events: [{
           operation_id: "operation-quick-return-001",
-          evidence_path: "company-001/buyer-001/buyer-goods/invoice-quick-001/supplier-return-1730000000000_supplier-return.pdf"
+          evidence_path: uploadedPath
         }] };
       }
       return { ...baseProgress(), return_events: [] };
