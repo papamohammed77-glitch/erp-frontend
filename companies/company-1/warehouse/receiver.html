@@ -147,11 +147,11 @@ var App = {
         this.realtimeKey = RW_Realtime.start({
             appId: 'warehouse-receiver',
             companyId: this.currentUser.company_id,
-            tables: ['purchase_orders'],
+            tables: ['purchase_orders','purchase_invoices','purchase_invoice_details','buyer_goods_custody_events','receiving','receiving_details'],
             debounceMs: 500,
             reconcileMs: 60000,
             onEvent: function(event){
-                if (event.table !== 'purchase_orders') return;
+                if (['purchase_orders','purchase_invoices','purchase_invoice_details','buyer_goods_custody_events','receiving','receiving_details'].indexOf(event.table)===-1) return;
                 if (self.currentTab === 'pending') self.loadPurchaseOrders();
                 else if (self.currentTab === 'completed') self.renderCompleted();
             },
@@ -203,14 +203,11 @@ var App = {
             RW_UI.showEmptyState('mainContent', 'سياق الشركة غير متاح للمستخدم.', '🔒');
             return;
         }
-
         RW_UI.showSkeleton('mainContent', 3, 'card');
-
         try {
             var all = [];
             var offset = 0;
             var pageSize = 200;
-
             while (true) {
                 var res = await supabase.from('purchase_orders')
                     .select('id, company_id, po_code, po_date, supplier_name, status, total_amount, created_at')
@@ -220,43 +217,50 @@ var App = {
                     .order('created_at', { ascending: false })
                     .order('id', { ascending: false })
                     .range(offset, offset + pageSize - 1);
-
                 if (res.error) throw res.error;
-
-                var batch = res.data || [];
+                var batch = (res.data || []).map(function(row){row.doc_type='PURCHASE_ORDER';return row;});
                 all = all.concat(batch);
                 if (batch.length < pageSize) break;
                 offset += pageSize;
             }
-
+            var qmp = await supabase.rpc('get_quick_market_receiving_queue_atomic',{p_company_id:companyId});
+            if(qmp.error) throw qmp.error;
+            var qmpRows=qmp.data&&Array.isArray(qmp.data.invoices)?qmp.data.invoices:[];
+            all=all.concat(qmpRows);
             self.purchaseOrders = all;
             self.renderList();
         } catch (err) {
-            console.error('[Receiver] Failed to load purchase orders:', err);
-            RW_UI.showEmptyState('mainContent', 'تعذر تحميل أوامر الشراء. تحقق من الاتصال والصلاحيات.', '📡');
+            console.error('[Receiver] Failed to load purchase and quick-market receiving queue:', err);
+            RW_UI.showEmptyState('mainContent', 'تعذر تحميل أوامر الشراء وفواتير السوق. تحقق من الاتصال والصلاحيات.', '📡');
         }
     },
 
     renderList: function(){
-        var self = this;
-        var filtered = this.purchaseOrders;
+        var filtered = this.purchaseOrders.slice();
         var html = '';
         html += '<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">' + (this.currentUser.name || 'زميل') + '</span> 👋</p></div>';
-        html += '<input type="text" id="searchPO" placeholder="🔍 ابحث عن أمر شراء..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-emerald-400 outline-none font-semibold text-sm shadow-sm mb-4" oninput="App.renderList()">';
-        html += '<h2 class="text-lg font-black mb-4">📦 أوامر الشراء المعلقة</h2>';
-        
+        html += '<input type="text" id="searchPO" placeholder="🔍 ابحث برقم أمر الشراء أو رقم فاتورة السوق..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-emerald-400 outline-none font-semibold text-sm shadow-sm mb-4" oninput="App.renderList()">';
+        html += '<h2 class="text-lg font-black mb-4">📦 مستندات بانتظار الاستلام</h2>';
+        var q = (RW_UI.byId('searchPO') ? RW_UI.byId('searchPO').value : '').toLowerCase().trim();
+        if(q){
+            filtered=filtered.filter(function(row){
+                return String(row.po_code||'').toLowerCase().indexOf(q)!==-1 ||
+                    String(row.invoice_code||'').toLowerCase().indexOf(q)!==-1 ||
+                    String(row.supplier_invoice_no||'').toLowerCase().indexOf(q)!==-1 ||
+                    String(row.supplier_name||'').toLowerCase().indexOf(q)!==-1;
+            });
+        }
         if (filtered.length === 0) {
-            html += '<div class="text-center py-12"><div class="text-6xl mb-4">☕</div><p class="text-slate-400 font-bold">لا توجد أوامر شراء معلقة.</p><p class="text-slate-300 text-sm mt-1">استمتع بقهوتك حتى تأتي مهمة جديدة!</p></div>';
+            html += '<div class="text-center py-12"><div class="text-6xl mb-4">📦</div><p class="text-slate-400 font-bold">لا توجد مستندات بانتظار الاستلام.</p><p class="text-slate-300 text-sm mt-1">ستظهر أوامر الشراء وفواتير السوق بعد إحالة البضاعة للاستلام.</p></div>';
         } else {
-            var q = (RW_UI.byId('searchPO') ? RW_UI.byId('searchPO').value : '').toLowerCase();
-            if (q) {
-                filtered = filtered.filter(function(po) { return po.po_code.toLowerCase().indexOf(q) !== -1 || (po.supplier_name || '').toLowerCase().indexOf(q) !== -1; });
-            }
             for (var i = 0; i < filtered.length; i++) {
                 var po = filtered[i];
-                var sc = po.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : po.status === 'Sent' ? 'bg-amber-50 text-amber-600' : 'bg-orange-50 text-orange-600';
-                var sl = po.status === 'Approved' ? 'تم الاعتماد' : po.status === 'Sent' ? 'مُرسل' : 'استلام جزئي';
-                html += '<div class="card mb-3 cursor-pointer slide-in"><div class="flex justify-between items-center" onclick="App.toggleAccordion(' + i + ',\'' + po.po_code + '\')"><div><span class="font-black">' + po.po_code + '</span><p class="text-xs text-slate-400">' + po.po_date + ' | ' + (po.supplier_name || '---') + '</p></div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span><i class="fa-solid fa-chevron-down text-slate-300" id="chevron-' + i + '"></i></div></div><div class="accordion-content" id="accordion-' + i + '"><div class="border-t mt-3 pt-3"><div id="details-' + i + '" class="text-center py-4">جاري تحميل التفاصيل...</div><button id="btn-rec-' + i + '" class="btn-primary mt-4 hidden" onclick="App.submitReceiving(' + i + ',\'' + po.po_code + '\')"><i class="fa-solid fa-check ml-2"></i> اعتماد الاستلام</button></div></div></div>';
+                var isQmp=po.doc_type==='QUICK_MARKET';
+                var sc = isQmp ? 'bg-violet-50 text-violet-700' : (po.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : po.status === 'Sent' ? 'bg-amber-50 text-amber-600' : 'bg-orange-50 text-orange-600');
+                var sl = isQmp ? 'شراء سوق سريع · حيازة محالة' : (po.status === 'Approved' ? 'تم الاعتماد' : po.status === 'Sent' ? 'مُرسل' : 'استلام جزئي');
+                html += '<div class="card mb-3 cursor-pointer slide-in"><div class="flex justify-between items-center" onclick="App.toggleAccordion(' + i + ',\'' + po.po_code + '\')"><div><span class="font-black">' + po.po_code + '</span><p class="text-xs text-slate-400">' + (po.po_date || '') + ' | ' + (po.supplier_name || '---') + '</p>' +
+                    (isQmp?'<p class="text-[11px] text-violet-700 mt-1">فاتورة المورد: '+(po.supplier_invoice_no||'—')+'</p>':'')+
+                    '</div><div class="flex items-center gap-2"><span class="px-2.5 py-0.5 rounded-full text-xs font-bold ' + sc + '">' + sl + '</span><i class="fa-solid fa-chevron-down text-slate-300" id="chevron-' + i + '"></i></div></div><div class="accordion-content" id="accordion-' + i + '"><div class="border-t mt-3 pt-3"><div id="details-' + i + '" class="text-center py-4">جاري تحميل التفاصيل...</div><button id="btn-rec-' + i + '" class="btn-primary mt-4 hidden" onclick="App.submitReceiving(' + i + ',\'' + po.po_code + '\')"><i class="fa-solid fa-check ml-2"></i> اعتماد الاستلام</button></div></div></div>';
             }
         }
         RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
@@ -284,8 +288,32 @@ var App = {
         RW_UI.safeHTML(RW_UI.byId('details-' + i), '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i> جاري التحميل...</div>');
         var po = self.purchaseOrders.find(function (x) { return x.po_code === code; });
         if (!po || !po.id) {
-          RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-rose-600 text-center py-4">تعذر ربط تفاصيل أمر الشراء.</p>');
-          return;
+            RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-rose-600 text-center py-4">تعذر ربط مستند الاستلام.</p>');
+            return;
+        }
+        function renderItems(items,isQmp){
+            if (!items.length) {
+                RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-slate-400 text-center py-4">لا توجد كميات متاحة للاستلام.</p>');
+                return;
+            }
+            var html = '';
+            var hasRemaining = false;
+            for (var j = 0; j < items.length; j++) {
+                var it = items[j];
+                var ordered = Number(isQmp?it.qty_ordered:it.qty_ordered) || 0;
+                var received = Number(it.qty_received) || 0;
+                var remaining = isQmp ? Number(it.remaining_to_receive||0) : Math.max(0, ordered - received);
+                if (remaining > 0) hasRemaining = true;
+                html += '<div class="flex justify-between items-center p-3 border-b"><div><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + it.item_code + ' | مطلوب: ' + ordered + ' | مستلم: ' + received +
+                    (isQmp?' | محال من حيازة المشتري: '+Number(it.handover_available||0):'')+
+                    ' | متاح للاستلام: ' + remaining + ' ' + (it.unit || 'حبة') + '</p></div><input type="number" step="0.0001" id="qty-' + i + '-' + j + '" value="' + remaining + '" min="0" max="' + remaining + '" class="w-20 p-2 border rounded-xl text-center font-bold text-sm" data-item-code="' + it.item_code + '"></div>';
+            }
+            RW_UI.safeHTML(RW_UI.byId('details-' + i), html);
+            if (receiveButton && hasRemaining) receiveButton.classList.remove('hidden');
+        }
+        if(po.doc_type==='QUICK_MARKET'){
+            renderItems(po.items||[],true);
+            return;
         }
         supabase.from('purchase_order_details')
           .select('item_code, item_name, qty_ordered, qty_received, unit')
@@ -295,25 +323,7 @@ var App = {
                 RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-rose-600 text-center py-4">تعذر تحميل تفاصيل أمر الشراء. تحقق من الاتصال والصلاحيات.</p>');
                 return;
             }
-
-            var items = r.data || [];
-            if (!items.length) {
-                RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-slate-400 text-center py-4">لا توجد أصناف مسجلة في هذا الأمر.</p>');
-                return;
-            }
-
-            var html = '';
-            var hasRemaining = false;
-            for (var j = 0; j < items.length; j++) {
-                 var it = items[j];
-                 var ordered = Number(it.qty_ordered) || 0;
-                 var received = Number(it.qty_received) || 0;
-                 var remaining = Math.max(0, ordered - received);
-                 if (remaining > 0) hasRemaining = true;
-                 html += '<div class="flex justify-between items-center p-3 border-b"><div><p class="font-bold">' + (it.item_name || '') + '</p><p class="text-xs text-slate-400">' + it.item_code + ' | مطلوب: ' + ordered + ' | مستلم: ' + received + ' | متبقي: ' + remaining + ' ' + (it.unit || 'حبة') + '</p></div><input type="number" step="0.01" id="qty-' + i + '-' + j + '" value="' + remaining + '" min="0" max="' + remaining + '" class="w-20 p-2 border rounded-xl text-center font-bold text-sm" data-item-code="' + it.item_code + '"></div>';
-             }
-            RW_UI.safeHTML(RW_UI.byId('details-' + i), html);
-            if (receiveButton && hasRemaining) receiveButton.classList.remove('hidden');
+            renderItems(r.data||[],false);
           })
           .catch(function() {
             RW_UI.safeHTML(RW_UI.byId('details-' + i), '<p class="text-rose-600 text-center py-4">تعذر تحميل تفاصيل أمر الشراء بسبب خطأ في الاتصال.</p>');
@@ -322,6 +332,8 @@ var App = {
 
     submitReceiving: function(i, code){
         var self = this;
+        var documentRow=this.purchaseOrders.find(function(x){return x.po_code===code;});
+        if(!documentRow){RW_UI.showError('مستند الاستلام غير موجود في القائمة الحالية');return;}
         var items = [];
         var qtyInputs = document.querySelectorAll('#details-' + i + ' input[type="number"]');
         for (var j = 0; j < qtyInputs.length; j++) {
@@ -329,31 +341,30 @@ var App = {
             var q = rawQty === '' ? 0 : Number(rawQty);
             var itemCode = qtyInputs[j].getAttribute('data-item-code') || '';
             var maxAllowed = Number(qtyInputs[j].getAttribute('max'));
-
             if (!Number.isFinite(q) || q < 0) {
                 RW_UI.showError('كمية الاستلام يجب أن تكون رقمًا صالحًا غير سالب');
                 return;
             }
             if (q > 0 && (!itemCode || (Number.isFinite(maxAllowed) && q > maxAllowed))) {
-                RW_UI.showError('راجع كود الصنف والكمية؛ لا يجوز تجاوز الكمية المتبقية');
+                RW_UI.showError('راجع كود الصنف والكمية؛ لا يجوز تجاوز الكمية المتبقية أو المحالة من حيازة المشتري');
                 return;
             }
-            if (q > 0) {
-                items.push({ itemCode: itemCode, itemName: '', receivedQty: q, reason: '' });
-            }
+            if (q > 0) items.push({ itemCode: itemCode, itemName: '', receivedQty: q, reason: '' });
         }
-
         if (!items.length) {
             RW_UI.showError('أدخل كمية موجبة لصنف واحد على الأقل قبل اعتماد الاستلام');
             return;
         }
-
-        RW_UI.showConfirm('اعتماد استلام ' + code + '؟', function() {
+        var isQmp=documentRow.doc_type==='QUICK_MARKET';
+        var confirmTitle=isQmp?'اعتماد استلام فاتورة السوق '+code+'؟':'اعتماد استلام أمر الشراء '+code+'؟';
+        RW_UI.showConfirm(confirmTitle, function() {
             var confirmBtn = document.querySelector('.swal2-confirm');
             if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.innerText = 'جارٍ...'; }
-
             RW_UI.showLoader('جاري حفظ الاستلام...');
-            RW_API.call('receive-purchase', { po_code: code, itemsReceived: items, notes: '' }, function(json, err) {
+            var payload=isQmp
+                ?{invoice_id:documentRow.id,itemsReceived:items,notes:''}
+                :{po_code:code,itemsReceived:items,notes:''};
+            RW_API.call('receive-purchase', payload, function(json, err) {
                 RW_UI.hideLoader();
                 if (err || !json || !json.success) {
                     RW_UI.showError((json && json.msg) || err || 'فشل الحفظ');
@@ -361,7 +372,7 @@ var App = {
                     Swal.fire({
                         icon: 'success',
                         title: '✅ تم الاستلام بنجاح',
-                        html: '<div class="text-right"><p>تم استلام أمر الشراء <strong>' + code + '</strong>.</p><p>تم تحديث المخزون.</p></div>',
+                        html: '<div class="text-right"><p>تم استلام '+(isQmp?'فاتورة السوق':'أمر الشراء')+' <strong>' + code + '</strong>.</p><p>تم تحديث مخزون الفرع وتحديث حيازة المشتري بالكمية المقبولة فقط.</p></div>',
                         confirmButtonText: 'حسناً',
                         customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-emerald-600' }
                     });
