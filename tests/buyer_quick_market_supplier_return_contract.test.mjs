@@ -97,14 +97,14 @@ function baseProgress() {
     events: [], return_events: []
   };
 }
-async function scenario({qty=2, progress=baseProgress(), registerError=null, verifyMatch=false, fileType="application/pdf"}={}) {
+async function scenario({qty=2, progress=baseProgress(), registerError=null, verifyMatch=false, fileType="application/pdf", fileSize=2048, actorId="buyer-001"}={}) {
   lastValidation = ""; modalHtml = ""; registerCalls = []; apiCalls = []; queryRows = []; uploadedPath = "";
   let invalidated = 0, opened = 0, errors = [];
   const input = { getAttribute: name => name === "data-bsr-line" ? "line-001" : null, value: String(qty) };
   queryRows = [input];
   controls = {
     "bsr-reason": { value: "تالف ووافق المورد على استلامه" },
-    "bsr-file": { files: [{ name: "supplier-return.pdf", size: 2048, type: fileType }] }
+    "bsr-file": { files: [{ name: "supplier-return.pdf", size: fileSize, type: fileType }] }
   };
   const api = async (operation, payload) => {
     apiCalls.push({operation,payload});
@@ -127,7 +127,7 @@ async function scenario({qty=2, progress=baseProgress(), registerError=null, ver
     throw new Error("Unexpected API operation: " + operation);
   };
   const app = {
-    currentUser: { id:"buyer-001", company_id:"company-001" },
+    currentUser: { id:actorId, company_id:"company-001" },
     api, invalidate: () => { invalidated++; },
     openInvoice: async () => { opened++; },
     notifyError: e => { errors.push(String(e && e.message || e)); }
@@ -163,6 +163,18 @@ const badFile = await scenario({qty:1,fileType:"text/plain"});
 assert.equal(badFile.registerCalls.length, 0);
 assert.match(badFile.lastValidation, /أرفق PDF أو صورة/);
 
+const oversized = await scenario({qty:1,fileSize:10*1024*1024+1});
+assert.equal(oversized.registerCalls.length, 0);
+assert.match(oversized.lastValidation, /أرفق PDF أو صورة/);
+
+const wrongOwner = await scenario({qty:1,actorId:"buyer-999"});
+assert.equal(wrongOwner.registerCalls.length, 0);
+assert.match(wrongOwner.errors.join(" "), /لا تملك صلاحية/);
+
+const ineligibleStatus = await scenario({qty:1,progress:{...baseProgress(),status:"Posted"}});
+assert.equal(ineligibleStatus.registerCalls.length, 0);
+assert.match(ineligibleStatus.errors.join(" "), /لا تسمح بمرتجع/);
+
 // Retry after uncertain transport is accepted only when the server confirms the same operation/evidence.
 const retry = await scenario({qty:1,registerError:"network timeout",verifyMatch:true});
 assert.equal(retry.registerCalls.length, 1);
@@ -185,5 +197,5 @@ assert.doesNotMatch(sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.buy
 
 console.log("BUYER_QUICK_MARKET_SUPPLIER_RETURN_CONTRACT_TESTS=PASS");
 console.log("buyerInlineScripts=" + inlineScripts.length);
-console.log("businessScenarios=5");
+console.log("businessScenarios=8");
 console.log("sqlValidation=STATIC_ONLY");
