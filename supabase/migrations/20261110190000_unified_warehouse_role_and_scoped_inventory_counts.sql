@@ -137,7 +137,6 @@ USING (
         inventory_count_details.branch_id
       )
     )
-  )
 );
 
 -- Restrict count headers to the same branch scope. General counts are visible
