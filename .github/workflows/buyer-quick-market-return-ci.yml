@@ -1,0 +1,59 @@
+name: Buyer Quick Market Supplier Return CI
+
+on:
+  pull_request:
+    paths:
+      - 'companies/company-1/purchasing/buyer.html'
+      - 'supabase/functions/save-purchase-order/index.ts'
+      - 'supabase/migrations/20261109201500_buyer_quick_market_supplier_return_custody.sql'
+      - 'tests/buyer_quick_market_supplier_return_contract.test.mjs'
+      - '.github/workflows/buyer-quick-market-return-ci.yml'
+  push:
+    branches:
+      - 'fix/buyer-quick-market-supplier-return-lve675'
+    paths:
+      - 'companies/company-1/purchasing/buyer.html'
+      - 'supabase/functions/save-purchase-order/index.ts'
+      - 'supabase/migrations/20261109201500_buyer_quick_market_supplier_return_custody.sql'
+      - 'tests/buyer_quick_market_supplier_return_contract.test.mjs'
+      - '.github/workflows/buyer-quick-market-return-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: buyer-qmp-return-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  buyer-qmp-return:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Buyer modal, custody and SQL contract scenarios
+        run: node tests/buyer_quick_market_supplier_return_contract.test.mjs
+
+      - name: Compile Edge Function TypeScript syntax
+        run: |
+          npm install --no-save esbuild@0.25.0
+          npx esbuild supabase/functions/save-purchase-order/index.ts --format=esm --target=es2022 --outfile=/tmp/save-purchase-order.js
+
+      - name: Compile Buyer production Tailwind CSS
+        run: |
+          npm exec --yes --package=tailwindcss@3.4.17 -- tailwindcss \
+            -i companies/company-1/purchasing/tailwind.input.css \
+            -o /tmp/buyer.tailwind.css \
+            --content companies/company-1/purchasing/buyer.html \
+            --minify
