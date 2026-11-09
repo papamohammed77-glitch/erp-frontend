@@ -364,7 +364,7 @@ BEGIN
     'balances',v_balances,'events',v_events
   );
 END;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.buyer_goods_custody_get_invoice_handover_progress_atomic(p_company_id uuid,p_invoice_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''
@@ -501,7 +501,7 @@ BEGIN
     'lines',v_lines,'events',v_events,'return_events',v_return_events,'warehouse_events',v_warehouse_events
   );
 END;
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION public.get_quick_market_receiving_queue_atomic(p_company_id uuid)
  RETURNS jsonb
@@ -661,8 +661,7 @@ BEGIN
 
   RETURN jsonb_build_object('success',true,'invoices',v_rows,'count',jsonb_array_length(v_rows));
 END;
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION public.receive_quick_market_purchase_atomic(p_company_id uuid, p_invoice_id uuid, p_user_email text, p_items jsonb, p_operation_id uuid)
  RETURNS jsonb
@@ -923,8 +922,7 @@ BEGIN
     'total_received_qty',v_total_qty,'total_received_value',v_total_value,
     'journal_posted',false,'supplier_balance_changed',false);
 END;
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION public.buyer_goods_custody_register_quick_market_supplier_return_atomic(
   p_company_id uuid,p_invoice_id uuid,p_items jsonb,p_evidence_path text,p_reason text,p_operation_id text
@@ -1132,7 +1130,7 @@ BEGIN
     'supplier_balance_changed',false,'treasury_changed',false,'journal_posted',false
   );
 END;
-$function$
+$function$;
 
 DROP POLICY IF EXISTS buyer_goods_docs_insert_owner ON storage.objects;
 CREATE POLICY buyer_goods_docs_insert_owner ON storage.objects FOR INSERT TO authenticated
