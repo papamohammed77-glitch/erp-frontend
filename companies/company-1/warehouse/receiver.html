@@ -24,8 +24,6 @@
         .btn-danger{background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;padding:0.75rem 1.25rem;border-radius:14px;font-weight:700;border:none;cursor:pointer;transition:all 0.2s ease;box-shadow:0 4px 12px rgba(239,68,68,0.2)}
         .tab-btn{transition:all 0.2s ease}
         .tab-btn.active{border-bottom-color:#059669;color:#0f172a}
-        .accordion-content{max-height:0;overflow:hidden;transition:max-height 0.3s ease-out}
-        .accordion-content.open{max-height:2000px}
         .slide-in{animation:slideIn 0.3s ease}
         @keyframes slideIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
         .skeleton{background:linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:12px}
@@ -327,6 +325,8 @@ var App = {
     },
 
     switchTab: function(tab){
+        this.activeDocumentIndex=null;
+        this.documentOpenSequence++;
         this.currentTab=tab;
         var tabs=['pending','completed','account'];
         for(var i=0;i<tabs.length;i++){var btn=RW_UI.byId('tab-'+tabs[i]);if(btn){btn.classList.remove('active');btn.classList.add('text-slate-400');}}
@@ -410,10 +410,7 @@ var App = {
         });
         RW_UI.safeHTML(container,html);
     },
-    toggleAccordion: function(index){
-        var panel=RW_UI.byId('accordion-'+index);
-        if(!panel)return;
-        if(pane    openDocument: function(index){
+    openDocument: function(index){
         var doc=this.purchaseOrders[index];
         if(!doc)return;
         this.activeDocumentIndex=index;
@@ -488,7 +485,9 @@ var App = {
             RW_UI.safeHTML(detail,'<div class="text-center py-6 text-rose-600 text-sm font-bold bg-white rounded-2xl border border-rose-100">تعذر تحميل تفاصيل الأصناف أو صورها. '+this.escapeHTML(err&&err.message||'')+'</div>');
         }
     },
-       if(!doc||!detail){RW_UI.showError('مستند الاستلام غير متاح');return;}
+    submitReceiving: function(index){
+        var self=this,doc=this.purchaseOrders[index],detail=RW_UI.byId('details-'+index);
+        if(!doc||!detail){RW_UI.showError('مستند الاستلام غير متاح');return;}
         var items=[],rows=detail.querySelectorAll('.receipt-line');
         for(var i=0;i<rows.length;i++){
             var row=rows[i],sentInput=row.querySelector('[data-role="sent-qty"]');
