@@ -124,13 +124,13 @@ USING (
         u.permissions @> '["*"]'::jsonb
         OR u.role IN ('مدير مخازن','مشرف مخازن','مدير عام')
         OR COALESCE(u.active_warehouse_role,'') IN ('جرد','مخزن شامل')
-        OR u.permissions @> '["reports"]'::jsonb
-        OR u.permissions @> '["warehouse"]'::jsonb
-        OR u.permissions @> '["warehouse_manager"]'::jsonb
-        OR u.permissions @> '["warehouse_supervisor"]'::jsonb
-        OR u.permissions @> '["general-count"]'::jsonb
-        OR u.permissions @> '["branch-count"]'::jsonb
-        OR u.permissions @> '["vehicle-count"]'::jsonb
+        OR app_private.current_user_has_permission('reports')
+        OR app_private.current_user_has_permission('warehouse')
+        OR app_private.current_user_has_permission('warehouse_manager')
+        OR app_private.current_user_has_permission('warehouse_supervisor')
+        OR app_private.current_user_has_permission('general-count')
+        OR app_private.current_user_has_permission('branch-count')
+        OR app_private.current_user_has_permission('vehicle-count')
       )
       AND app_private.current_user_can_access_warehouse_branch(
         c.company_id,
@@ -160,13 +160,13 @@ USING (
         u.permissions @> '["*"]'::jsonb
         OR u.role IN ('مدير مخازن','مشرف مخازن','مدير عام')
         OR COALESCE(u.active_warehouse_role,'') IN ('جرد','مخزن شامل')
-        OR u.permissions @> '["reports"]'::jsonb
-        OR u.permissions @> '["warehouse"]'::jsonb
-        OR u.permissions @> '["warehouse_manager"]'::jsonb
-        OR u.permissions @> '["warehouse_supervisor"]'::jsonb
-        OR u.permissions @> '["general-count"]'::jsonb
-        OR u.permissions @> '["branch-count"]'::jsonb
-        OR u.permissions @> '["vehicle-count"]'::jsonb
+        OR app_private.current_user_has_permission('reports')
+        OR app_private.current_user_has_permission('warehouse')
+        OR app_private.current_user_has_permission('warehouse_manager')
+        OR app_private.current_user_has_permission('warehouse_supervisor')
+        OR app_private.current_user_has_permission('general-count')
+        OR app_private.current_user_has_permission('branch-count')
+        OR app_private.current_user_has_permission('vehicle-count')
       )
   )
   AND (
@@ -201,6 +201,8 @@ DECLARE
   v_new_count text := '  IF NOT FOUND THEN RAISE EXCEPTION ''جلسة الجرد غير موجودة''; END IF;' || E'\n  IF COALESCE(v_actor.active_warehouse_role,'''') = ''مخزن شامل'' THEN' || E'\n    IF v_count.type = ''general'' THEN' || E'\n      IF EXISTS (SELECT 1 FROM public.branches b WHERE b.company_id=p_company_id AND COALESCE(b.is_active,true) AND NOT app_private.user_can_access_warehouse_branch(v_actor.id,p_company_id,b.id)) THEN RAISE EXCEPTION ''الجرد العام يتضمن فروعًا خارج نطاق المستخدم''; END IF;' || E'\n    ELSIF v_count.branch_id IS NULL OR NOT app_private.user_can_access_warehouse_branch(v_actor.id,p_company_id,v_count.branch_id) THEN' || E'\n      RAISE EXCEPTION ''جلسة الجرد خارج نطاق الفروع المسموح بها للمستخدم'';' || E'\n    END IF;' || E'\n  END IF;' || E'\n  IF v_count.status IN';
   v_old_create text := '    IF p_payload->>''type''=''vehicle'' THEN';
   v_old_create_end text := '    INSERT INTO public.inventory_counts(type,entity_id,reference,created_by,company_id,status,count_date,branch_id,notes,operation_id,started_at,updated_at)';
+  v_old_upsert_branch text := '    IF NOT EXISTS (SELECT 1 FROM public.branches b WHERE b.id=v_branch_id AND b.company_id=p_company_id) THEN RAISE EXCEPTION ''الفرع غير صالح''; END IF;';
+  v_new_upsert_branch text := v_old_upsert_branch || E'\n    IF COALESCE(v_actor.active_warehouse_role,'''') = ''مخزن شامل'' THEN' || E'\n      IF NOT app_private.user_can_access_warehouse_branch(v_actor.id,p_company_id,v_branch_id) THEN RAISE EXCEPTION ''فرع بند الجرد خارج نطاق المستخدم''; END IF;' || E'\n      IF v_count.type<>''general'' AND v_branch_id IS DISTINCT FROM v_count.branch_id THEN RAISE EXCEPTION ''فرع بند الجرد لا يطابق فرع جلسة الجرد''; END IF;' || E'\n    END IF;';
   v_new_create_end text := '    IF COALESCE(v_actor.active_warehouse_role,'''') = ''مخزن شامل'' THEN' || E'\n      IF p_payload->>''type''=''general'' THEN' || E'\n        IF EXISTS (SELECT 1 FROM public.branches b WHERE b.company_id=p_company_id AND COALESCE(b.is_active,true) AND NOT app_private.user_can_access_warehouse_branch(v_actor.id,p_company_id,b.id)) THEN RAISE EXCEPTION ''الجرد العام يتضمن فروعًا خارج نطاق المستخدم''; END IF;' || E'\n      ELSIF v_branch_id IS NULL OR NOT app_private.user_can_access_warehouse_branch(v_actor.id,p_company_id,v_branch_id) THEN' || E'\n        RAISE EXCEPTION ''فرع الجرد خارج نطاق المستخدم'';' || E'\n      END IF;' || E'\n    END IF;' || E'\n' || v_old_create_end;
 BEGIN
   SELECT pg_get_functiondef('public.inventory_count_engine(uuid,text,text,jsonb,text)'::regprocedure)
@@ -214,9 +216,13 @@ BEGIN
   IF position(v_old_create_end IN v_definition) = 0 THEN
     RAISE EXCEPTION 'inventory_count_engine CREATE branch insertion point does not match reviewed production definition';
   END IF;
+  IF position(v_old_upsert_branch IN v_definition) = 0 THEN
+    RAISE EXCEPTION 'inventory_count_engine UPSERT_LINE branch guard does not match reviewed production definition';
+  END IF;
   v_definition := replace(v_definition, v_old_role, v_new_role);
   v_definition := replace(v_definition, v_old_count, v_new_count);
   v_definition := replace(v_definition, v_old_create_end, v_new_create_end);
+  v_definition := replace(v_definition, v_old_upsert_branch, v_new_upsert_branch);
   EXECUTE v_definition;
 END
 $migration$;
