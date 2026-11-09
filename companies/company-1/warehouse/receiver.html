@@ -303,7 +303,8 @@ var App = {
             onStatus:function(status){console.log('[Receiver] Realtime:',status.status);}
         });
         if(!this.realtimeKey)console.error('[Receiver] Realtime subscription rejected; check authenticated company scope.');
-    },    stopRealtime: function(){
+    },
+    stopRealtime: function(){
         if (this.realtimeKey && typeof RW_Realtime !== 'undefined') {
             RW_Realtime.stop(this.realtimeKey);
             this.realtimeKey = null;
@@ -324,7 +325,8 @@ var App = {
         for(var i=0;i<tabs.length;i++){var btn=RW_UI.byId('tab-'+tabs[i]);if(btn){btn.classList.remove('active');btn.classList.add('text-slate-400');}}
         var active=RW_UI.byId('tab-'+tab);if(active){active.classList.add('active');active.classList.remove('text-slate-400');}
         if(tab==='pending')this.loadPurchaseOrders();else if(tab==='completed')this.renderCompleted();else if(tab==='account')this.renderAccount();
-    },    loadPurchaseOrders: async function(){
+    },
+    loadPurchaseOrders: async function(){
         var self=this,companyId=this.currentUser&&this.currentUser.company_id;
         if(!companyId){RW_UI.showEmptyState('mainContent','سياق الشركة غير متاح للمستخدم.','🔒');return;}
         var sequence=++this.loadSequence;RW_UI.showSkeleton('mainContent',3,'card');
@@ -365,7 +367,8 @@ var App = {
             if(sequence!==this.loadSequence)return;console.error('[Receiver] Failed to load receiving queue:',err);
             RW_UI.showEmptyState('mainContent',err&&err.message?err.message:'تعذر تحميل مستندات الاستلام. تحقق من الاتصال والصلاحيات.','📡');
         }
-    },    renderList: function(){
+    },
+    renderList: function(){
         var poCount=this.purchaseOrders.filter(function(x){return x.doc_type!=='QUICK_MARKET';}).length;
         var qmpCount=this.purchaseOrders.length-poCount;
         var html='<section class="mb-5">'
@@ -399,13 +402,15 @@ var App = {
                 +'</div><div class="w-11 h-11 rounded-2xl '+(quick?'bg-violet-50 text-violet-600':'bg-emerald-50 text-emerald-700')+' flex items-center justify-center shrink-0"><i class="fa-solid '+(quick?'fa-cart-shopping':'fa-file-invoice')+'"></i></div></div><div class="flex items-center justify-between mt-4 pt-3 border-t border-slate-100"><span class="text-[11px] text-slate-400">'+(row.items||[]).length+' صنف في المستند</span><span class="text-xs font-black text-emerald-700">فتح تفاصيل الاستلام <i class="fa-solid fa-chevron-down mr-1"></i></span></div></button><div class="accordion-content" id="accordion-'+index+'"><div class="border-t border-slate-100 p-3"><div id="details-'+index+'"></div><button type="button" data-action="submit-receipt" data-index="'+index+'" id="btn-rec-'+index+'" class="btn-primary mt-3 hidden"><i class="fa-solid fa-shield-check ml-2"></i> مراجعة واعتماد الاستلام الفعلي</button></div></div></article>';
         });
         RW_UI.safeHTML(container,html);
-    },    toggleAccordion: function(index){
+    },
+    toggleAccordion: function(index){
         var panel=RW_UI.byId('accordion-'+index);
         if(!panel)return;
         if(panel.classList.contains('open')){panel.classList.remove('open');return;}
         panel.classList.add('open');
         this.loadPODetails(index);
-    },    loadPODetails: async function(index){
+    },
+    loadPODetails: async function(index){
         var doc=this.purchaseOrders[index],self=this;
         var detail=RW_UI.byId('details-'+index),button=RW_UI.byId('btn-rec-'+index);
         if(button)button.classList.add('hidden');
@@ -445,7 +450,8 @@ var App = {
             console.error('[Receiver] Detail load failed:',err);
             RW_UI.safeHTML(detail,'<div class="text-center py-6 text-rose-600 text-sm font-bold">تعذر تحميل تفاصيل الأصناف أو صورها. '+this.escapeHTML(err&&err.message||'')+'</div>');
         }
-    },    submitReceiving: function(index){
+    },
+    submitReceiving: function(index){
         var self=this,doc=this.purchaseOrders[index],detail=RW_UI.byId('details-'+index);
         if(!doc||!detail){RW_UI.showError('مستند الاستلام غير متاح');return;}
         var items=[],rows=detail.querySelectorAll('.receipt-line');
@@ -464,6 +470,7 @@ var App = {
             if(sent!==accepted&&!reason){RW_UI.showError('سبب اختلاف الكمية المرسلة عن الكمية المقبولة مطلوب للصنف: '+(item.item_name||code));if(reasonInput)reasonInput.focus();return;}
             items.push({itemCode:code,itemName:item.item_name||code,unit:item.unit||'حبة',sentQty:sent,receivedQty:accepted,reason:reason});
         }
+        if(!items.length){RW_UI.showError('أدخل كمية الشحنة المرسلة لصنف واحد على الأقل');return;}
         var fingerprint=this.receiptFingerprint(doc,items),stored=this.getPendingOperation(doc);
         if(stored&&stored.fingerprint!==fingerprint){
             RW_UI.showError('هناك محاولة استلام سابقة نتيجتها غير مؤكدة لهذا المستند. أعد المحاولة بنفس الكميات والبيانات أولًا حتى لا تتكرر حركة مخزنية.');return;
@@ -497,7 +504,8 @@ var App = {
                 self.loadPurchaseOrders();
             });
         });
-    },    renderCompleted: function(){
+    },
+    renderCompleted: function(){
         var companyId=this.currentUser&&this.currentUser.company_id;
         if(!companyId){RW_UI.showEmptyState('mainContent','سياق الشركة غير متاح.','🔒');return;}
         RW_UI.showSkeleton('mainContent',3,'card');
@@ -587,7 +595,7 @@ var App = {
             var diff=accepted-sent;
             html+='<article class="doc-card mb-3 p-4"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><span class="text-[10px] px-2.5 py-1 rounded-full font-black '+(row.doc_type==='QUICK_MARKET'?'bg-violet-50 text-violet-700':'bg-emerald-50 text-emerald-700')+'">'+(row.doc_type==='QUICK_MARKET'?'شراء سوق سريع':'أمر شراء PO')+'</span>'
                 +'<p class="font-black text-slate-800 mt-2">'+self.escapeHTML(row.doc_code||'—')+'</p><p class="text-xs text-slate-500 mt-1">'+self.escapeHTML(row.supplier_name)+'</p><p class="text-[11px] text-slate-400 mt-1">'+self.escapeHTML(row.date||'—')+' · '+self.escapeHTML(row.branch_name||'')+'</p></div>'
-                +'<div class="text-left"><p class="muted-label">المقبول</p><p class="text-xl font-black text-emerald-700">'+self.formatQty(accepted)+'</p><p class="text-[10px] text-slate-400">'+self.escapeHTML(row.status||'مسجل')+'</p></div></div>'
+                +'<div class="text-left"><p class="muted-label">المقبول</p><p class="text-xl font-black text-emerald-700">'+self.formatQty(accepted)+'</p><p class="text-[10px] text-slate-400">'+(accepted<=0?'مرفوض بالكامل':'استلام فعلي مسجل')+'</p></div></div>'
                 +'<div class="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-slate-100"><div><p class="muted-label">مرسل</p><p class="font-black">'+self.formatQty(sent)+'</p></div><div><p class="muted-label">مقبول</p><p class="font-black text-emerald-700">'+self.formatQty(accepted)+'</p></div><div><p class="muted-label">الفرق</p><p class="font-black '+(diff===0?'text-emerald-700':'text-rose-600')+'">'+self.formatQty(diff)+'</p></div></div><div class="mt-3 space-y-2">';
             (row.items||[]).forEach(function(line){
                 html+='<div class="flex justify-between gap-3 text-xs border-t border-slate-100 pt-2"><div class="min-w-0"><p class="font-bold text-slate-700">'+self.escapeHTML(line.item_name||line.item_code)+'</p><p class="text-slate-400">'+self.escapeHTML(line.item_code||'')+' · '+self.escapeHTML(line.unit||'')+'</p>'
@@ -596,7 +604,8 @@ var App = {
             html+='</div><p class="text-[10px] text-slate-400 mt-4">رقم العملية: '+self.escapeHTML(row.operation_id)+'</p></article>';
         });
         RW_UI.safeHTML(container,html);
-    },    renderAccount: function(){
+    },
+    renderAccount: function(){
         var user=this.currentUser||{},initial=this.escapeHTML(String(user.name||user.email||'?').charAt(0));
         var scope=this.unrestrictedBranchScope?'جميع فروع الشركة':this.escapeHTML((this.allowedBranchIds||[]).map(function(id){return (this.branchMap[String(id)]||{}).name||id;},this).join(' · '));
         var html='<div class="max-w-xl mx-auto pt-4"><div class="text-center mb-6"><div class="w-24 h-24 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-[30px] mx-auto flex items-center justify-center text-white text-3xl font-black shadow-xl shadow-emerald-100 mb-4">'+initial+'</div>'
@@ -613,6 +622,11 @@ document.addEventListener('DOMContentLoaded', function() {
     RW_Auth.init(function(user, err) {
         if (user) {
             App.currentUser = user;
+            if (!user.isOwner && user.activeWarehouseRole !== 'استلام') {
+                RW_UI.showError('هذا التطبيق مخصص لدور الاستلام النشط فقط.', function() { RW_Auth.doLogout(); });
+                return;
+            }
+            RW_UI.safeText(RW_UI.byId('headerUserName'), user.name);
             App.enterApp();
         }
     });
