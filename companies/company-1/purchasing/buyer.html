@@ -1155,7 +1155,7 @@ var App = {
                 if(invoiceFile&&(!allowedInvoiceMimes.includes(invoiceFile.type)||invoiceFile.size<=0||invoiceFile.size>10*1024*1024)){
                     Swal.showValidationMessage('نوع الملف غير مدعوم أو حجمه يتجاوز 10 ميجابايت');return false;
                 }
-                var invoiceSaved=false,savedInvoiceId=null;
+                var invoiceSaved=false,savedInvoiceId=null,invoiceFileUploaded=false;
                 try{
                     var savedInvoice=invoiceId?(payload.id=invoiceId,await self.api('UPDATE_QUICK_MARKET_INVOICE',payload)):await self.api('CREATE_QUICK_MARKET_INVOICE',payload);
                     savedInvoiceId=invoiceId||savedInvoice.id;
@@ -1166,13 +1166,28 @@ var App = {
                         if(!companyId||!userId)throw new Error('سياق الشركة أو المستخدم غير متاح لرفع مستند المورد');
                         var storagePath=[companyId,userId,'buyer-goods',savedInvoiceId,'supplier-invoice-'+operationId].join('/');
                         var upload=await supabase.storage.from('employee-documents').upload(storagePath,invoiceFile,{cacheControl:'3600',contentType:invoiceFile.type,upsert:true});
-                        if(upload.error)console.warn('[Buyer] Supplier invoice upload response',upload.error);
-                        await self.api('REGISTER_QUICK_MARKET_ATTACHMENT',{invoice_id:savedInvoiceId,storage_path:storagePath,file_name:invoiceFile.name},operationId+'-attachment');
+                        if(upload.error)throw new Error('تعذر رفع صورة فاتورة المورد إلى التخزين الآمن: '+(upload.error.message||'خطأ غير معروف'));
+                        invoiceFileUploaded=true;
+                        var attachmentResult=await self.api('REGISTER_QUICK_MARKET_ATTACHMENT',{invoice_id:savedInvoiceId,storage_path:storagePath,file_name:invoiceFile.name},operationId+'-attachment');
+                        if(!attachmentResult||attachmentResult.success!==true||!attachmentResult.attachment||
+                           attachmentResult.attachment.document_id!==savedInvoiceId||
+                           attachmentResult.attachment.storage_path!==storagePath){
+                            throw new Error('تم رفع الملف، لكن تعذر التحقق من تسجيله وربطه بالفاتورة.');
+                        }
                     }
                     return savedInvoice;
                 }catch(e){
                     if(invoiceSaved)self.invalidate();
-                    Swal.showValidationMessage(invoiceSaved?'تم حفظ مسودة الفاتورة بالفعل، لكن تعذر تأكيد ربط صورة المورد. احتفظنا بالملف؛ أعد المحاولة قبل إغلاق النافذة. '+e.message:e.message);
+                    var failure=String(e&&e.message||'خطأ غير معروف');
+                    if(invoiceSaved&&invoiceFile&&invoiceFileUploaded){
+                        Swal.showValidationMessage('تم حفظ المسودة ورفع الملف، لكن تعذر تسجيل ربط المرفق. الملف موجود، ولم يُغلق المودال. أعد المحاولة لتأكيد الربط. التفاصيل: '+failure);
+                    }else if(invoiceSaved&&invoiceFile){
+                        Swal.showValidationMessage('تم حفظ المسودة، لكن لم يكتمل رفع صورة فاتورة المورد؛ لذلك لم نرسل طلب تسجيل مرفق غير موجود. احتفظ بالملف في النافذة وأعد المحاولة. التفاصيل: '+failure);
+                    }else if(invoiceSaved){
+                        Swal.showValidationMessage('تم حفظ المسودة، لكن تعذر إكمال الإجراء. أعد المحاولة دون إنشاء فاتورة مكررة. التفاصيل: '+failure);
+                    }else{
+                        Swal.showValidationMessage(failure);
+                    }
                     return false;
                 }
             }});
