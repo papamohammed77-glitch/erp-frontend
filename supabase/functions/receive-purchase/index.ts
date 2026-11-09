@@ -4,12 +4,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 const supabase=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
 const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type, idempotency-key","Access-Control-Allow-Methods":"POST, OPTIONS"}
 
-async function deterministicUuid(seed:string){
-  const buf=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(seed))
-  const hex=Array.from(new Uint8Array(buf)).map(x=>x.toString(16).padStart(2,"0")).join("")
-  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`
-}
-
 serve(async(req)=>{
   if(req.method==='OPTIONS') return new Response('ok',{headers:corsHeaders})
   try{
@@ -61,23 +55,40 @@ serve(async(req)=>{
 
     const items=rawItems.map((x:any)=>({
       item_code:String(x?.itemCode??x?.item_code??'').trim(),
-      received_qty:Number(x?.receivedQty??x?.received_qty)||0,
+      sent_qty:Number(x?.sentQty??x?.sent_qty??x?.receivedQty??x?.received_qty),
+      received_qty:Number(x?.receivedQty??x?.received_qty),
       item_name:x?.itemName||x?.item_name||x?.itemCode||x?.item_code||'',
       unit:x?.unit||'حبة',
-      reason:x?.reason||null
+      reason:String(x?.reason||'').trim()||null
     }))
     for(const x of items){
-      if(!x.item_code||!Number.isFinite(x.received_qty)||x.received_qty<0) throw new Error('بيانات الاستلام غير صالحة')
+      if(
+        !x.item_code ||
+        !Number.isFinite(x.sent_qty) ||
+        !Number.isFinite(x.received_qty) ||
+        x.sent_qty<=0 ||
+        x.received_qty<0 ||
+        x.received_qty>x.sent_qty ||
+        Math.round(x.sent_qty*10000)!==x.sent_qty*10000 ||
+        Math.round(x.received_qty*10000)!==x.received_qty*10000
+      ) throw new Error('راجع كود الصنف والكمية المرسلة والكمية المقبولة')
+      if(x.sent_qty!==x.received_qty&&!x.reason){
+        throw new Error('سبب اختلاف الكمية المرسلة والمقبولة مطلوب لكل صنف')
+      }
     }
     if(!items.some((x:any)=>Number(x.received_qty)>0)){
-      throw new Error('يجب إدخال كمية موجبة لصنف واحد على الأقل')
+      throw new Error('يجب قبول كمية موجبة لصنف واحد على الأقل')
     }
 
-    const supplied=String(b?.operation_id||req.headers.get('Idempotency-Key')||'').trim()
+    const bodyOperationId=String(b?.operation_id||'').trim()
+    const headerOperationId=String(req.headers.get('Idempotency-Key')||'').trim()
+    if(bodyOperationId&&headerOperationId&&bodyOperationId.toLowerCase()!==headerOperationId.toLowerCase()){
+      throw new Error('معرّف العملية في الطلب والترويسة غير متطابق')
+    }
+    const supplied=bodyOperationId||headerOperationId
     const suppliedIsUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(supplied)
-    const operation_id=invoice_id
-      ?(suppliedIsUuid?supplied:await deterministicUuid(user.id+'|'+appUser.company_id+'|QMP|'+invoice_id+'|'+JSON.stringify(items)+'|'+supplied))
-      :(supplied||await deterministicUuid(user.id+'|'+appUser.company_id+'|'+JSON.stringify({po_code,items})))
+    if(!suppliedIsUuid) throw new Error('معرّف عملية الاستلام UUID مطلوب ويجب إعادة استخدامه عند إعادة المحاولة')
+    const operation_id=supplied
 
     const rpcName=invoice_id?'receive_quick_market_purchase_atomic':'receive_purchase_atomic'
     const rpcArgs=invoice_id
