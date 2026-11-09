@@ -71,6 +71,19 @@ function RW_PurchSupervisorStatus(s) {
         Sent:'مرسل للمورد',
         'Partially Received':'استلام جزئي',
         Received:'مكتمل الاستلام',
+        Submitted:'مقدم للمراجعة',
+        PendingApproval:'بانتظار الاعتماد',
+        Rejected:'مرفوض',
+        Converted:'تم التحويل',
+        PartiallyQuoted:'وردت عروض جزئية',
+        Quoted:'تم تلقي العروض',
+        Accepted:'مقبول',
+        Expired:'منتهي الصلاحية',
+        Posted:'مرحل',
+        PartiallyPaid:'مدفوع جزئياً',
+        Paid:'مدفوع',
+        Voided:'معكوس / ملغى',
+        Closed:'مغلق',
         Cancelled:'ملغي'
     };
     return labels[s] || s || '—';
@@ -103,8 +116,8 @@ var RW_PurchSupervisorDocs = {
         title:'فواتير الشراء', table:'purchase_invoices', code:'invoice_code', date:'invoice_date', status:'status',
         select:'id,company_id,invoice_code,supplier_invoice_no,supplier_id,purchase_order_id,quotation_id,branch_id,invoice_date,due_date,currency,status,is_received,received_date,subtotal,discount_amount,tax_amount,total_amount,paid_amount,notes,created_by,posted_by,posted_at,purchase_source,settlement_source,purchaser_user_id,receipt_status,settlement_status,created_at,updated_at',
         search:['invoice_code','supplier_invoice_no','status','created_by','purchase_source','settlement_status','receipt_status','notes'],
-        columns:[['invoice_code','رقم الفاتورة'],['supplier_invoice_no','رقم فاتورة المورد'],['supplier_id','المورد','supplier'],['invoice_date','التاريخ','date'],['purchase_source','مصدر الشراء'],['status','حالة الفاتورة','status'],['receipt_status','حالة الاستلام'],['settlement_status','حالة التسوية'],['total_amount','الإجمالي','money'],['paid_amount','المدفوع','money'],['created_by','مسجل الفاتورة']],
-        summary:[['invoice_code','رقم الفاتورة'],['supplier_invoice_no','رقم فاتورة المورد'],['supplier_id','المورد','supplier'],['invoice_date','التاريخ','date'],['due_date','تاريخ الاستحقاق','date'],['currency','العملة'],['purchase_source','مصدر الشراء'],['status','حالة الفاتورة','status'],['receipt_status','حالة الاستلام'],['settlement_status','حالة التسوية'],['is_received','مؤشر الاستلام','bool'],['received_date','تاريخ الاستلام','date'],['subtotal','قبل الخصم والضريبة','money'],['discount_amount','الخصم','money'],['tax_amount','الضريبة','money'],['total_amount','الإجمالي','money'],['paid_amount','المدفوع المسجل','money'],['created_by','مسجل الفاتورة'],['posted_by','مرحل الفاتورة'],['posted_at','تاريخ الترحيل','dateTime'],['purchase_order_id','مرتبط بأمر شراء','reference'],['quotation_id','مرتبط بعرض سعر','reference'],['notes','ملاحظات']]
+        columns:[['invoice_code','رقم الفاتورة'],['supplier_invoice_no','رقم فاتورة المورد'],['supplier_id','المورد','supplier'],['invoice_date','التاريخ','date'],['purchase_source','مصدر الشراء','code'],['settlement_source','مصدر التسوية','code'],['status','حالة الفاتورة','status'],['receipt_status','حالة الاستلام','code'],['settlement_status','حالة التسوية','code'],['total_amount','الإجمالي','money'],['paid_amount','المدفوع','money'],['created_by','مسجل الفاتورة']],
+        summary:[['invoice_code','رقم الفاتورة'],['supplier_invoice_no','رقم فاتورة المورد'],['supplier_id','المورد','supplier'],['invoice_date','التاريخ','date'],['due_date','تاريخ الاستحقاق','date'],['currency','العملة'],['purchase_source','مصدر الشراء','code'],['settlement_source','مصدر التسوية','code'],['status','حالة الفاتورة','status'],['receipt_status','حالة الاستلام','code'],['settlement_status','حالة التسوية','code'],['is_received','مؤشر الاستلام','bool'],['received_date','تاريخ الاستلام','date'],['subtotal','قبل الخصم والضريبة','money'],['discount_amount','الخصم','money'],['tax_amount','الضريبة','money'],['total_amount','الإجمالي','money'],['paid_amount','المدفوع المسجل','money'],['created_by','مسجل الفاتورة'],['posted_by','مرحل الفاتورة'],['posted_at','تاريخ الترحيل','dateTime'],['purchase_order_id','مرتبط بأمر شراء','reference'],['quotation_id','مرتبط بعرض سعر','reference'],['notes','ملاحظات']]
     },
     returns: {
         title:'مرتجعات المشتريات', table:'purchase_returns', code:'return_code', date:'return_date', status:'status',
@@ -134,12 +147,33 @@ function RW_PurchSupervisorValue(v, type, record, supplierMap) {
         return isNaN(d.getTime()) ? RW_PurchSupervisorEsc(v) : d.toLocaleString('ar-EG', type === 'date' ? {year:'numeric',month:'2-digit',day:'2-digit'} : {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
     }
     if (type === 'status') return RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(v));
+    if (type === 'code') return RW_PurchSupervisorCode(v);
     if (type === 'supplier') return RW_PurchSupervisorEsc(supplierMap && supplierMap[v] ? supplierMap[v] : 'مورد غير متاح ضمن صلاحية الحساب');
     if (type === 'money') return RW_PurchSupervisorNum(v) + ' ' + RW_PurchSupervisorEsc(record && record.currency || 'العملة غير مثبتة بالسجل');
     if (type === 'number') return RW_PurchSupervisorNum(v);
     if (type === 'bool') return v === true ? 'نعم' : 'لا';
     if (type === 'reference') return 'مرتبط بمستند';
     return RW_PurchSupervisorEsc(v);
+}
+function RW_PurchSupervisorCode(v) {
+    var labels = {
+        PURCHASE_ORDER:'أمر شراء',
+        QUICK_MARKET:'شراء سوق سريع',
+        LEGACY_UNCLASSIFIED:'مصدر قديم غير مصنف',
+        UNSET:'غير محدد',
+        SUPPLIER_CREDIT:'ذمة مورد',
+        EMPLOYEE_CUSTODY:'عهدة موظف',
+        LEGACY_UNVERIFIED:'حالة قديمة غير مؤكدة',
+        NOT_RECEIVED:'لم يتم الاستلام',
+        PARTIALLY_RECEIVED:'استلام جزئي',
+        RECEIVED:'تم الاستلام',
+        UNSETTLED:'غير مسوى',
+        PENDING_FINANCE:'بانتظار المالية',
+        AP_OPEN:'ذمة مورد مفتوحة',
+        PARTIALLY_SETTLED:'مسوى جزئياً',
+        SETTLED:'مسوى'
+    };
+    return RW_PurchSupervisorEsc(labels[v] || v || '—');
 }
 function RW_PurchSupervisorLocalDate(d) {
     d = d || new Date();
@@ -354,7 +388,7 @@ var App = {
                 quotations:{table:'purchase_quotation_details',fk:'quotation_id',cols:'item_code,item_name,unit,qty,unit_price,discount_percent,discount_amount,tax_rate,tax_amount,line_total,notes',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty','الكمية','number'],['unit_price','سعر الوحدة','number'],['discount_percent','نسبة الخصم','number'],['discount_amount','قيمة الخصم','number'],['tax_amount','الضريبة','number'],['line_total','الإجمالي','number'],['notes','ملاحظات']]},
                 invoices:{table:'purchase_invoice_details',fk:'invoice_id',cols:'item_code,item_name,unit,qty,received_qty,unit_price,discount_percent,discount_amount,tax_rate,tax_amount,line_total,notes',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty','الكمية بالفاتورة','number'],['received_qty','الكمية المستلمة','number'],['unit_price','سعر الوحدة','number'],['discount_amount','الخصم','number'],['tax_amount','الضريبة','number'],['line_total','الإجمالي','number'],['notes','ملاحظات']]},
                 returns:{table:'purchase_return_details',fk:'return_id',cols:'item_code,item_name,unit,qty,unit_price,line_total,reason',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty','الكمية','number'],['unit_price','سعر الوحدة','number'],['line_total','الإجمالي','number'],['reason','السبب']]},
-                payments:{table:'purchase_payment_allocations',fk:'payment_id',cols:'invoice_id,allocated_amount',sort:'created_at',labels:[['invoice_id','فاتورة مرتبطة'],['allocated_amount','المبلغ المخصص','number'],['created_at','تاريخ التخصيص','dateTime']]}
+                payments:{table:'purchase_payment_allocations',fk:'payment_id',cols:'invoice_id,allocated_amount',sort:'created_at',labels:[['invoice_id','فاتورة مرتبطة'],['allocated_amount','المبلغ المخصص (العملة من الفاتورة)','number'],['created_at','تاريخ التخصيص','dateTime']]}
             };
             var detailHtml = '';
             if (detailCfg[tabKey]) {
@@ -472,7 +506,11 @@ var App = {
             var recent = [];
             loaded.forEach(function(rows,i){
                 rows.forEach(function(r){
-                    if (r.created_at) recent.push({date:r.created_at,code:r[tables[i][0] === 'purchase_requests' ? 'request_code' : tables[i][0] === 'purchase_rfqs' ? 'rfq_code' : tables[i][0] === 'purchase_quotations' ? 'quotation_code' : tables[i][0] === 'purchase_orders' ? 'po_code' : tables[i][0] === 'purchase_invoices' ? 'invoice_code' : tables[i][0] === 'purchase_returns' ? 'return_code' : 'payment_code'],title:RW_PurchSupervisorDocs[({purchase_requests:'requests',purchase_rfqs:'rfq',purchase_quotations:'quotations',purchase_orders:'orders',purchase_invoices:'invoices',purchase_returns:'returns',purchase_payments:'payments'})[tables[i][0]]] ? RW_PurchSupervisorDocs[({purchase_requests:'requests',purchase_rfqs:'rfq',purchase_quotations:'quotations',purchase_orders:'orders',purchase_invoices:'invoices',purchase_returns:'returns',purchase_payments:'payments'})[tables[i][0]]].title : 'مستند',status:r.status});
+                    if (r.created_at) {
+                        var codeField = ({purchase_requests:'request_code',purchase_rfqs:'rfq_code',purchase_quotations:'quotation_code',purchase_orders:'po_code',purchase_invoices:'invoice_code',purchase_returns:'return_code',purchase_payments:'payment_code'})[tables[i][0]];
+                        var titleByTable = {purchase_requests:'طلب شراء',purchase_rfqs:'طلب عرض سعر',purchase_quotations:'عرض مورد',purchase_orders:'أمر شراء',purchase_invoices:'فاتورة شراء',purchase_returns:'مرتجع شراء',purchase_payments:'دفعة مورد'};
+                        recent.push({date:r.created_at,code:r[codeField],title:titleByTable[tables[i][0]] || 'مستند',status:r.status});
+                    }
                 });
             });
             recent.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
