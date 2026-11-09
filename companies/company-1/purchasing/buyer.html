@@ -21,6 +21,42 @@
         .card{background:#fff;border-radius:20px;padding:1.25rem;box-shadow:0 4px 15px rgba(0,0,0,0.05)}
         .btn-primary{background:#9333ea;color:#fff;padding:0.75rem 1.5rem;border-radius:12px;font-weight:700;border:none;cursor:pointer;width:100%}
         .btn-primary:active{background:#7e22ce}
+
+        /* Buyer cash custody — clear, currency-safe summary */
+        .buyer-custody-overview{background:linear-gradient(135deg,#27124f 0%,#4c1d95 55%,#6d28d9 100%);color:#fff;border-radius:24px;padding:20px;margin-bottom:18px;box-shadow:0 14px 32px rgba(76,29,149,.16)}
+        .buyer-custody-overview h3{font-size:15px;font-weight:900}
+        .buyer-custody-overview .buyer-custody-muted{color:rgba(255,255,255,.72)}
+        .buyer-custody-currency-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:14px}
+        .buyer-custody-currency-card{background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.16);border-radius:17px;padding:14px}
+        .buyer-custody-available{font-size:clamp(25px,4vw,36px);font-weight:900;line-height:1.15;letter-spacing:-.5px}
+        .buyer-custody-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+        .buyer-custody-metric{background:rgba(255,255,255,.09);border-radius:12px;padding:9px;min-width:0}
+        .buyer-custody-metric small{display:block;font-size:10px;color:rgba(255,255,255,.72);margin-bottom:4px}
+        .buyer-custody-metric b{display:block;font-size:13px;overflow-wrap:anywhere}
+        .buyer-custody-section-title{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:18px 0 10px}
+        .buyer-custody-record{background:#fff;border:1px solid #e2e8f0;border-radius:20px;padding:16px;margin-bottom:12px;box-shadow:0 4px 16px rgba(15,23,42,.045)}
+        .buyer-custody-record-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px}
+        .buyer-custody-record-hero{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:14px;border-radius:16px;background:#f5f3ff;border:1px solid #ddd6fe}
+        .buyer-custody-record-hero.is-negative{background:#fff1f2;border-color:#fecdd3}
+        .buyer-custody-record-hero strong{display:block;font-size:clamp(22px,3vw,29px);font-weight:900;color:#4c1d95;line-height:1.2}
+        .buyer-custody-record-hero.is-negative strong{color:#be123c}
+        .buyer-custody-record-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+        .buyer-custody-record-stat{padding:10px;border:1px solid #e2e8f0;border-radius:13px;background:#f8fafc;min-width:0}
+        .buyer-custody-record-stat small{display:block;font-size:10px;color:#64748b;margin-bottom:4px}
+        .buyer-custody-record-stat b{display:block;font-size:14px;color:#0f172a;overflow-wrap:anywhere}
+        .buyer-custody-details{border:1px solid #e2e8f0;border-radius:14px;margin-top:10px;background:#fff;overflow:hidden}
+        .buyer-custody-details>summary{cursor:pointer;list-style:none;padding:12px 14px;font-size:12px;font-weight:800;color:#334155;display:flex;justify-content:space-between;gap:10px}
+        .buyer-custody-details>summary::-webkit-details-marker{display:none}
+        .buyer-custody-details[open]>summary{border-bottom:1px solid #e2e8f0;background:#f8fafc}
+        .buyer-custody-details-body{padding:10px 12px}
+        .buyer-custody-expense{padding:12px;border:1px solid #e2e8f0;border-radius:13px;margin-bottom:8px;background:#fff}
+        .buyer-custody-expense:last-child{margin-bottom:0}
+        .buyer-custody-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+        .buyer-custody-empty{border:1px dashed #cbd5e1;border-radius:18px;padding:26px;text-align:center;background:#fff;color:#64748b}
+        .buyer-custody-staff{border:1px solid #ddd6fe;background:#faf5ff;border-radius:18px;margin-top:18px;overflow:hidden}
+        .buyer-custody-staff>summary{cursor:pointer;padding:14px;font-weight:900;color:#4c1d95;list-style:none}
+        .buyer-custody-staff>summary::-webkit-details-marker{display:none}
+        @media(min-width:768px){.buyer-custody-record-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.buyer-custody-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
@@ -1406,34 +1442,29 @@ var App = {
             payments=Array.isArray(data.payments)?data.payments:[],
             settlements=Array.isArray(data.settlements)?data.settlements:[],
             returns=Array.isArray(data.returns)?data.returns:[],
-            finance=!!data.is_finance;
-        var currentEmployeeId=(this.currentUser||{}).id,self=this;
-        var issued=custodies.filter(function(c){return c.status!=='Settled'&&c.status!=='Closed';}).reduce(function(n,c){return n+Number(c.issued_amount||0);},0);
-        var pending=expenses.filter(function(e){return e.status==='Submitted';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
-        var approved=expenses.filter(function(e){return e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
-        var html='<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-black">عهدتي</h2><p class="text-xs text-slate-500 mt-1">سجل مستقل لعهد الموظفين والمستندات ومراجعة الإدارة المالية والتسوية اليدوية</p></div>'+
-            (finance?'<button type="button" onclick="App.issueCustody()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-hand-holding-dollar ml-2"></i>تسجيل تسليم عهدة</button>':'')+'</div>';
-        html+='<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">'+
-            '<div class="card"><small class="text-slate-500">العهد المفتوحة</small><b class="block text-xl mt-1">'+custodies.filter(function(c){return c.status!=='Settled'&&c.status!=='Closed';}).length+'</b></div>'+
-            '<div class="card"><small class="text-slate-500">قيمة العهد المفتوحة</small><b class="block text-lg mt-1">'+buyerMoney(issued,this.currency)+'</b></div>'+
-            '<div class="card"><small class="text-slate-500">مستندات قيد المراجعة</small><b class="block text-lg mt-1">'+buyerMoney(pending,this.currency)+'</b></div>'+
-            '<div class="card"><small class="text-slate-500">مصروفات معتمدة</small><b class="block text-lg mt-1">'+buyerMoney(approved,this.currency)+'</b></div></div>';
-        html+='<div class="p-3 rounded-xl bg-blue-50 text-blue-800 text-xs mb-4">العهدة النقدية منفصلة عن حيازة البضاعة. الحيازة تُحسب من دفتر أحداث مستقل ولا تغيّر مخزون الفرع؛ المركبة اختيارية.</div>';
-        html+='<div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border border-violet-100 bg-violet-50 text-violet-900 text-xs mb-4"><span>حيازة الأصناف المادية لها دفتر مستقل، ولا تُخلط مع النقد أو مصروفات العهدة.</span><span class="font-black">تظهر في تبويب عهدة بضاعتي</span></div>';
-        if(!custodies.length)html+='<div class="card text-center py-10"><i class="fa-solid fa-wallet text-3xl text-slate-300"></i><p class="font-bold mt-3">لا توجد عهد مسجلة</p><p class="text-xs text-slate-400 mt-1">'+(finance?'ابدأ بتسجيل عهدة تم تسليمها يدويًا إلى الموظف.':'ستظهر هنا العهد المسجلة باسمك من الإدارة المالية.')+'</p></div>';
-        custodies.forEach(function(c){
+            finance=!!data.is_finance,
+            currentEmployeeId=(this.currentUser||{}).id,
+            self=this;
+
+        var isOpen=function(c){return c.status!=='Settled'&&c.status!=='Closed';};
+        var byDate=function(a,b){return String(b.expense_date||b.created_at||'').localeCompare(String(a.expense_date||a.created_at||''));};
+        var moneySum=function(rows){return (rows||[]).reduce(function(n,x){return n+Number(x.amount||0);},0);};
+        var getMetrics=function(c){
             var lines=expenses.filter(function(e){return e.custody_id===c.id;});
-            var approvedTotal=lines.filter(function(e){return e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
-            var pendingCount=lines.filter(function(e){return e.status==='Submitted';}).length;
-            var settlement=settlements.find(function(x){return x.custody_id===c.id;});
-            var custodyReturns=returns.filter(function(x){return x.custody_id===c.id;});
-            var returnedTotal=custodyReturns.length?custodyReturns.reduce(function(n,x){return n+Number(x.amount||0);},0):Number(c.returned_amount||0);
-            if(!custodyReturns.length&&settlement)returnedTotal=Math.max(returnedTotal,Number(settlement.cash_returned||0));
             var custodyAdvances=advances.filter(function(a){return a.custody_id===c.id;});
-            var acknowledgedTotal=custodyAdvances.filter(function(a){return !!a.acknowledged_at&&!!a.cash_box_id&&!!a.journal_entry_id;}).reduce(function(n,a){return n+Number(a.amount||0);},0);
-            var committedTotal=lines.filter(function(e){return e.status==='Submitted'||e.status==='Approved';}).reduce(function(n,e){return n+Number(e.amount||0);},0);
-            var qmpReserved=self.quickMarketCashReservation(invoices,expenses,c.id,null);
-            var availableCash=Math.max(0,acknowledgedTotal-committedTotal-qmpReserved-returnedTotal);
+            var custodyReturns=returns.filter(function(x){return x.custody_id===c.id;});
+            var settlement=settlements.find(function(x){return x.custody_id===c.id;});
+            var acknowledgedRows=custodyAdvances.filter(function(a){return !!a.acknowledged_at&&!!a.cash_box_id&&!!a.journal_entry_id;});
+            var acknowledged=moneySum(acknowledgedRows);
+            var approvedRows=lines.filter(function(e){return e.status==='Approved';});
+            var pendingRows=lines.filter(function(e){return e.status==='Submitted';});
+            var approved=moneySum(approvedRows);
+            var pending=moneySum(pendingRows);
+            var returned=custodyReturns.length?moneySum(custodyReturns):Number(c.returned_amount||0);
+            if(!custodyReturns.length&&settlement)returned=Math.max(returned,Number(settlement.cash_returned||0));
+            var committed=approved+pending;
+            var reserved=self.quickMarketCashReservation(invoices,expenses,c.id,null);
+            var rawAvailable=acknowledged-committed-reserved-returned;
             var qmpInvoices=invoices.filter(function(i){
                 return i.cash_custody_id===c.id&&i.purchase_source==='QUICK_MARKET'&&i.settlement_source==='EMPLOYEE_CUSTODY'&&
                     ['Draft','Posted','PartiallyPaid'].indexOf(i.status)!==-1&&
@@ -1441,45 +1472,186 @@ var App = {
             }).map(function(i){
                 var linked=lines.filter(function(e){return e.purchase_invoice_id===i.id&&e.status==='Submitted';})
                     .reduce(function(n,e){return n+Number(e.amount||0);},0);
-                return {invoice:i,remaining:Math.max(0,Number(i.total_amount||0)-Number(i.paid_amount||0)-linked),supplier:suppliers.find(function(x){return x.id===i.supplier_id;})||{}};
+                return {invoice:i,remaining:Math.max(0,Number(i.total_amount||0)-Number(i.paid_amount||0)-linked),
+                    supplier:suppliers.find(function(x){return x.id===i.supplier_id;})||{}};
             });
-            var qmpOpenCount=qmpInvoices.length;
-            var unacknowledgedCount=custodyAdvances.filter(function(a){return !a.acknowledged_at||!a.cash_box_id||!a.journal_entry_id;}).length;
-            var paidLedgerMismatch=Math.abs(Number(c.paid_amount||0)-acknowledgedTotal)>0.005;
-            var canSettle=finance&&c.employee_id!==currentEmployeeId&&c.status!=='Settled'&&c.status!=='Closed'&&
-                pendingCount===0&&unacknowledgedCount===0&&qmpOpenCount===0&&!paidLedgerMismatch&&approvedTotal<=acknowledgedTotal+0.005;
-            html+='<section class="card mb-3 border border-slate-100"><div class="flex flex-wrap justify-between gap-2"><div><b class="text-purple-800">'+buyerEsc(c.custody_code)+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(c.employee_name||'')+' · '+buyerDate(c.issued_date)+'</p></div><span class="px-3 py-1 rounded-full bg-slate-100 text-xs font-bold">'+buyerStatus(c.status)+'</span></div>'+
-                '<div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2 mt-3 text-sm"><div><small class="text-slate-400">المبلغ المعتمد</small><b class="block">'+buyerMoney(c.issued_amount,c.currency)+'</b></div><div><small class="text-slate-400">النقد المدفوع فعليًا</small><b class="block">'+buyerMoney(acknowledgedTotal,c.currency)+'</b></div><div><small class="text-slate-400">مصروفات معتمدة</small><b class="block">'+buyerMoney(approvedTotal,c.currency)+'</b></div><div><small class="text-slate-400">النقد المرتجع</small><b class="block">'+buyerMoney(returnedTotal,c.currency)+'</b></div><div><small class="text-slate-400">المتبقي القابل للرد</small><b class="block">'+buyerMoney(Math.max(0,acknowledgedTotal-approvedTotal-returnedTotal),c.currency)+'</b></div><div><small class="text-slate-400">مستندات معلقة</small><b class="block">'+pendingCount+'</b></div><div><small class="text-slate-400">حجوزات السوق السريع</small><b class="block">'+buyerMoney(qmpReserved,c.currency)+'</b></div><div><small class="text-slate-400">المتاح بعد الحجوزات والرد</small><b class="block">'+buyerMoney(availableCash,c.currency)+'</b></div></div>'+
-                '<div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3"><div class="flex flex-wrap justify-between gap-2"><b class="text-xs text-amber-900">فواتير السوق السريع المحجوزة على هذه العهدة</b><b class="text-xs text-amber-900">'+buyerMoney(qmpReserved,c.currency)+'</b></div><p class="text-[11px] text-amber-800 mt-1">المبالغ محجوزة من المتاح النقدي، وليست مصروفات معتمدة أو قيودًا محاسبية بعد. لا تخصمها مرة ثانية عند تقديم المستند.</p>'+
-                (qmpInvoices.length?'<div class="space-y-2 mt-2">'+qmpInvoices.map(function(x){return '<div class="flex flex-wrap justify-between items-center gap-2 border-t border-amber-200 pt-2 text-xs"><span><b>'+buyerEsc(x.invoice.invoice_code)+'</b> · '+buyerEsc(x.supplier.name||'مورد')+' · فاتورة المورد '+buyerEsc(x.invoice.supplier_invoice_no||'—')+' · '+buyerDate(x.invoice.invoice_date||x.invoice.created_at)+' · '+buyerStatus(x.invoice.status)+'</span><span class="font-black">'+buyerMoney(x.remaining,x.invoice.currency)+'</span><button type="button" onclick="App.openInvoice(\''+buyerEsc(x.invoice.id)+'\')" class="text-blue-700 underline font-bold">تفاصيل الفاتورة</button></div>';}).join('')+'</div>':'<p class="text-xs text-slate-500 mt-2">لا توجد فواتير سوق سريع مفتوحة على العهدة.</p>')+'</div>'+
-                (c.received_reference?'<p class="text-xs text-slate-500 mt-2">مرجع التسليم الأول: '+buyerEsc(c.received_reference)+'</p>':'')+
-                (custodyAdvances.length?'<div class="mt-3 p-3 rounded-xl bg-slate-50"><b class="text-xs">سجل تسليمات العهدة وزياداتها</b><div class="space-y-1 mt-2">'+custodyAdvances.map(function(a){return '<div class="flex flex-wrap justify-between gap-2 text-xs border-b last:border-0 py-1"><span>'+buyerDate(a.advance_date)+' · '+(a.advance_type==='Initial'?'العهدة الأصلية':'زيادة عهدة')+' · '+buyerEsc(a.reference||'—')+'</span><b>'+buyerMoney(a.amount,a.currency)+'</b><span class="'+(a.acknowledged_at?'text-emerald-700':'text-amber-700')+'">'+(a.acknowledged_at?'تم تأكيد الاستلام':'بانتظار تأكيد الموظف')+'</span>'+(a.employee_id===currentEmployeeId&&!a.acknowledged_at&&a.advance_type==='Additional'?'<button onclick="App.acknowledgeCustodyAdvance(\''+a.id+'\')" class="text-blue-700 font-bold">تأكيد استلام الزيادة</button>':'')+'</div>';}).join('')+'</div></div>':'')+
-                (custodyReturns.length?'<div class="mt-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100"><b class="text-xs text-emerald-900">سندات القبض — ردود نقدية سابقة</b><div class="space-y-1 mt-2">'+custodyReturns.slice().sort(function(a,b){return String(b.return_date||'').localeCompare(String(a.return_date||''));}).map(function(r){return '<div class="flex flex-wrap justify-between gap-2 border-t border-emerald-100 pt-2 text-xs"><span>'+buyerDate(r.return_date)+' · '+buyerEsc(r.reference||'رد نقدية')+' · سند '+buyerEsc(String(r.cash_box_id||'').slice(0,8))+'</span><b>'+buyerMoney(r.amount,c.currency)+'</b></div>';}).join('')+'</div></div>':'')+
-                '<div class="flex flex-wrap gap-2 mt-3">'+
-                (finance&&c.status!=='Settled'&&c.status!=='Closed'&&c.employee_id!==currentEmployeeId?'<button onclick="App.addCustodyAdvance(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold">زيادة عهدة / تسليم نقدية إضافية</button>':'')+
-                (c.employee_id===currentEmployeeId&&c.status==='Issued'&&!c.acknowledged_at?'<button onclick="App.acknowledgeCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">تأكيد استلام المبلغ</button>':'')+
-                (c.employee_id===currentEmployeeId&&c.status!=='Settled'&&c.status!=='Closed'?'<button onclick="App.submitCustodyExpense(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-purple-700 text-white text-xs font-bold">تسوية فاتورة شراء</button><button onclick="App.submitOtherCustodyExpense(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-amber-600 text-white text-xs font-bold">مصروفات أخرى · انتقالات / وقود</button>':'')+
-                (canSettle?'<button onclick="App.settleCustody(\''+c.id+'\')" class="px-3 py-2 rounded-lg bg-emerald-700 text-white text-xs font-bold">رد نقدية / تسوية جزئية</button>':'')+
-                (finance&&c.employee_id!==currentEmployeeId&&c.status!=='Settled'&&c.status!=='Closed'&&!canSettle?'<p class="w-full text-xs text-amber-700">تعذر إقفال العهدة: '+(pendingCount?'توجد مصروفات قيد المراجعة. ':'')+(unacknowledgedCount?'توجد زيادات عهدة لم يؤكد الموظف استلامها. ':'')+(qmpOpenCount?'توجد '+qmpOpenCount+' فواتير سوق سريع مفتوحة لم تكتمل تسويتها. ':'')+(paidLedgerMismatch?'يوجد اختلاف بين دفتر الدفعات وإجمالي إقرارات الاستلام. ':'')+(approvedTotal>acknowledgedTotal+0.005?'المصروفات المعتمدة تتجاوز النقد المدفوع فعليًا.':'')+'</p>':'')+
-                '</div>';
-            if(lines.length){
-                html+='<div class="mt-4 border-t pt-3"><h4 class="font-black text-sm mb-2">المستندات والمصروفات</h4><div class="space-y-2">';
-                lines.forEach(function(e){
-                    var custodyPayment=payments.find(function(p){return p.expense_id===e.id;});
-                    var isOperational=e.expense_type==='OPERATIONAL',categoryLabels={TRANSPORTATION:'انتقالات ومواصلات',FUEL:'وقود',TOLLS_PARKING:'رسوم طرق ومواقف',OTHER:'مصروف تشغيلي آخر'};
-                    html+='<div class="p-3 rounded-xl bg-slate-50"><div class="flex flex-wrap justify-between gap-2"><b class="text-sm">'+buyerEsc(isOperational?(categoryLabels[e.expense_category]||'مصروف تشغيلي')+' — '+e.description:e.description)+'</b><b>'+buyerMoney(e.amount,e.currency)+'</b></div>'+
-                        '<p class="text-xs text-slate-500 mt-1">'+(isOperational?'مصروف تشغيلي':'فاتورة مورد')+' · '+buyerEsc(e.supplier_name||'')+' '+(e.invoice_number?'· فاتورة '+buyerEsc(e.invoice_number):'')+' '+(e.expense_reference?'· مرجع '+buyerEsc(e.expense_reference):'')+' · '+buyerDate(e.expense_date)+'</p>'+
-                        '<div class="flex flex-wrap items-center gap-2 mt-2"><span class="text-xs font-bold">'+buyerStatus(e.status)+'</span><button onclick="App.viewCustodyDocument(\''+buyerEsc(e.document_path)+'\')" class="text-xs text-blue-700 underline">'+(isOperational?'عرض إيصال المصروف':'عرض فاتورة المورد')+'</button>'+(e.receipt_document_path?'<button onclick="App.viewCustodyDocument(\''+buyerEsc(e.receipt_document_path)+'\')" class="text-xs text-blue-700 underline">عرض إذن استلام المخزن</button>':'')+(custodyPayment?'<span class="text-xs text-emerald-700 font-bold">سداد المورد: '+buyerEsc(custodyPayment.payment_code)+'</span>':'')+
-                        (finance&&e.employee_id!==currentEmployeeId&&e.status==='Submitted'?(isOperational?'<button onclick="App.reviewOtherCustodyExpense(\''+e.id+'\',\'Approved\')" class="text-xs text-emerald-700 font-bold">اعتماد مصروف</button><button onclick="App.reviewOtherCustodyExpense(\''+e.id+'\',\'Rejected\')" class="text-xs text-red-700 font-bold">رفض</button>':'<button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Approved\')" class="text-xs text-emerald-700 font-bold">اعتماد</button><button onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Rejected\')" class="text-xs text-red-700 font-bold">رفض</button>'):'')+
-                        (e.expense_account_id?'<span class="text-xs text-emerald-700">حساب مصروف مرتبط</span>':'')+
-                        (e.review_note?'<p class="w-full text-xs text-slate-500">'+buyerEsc(e.review_note)+'</p>':'')+'</div></div>';
-                });
-                html+='</div></div>';
-            }
-            if(settlement)html+='<div class="mt-3 p-3 rounded-xl bg-emerald-50 text-emerald-800 text-xs">تمت التسوية · المصروفات المعتمدة: '+buyerMoney(settlement.approved_expense_total,c.currency)+' · النقد المرتجع: '+buyerMoney(settlement.cash_returned,c.currency)+' · المتبقي للشركة: '+buyerMoney(settlement.balance_due_company,c.currency)+
-                (Number(settlement.amount_due_employee||0)>0.005?'<p class="mt-2 text-red-700 font-bold">تنبيه: يوجد مبلغ مستحق للموظف '+buyerMoney(settlement.amount_due_employee,c.currency)+' دون سند صرف مثبت؛ لا يعد هذا المبلغ مدفوعًا.</p>':'')+'</div>';
-            html+='</section>';
+            var unacknowledged=custodyAdvances.filter(function(a){return !a.acknowledged_at||!a.cash_box_id||!a.journal_entry_id;}).length;
+            var mismatch=Math.abs(Number(c.paid_amount||0)-acknowledged)>0.005;
+            return {
+                lines:lines.sort(byDate),advances:custodyAdvances,returns:custodyReturns,settlement:settlement,
+                acknowledged:acknowledged,approved:approved,pending:pending,committed:committed,
+                returned:returned,reserved:reserved,available:rawAvailable,
+                approvedRows:approvedRows.sort(byDate),pendingRows:pendingRows.sort(byDate),
+                rejectedRows:lines.filter(function(e){return e.status==='Rejected';}).sort(byDate),
+                qmpInvoices:qmpInvoices,unacknowledged:unacknowledged,mismatch:mismatch,
+                pendingCount:pendingRows.length,openQmpCount:qmpInvoices.length
+            };
+        };
+        var personalCustodies=custodies.filter(function(c){return c.employee_id===currentEmployeeId;});
+        var staffCustodies=finance?custodies.filter(function(c){return c.employee_id!==currentEmployeeId;}):[];
+        var activePersonal=personalCustodies.filter(isOpen).sort(function(a,b){return String(b.issued_date||'').localeCompare(String(a.issued_date||''));});
+        var closedPersonal=personalCustodies.filter(function(c){return !isOpen(c);}).sort(function(a,b){return String(b.issued_date||'').localeCompare(String(a.issued_date||''));});
+        var activeStaff=staffCustodies.filter(isOpen).sort(function(a,b){return String(b.issued_date||'').localeCompare(String(a.issued_date||''));});
+        var closedStaff=staffCustodies.filter(function(c){return !isOpen(c);}).sort(function(a,b){return String(b.issued_date||'').localeCompare(String(a.issued_date||''));});
+
+        var currencyGroups={};
+        activePersonal.forEach(function(c){
+            var m=getMetrics(c),currency=String(c.currency||self.currency||'EGP').toUpperCase();
+            if(!currencyGroups[currency])currencyGroups[currency]={currency:currency,count:0,received:0,approved:0,pending:0,reserved:0,returned:0,available:0};
+            var g=currencyGroups[currency];
+            g.count++;g.received+=m.acknowledged;g.approved+=m.approved;g.pending+=m.pending;
+            g.reserved+=m.reserved;g.returned+=m.returned;g.available+=m.available;
         });
+        var currencies=Object.keys(currencyGroups).sort();
+        var html='<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="text-xl font-black text-slate-900">عهدتي النقدية</h2><p class="text-xs text-slate-500 mt-1">متابعة واضحة للنقد المستلم والمصروفات المعتمدة والمبالغ المحجوزة والمتبقي الفعلي</p></div>'+
+            (finance?'<button type="button" onclick="App.issueCustody()" class="px-4 py-3 rounded-xl bg-purple-700 text-white font-black text-sm"><i class="fa-solid fa-hand-holding-dollar ml-2"></i>تسليم عهدة جديدة</button>':'')+'</div>';
+
+        html+='<section class="buyer-custody-overview"><div class="flex flex-wrap justify-between items-start gap-2"><div><h3>الرصيد المتبقي في عهدتي</h3><p class="buyer-custody-muted text-xs mt-1">المتاح الآن بعد خصم المصروفات المعتمدة وتحت المراجعة وحجوزات الفواتير والنقد المرتجع</p></div><span class="text-xs font-bold rounded-full px-3 py-1 bg-white/15">ملخص عهدك المفتوحة فقط</span></div>';
+        if(currencies.length){
+            html+='<div class="buyer-custody-currency-grid">'+currencies.map(function(currency){
+                var g=currencyGroups[currency],negative=g.available<-0.005;
+                return '<div class="buyer-custody-currency-card"><div class="flex flex-wrap items-center justify-between gap-2"><span class="buyer-custody-muted text-xs">الرصيد المتاح الآن · '+buyerEsc(currency)+'</span><span class="text-[10px] rounded-full px-2 py-1 bg-white/15">'+g.count+' عهد مفتوحة</span></div>'+
+                    '<div class="buyer-custody-available mt-2">'+buyerMoney(g.available,currency)+'</div>'+
+                    (negative?'<p class="text-xs text-rose-100 font-bold mt-1">تنبيه: الالتزامات والحجوزات تتجاوز النقد المستلم.</p>':'<p class="buyer-custody-muted text-[11px] mt-1">هذا هو المتبقي غير المحجوز والمتاح حاليًا.</p>')+
+                    '<div class="buyer-custody-metrics">'+
+                    '<div class="buyer-custody-metric"><small>المستلم نقدًا</small><b>'+buyerMoney(g.received,currency)+'</b></div>'+
+                    '<div class="buyer-custody-metric"><small>مصروفات معتمدة</small><b>'+buyerMoney(g.approved,currency)+'</b></div>'+
+                    '<div class="buyer-custody-metric"><small>قيد المراجعة</small><b>'+buyerMoney(g.pending,currency)+'</b></div>'+
+                    '<div class="buyer-custody-metric"><small>حجوزات فواتير السوق</small><b>'+buyerMoney(g.reserved,currency)+'</b></div>'+
+                    '<div class="buyer-custody-metric"><small>نقد مرتجع للخزينة</small><b>'+buyerMoney(g.returned,currency)+'</b></div>'+
+                    '<div class="buyer-custody-metric"><small>مصروفات معتمدة + معلقة</small><b>'+buyerMoney(g.approved+g.pending,currency)+'</b></div></div></div>';
+            }).join('')+'</div>';
+        }else{
+            html+='<div class="mt-5 rounded-2xl bg-white/10 border border-white/15 p-5"><b class="block text-lg">لا توجد عهدة مفتوحة باسمك حاليًا</b><p class="buyer-custody-muted text-xs mt-2">ستظهر هنا فور تسجيل عهدة لك وتأكيد استلام النقد فعليًا.</p></div>';
+        }
+        html+='<p class="buyer-custody-muted text-[11px] mt-4">المعادلة: النقد المستلم فعليًا − المصروفات المعتمدة − المصروفات قيد المراجعة − حجوزات فواتير السوق − النقد المرتجع. لا نجمع عملات مختلفة في رقم واحد.</p></section>';
+
+        function renderExpenseRow(e,c){
+            var custodyPayment=payments.find(function(p){return p.expense_id===e.id;});
+            var isOperational=e.expense_type==='OPERATIONAL';
+            var categoryLabels={TRANSPORTATION:'انتقالات ومواصلات',FUEL:'وقود',TOLLS_PARKING:'رسوم طرق ومواقف',OTHER:'مصروف تشغيلي آخر'};
+            var statusTone=e.status==='Approved'?'text-emerald-700 bg-emerald-50':e.status==='Submitted'?'text-amber-800 bg-amber-50':e.status==='Rejected'?'text-rose-700 bg-rose-50':'text-slate-700 bg-slate-100';
+            var title=isOperational?(categoryLabels[e.expense_category]||'مصروف تشغيلي')+' — '+(e.description||''):e.description||'فاتورة شراء';
+            var detail=(isOperational?'مصروف تشغيلي':'فاتورة مورد')+' · '+(e.supplier_name||'')+
+                (e.invoice_number?' · فاتورة '+e.invoice_number:'')+
+                (e.expense_reference?' · مرجع '+e.expense_reference:'')+
+                ' · '+buyerDate(e.expense_date);
+            var actions='<button type="button" onclick="App.viewCustodyDocument(\''+buyerEsc(e.document_path)+'\')" class="text-xs text-blue-700 underline">عرض المستند</button>';
+            if(e.receipt_document_path)actions+='<button type="button" onclick="App.viewCustodyDocument(\''+buyerEsc(e.receipt_document_path)+'\')" class="text-xs text-blue-700 underline">إذن استلام المخزن</button>';
+            if(custodyPayment)actions+='<span class="text-xs text-emerald-700 font-bold">سداد المورد '+buyerEsc(custodyPayment.payment_code)+'</span>';
+            if(e.status==='Approved')actions+='<span class="text-xs text-emerald-700 font-bold">تم الاعتماد والترحيل</span>';
+            if(e.expense_account_id)actions+='<span class="text-xs text-slate-500">حساب مرتبط</span>';
+            if(finance&&e.employee_id!==currentEmployeeId&&e.status==='Submitted'){
+                if(isOperational){
+                    actions+='<button type="button" onclick="App.reviewOtherCustodyExpense(\''+e.id+'\',\'Approved\')" class="text-xs text-emerald-700 font-bold">اعتماد المصروف</button>';
+                    actions+='<button type="button" onclick="App.reviewOtherCustodyExpense(\''+e.id+'\',\'Rejected\')" class="text-xs text-rose-700 font-bold">رفض</button>';
+                }else{
+                    actions+='<button type="button" onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Approved\')" class="text-xs text-emerald-700 font-bold">اعتماد الفاتورة</button>';
+                    actions+='<button type="button" onclick="App.reviewCustodyExpense(\''+e.id+'\',\'Rejected\')" class="text-xs text-rose-700 font-bold">رفض</button>';
+                }
+            }
+            return '<div class="buyer-custody-expense"><div class="flex flex-wrap justify-between items-start gap-2"><div class="min-w-0"><b class="text-sm text-slate-800">'+buyerEsc(title)+'</b><p class="text-[11px] text-slate-500 mt-1">'+buyerEsc(detail)+'</p></div><div class="text-left"><b class="text-sm">'+buyerMoney(e.amount,e.currency||c.currency)+'</b><span class="block text-[10px] mt-1 rounded-full px-2 py-1 '+statusTone+'">'+buyerStatus(e.status)+'</span></div></div><div class="flex flex-wrap gap-3 items-center mt-3">'+actions+'</div>'+
+                (e.review_note?'<p class="text-xs text-slate-500 bg-slate-50 rounded-lg p-2 mt-2">'+buyerEsc(e.review_note)+'</p>':'')+'</div>';
+        }
+        function renderExpenseGroup(title,rows,c,open){
+            var total=moneySum(rows);
+            var body=rows.length?rows.map(function(e){return renderExpenseRow(e,c);}).join(''):'<p class="text-xs text-slate-400 text-center py-4">لا توجد بنود في هذه الحالة.</p>';
+            return '<details class="buyer-custody-details" '+(open?'open':'')+'><summary><span>'+title+'</span><span>'+rows.length+' · '+buyerMoney(total,c.currency)+'</span></summary><div class="buyer-custody-details-body">'+body+'</div></details>';
+        }
+        function renderCustodyCard(c,isStaff){
+            var m=getMetrics(c),currency=c.currency||self.currency||'EGP';
+            var negative=m.available<-0.005;
+            var unacknowledgedRows=m.advances.filter(function(a){return !a.acknowledged_at||!a.cash_box_id||!a.journal_entry_id;});
+            var canSettle=finance&&c.employee_id!==currentEmployeeId&&isOpen(c)&&
+                m.pendingCount===0&&m.unacknowledged===0&&m.openQmpCount===0&&!m.mismatch&&m.approved<=m.acknowledged+0.005;
+            var canSubmit=c.employee_id===currentEmployeeId&&isOpen(c)&&m.acknowledged>0.005&&!negative;
+            var html='<article class="buyer-custody-record"><div class="buyer-custody-record-head"><div><b class="text-sm text-purple-800">'+buyerEsc(c.custody_code)+'</b><p class="text-xs text-slate-500 mt-1">'+buyerEsc(c.employee_name||'عهدتي')+' · '+buyerDate(c.issued_date)+(c.purpose?' · '+buyerEsc(c.purpose):'')+'</p></div><div class="flex flex-wrap items-center gap-2"><span class="text-xs rounded-full px-3 py-1 bg-slate-100 font-bold">'+buyerStatus(c.status)+'</span><span class="text-xs rounded-full px-3 py-1 bg-purple-50 text-purple-700 font-bold">'+buyerEsc(currency)+'</span></div></div>';
+            html+='<div class="buyer-custody-record-hero '+(negative?'is-negative':'')+'"><div><small class="block text-xs text-slate-500 font-bold">'+(negative?'عجز نقدي يحتاج مراجعة':'الرصيد المتبقي المتاح في هذه العهدة')+'</small><strong class="mt-1">'+buyerMoney(Math.abs(m.available),currency)+(negative?' عجز':'')+'</strong><p class="text-[11px] text-slate-500 mt-1">'+(negative?'راجع المصروفات والحجوزات؛ لم نخفِ التجاوز داخل الصفر.':'الرصيد بعد جميع المصروفات والحجوزات وردود النقد المثبتة.')+'</p></div><div class="text-left"><small class="block text-xs text-slate-500">قيمة العهدة المسجلة</small><b class="text-base">'+buyerMoney(c.issued_amount,currency)+'</b></div></div>';
+            html+='<div class="buyer-custody-record-stats">'+
+                '<div class="buyer-custody-record-stat"><small>النقد المستلم فعليًا</small><b>'+buyerMoney(m.acknowledged,currency)+'</b></div>'+
+                '<div class="buyer-custody-record-stat"><small>مصروفات معتمدة</small><b class="text-emerald-700">'+buyerMoney(m.approved,currency)+'</b></div>'+
+                '<div class="buyer-custody-record-stat"><small>مصروفات قيد المراجعة</small><b class="text-amber-700">'+buyerMoney(m.pending,currency)+'</b></div>'+
+                '<div class="buyer-custody-record-stat"><small>حجوزات فواتير السوق</small><b>'+buyerMoney(m.reserved,currency)+'</b></div>'+
+                '<div class="buyer-custody-record-stat"><small>النقد المرتجع للخزينة</small><b>'+buyerMoney(m.returned,currency)+'</b></div>'+
+                '<div class="buyer-custody-record-stat"><small>دفعات عهدة غير مؤكدة</small><b>'+(m.unacknowledged?'<span class="text-amber-700">'+m.unacknowledged+' دفعة</span>':'لا يوجد')+'</b></div></div>';
+
+            if(m.mismatch)html+='<p class="text-xs text-rose-700 bg-rose-50 rounded-xl p-3 mt-3">توقف التسوية: إجمالي إقرارات الاستلام لا يطابق حقل الدفعات المسجل في العهدة. يلزم فحص مالي قبل الرد أو الإغلاق.</p>';
+            if(m.qmpInvoices.length){
+                html+='<details class="buyer-custody-details"><summary><span>فواتير السوق السريع المحجوزة</span><span>'+m.qmpInvoices.length+' فاتورة · '+buyerMoney(m.reserved,currency)+'</span></summary><div class="buyer-custody-details-body space-y-2">'+m.qmpInvoices.map(function(x){
+                    return '<div class="flex flex-wrap justify-between items-center gap-2 border-b last:border-0 pb-2 text-xs"><span><b>'+buyerEsc(x.invoice.invoice_code)+'</b> · '+buyerEsc(x.supplier.name||'مورد')+' · '+buyerStatus(x.invoice.status)+' · '+buyerDate(x.invoice.invoice_date||x.invoice.created_at)+'</span><b>'+buyerMoney(x.remaining,x.invoice.currency)+'</b><button type="button" onclick="App.openInvoice(\''+buyerEsc(x.invoice.id)+'\')" class="text-blue-700 underline font-bold">تفاصيل الفاتورة</button></div>';
+                }).join('')+'</div></details>';
+            }
+            if(m.advances.length){
+                html+='<details class="buyer-custody-details"><summary><span>تسليمات العهدة والزيادات</span><span>'+m.advances.length+' حركة · '+buyerMoney(m.acknowledged,currency)+' مستلم</span></summary><div class="buyer-custody-details-body space-y-2">'+m.advances.map(function(a){
+                    var confirmed=!!a.acknowledged_at&&!!a.cash_box_id&&!!a.journal_entry_id;
+                    return '<div class="flex flex-wrap justify-between gap-2 py-2 border-b last:border-0 text-xs"><span>'+buyerDate(a.advance_date)+' · '+(a.advance_type==='Initial'?'العهدة الأصلية':'زيادة عهدة')+' · '+buyerEsc(a.reference||'—')+'</span><b>'+buyerMoney(a.amount,a.currency||currency)+'</b><span class="'+(confirmed?'text-emerald-700':'text-amber-700')+'">'+(confirmed?'استلام مثبت':'بانتظار تأكيد الموظف')+'</span>'+(a.employee_id===currentEmployeeId&&!confirmed&&a.advance_type==='Additional'?'<button type="button" onclick="App.acknowledgeCustodyAdvance(\''+a.id+'\')" class="text-blue-700 font-bold">تأكيد الاستلام</button>':'')+'</div>';
+                }).join('')+'</div></details>';
+            }
+            if(m.returns.length){
+                html+='<details class="buyer-custody-details"><summary><span>سندات رد النقد للخزينة</span><span>'+m.returns.length+' سند · '+buyerMoney(m.returned,currency)+'</span></summary><div class="buyer-custody-details-body space-y-2">'+m.returns.slice().sort(function(a,b){return String(b.return_date||'').localeCompare(String(a.return_date||''));}).map(function(r){
+                    return '<div class="flex flex-wrap justify-between gap-2 py-2 border-b last:border-0 text-xs"><span>'+buyerDate(r.return_date)+' · '+buyerEsc(r.reference||'رد نقدية')+'</span><b>'+buyerMoney(r.amount,currency)+'</b><span class="text-emerald-700">سند قبض مثبت</span></div>';
+                }).join('')+'</div></details>';
+            }
+            html+='<div class="buyer-custody-section-title"><b class="text-sm">سجل المصروفات والمستندات</b><span class="text-[11px] text-slate-500">'+m.lines.length+' مستند</span></div>';
+            html+=renderExpenseGroup('مصروفات معتمدة محاسبيًا',m.approvedRows,c,true);
+            html+=renderExpenseGroup('مستندات قيد مراجعة المالية',m.pendingRows,c,false);
+            html+=renderExpenseGroup('مستندات مرفوضة',m.rejectedRows,c,false);
+
+            html+='<div class="buyer-custody-actions">';
+            if(c.employee_id===currentEmployeeId&&c.status==='Issued'&&!c.acknowledged_at){
+                html+='<button type="button" onclick="App.acknowledgeCustody(\''+c.id+'\')" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold">تأكيد استلام العهدة</button>';
+            }
+            if(canSubmit){
+                html+='<button type="button" onclick="App.submitCustodyExpense(\''+c.id+'\')" class="px-3 py-2 rounded-xl bg-purple-700 text-white text-xs font-bold">تقديم فاتورة شراء</button>';
+                html+='<button type="button" onclick="App.submitOtherCustodyExpense(\''+c.id+'\')" class="px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold">تسجيل مصروف تشغيلي</button>';
+            }else if(c.employee_id===currentEmployeeId&&isOpen(c)&&m.acknowledged<=0.005){
+                html+='<p class="w-full text-xs text-amber-700">سجّل تأكيد استلام النقد أولًا قبل تقديم أي مصروف.</p>';
+            }else if(c.employee_id===currentEmployeeId&&isOpen(c)&&negative){
+                html+='<p class="w-full text-xs text-rose-700">لا يمكن تقديم مصروفات إضافية قبل معالجة التجاوز في الرصيد.</p>';
+            }
+            if(finance&&isStaff&&isOpen(c)){
+                html+='<button type="button" onclick="App.addCustodyAdvance(\''+c.id+'\')" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold">زيادة عهدة / تسليم نقدية</button>';
+            }
+            if(canSettle){
+                html+='<button type="button" onclick="App.settleCustody(\''+c.id+'\')" class="px-3 py-2 rounded-xl bg-emerald-700 text-white text-xs font-bold">رد نقدية / تسوية جزئية</button>';
+            }else if(finance&&isStaff&&isOpen(c)){
+                var reasons=(m.pendingCount?'توجد مصروفات قيد المراجعة. ':'')+
+                    (m.unacknowledged?'توجد زيادة لم يؤكد الموظف استلامها. ':'')+
+                    (m.openQmpCount?'توجد فواتير سوق سريع ما زالت محجوزة. ':'')+
+                    (m.mismatch?'يوجد اختلاف في سجل الدفعات. ':'')+
+                    (m.approved>m.acknowledged+0.005?'المصروفات المعتمدة تتجاوز النقد المستلم.':'');
+                if(reasons)html+='<p class="w-full text-xs text-amber-700">'+buyerEsc('لا يمكن إقفال العهدة الآن: '+reasons)+'</p>';
+            }
+            html+='</div>';
+
+            if(m.settlement){
+                html+='<div class="mt-3 p-3 rounded-xl bg-emerald-50 text-emerald-800 text-xs">تمت التسوية · المصروفات المعتمدة: '+buyerMoney(m.settlement.approved_expense_total,currency)+' · النقد المرتجع: '+buyerMoney(m.settlement.cash_returned,currency)+' · المتبقي للشركة: '+buyerMoney(m.settlement.balance_due_company,currency)+
+                    (Number(m.settlement.amount_due_employee||0)>0.005?'<p class="mt-2 text-rose-700 font-bold">يوجد مبلغ مستحق للموظف '+buyerMoney(m.settlement.amount_due_employee,currency)+' دون سند صرف مثبت.</p>':'')+'</div>';
+            }
+            html+='</article>';
+            return html;
+        }
+
+        if(activePersonal.length){
+            html+='<div class="buyer-custody-section-title"><div><b class="text-base text-slate-900">عهدك الحالية</b><p class="text-xs text-slate-500 mt-1">كل عهدة برصيدها المستقل وعملتها؛ لا تختلط المصروفات أو الحجوزات بين العهد.</p></div><span class="text-xs rounded-full bg-purple-50 text-purple-700 px-3 py-2 font-bold">'+activePersonal.length+' عهد مفتوحة</span></div>';
+            activePersonal.forEach(function(c){html+=renderCustodyCard(c,false);});
+        }else{
+            html+='<div class="buyer-custody-empty"><i class="fa-solid fa-wallet text-3xl text-slate-300"></i><b class="block mt-3 text-slate-700">لا توجد عهدة مفتوحة باسمك</b><p class="text-xs mt-1">ستظهر هنا العهد المسجلة لك بعد تأكيد استلام النقد فعليًا.</p></div>';
+        }
+        if(closedPersonal.length){
+            html+='<details class="buyer-custody-details"><summary><span>سجل عهدك المغلقة والسابقة</span><span>'+closedPersonal.length+' عهد</span></summary><div class="buyer-custody-details-body">'+closedPersonal.map(function(c){return renderCustodyCard(c,false);}).join('')+'</div></details>';
+        }
+        if(finance){
+            html+='<details class="buyer-custody-staff"><summary><div class="flex flex-wrap items-center justify-between gap-2"><span>متابعة عهد الموظفين</span><span class="text-xs rounded-full bg-white px-3 py-1">'+staffCustodies.length+' عهد · '+activeStaff.length+' مفتوحة</span></div><small class="block text-xs font-normal text-slate-500 mt-1">هذا القسم منفصل عن رصيدك الشخصي ويعرض عملات وعهد كل موظف بصورة مستقلة.</small></summary><div class="p-3">';
+            if(activeStaff.length){
+                html+='<div class="text-xs font-bold text-slate-500 mb-2">العهد المفتوحة</div>';
+                activeStaff.forEach(function(c){html+=renderCustodyCard(c,true);});
+            }else html+='<p class="text-xs text-slate-500 py-3">لا توجد عهد مفتوحة لموظفين آخرين.</p>';
+            if(closedStaff.length){
+                html+='<details class="buyer-custody-details"><summary><span>العهد المغلقة للموظفين</span><span>'+closedStaff.length+' عهد</span></summary><div class="buyer-custody-details-body">'+closedStaff.map(function(c){return renderCustodyCard(c,true);}).join('')+'</div></details>';
+            }
+            html+='</div></details>';
+        }
         RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
     },
     custodyCashTreasuries:function(rows,branchId) {
