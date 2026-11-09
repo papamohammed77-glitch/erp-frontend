@@ -147,6 +147,12 @@ assert.equal(happy.invalidated, 1);
 assert.equal(happy.opened, 1);
 assert.match(happy.modalHtml, /متاح/);
 
+// Full return is allowed when it equals the entire net custody of the line.
+const full = await scenario({qty:5});
+assert.equal(full.registerCalls.length, 1);
+assert.equal(full.registerCalls[0].items[0].qty, 5);
+assert.equal(full.invalidated, 1);
+
 // Over-return must be rejected before the atomic operation is called.
 const over = await scenario({qty:6});
 assert.equal(over.registerCalls.length, 0);
@@ -190,12 +196,21 @@ assert.match(edge, /event\.operation_id === operationId && event\.evidence_path 
 assert.match(sql, /BEGIN;[\s\S]*COMMIT;/);
 assert.match(sql, /CREATE OR REPLACE FUNCTION public\.buyer_goods_custody_register_quick_market_supplier_return_atomic/);
 assert.match(sql, /'BUYER_TO_SUPPLIER_ACCEPTED',-v_qty,'PurchaseInvoice'/);
-assert.match(sql, /'pending_handover',v_pending/);
+assert.match(sql, /invoice_custody_base AS \(/);
+assert.match(sql, /'handed_over_qty',d\.qty/);
+assert.match(sql, /'current_custody_qty'/);
+assert.match(sql, /'supplier_returned_qty'/);
+assert.match(sql, /invoice_receipt_projection AS \(/);
+assert.match(sql, /root_source_document_type='PurchaseInvoice'/);
+assert.match(sql, /root_source_document_type='StockVoucher'/);
+assert.doesNotMatch(sql, /'pending_handover'/);
 assert.match(sql, /COALESCE\(parent\.event_type,e\.event_type\) IN \('SUPPLIER_TO_BUYER_QUICK_MARKET','BUYER_TO_WAREHOUSE_ACCEPTED','BUYER_TO_SUPPLIER_ACCEPTED'\)/);
+assert.match(sql, /GREATEST\(COALESCE\(d\.qty,0\)-COALESCE\(h\.handed_over_qty,0\),0\)/);
+assert.match(sql, /GREATEST\(COALESCE\(d\.received_qty,0\),CASE WHEN COALESCE\(pi\.is_received,false\) THEN d\.qty ELSE 0 END\)/);
 assert.match(sql, /REVOKE ALL ON FUNCTION public\.buyer_goods_custody_register_quick_market_supplier_return_atomic/);
 assert.doesNotMatch(sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.buyer_goods_custody_register_quick_market_supplier_return_atomic"), sql.indexOf("DROP POLICY IF EXISTS buyer_goods_docs_insert_owner")), /INSERT INTO public\.(stock|purchase_payments|journal_entries|treasury)/i);
 
 console.log("BUYER_QUICK_MARKET_SUPPLIER_RETURN_CONTRACT_TESTS=PASS");
 console.log("buyerInlineScripts=" + inlineScripts.length);
-console.log("businessScenarios=8");
+console.log("businessScenarios=9");
 console.log("sqlValidation=STATIC_ONLY");
