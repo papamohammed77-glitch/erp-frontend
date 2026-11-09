@@ -80,7 +80,7 @@ function RW_PurchSupervisorStatus(s) {
 var RW_PurchSupervisorDocs = {
     requests: {
         title:'طلبات الشراء', table:'purchase_requests', code:'request_code', date:'request_date', status:'status',
-        select:'id,company_id,request_code,title,request_date,required_by,requested_by,status,notes,created_by,created_at,updated_at',
+        select:'id,company_id,request_code,title,request_date,required_by,requested_by,status,notes,created_at,updated_at',
         search:['request_code','title','requested_by','status','notes'],
         columns:[['request_code','رقم الطلب'],['title','عنوان الطلب'],['request_date','التاريخ','date'],['required_by','مطلوب في','date'],['requested_by','مقدم الطلب'],['status','الحالة','status']],
         summary:[['request_code','رقم الطلب'],['title','العنوان'],['request_date','تاريخ الطلب','date'],['required_by','تاريخ الاحتياج','date'],['requested_by','مقدم الطلب'],['approved_by','المعتمد'],['approved_at','تاريخ الاعتماد','dateTime'],['status','الحالة','status'],['notes','ملاحظات']]
@@ -135,7 +135,7 @@ function RW_PurchSupervisorValue(v, type, record, supplierMap) {
     }
     if (type === 'status') return RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(v));
     if (type === 'supplier') return RW_PurchSupervisorEsc(supplierMap && supplierMap[v] ? supplierMap[v] : 'مورد غير متاح ضمن صلاحية الحساب');
-    if (type === 'money') return RW_PurchSupervisorNum(v) + ' ' + RW_PurchSupervisorEsc(record && record.currency || 'عملة المستند');
+    if (type === 'money') return RW_PurchSupervisorNum(v) + ' ' + RW_PurchSupervisorEsc(record && record.currency || 'العملة غير مثبتة بالسجل');
     if (type === 'number') return RW_PurchSupervisorNum(v);
     if (type === 'bool') return v === true ? 'نعم' : 'لا';
     if (type === 'reference') return 'مرتبط بمستند';
@@ -343,7 +343,7 @@ var App = {
         if (!record) { RW_UI.showError('المستند غير موجود في القائمة الحالية'); return; }
         RW_UI.showLoader('جاري تحميل تفاصيل المستند...');
         try {
-            if (!this.supplierMap && cfg.columns.some(function(c){ return c[2] === 'supplier'; })) await this.readSuppliers();
+            if (!this.supplierMap && (cfg.columns.some(function(c){ return c[2] === 'supplier'; }) || tabKey === 'rfq')) await this.readSuppliers();
             var summary = cfg.summary.map(function(field){
                 var key = field[0], value = RW_PurchSupervisorValue(record[key], field[2], record, self.supplierMap);
                 return '<div class="rounded-xl bg-slate-50 p-3 min-w-0"><div class="text-[11px] text-slate-500 mb-1">' + RW_PurchSupervisorEsc(field[1]) + '</div><div class="font-bold text-slate-800 break-words">' + value + '</div></div>';
@@ -354,7 +354,7 @@ var App = {
                 quotations:{table:'purchase_quotation_details',fk:'quotation_id',cols:'item_code,item_name,unit,qty,unit_price,discount_percent,discount_amount,tax_rate,tax_amount,line_total,notes',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty','الكمية','number'],['unit_price','سعر الوحدة','number'],['discount_percent','نسبة الخصم','number'],['discount_amount','قيمة الخصم','number'],['tax_amount','الضريبة','number'],['line_total','الإجمالي','number'],['notes','ملاحظات']]},
                 invoices:{table:'purchase_invoice_details',fk:'invoice_id',cols:'item_code,item_name,unit,qty,received_qty,unit_price,discount_percent,discount_amount,tax_rate,tax_amount,line_total,notes',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty','الكمية بالفاتورة','number'],['received_qty','الكمية المستلمة','number'],['unit_price','سعر الوحدة','number'],['discount_amount','الخصم','number'],['tax_amount','الضريبة','number'],['line_total','الإجمالي','number'],['notes','ملاحظات']]},
                 returns:{table:'purchase_return_details',fk:'return_id',cols:'item_code,item_name,unit,qty,unit_price,line_total,reason',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty','الكمية','number'],['unit_price','سعر الوحدة','number'],['line_total','الإجمالي','number'],['reason','السبب']]},
-                payments:{table:'purchase_payment_allocations',fk:'payment_id',cols:'invoice_id,allocated_amount,created_at',sort:'created_at',labels:[['invoice_id','فاتورة مرتبطة'],['allocated_amount','المبلغ المخصص','number'],['created_at','تاريخ التخصيص','dateTime']]}
+                payments:{table:'purchase_payment_allocations',fk:'payment_id',cols:'invoice_id,allocated_amount',sort:'created_at',labels:[['invoice_id','فاتورة مرتبطة'],['allocated_amount','المبلغ المخصص','number'],['created_at','تاريخ التخصيص','dateTime']]}
             };
             var detailHtml = '';
             if (detailCfg[tabKey]) {
