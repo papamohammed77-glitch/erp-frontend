@@ -40,11 +40,19 @@
         <span class="font-black text-sm">مشرف المشتريات</span>
         <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
     </header>
-    <div class="flex gap-1 p-2 bg-white border-b overflow-x-auto flex-shrink-0">
-        <button onclick="App.switchTab('dashboard')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm bg-fuchsia-600 text-white" id="tab-dashboard">📊 KPI</button>
-        <button onclick="App.switchTab('orders')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-orders">📋 الأوامر</button>
-        <button onclick="App.switchTab('suppliers')" class="whitespace-nowrap px-4 py-2 rounded-xl font-bold text-sm text-gray-500" id="tab-suppliers">🏭 الموردين</button>
-    </div>
+    <nav id="purchaseSupervisorTabs" aria-label="تبويبات دورة المشتريات" class="flex gap-1.5 p-2 bg-white border-b overflow-x-auto flex-shrink-0">
+        <button type="button" onclick="App.switchTab('dashboard')" id="tab-dashboard" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm bg-fuchsia-700 text-white shadow-sm">📊 لوحة المشتريات</button>
+        <button type="button" onclick="App.switchTab('requests')" id="tab-requests" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">📝 طلبات الشراء</button>
+        <button type="button" onclick="App.switchTab('rfq')" id="tab-rfq" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">📨 طلبات عروض الأسعار</button>
+        <button type="button" onclick="App.switchTab('quotations')" id="tab-quotations" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">💬 عروض الموردين</button>
+        <button type="button" onclick="App.switchTab('orders')" id="tab-orders" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">📋 أوامر الشراء</button>
+        <button type="button" onclick="App.switchTab('invoices')" id="tab-invoices" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">🧾 فواتير الشراء</button>
+        <button type="button" onclick="App.switchTab('returns')" id="tab-returns" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">↩️ المرتجعات</button>
+        <button type="button" onclick="App.switchTab('payments')" id="tab-payments" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">💳 دفعات الموردين</button>
+        <button type="button" onclick="App.switchTab('reports')" id="tab-reports" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">📈 التقارير</button>
+        <button type="button" onclick="App.switchTab('settings')" id="tab-settings" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">⚙️ الإعدادات</button>
+        <button type="button" onclick="App.switchTab('suppliers')" id="tab-suppliers" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">🏭 الموردون</button>
+    </nav>
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
 </div>
 
@@ -68,9 +76,82 @@ function RW_PurchSupervisorStatus(s) {
     return labels[s] || s || '—';
 }
 
+
+var RW_PurchSupervisorDocs = {
+    requests: {
+        title:'طلبات الشراء', table:'purchase_requests', code:'request_code', date:'request_date', status:'status',
+        select:'id,company_id,request_code,title,request_date,required_by,requested_by,status,notes,created_by,created_at,updated_at',
+        search:['request_code','title','requested_by','status','notes'],
+        columns:[['request_code','رقم الطلب'],['title','عنوان الطلب'],['request_date','التاريخ','date'],['required_by','مطلوب في','date'],['requested_by','مقدم الطلب'],['status','الحالة','status']],
+        summary:[['request_code','رقم الطلب'],['title','العنوان'],['request_date','تاريخ الطلب','date'],['required_by','تاريخ الاحتياج','date'],['requested_by','مقدم الطلب'],['approved_by','المعتمد'],['approved_at','تاريخ الاعتماد','dateTime'],['status','الحالة','status'],['notes','ملاحظات']]
+    },
+    rfq: {
+        title:'طلبات عروض الأسعار', table:'purchase_rfqs', code:'rfq_code', date:'rfq_date', status:'status',
+        select:'id,company_id,rfq_code,request_id,rfq_date,due_date,status,notes,created_by,created_at,updated_at',
+        search:['rfq_code','status','created_by','notes'],
+        columns:[['rfq_code','رقم الطلب'],['rfq_date','التاريخ','date'],['due_date','آخر موعد','date'],['created_by','مسجل الطلب'],['status','الحالة','status']],
+        summary:[['rfq_code','رقم الطلب'],['rfq_date','التاريخ','date'],['due_date','آخر موعد للرد','date'],['created_by','مسجل الطلب'],['status','الحالة','status'],['notes','ملاحظات']]
+    },
+    quotations: {
+        title:'عروض الموردين', table:'purchase_quotations', code:'quotation_code', date:'quotation_date', status:'status',
+        select:'id,company_id,quotation_code,supplier_id,rfq_id,quotation_date,valid_until,currency,status,subtotal,discount_amount,tax_amount,total_amount,notes,terms,created_by,accepted_by,accepted_at,created_at,updated_at',
+        search:['quotation_code','status','created_by','notes','terms'],
+        columns:[['quotation_code','رقم العرض'],['supplier_id','المورد','supplier'],['quotation_date','التاريخ','date'],['valid_until','صالح حتى','date'],['status','الحالة','status'],['total_amount','الإجمالي','money']],
+        summary:[['quotation_code','رقم العرض'],['supplier_id','المورد','supplier'],['quotation_date','تاريخ العرض','date'],['valid_until','صالح حتى','date'],['currency','العملة'],['status','الحالة','status'],['subtotal','قبل الخصم والضريبة','money'],['discount_amount','الخصم','money'],['tax_amount','الضريبة','money'],['total_amount','الإجمالي','money'],['created_by','مسجل العرض'],['accepted_by','المعتمد'],['accepted_at','تاريخ الاعتماد','dateTime'],['terms','الشروط'],['notes','ملاحظات']]
+    },
+    invoices: {
+        title:'فواتير الشراء', table:'purchase_invoices', code:'invoice_code', date:'invoice_date', status:'status',
+        select:'id,company_id,invoice_code,supplier_invoice_no,supplier_id,purchase_order_id,quotation_id,branch_id,invoice_date,due_date,currency,status,is_received,received_date,subtotal,discount_amount,tax_amount,total_amount,paid_amount,notes,created_by,posted_by,posted_at,purchase_source,settlement_source,purchaser_user_id,receipt_status,settlement_status,created_at,updated_at',
+        search:['invoice_code','supplier_invoice_no','status','created_by','purchase_source','settlement_status','receipt_status','notes'],
+        columns:[['invoice_code','رقم الفاتورة'],['supplier_invoice_no','رقم فاتورة المورد'],['supplier_id','المورد','supplier'],['invoice_date','التاريخ','date'],['purchase_source','مصدر الشراء'],['status','حالة الفاتورة','status'],['receipt_status','حالة الاستلام'],['settlement_status','حالة التسوية'],['total_amount','الإجمالي','money'],['paid_amount','المدفوع','money'],['created_by','مسجل الفاتورة']],
+        summary:[['invoice_code','رقم الفاتورة'],['supplier_invoice_no','رقم فاتورة المورد'],['supplier_id','المورد','supplier'],['invoice_date','التاريخ','date'],['due_date','تاريخ الاستحقاق','date'],['currency','العملة'],['purchase_source','مصدر الشراء'],['status','حالة الفاتورة','status'],['receipt_status','حالة الاستلام'],['settlement_status','حالة التسوية'],['is_received','مؤشر الاستلام','bool'],['received_date','تاريخ الاستلام','date'],['subtotal','قبل الخصم والضريبة','money'],['discount_amount','الخصم','money'],['tax_amount','الضريبة','money'],['total_amount','الإجمالي','money'],['paid_amount','المدفوع المسجل','money'],['created_by','مسجل الفاتورة'],['posted_by','مرحل الفاتورة'],['posted_at','تاريخ الترحيل','dateTime'],['purchase_order_id','مرتبط بأمر شراء','reference'],['quotation_id','مرتبط بعرض سعر','reference'],['notes','ملاحظات']]
+    },
+    returns: {
+        title:'مرتجعات المشتريات', table:'purchase_returns', code:'return_code', date:'return_date', status:'status',
+        select:'id,company_id,return_code,purchase_invoice_id,supplier_id,branch_id,return_date,status,total_amount,reason,notes,created_by,posted_by,posted_at,created_at,updated_at',
+        search:['return_code','status','reason','created_by','notes'],
+        columns:[['return_code','رقم المرتجع'],['supplier_id','المورد','supplier'],['return_date','التاريخ','date'],['status','الحالة','status'],['total_amount','القيمة','money'],['reason','السبب'],['created_by','مسجل المرتجع']],
+        summary:[['return_code','رقم المرتجع'],['supplier_id','المورد','supplier'],['purchase_invoice_id','فاتورة الشراء المرتبطة','reference'],['return_date','التاريخ','date'],['status','الحالة','status'],['total_amount','القيمة','money'],['reason','سبب الإرجاع'],['created_by','مسجل المرتجع'],['posted_by','مرحل المرتجع'],['posted_at','تاريخ الترحيل','dateTime'],['notes','ملاحظات']]
+    },
+    payments: {
+        title:'دفعات الموردين', table:'purchase_payments', code:'payment_code', date:'payment_date', status:'status',
+        select:'id,company_id,payment_code,supplier_id,treasury_id,payment_date,payment_method,amount,status,reference,notes,created_by,cash_box_id,created_at,updated_at',
+        search:['payment_code','status','payment_method','reference','created_by','notes'],
+        columns:[['payment_code','رقم الدفعة'],['supplier_id','المورد','supplier'],['payment_date','التاريخ','date'],['payment_method','طريقة الدفع'],['status','الحالة','status'],['amount','المبلغ (العملة غير مثبتة بالسجل)','number'],['reference','المرجع'],['created_by','مسجل الدفعة']],
+        summary:[['payment_code','رقم الدفعة'],['supplier_id','المورد','supplier'],['payment_date','التاريخ','date'],['payment_method','طريقة الدفع'],['status','الحالة','status'],['amount','المبلغ (لا توجد عملة في سجل الدفعة)','number'],['reference','المرجع'],['created_by','مسجل الدفعة'],['notes','ملاحظات']]
+    }
+};
+
+function RW_PurchSupervisorNum(v) {
+    var n = Number(v);
+    if (!isFinite(n)) return '—';
+    return n.toLocaleString('en-US', {maximumFractionDigits:2});
+}
+function RW_PurchSupervisorValue(v, type, record, supplierMap) {
+    if (v === null || v === undefined || v === '') return '—';
+    if (type === 'date' || type === 'dateTime') {
+        var d = new Date(v);
+        return isNaN(d.getTime()) ? RW_PurchSupervisorEsc(v) : d.toLocaleString('ar-EG', type === 'date' ? {year:'numeric',month:'2-digit',day:'2-digit'} : {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    }
+    if (type === 'status') return RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(v));
+    if (type === 'supplier') return RW_PurchSupervisorEsc(supplierMap && supplierMap[v] ? supplierMap[v] : 'مورد غير متاح ضمن صلاحية الحساب');
+    if (type === 'money') return RW_PurchSupervisorNum(v) + ' ' + RW_PurchSupervisorEsc(record && record.currency || 'عملة المستند');
+    if (type === 'number') return RW_PurchSupervisorNum(v);
+    if (type === 'bool') return v === true ? 'نعم' : 'لا';
+    if (type === 'reference') return 'مرتبط بمستند';
+    return RW_PurchSupervisorEsc(v);
+}
+function RW_PurchSupervisorLocalDate(d) {
+    d = d || new Date();
+    var local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0,10);
+}
+
 var App = {
     currentUser: null,
     currentOrders: [],
+    currentRows: {},
+    supplierMap: null,
     currentTab: 'dashboard',
     realtimeKey: null,
     togglePass: function(){var p=RW_UI.byId('loginPass'),i=RW_UI.byId('passIcon');if(p.type==='password'){p.type='text';i.className='fa-solid fa-eye-slash';}else{p.type='password';i.className='fa-solid fa-eye';}},
@@ -84,13 +165,13 @@ var App = {
         this.realtimeKey = RW_Realtime.start({
             appId: 'purchasing-supervisor',
             companyId: this.currentUser.company_id,
-            tables: ['purchase_orders'],
-            debounceMs: 500,
+            tables: ['purchase_requests','purchase_rfqs','purchase_quotations','purchase_orders','purchase_invoices','purchase_returns','purchase_payments','purchase_settings','suppliers'],
+            debounceMs: 700,
             reconcileMs: 60000,
-            onEvent: function(event){ if (event.table === 'purchase_orders') { if (self.currentTab === 'dashboard') self.renderDashboard();
-                else if (self.currentTab === 'orders') self.renderOrders(); } },
-            onReconcile: function(){ if (self.currentTab === 'dashboard') self.renderDashboard();
-                else if (self.currentTab === 'orders') self.renderOrders(); },
+            onEvent: function(event){
+                if (event && event.table) self.refreshCurrentTab();
+            },
+            onReconcile: function(){ self.refreshCurrentTab(); },
             onStatus: function(status){ console.log('[Purchasing Supervisor] Realtime:', status.status); }
         });
         if (!this.realtimeKey) console.error('[Purchasing Supervisor] Realtime rejected: verified company scope unavailable.');
@@ -99,24 +180,375 @@ var App = {
         if (this.realtimeKey && typeof RW_Realtime !== 'undefined') { RW_Realtime.stop(this.realtimeKey); this.realtimeKey = null; }
     },
     doLogout: function(){this.stopRealtime();var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden');});},
-    switchTab: function(t){this.currentTab=t;['dashboard','orders','suppliers'].forEach(function(x){var b=RW_UI.byId('tab-'+x);if(b){b.classList.remove('bg-fuchsia-600','text-white');b.classList.add('text-gray-500');}});var a=RW_UI.byId('tab-'+t);if(a){a.classList.add('bg-fuchsia-600','text-white');a.classList.remove('text-gray-500');}if(t==='dashboard')this.renderDashboard();else if(t==='orders')this.renderOrders();else if(t==='suppliers')this.renderSuppliers();},
-
-    renderDashboard: function(){
-        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        var today=new Date().toISOString().split('T')[0],firstDay=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split('T')[0];
-        Promise.all([supabase.from('purchase_orders').select('status,total_amount').gte('po_date',firstDay).lte('po_date',today),supabase.from('suppliers').select('supplier_code')]).then(function(r){
-            var orders=r[0].data||[],supp=r[1].data||[];var total=0,draft=0,sent=0,received=0;
-            for(var i=0;i<orders.length;i++){total+=Number(orders[i].total_amount)||0;if(orders[i].status==='Draft')draft++;else if(orders[i].status==='Sent')sent++;else if(orders[i].status==='Received')received++;}
-            var html='<h2 class="text-lg font-black mb-4">📊 مؤشرات المشتريات – الشهر</h2>';
-            html+='<div class="grid grid-cols-2 gap-3 mb-4">';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">إجمالي المشتريات</p><p class="text-2xl font-black text-fuchsia-600">'+fmtNum(total)+' ج.م</p></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">عدد الأوامر</p><p class="text-2xl font-black text-fuchsia-600">'+orders.length+'</p></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">📋 مسودة</p><p class="text-xl font-black text-amber-600">'+draft+'</p></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">📤 مُرسلة</p><p class="text-xl font-black text-blue-600">'+sent+'</p></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">✅ مستلمة</p><p class="text-xl font-black text-green-600">'+received+'</p></div>';
-            html+='<div class="stat-card"><p class="text-xs text-gray-400">🏭 الموردين</p><p class="text-xl font-black text-purple-600">'+supp.length+'</p></div>';
-            html+='</div>';RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+    switchTab: function(t){
+        var allowed = ['dashboard','requests','rfq','quotations','orders','invoices','returns','payments','reports','settings','suppliers'];
+        if (allowed.indexOf(t) === -1) return;
+        this.currentTab = t;
+        allowed.forEach(function(x){
+            var b = RW_UI.byId('tab-' + x);
+            if (!b) return;
+            b.classList.remove('bg-fuchsia-700','text-white','shadow-sm');
+            b.classList.add('text-slate-600');
         });
+        var active = RW_UI.byId('tab-' + t);
+        if (active) {
+            active.classList.add('bg-fuchsia-700','text-white','shadow-sm');
+            active.classList.remove('text-slate-600');
+        }
+        this.refreshCurrentTab();
+    },
+    refreshCurrentTab: function(){
+        var renderers = {
+            dashboard:'renderDashboard', requests:'renderRequests', rfq:'renderRFQs',
+            quotations:'renderQuotations', orders:'renderOrders', invoices:'renderInvoices',
+            returns:'renderReturns', payments:'renderPayments', reports:'renderReports',
+            settings:'renderSettings', suppliers:'renderSuppliers'
+        };
+        var method = renderers[this.currentTab];
+        if (method && typeof this[method] === 'function') this[method]();
+    },
+    readCompanyRows: async function(table, columns){
+        var companyId = this.currentUser && this.currentUser.company_id;
+        if (!companyId) throw new Error('سياق الشركة غير متاح');
+        var all = [], offset = 0, pageSize = 200;
+        while (true) {
+            var page = await supabase.from(table).select(columns)
+                .eq('company_id', companyId)
+                .order('created_at', {ascending:false})
+                .order('id', {ascending:false})
+                .range(offset, offset + pageSize - 1);
+            if (page.error) throw page.error;
+            var batch = page.data || [];
+            all = all.concat(batch);
+            if (batch.length < pageSize) break;
+            offset += pageSize;
+        }
+        return all;
+    },
+    readChildRows: async function(table, foreignKey, parentId, columns, sortKey){
+        if (!parentId) return [];
+        var all = [], offset = 0, pageSize = 200;
+        while (true) {
+            var q = supabase.from(table).select(columns).eq(foreignKey, parentId);
+            if (sortKey) q = q.order(sortKey, {ascending:true});
+            q = q.order('id', {ascending:true}).range(offset, offset + pageSize - 1);
+            var page = await q;
+            if (page.error) throw page.error;
+            var batch = page.data || [];
+            all = all.concat(batch);
+            if (batch.length < pageSize) break;
+            offset += pageSize;
+        }
+        return all;
+    },
+    readSuppliers: async function(){
+        var companyId = this.currentUser && this.currentUser.company_id;
+        if (!companyId) throw new Error('سياق الشركة غير متاح');
+        var all = [], offset = 0, pageSize = 200;
+        while (true) {
+            var page = await supabase.from('suppliers')
+                .select('id,company_id,supplier_code,name,phone,area,accounts_payable,is_active')
+                .eq('company_id', companyId)
+                .order('name', {ascending:true})
+                .order('id', {ascending:true})
+                .range(offset, offset + pageSize - 1);
+            if (page.error) throw page.error;
+            var batch = page.data || [];
+            all = all.concat(batch);
+            if (batch.length < pageSize) break;
+            offset += pageSize;
+        }
+        this.supplierMap = {};
+        all.forEach(function(s){ this.supplierMap[s.id] = s.name || s.supplier_code || 'مورد'; }, this);
+        return all;
+    },
+    renderDocumentTab: async function(tabKey){
+        var self = this, cfg = RW_PurchSupervisorDocs[tabKey];
+        if (!cfg) return;
+        RW_UI.showSkeleton('mainContent', 4, 'card');
+        try {
+            var rows = await this.readCompanyRows(cfg.table, cfg.select);
+            var suppliersNeeded = cfg.columns.some(function(c){ return c[2] === 'supplier'; });
+            if (suppliersNeeded && !this.supplierMap) await this.readSuppliers();
+            this.currentRows[tabKey] = rows;
+            var statusValues = {};
+            rows.forEach(function(r){ if (r[cfg.status]) statusValues[r[cfg.status]] = true; });
+            var statusOptions = Object.keys(statusValues).sort().map(function(v){
+                return '<option value="' + RW_PurchSupervisorEsc(v) + '">' + RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(v)) + '</option>';
+            }).join('');
+            var html = '<section class="space-y-4">' +
+                '<div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3">' +
+                  '<div><div class="text-xs font-bold text-fuchsia-700 mb-1">دورة المشتريات • عرض رقابي</div>' +
+                    '<h2 class="text-xl font-black text-slate-900">' + RW_PurchSupervisorEsc(cfg.title) + '</h2>' +
+                    '<p class="text-xs text-slate-500 mt-1">عرض جميع مستندات الشركة عبر جميع الصفحات، دون الاقتصار على مسؤول مشتريات بعينه.</p></div>' +
+                  '<div class="rounded-xl bg-fuchsia-50 text-fuchsia-800 px-4 py-2 text-sm font-black">إجمالي السجلات: ' + rows.length.toLocaleString('en-US') + '</div>' +
+                '</div>' +
+                '<div class="grid grid-cols-1 md:grid-cols-2 gap-2">' +
+                  '<input id="pws-search-' + tabKey + '" type="search" class="w-full p-3 border border-slate-200 rounded-xl bg-white outline-none focus:ring-2 focus:ring-fuchsia-200" placeholder="ابحث في رقم المستند والمورد والحالة والبيانات...">' +
+                  '<select id="pws-status-' + tabKey + '" class="w-full p-3 border border-slate-200 rounded-xl bg-white"><option value="">كل الحالات</option>' + statusOptions + '</select>' +
+                '</div>' +
+                '<div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-auto">' +
+                  '<table class="w-full min-w-[1050px] text-sm"><thead class="bg-slate-50 text-slate-600"><tr>' +
+                    cfg.columns.map(function(c){ return '<th class="p-3 text-right whitespace-nowrap">' + RW_PurchSupervisorEsc(c[1]) + '</th>'; }).join('') +
+                    '<th class="p-3">تفاصيل</th></tr></thead><tbody id="pws-rows-' + tabKey + '"></tbody></table></div>' +
+                '<p class="text-xs text-slate-400">المستندات المعروضة للقراءة والمتابعة فقط. لا ينشئ العرض أو فتح التفاصيل حركة مخزون أو قيدًا ماليًا.</p></section>';
+            RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
+            var body = RW_UI.byId('pws-rows-' + tabKey);
+            var search = RW_UI.byId('pws-search-' + tabKey);
+            var statusSelect = RW_UI.byId('pws-status-' + tabKey);
+            function drawRows(){
+                var q = String(search.value || '').trim().toLowerCase();
+                var status = statusSelect.value || '';
+                var filtered = rows.filter(function(r){
+                    var hay = cfg.search.map(function(k){
+                        var v = r[k];
+                        if (k === 'supplier_id' && self.supplierMap) v = self.supplierMap[v] || '';
+                        return String(v == null ? '' : v);
+                    }).join(' ').toLowerCase();
+                    return (!q || hay.indexOf(q) !== -1) && (!status || r[cfg.status] === status);
+                });
+                if (!filtered.length) {
+                    RW_UI.safeHTML(body, '<tr><td colspan="' + (cfg.columns.length + 1) + '" class="p-10 text-center text-slate-400">لا توجد مستندات مطابقة لمرشحات البحث.</td></tr>');
+                    return;
+                }
+                var out = '';
+                filtered.forEach(function(r){
+                    out += '<tr class="border-t border-slate-100 hover:bg-fuchsia-50/30">';
+                    cfg.columns.forEach(function(c){
+                        out += '<td class="p-3 align-top">' + RW_PurchSupervisorValue(r[c[0]], c[2], r, self.supplierMap) + '</td>';
+                    });
+                    out += '<td class="p-3"><button type="button" data-pws-doc-id="' + RW_PurchSupervisorEsc(r.id) + '" class="px-3 py-2 rounded-lg bg-fuchsia-50 text-fuchsia-700 hover:bg-fuchsia-100 font-black">عرض المستند</button></td></tr>';
+                });
+                RW_UI.safeHTML(body, out);
+                Array.from(body.querySelectorAll('[data-pws-doc-id]')).forEach(function(btn){
+                    btn.addEventListener('click', function(){ self.openReadOnlyDocument(tabKey, btn.getAttribute('data-pws-doc-id')); });
+                });
+            }
+            search.addEventListener('input', drawRows);
+            statusSelect.addEventListener('change', drawRows);
+            drawRows();
+        } catch(e) {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),
+                '<div class="p-5 rounded-2xl bg-red-50 border border-red-100 text-red-700">' +
+                '<div class="font-black mb-1">تعذر تحميل ' + RW_PurchSupervisorEsc(cfg.title) + '</div>' +
+                '<p class="text-sm">' + RW_PurchSupervisorEsc(e.message || 'خطأ غير معروف') + '</p>' +
+                '<button type="button" id="pws-retry" class="mt-3 px-4 py-2 bg-fuchsia-700 text-white rounded-lg font-bold">إعادة المحاولة</button></div>');
+            var retry = RW_UI.byId('pws-retry');
+            if (retry) retry.addEventListener('click', function(){ self.renderDocumentTab(tabKey); });
+        }
+    },
+    openReadOnlyDocument: async function(tabKey, docId){
+        var self = this, cfg = RW_PurchSupervisorDocs[tabKey];
+        var record = (this.currentRows[tabKey] || []).find(function(x){ return String(x.id) === String(docId); });
+        if (!record) { RW_UI.showError('المستند غير موجود في القائمة الحالية'); return; }
+        RW_UI.showLoader('جاري تحميل تفاصيل المستند...');
+        try {
+            if (!this.supplierMap && cfg.columns.some(function(c){ return c[2] === 'supplier'; })) await this.readSuppliers();
+            var summary = cfg.summary.map(function(field){
+                var key = field[0], value = RW_PurchSupervisorValue(record[key], field[2], record, self.supplierMap);
+                return '<div class="rounded-xl bg-slate-50 p-3 min-w-0"><div class="text-[11px] text-slate-500 mb-1">' + RW_PurchSupervisorEsc(field[1]) + '</div><div class="font-bold text-slate-800 break-words">' + value + '</div></div>';
+            }).join('');
+            var detailCfg = {
+                requests:{table:'purchase_request_details',fk:'request_id',cols:'item_code,item_name,unit,qty_requested,notes',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty_requested','الكمية','number'],['notes','ملاحظات']]},
+                rfq:{table:'purchase_rfq_details',fk:'rfq_id',cols:'item_code,item_name,unit,qty_requested,notes',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty_requested','الكمية','number'],['notes','ملاحظات']]},
+                quotations:{table:'purchase_quotation_details',fk:'quotation_id',cols:'item_code,item_name,unit,qty,unit_price,discount_percent,discount_amount,tax_rate,tax_amount,line_total,notes',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty','الكمية','number'],['unit_price','سعر الوحدة','number'],['discount_percent','نسبة الخصم','number'],['discount_amount','قيمة الخصم','number'],['tax_amount','الضريبة','number'],['line_total','الإجمالي','number'],['notes','ملاحظات']]},
+                invoices:{table:'purchase_invoice_details',fk:'invoice_id',cols:'item_code,item_name,unit,qty,received_qty,unit_price,discount_percent,discount_amount,tax_rate,tax_amount,line_total,notes',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty','الكمية بالفاتورة','number'],['received_qty','الكمية المستلمة','number'],['unit_price','سعر الوحدة','number'],['discount_amount','الخصم','number'],['tax_amount','الضريبة','number'],['line_total','الإجمالي','number'],['notes','ملاحظات']]},
+                returns:{table:'purchase_return_details',fk:'return_id',cols:'item_code,item_name,unit,qty,unit_price,line_total,reason',sort:'created_at',labels:[['item_code','كود الصنف'],['item_name','الصنف'],['unit','الوحدة'],['qty','الكمية','number'],['unit_price','سعر الوحدة','number'],['line_total','الإجمالي','number'],['reason','السبب']]},
+                payments:{table:'purchase_payment_allocations',fk:'payment_id',cols:'invoice_id,allocated_amount,created_at',sort:'created_at',labels:[['invoice_id','فاتورة مرتبطة'],['allocated_amount','المبلغ المخصص','number'],['created_at','تاريخ التخصيص','dateTime']]}
+            };
+            var detailHtml = '';
+            if (detailCfg[tabKey]) {
+                var dc = detailCfg[tabKey];
+                var lines = await this.readChildRows(dc.table, dc.fk, record.id, dc.cols + ',id,created_at', dc.sort);
+                detailHtml += '<div class="mt-4"><h3 class="font-black mb-2">بنود المستند (' + lines.length + ')</h3><div class="overflow-auto border rounded-xl"><table class="w-full min-w-[700px] text-sm"><thead class="bg-slate-50"><tr>' +
+                    dc.labels.map(function(l){ return '<th class="p-2 text-right">' + RW_PurchSupervisorEsc(l[1]) + '</th>'; }).join('') +
+                    '</tr></thead><tbody>';
+                if (!lines.length) detailHtml += '<tr><td colspan="' + dc.labels.length + '" class="p-5 text-center text-slate-400">لا توجد بنود مسجلة.</td></tr>';
+                lines.forEach(function(line){
+                    detailHtml += '<tr class="border-t">' + dc.labels.map(function(l){ return '<td class="p-2">' + RW_PurchSupervisorValue(line[l[0]], l[2], record, self.supplierMap) + '</td>'; }).join('') + '</tr>';
+                });
+                detailHtml += '</tbody></table></div></div>';
+            }
+            if (tabKey === 'rfq') {
+                var invited = await this.readChildRows('purchase_rfq_suppliers','rfq_id',record.id,'supplier_id,status,invited_at,responded_at,id','invited_at');
+                detailHtml += '<div class="mt-4"><h3 class="font-black mb-2">الموردون المدعوون (' + invited.length + ')</h3><div class="space-y-2">';
+                if (!invited.length) detailHtml += '<p class="text-sm text-slate-400">لا يوجد موردون مسجلون لهذا الطلب.</p>';
+                invited.forEach(function(x){
+                    detailHtml += '<div class="flex items-center justify-between gap-3 border rounded-lg p-3"><b>' +
+                        RW_PurchSupervisorEsc(self.supplierMap && self.supplierMap[x.supplier_id] || 'مورد غير متاح ضمن صلاحية الحساب') +
+                        '</b><span class="text-xs text-slate-500">' + RW_PurchSupervisorEsc(x.status || '—') + '</span></div>';
+                });
+                detailHtml += '</div></div>';
+            }
+            var html = '<div class="text-right"><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' + summary + '</div>' + detailHtml +
+                '<p class="text-xs text-slate-500 mt-4 border-t pt-3">تفاصيل للقراءة فقط. لا يتم اعتماد أو ترحيل أو إنشاء أي حركة مخزون أو قيد محاسبي من هذه الشاشة.</p></div>';
+            RW_UI.hideLoader();
+            await Swal.fire({title:RW_PurchSupervisorEsc(cfg.title) + ' • ' + RW_PurchSupervisorEsc(record[cfg.code] || ''),html:html,width:'1100px',showConfirmButton:false,showCloseButton:true});
+        } catch(e) {
+            RW_UI.hideLoader();
+            RW_UI.showError(e.message || 'تعذر تحميل تفاصيل المستند');
+        }
+    },
+    renderRequests: function(){ return this.renderDocumentTab('requests'); },
+    renderRFQs: function(){ return this.renderDocumentTab('rfq'); },
+    renderQuotations: function(){ return this.renderDocumentTab('quotations'); },
+    renderInvoices: function(){ return this.renderDocumentTab('invoices'); },
+    renderReturns: function(){ return this.renderDocumentTab('returns'); },
+    renderPayments: function(){ return this.renderDocumentTab('payments'); },
+    renderSettings: async function(){
+        var self = this;
+        RW_UI.showSkeleton('mainContent',3,'card');
+        try {
+            var companyId = this.currentUser && this.currentUser.company_id;
+            if (!companyId) throw new Error('سياق الشركة غير متاح');
+            var result = await supabase.from('purchase_settings')
+                .select('company_id,default_currency,require_request_approval,require_receiving_before_invoice,require_invoice_before_payment,require_inventory_on_invoice,require_inventory_voucher_on_return,default_branch_id,request_prefix,rfq_prefix,quotation_prefix,invoice_prefix,return_prefix,payment_prefix,next_request_no,next_rfq_no,next_quotation_no,next_invoice_no,next_return_no,next_payment_no,updated_at')
+                .eq('company_id', companyId).limit(1);
+            if (result.error) throw result.error;
+            var settings = result.data && result.data[0];
+            if (!settings) {
+                RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="card text-center text-slate-500 p-8">لا توجد إعدادات دورة مشتريات مسجلة لهذه الشركة.</div>');
+                return;
+            }
+            var fields = [
+                ['default_currency','العملة الافتراضية'],['require_request_approval','اعتماد طلب الشراء مطلوب','bool'],
+                ['require_receiving_before_invoice','يشترط الاستلام قبل الفاتورة','bool'],
+                ['require_invoice_before_payment','يشترط الفاتورة قبل الدفع','bool'],
+                ['require_inventory_on_invoice','تحديث المخزون عند ترحيل الفاتورة','bool'],
+                ['require_inventory_voucher_on_return','يشترط مستند مخزني للمرتجع','bool'],
+                ['request_prefix','بادئة طلب الشراء'],['rfq_prefix','بادئة طلب عرض السعر'],['quotation_prefix','بادئة عرض المورد'],
+                ['invoice_prefix','بادئة الفاتورة'],['return_prefix','بادئة المرتجع'],['payment_prefix','بادئة الدفعة'],
+                ['next_request_no','التسلسل التالي لطلبات الشراء'],['next_rfq_no','التسلسل التالي لطلبات عروض الأسعار'],
+                ['next_quotation_no','التسلسل التالي لعروض الموردين'],['next_invoice_no','التسلسل التالي للفواتير'],
+                ['next_return_no','التسلسل التالي للمرتجعات'],['next_payment_no','التسلسل التالي للدفعات'],
+                ['updated_at','آخر تحديث','dateTime']
+            ];
+            var body = fields.map(function(f){
+                return '<div class="rounded-xl border border-slate-100 bg-white p-4"><div class="text-xs text-slate-500 mb-2">' +
+                    RW_PurchSupervisorEsc(f[1]) + '</div><div class="font-black text-slate-800">' +
+                    RW_PurchSupervisorValue(settings[f[0]],f[2],settings) + '</div></div>';
+            }).join('');
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),
+                '<div class="space-y-4"><div><div class="text-xs text-fuchsia-700 font-bold">مرجع إعدادات الشركة</div><h2 class="text-xl font-black">إعدادات دورة المشتريات</h2>' +
+                '<p class="text-xs text-slate-500 mt-1">قراءة فقط؛ لا يمكن تعديل قواعد الترحيل أو التسلسلات من حساب مشرف المشتريات.</p></div>' +
+                '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">' + body + '</div></div>');
+        } catch(e) {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-5 rounded-2xl bg-red-50 text-red-700 font-bold">' + RW_PurchSupervisorEsc(e.message || 'تعذر تحميل الإعدادات') + '</div>');
+        }
+    },
+    renderDashboard: async function(){
+        var self = this;
+        RW_UI.showSkeleton('mainContent',4,'card');
+        try {
+            var tables = [
+                ['purchase_requests','id,company_id,request_code,request_date,status,created_at'],
+                ['purchase_rfqs','id,company_id,rfq_code,rfq_date,status,created_at'],
+                ['purchase_quotations','id,company_id,quotation_code,quotation_date,currency,total_amount,status,created_at'],
+                ['purchase_orders','id,company_id,po_code,po_date,currency,total_amount,status,created_at'],
+                ['purchase_invoices','id,company_id,invoice_code,invoice_date,currency,total_amount,paid_amount,status,purchase_source,created_at'],
+                ['purchase_returns','id,company_id,return_code,return_date,total_amount,status,created_at'],
+                ['purchase_payments','id,company_id,payment_code,payment_date,amount,status,created_at']
+            ];
+            var loaded = await Promise.all(tables.map(function(x){ return self.readCompanyRows(x[0],x[1]); }));
+            var today = RW_PurchSupervisorLocalDate(), month = today.slice(0,7);
+            var counts = {}, monthly = {};
+            tables.forEach(function(t,i){
+                var rows = loaded[i], dateField = ({purchase_requests:'request_date',purchase_rfqs:'rfq_date',purchase_quotations:'quotation_date',purchase_orders:'po_date',purchase_invoices:'invoice_date',purchase_returns:'return_date',purchase_payments:'payment_date'})[t[0]];
+                var monthRows = rows.filter(function(r){ return String(r[dateField] || '').slice(0,7) === month; });
+                counts[t[0]] = {all:rows.length,month:monthRows.length};
+                monthly[t[0]] = monthRows;
+            });
+            var suppliers = await this.readSuppliers().catch(function(){ return []; });
+            function currencyTotals(rows){
+                var totals = {};
+                rows.forEach(function(r){
+                    var currency = String(r.currency || 'غير محددة');
+                    totals[currency] = (totals[currency] || 0) + (Number(r.total_amount) || 0);
+                });
+                return Object.keys(totals).sort().map(function(c){
+                    return '<div class="flex justify-between gap-3 border-b last:border-0 py-2"><span class="font-bold">' + RW_PurchSupervisorEsc(c) + '</span><span class="font-black tabular-nums">' + RW_PurchSupervisorNum(totals[c]) + '</span></div>';
+                }).join('') || '<p class="text-sm text-slate-400 py-2">لا توجد مستندات خلال الشهر الحالي.</p>';
+            }
+            var recent = [];
+            loaded.forEach(function(rows,i){
+                rows.forEach(function(r){
+                    if (r.created_at) recent.push({date:r.created_at,code:r[tables[i][0] === 'purchase_requests' ? 'request_code' : tables[i][0] === 'purchase_rfqs' ? 'rfq_code' : tables[i][0] === 'purchase_quotations' ? 'quotation_code' : tables[i][0] === 'purchase_orders' ? 'po_code' : tables[i][0] === 'purchase_invoices' ? 'invoice_code' : tables[i][0] === 'purchase_returns' ? 'return_code' : 'payment_code'],title:RW_PurchSupervisorDocs[({purchase_requests:'requests',purchase_rfqs:'rfq',purchase_quotations:'quotations',purchase_orders:'orders',purchase_invoices:'invoices',purchase_returns:'returns',purchase_payments:'payments'})[tables[i][0]]] ? RW_PurchSupervisorDocs[({purchase_requests:'requests',purchase_rfqs:'rfq',purchase_quotations:'quotations',purchase_orders:'orders',purchase_invoices:'invoices',purchase_returns:'returns',purchase_payments:'payments'})[tables[i][0]]].title : 'مستند',status:r.status});
+                });
+            });
+            recent.sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+            var cards = [
+                ['طلبات الشراء',counts.purchase_requests.month,counts.purchase_requests.all,'fa-file-circle-plus'],
+                ['طلبات عروض الأسعار',counts.purchase_rfqs.month,counts.purchase_rfqs.all,'fa-envelope-open-text'],
+                ['عروض الموردين',counts.purchase_quotations.month,counts.purchase_quotations.all,'fa-tags'],
+                ['أوامر الشراء',counts.purchase_orders.month,counts.purchase_orders.all,'fa-cart-shopping'],
+                ['فواتير الشراء',counts.purchase_invoices.month,counts.purchase_invoices.all,'fa-file-invoice'],
+                ['المرتجعات',counts.purchase_returns.month,counts.purchase_returns.all,'fa-rotate-left'],
+                ['دفعات الموردين',counts.purchase_payments.month,counts.purchase_payments.all,'fa-money-bill-transfer']
+            ];
+            var html = '<div class="space-y-5"><div class="flex flex-col md:flex-row md:justify-between md:items-end gap-2"><div><div class="text-xs font-bold text-fuchsia-700">مركز المتابعة الموحد</div><h2 class="text-2xl font-black text-slate-900">لوحة المشتريات</h2><p class="text-xs text-slate-500 mt-1">بيانات الشركة كاملة • شهر ' + RW_PurchSupervisorEsc(month) + '</p></div><div class="rounded-xl bg-white border px-4 py-3 text-sm"><span class="text-slate-500">الموردون المسجلون</span><b class="text-fuchsia-700 mr-2">' + suppliers.length + '</b></div></div>' +
+                '<div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">';
+            cards.forEach(function(c){
+                html += '<div class="stat-card border border-slate-100"><div class="w-9 h-9 rounded-xl bg-fuchsia-50 text-fuchsia-700 flex items-center justify-center mb-3"><i class="fa-solid ' + c[3] + '"></i></div><div class="text-xs text-slate-500">' + c[0] + '</div><div class="text-2xl font-black text-slate-900 mt-1">' + c[1].toLocaleString('en-US') + '</div><div class="text-[11px] text-slate-400 mt-1">هذا الشهر • ' + c[2].toLocaleString('en-US') + ' إجمالي</div></div>';
+            });
+            html += '</div><div class="grid grid-cols-1 xl:grid-cols-2 gap-3">' +
+                '<div class="card"><h3 class="font-black mb-2">قيمة أوامر الشراء حسب العملة • هذا الشهر</h3>' + currencyTotals(monthly.purchase_orders) + '</div>' +
+                '<div class="card"><h3 class="font-black mb-2">قيمة فواتير الشراء حسب العملة • هذا الشهر</h3>' + currencyTotals(monthly.purchase_invoices) + '</div></div>' +
+                '<div class="card"><h3 class="font-black mb-3">أحدث المستندات</h3>';
+            if (!recent.length) html += '<p class="text-sm text-slate-400">لا توجد مستندات مسجلة حتى الآن.</p>';
+            recent.slice(0,8).forEach(function(r){
+                html += '<div class="flex items-center justify-between gap-3 py-2 border-b last:border-0"><div><b class="text-sm">' + RW_PurchSupervisorEsc(r.code || '—') + '</b><div class="text-xs text-slate-500">' + RW_PurchSupervisorEsc(r.title) + '</div></div><span class="text-xs text-slate-500">' + RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(r.status)) + '</span></div>';
+            });
+            html += '</div><p class="text-xs text-slate-400">المبالغ لا تُجمع بين العملات. مؤشرات هذه اللوحة للمتابعة فقط ولا تنشئ أي أثر مالي أو مخزني.</p></div>';
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+        } catch(e) {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-5 rounded-2xl bg-red-50 text-red-700 font-bold">' + RW_PurchSupervisorEsc(e.message || 'تعذر تحميل لوحة المشتريات') + '</div>');
+        }
+    },
+    renderReports: async function(){
+        var self = this;
+        RW_UI.showSkeleton('mainContent',4,'card');
+        try {
+            var docs = [
+                ['purchase_orders','أوامر الشراء','po_date','total_amount','currency'],
+                ['purchase_quotations','عروض الموردين','quotation_date','total_amount','currency'],
+                ['purchase_invoices','فواتير الشراء','invoice_date','total_amount','currency'],
+                ['purchase_returns','المرتجعات','return_date','total_amount',null],
+                ['purchase_payments','دفعات الموردين','payment_date','amount',null]
+            ];
+            var rows = await Promise.all(docs.map(function(d){
+                var cols = d[0] === 'purchase_orders'
+                    ? 'id,company_id,po_date,total_amount,currency,status,created_at'
+                    : d[0] === 'purchase_quotations'
+                    ? 'id,company_id,quotation_date,total_amount,currency,status,created_at'
+                    : d[0] === 'purchase_invoices'
+                    ? 'id,company_id,invoice_date,total_amount,currency,status,created_at'
+                    : d[0] === 'purchase_returns'
+                    ? 'id,company_id,return_date,total_amount,status,created_at'
+                    : 'id,company_id,payment_date,amount,status,created_at';
+                return self.readCompanyRows(d[0],cols);
+            }));
+            var html = '<div class="space-y-4"><div><div class="text-xs text-fuchsia-700 font-bold">تحليل رقابي</div><h2 class="text-xl font-black">تقارير دورة المشتريات</h2><p class="text-xs text-slate-500 mt-1">قيم كل نوع مستند مستقلة، ولا تُجمع قيم مستندات مختلفة أو عملات مختلفة في إجمالي واحد.</p></div>' +
+                '<div class="grid grid-cols-1 lg:grid-cols-2 gap-3">';
+            docs.forEach(function(d,i){
+                var data = rows[i], grouped = {};
+                data.forEach(function(r){
+                    var curr = d[4] ? String(r[d[4]] || 'غير محددة') : 'العملة غير مثبتة بالسجل';
+                    if (!grouped[curr]) grouped[curr] = {count:0,total:0};
+                    grouped[curr].count++;
+                    grouped[curr].total += Number(r[d[3]]) || 0;
+                });
+                html += '<div class="card"><h3 class="font-black mb-3">' + d[1] + '</h3><div class="text-xs text-slate-500 mb-2">عدد المستندات: ' + data.length.toLocaleString('en-US') + '</div>';
+                Object.keys(grouped).sort().forEach(function(curr){
+                    html += '<div class="flex justify-between gap-3 py-2 border-t"><span class="text-sm">' + RW_PurchSupervisorEsc(curr) + ' • ' + grouped[curr].count.toLocaleString('en-US') + ' مستند</span><b class="tabular-nums">' +
+                        (d[4] ? RW_PurchSupervisorNum(grouped[curr].total) : (d[0] === 'purchase_payments' ? 'إجمالي غير معروض لغياب العملة' : '—')) + '</b></div>';
+                });
+                html += '</div>';
+            });
+            html += '</div><div class="card"><h3 class="font-black mb-2">حدود التقرير</h3><p class="text-sm text-slate-600">التقرير مبني على مستندات دورة المشتريات المسجلة ضمن الشركة. دفعات الموردين لا تحتوي حقل عملة في سجلها الحالي؛ لذلك يعرض التقرير عددها فقط ولا ينسب قيمة إلى عملة غير مثبتة. ولا تُعد حالة المستند وحدها إثباتًا لحركة مخزون أو قيد محاسبي.</p></div></div>';
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+        } catch(e) {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-5 rounded-2xl bg-red-50 text-red-700 font-bold">' + RW_PurchSupervisorEsc(e.message || 'تعذر إعداد التقرير') + '</div>');
+        }
     },
 
     renderOrders: async function(){
@@ -155,10 +587,11 @@ var App = {
                 .select('id,name')
                 .eq('company_id', companyId);
 
-            if (branchResult.error) throw branchResult.error;
-
             var branchMap = {};
-            (branchResult.data || []).forEach(function(b){ branchMap[b.id] = b.name || ''; });
+            var branchLookupUnavailable = !!branchResult.error;
+            if (!branchLookupUnavailable) {
+                (branchResult.data || []).forEach(function(b){ branchMap[b.id] = b.name || ''; });
+            }
 
             self.currentOrders = all;
 
@@ -214,7 +647,7 @@ var App = {
                       '<td class="p-3">' + RW_PurchSupervisorEsc(o.po_date || '—') + '</td>' +
                       '<td class="p-3 text-xs">' + RW_PurchSupervisorEsc(o.created_by || '—') + '</td>' +
                       '<td class="p-3">' + RW_PurchSupervisorEsc(o.supplier_name || '—') + '</td>' +
-                      '<td class="p-3">' + RW_PurchSupervisorEsc(branchMap[o.branch_id] || '—') + '</td>' +
+                      '<td class="p-3">' + RW_PurchSupervisorEsc(branchMap[o.branch_id] || (o.branch_id && branchLookupUnavailable ? 'غير متاح بصلاحية الحساب' : '—')) + '</td>' +
                       '<td class="p-3">' + RW_PurchSupervisorEsc(o.expected_delivery_date || '—') + '</td>' +
                       '<td class="p-3 font-bold">' + RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(o.status)) + '</td>' +
                       '<td class="p-3 font-black">' + Number(o.total_amount || 0).toLocaleString() + ' ' + RW_PurchSupervisorEsc(o.currency || 'EGP') + '</td>' +
@@ -358,11 +791,21 @@ var App = {
         });
     },
 
-    renderSuppliers: function(){
-        var s=this; RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i></div>');
-        supabase.from('suppliers').select('supplier_code,name,phone,area,accounts_payable').order('accounts_payable',{ascending:false}).then(function(r){var supp=r.data||[],html='<h2 class="text-lg font-black mb-4">🏭 الموردين</h2>';
-        if(!supp.length){html+='<div class="text-center text-gray-400 py-10">لا يوجد موردين</div>';}else{for(var i=0;i<supp.length;i++){html+='<div class="card mb-2"><div class="flex justify-between"><span class="font-bold">'+supp[i].name+'</span><span class="font-black text-red-600">'+fmtNum(supp[i].accounts_payable)+' ج.م</span></div><p class="text-xs text-gray-400">'+supp[i].supplier_code+' | '+supp[i].phone+' | '+supp[i].area+'</p></div>';}}
-        RW_UI.safeHTML(RW_UI.byId('mainContent'),html);});
+    renderSuppliers: async function(){
+        var self = this;
+        RW_UI.showSkeleton('mainContent',3,'card');
+        try {
+            var supp = await this.readSuppliers();
+            var html = '<div class="space-y-4"><div><div class="text-xs text-fuchsia-700 font-bold">دليل الموردين</div><h2 class="text-xl font-black">الموردون المعتمدون</h2><p class="text-xs text-slate-500 mt-1">بيانات الشركة فقط • ' + supp.length.toLocaleString('en-US') + ' مورد</p></div>';
+            if (!supp.length) html += '<div class="card text-center text-slate-400 p-8">لا يوجد موردون مسجلون.</div>';
+            supp.forEach(function(s){
+                html += '<div class="card mb-2 border border-slate-100"><div class="flex flex-col sm:flex-row sm:justify-between gap-2"><div><div class="font-black text-slate-900">' + RW_PurchSupervisorEsc(s.name || '—') + '</div><div class="text-xs text-slate-500 mt-1">' + RW_PurchSupervisorEsc(s.supplier_code || '—') + '</div></div><div class="text-left"><div class="text-[11px] text-slate-400">الرصيد الدفتري الظاهر بدليل المورد</div><div class="font-black text-slate-700">' + RW_PurchSupervisorNum(s.accounts_payable) + ' (العملة غير محددة في هذا العرض)</div></div></div><p class="text-xs text-slate-500 mt-2">' + RW_PurchSupervisorEsc(s.phone || '—') + ' • ' + RW_PurchSupervisorEsc(s.area || '—') + '</p></div>';
+            });
+            html += '</div>';
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+        } catch(e) {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-5 rounded-2xl bg-red-50 text-red-700 font-bold">' + RW_PurchSupervisorEsc(e.message || 'تعذر تحميل الموردين') + '</div>');
+        }
     }
 };
 RW_SW.register('../sw.js');
