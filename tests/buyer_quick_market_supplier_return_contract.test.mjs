@@ -229,7 +229,7 @@ assert.match(renderedCustodyHtml,/PINV-1002/);
 assert.match(renderedCustodyHtml,/PINV-1003/);
 assert.match(renderedCustodyHtml,/4 كرتونه/);
 assert.match(renderedCustodyHtml,/10 شرنك/);
-assert.match(renderedCustodyHtml,/بضاعة مملوكة للمورد/);
+assert.match(renderedCustodyHtml,/بضاعة مشترياتي السريعة بعهدتي/);
 
 // SQL contract guards. These are static contract tests, not a live Postgres execution.
 assert.match(sql, /BEGIN;[\s\S]*COMMIT;/);
