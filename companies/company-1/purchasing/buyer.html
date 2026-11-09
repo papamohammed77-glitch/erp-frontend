@@ -699,8 +699,20 @@ var App = {
         }
         html+='<h4 class="font-black">سجل المستند</h4><div class="space-y-1">'+(history.map(function(h){return '<div class="p-2 bg-slate-50 rounded-lg text-xs">'+buyerEsc(h.action||'تحديث')+' · '+buyerEsc(h.from_status||'—')+' ← '+buyerEsc(h.to_status||'—')+' · '+buyerDate(h.created_at)+' · '+buyerEsc(h.actor_email||'')+(h.note?'<p class="text-slate-500 mt-1">'+buyerEsc(h.note)+'</p>':'')+'</div>';}).join('')||'<p class="text-xs text-slate-400">لا توجد أحداث مسجلة.</p>')+'</div>';
         html+='<div class="p-3 rounded-xl '+(editable?'bg-amber-50 text-amber-800':'bg-slate-50 text-slate-600')+' text-xs">'+(editable?'هذه مسودة غير مستلمة وغير مرحلة؛ يمكن تعديلها أو حذفها وفق الصلاحيات.':'فاتورة غير قابلة للتعديل أو الحذف من هذه الشاشة. أي تصحيح بعد الترحيل يكون عبر مسار عكس معتمد.')+'</div></div>';
+        var result=await Swal.fire({
+            title:'تفاصيل فاتورة '+buyerEsc(invoice.invoice_code),
+            html:html,width:1000,showCloseButton:true,allowEscapeKey:true,
+            showCancelButton:true,cancelButtonText:'إغلاق',
+            showConfirmButton:canEdit,confirmButtonText:'تعديل المسودة',
+            showDenyButton:!isQuickMarket&&canDelete,denyButtonText:'حذف المسودة',denyButtonColor:'#b91c1c'
         });
-        var result=await Swal.fire({title:'تفاصيل فاتورة '+buyerEsc(invoice.invoice_code),html:html,width:1000,showCloseButton:true,allowEscapeKey:true,showCancelButton:true,cancelButtonText:'إغلاق',showConfirmButton:canEdit,confirmButtonText:'تعديل المسودة',showDenyButton:!isQuickMarket&&canDelete,denyButtonText:'حذف المسودة',denyButtonColor:'#b91c1c',
+        if(result.isConfirmed){
+            if(isQuickMarket)await this.quickPurchase(id);
+            else await this.createPurchaseInvoice(id);
+        }else if(result.isDenied&&!isQuickMarket){
+            await this.deleteDraftInvoice(id);
+        }
+    },
     viewPurchaseAttachment:async function(path){
         try{
             var result=await supabase.storage.from('employee-documents').createSignedUrl(path,300);
