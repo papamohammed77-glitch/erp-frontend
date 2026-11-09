@@ -67,6 +67,8 @@ serve(async (req) => {
 
     if (op === "APPROVE_PO") {
       requireAny(["purchases", "purchases_supervisor"]);
+    } else if (op === "REGISTER_QUICK_MARKET_SUPPLIER_RETURN") {
+      requireAny(["purchases"]);
     } else if (op === "SAVE_SETTINGS") {
       requireAny(["purchases", "settings"]);
     } else if (["POST_INVOICE", "POST_PAYMENT", "POST_RETURN"].includes(op)) {
@@ -233,6 +235,62 @@ serve(async (req) => {
         p_items: p.items || [], p_evidence_path: p.evidence_path || null,
         p_notes: p.notes || null, p_operation_id: operationId
       }));
+    } else if (op === "REGISTER_QUICK_MARKET_SUPPLIER_RETURN") {
+      const invoiceId = String(p.invoice_id || "").trim();
+      const evidencePath = String(p.evidence_path || "").trim();
+      const pathParts = evidencePath.split("/");
+      if (!invoiceId || pathParts.length !== 5 || pathParts[0] !== companyId ||
+          pathParts[1] !== profile.id || pathParts[2] !== "buyer-goods" ||
+          pathParts[3] !== invoiceId ||
+          !/^supplier-return-[0-9]{10,16}_[A-Za-z0-9._-]{1,80}$/.test(pathParts[4])) {
+        throw new Error("BUYER_GOODS_RETURN_EVIDENCE_PATH_INVALID");
+      }
+      if (!operationId || operationId.length > 180) throw new Error("BUYER_GOODS_RETURN_OPERATION_ID_INVALID");
+
+      const { data: invoice, error: invoiceError } = await sb.from("purchase_invoices")
+        .select("id,purchase_source,purchaser_user_id")
+        .eq("id", invoiceId).eq("company_id", companyId).maybeSingle();
+      if (invoiceError) throw invoiceError;
+      if (!invoice || invoice.purchase_source !== "QUICK_MARKET" || invoice.purchaser_user_id !== profile.id) {
+        throw new Error("QUICK_MARKET_INVOICE_OWNER_REQUIRED");
+      }
+
+      const { data: storedObject, error: storedObjectError } = await sb.storage
+        .from("employee-documents").info(evidencePath);
+      if (storedObjectError) throw storedObjectError;
+      if (!storedObject) throw new Error("BUYER_GOODS_RETURN_EVIDENCE_NOT_FOUND");
+      const metadata = storedObject.metadata || {};
+      const mimeType = String(storedObject.mimetype || storedObject.contentType || metadata.mimetype || "").trim().toLowerCase();
+      const fileSize = Number(storedObject.size || metadata.size || 0);
+      if (!["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(mimeType) ||
+          !Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
+        const cleanup = await sb.storage.from("employee-documents").remove([evidencePath]);
+        if (cleanup.error) console.warn("[Buyer] Invalid supplier-return evidence cleanup failed", cleanup.error);
+        throw new Error("BUYER_GOODS_RETURN_EVIDENCE_INVALID");
+      }
+
+      ({ data, error } = await profileClient.rpc("buyer_goods_custody_register_quick_market_supplier_return_atomic", {
+        p_company_id: companyId, p_invoice_id: invoiceId, p_items: p.items || [],
+        p_evidence_path: evidencePath, p_reason: p.reason || null, p_operation_id: operationId
+      }));
+
+      if (error) {
+        const { data: verify, error: verifyError } = await profileClient.rpc("buyer_goods_custody_get_invoice_handover_progress_atomic", {
+          p_company_id: companyId, p_invoice_id: invoiceId
+        });
+        if (!verifyError) {
+          const exactCommit = (verify?.return_events || []).some((event: any) =>
+            event.operation_id === operationId && event.evidence_path === evidencePath
+          );
+          if (exactCommit) {
+            data = { success: true, duplicate: true, operation_id: operationId };
+            error = null;
+          } else {
+            const cleanup = await sb.storage.from("employee-documents").remove([evidencePath]);
+            if (cleanup.error) console.warn("[Buyer] Uncommitted supplier-return evidence cleanup failed", cleanup.error);
+          }
+        }
+      }
     } else if (op === "GET_QUICK_MARKET_HANDOVER_PROGRESS") {
       ({ data, error } = await profileClient.rpc("buyer_goods_custody_get_invoice_handover_progress_atomic", {
         p_company_id: companyId, p_invoice_id: p.invoice_id
