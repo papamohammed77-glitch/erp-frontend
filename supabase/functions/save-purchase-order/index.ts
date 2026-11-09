@@ -67,6 +67,8 @@ serve(async (req) => {
 
     if (op === "APPROVE_PO") {
       requireAny(["purchases", "purchases_supervisor"]);
+    } else if (op === "REGISTER_QUICK_MARKET_SUPPLIER_RETURN") {
+      requireAny(["purchases"]);
     } else if (op === "SAVE_SETTINGS") {
       requireAny(["purchases", "settings"]);
     } else if (["POST_INVOICE", "POST_PAYMENT", "POST_RETURN"].includes(op)) {
@@ -233,6 +235,230 @@ serve(async (req) => {
         p_items: p.items || [], p_evidence_path: p.evidence_path || null,
         p_notes: p.notes || null, p_operation_id: operationId
       }));
+    } else if (op === "REGISTER_QUICK_MARKET_SUPPLIER_RETURN") {
+      requireAny(["purchases"]);
+    } else if (op === "SAVE_SETTINGS") {
+      requireAny(["purchases", "settings"]);
+    } else if (["POST_INVOICE", "POST_PAYMENT", "POST_RETURN"].includes(op)) {
+      requireAll(["purchases", "finance"]);
+    } else if (op === "CANCEL_DOCUMENT" && ["PurchaseInvoice", "PurchasePayment", "PurchaseReturn"].includes(String(p.document_type || ""))) {
+      requireAll(["purchases", "finance"]);
+    } else if (op === "GET_SUMMARY" || op === "GET_REPORTS") {
+      requireAny(["purchases", "finance", "finance_manager", "reports"]);
+    } else if (op === "SAVE_SUPPLIER") {
+      requireAny(["purchases", "suppliers"]);
+    } else if (["ISSUE_CUSTODY", "ADD_CUSTODY_ADVANCE", "REVIEW_CUSTODY_EXPENSE", "REVIEW_QUICK_MARKET_CUSTODY_EXPENSE", "REVIEW_OTHER_CUSTODY_EXPENSE", "GET_OTHER_CUSTODY_EXPENSE_ACCOUNTS", "SETTLE_CUSTODY", "RETURN_CUSTODY_CASH", "UPDATE_CUSTODY", "CANCEL_CUSTODY"].includes(op)) {
+      requireAny(["finance", "finance_manager"]);
+    } else if (["SUBMIT_CUSTODY_EXPENSE", "SUBMIT_QUICK_MARKET_CUSTODY_EXPENSE", "SUBMIT_OTHER_CUSTODY_EXPENSE", "VERIFY_CUSTODY_EXPENSE_OPERATION", "ACKNOWLEDGE_CUSTODY", "ACKNOWLEDGE_CUSTODY_ADVANCE"].includes(op)) {
+      requireAny(["purchases", "finance", "finance_manager"]);
+    } else if (op === "GET_CUSTODY") {
+      requireAny(["purchases", "finance", "finance_manager"]);
+    } else if (op === "GET_SETTINGS") {
+      requireAny(["purchases", "finance", "finance_manager"]);
+    } else if (op === "GET_DATA") {
+      const table = String(p.table || "");
+      if (table === "treasury") requireAny(["finance", "finance_manager"]);
+      else if (table === "suppliers") requireAny(["purchases", "suppliers", "finance", "finance_manager"]);
+      else if (table === "stock_branches") requireAny(["purchases", "warehouse", "finance", "finance_manager"]);
+      else requireAny(["purchases", "finance", "finance_manager"]);
+    } else {
+      requireAny(["purchases"]);
+    }
+
+    const operationId = String(
+      body?.operation_id ||
+      req.headers.get("Idempotency-Key") ||
+      crypto.randomUUID()
+    ).trim();
+
+    let data: any, error: any;
+    const call = (name: string, args: any) => sb.rpc(name, args);
+    const getSystemCurrency = async () => {
+      const { data: settings, error: settingsError } = await sb.from("app_settings")
+        .select("currency").eq("company_id", companyId).order("created_at", { ascending: true }).order("id", { ascending: true }).limit(1).maybeSingle();
+      if (settingsError) throw settingsError;
+      const currency = String(settings?.currency || "").trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(currency)) throw new Error("SYSTEM_CURRENCY_INVALID");
+      return currency;
+    };
+
+    if (op === "SAVE_SUPPLIER") {
+      ({ data, error } = await call("save_supplier_atomic", {
+        p_auth_user_id: user.id,
+        p_company_id: companyId,
+        p_user_email: user.email,
+        p_supplier: p.supplier || {},
+        p_is_edit: p.is_edit === true,
+        p_supplier_code: p.supplier_code || null
+      }));
+    } else if (op === "CREATE_REQUEST") {
+      ({ data, error } = await call("purchase_create_request_atomic", {
+        p_company_id: companyId,
+        p_title: p.title,
+        p_required_by: p.required_by || null,
+        p_requested_by: user.email,
+        p_notes: p.notes || null,
+        p_items: p.items || [],
+        p_operation_id: operationId
+      }));
+    } else if (op === "CREATE_PO") {
+      ({ data, error } = await profileClient.rpc("purchase_create_po_atomic", {
+        p_company_id: companyId, p_supplier_id: p.supplier_id, p_branch_id: p.branch_id || null,
+        p_expected_delivery_date: p.expected_delivery_date || null, p_payment_terms: p.payment_terms || null,
+        p_notes: p.notes || null, p_items: p.items || [], p_operation_id: operationId
+      }));
+    } else if (op === "APPROVE_PO") {
+      ({ data, error } = await profileClient.rpc("purchase_approve_po_atomic", {
+        p_po_id: p.id
+      }));
+    } else if (op === "SUBMIT_REQUEST") {
+      ({ data, error } = await call("purchase_submit_request_atomic", {
+        p_company_id: companyId,
+        p_request_id: p.id,
+        p_actor: user.email
+      }));
+    } else if (op === "APPROVE_REQUEST") {
+      ({ data, error } = await call("purchase_approve_request_atomic", {
+        p_company_id: companyId,
+        p_request_id: p.id,
+        p_actor: user.email
+      }));
+    } else if (op === "REJECT_REQUEST") {
+      ({ data, error } = await call("purchase_reject_request_atomic", {
+        p_company_id: companyId,
+        p_request_id: p.id,
+        p_actor: user.email,
+        p_reason: p.reason || null
+      }));
+    } else if (op === "CREATE_RFQ") {
+      ({ data, error } = await call("purchase_create_rfq_atomic", {
+        p_company_id: companyId,
+        p_request_id: p.request_id,
+        p_due_date: p.due_date || null,
+        p_created_by: user.email,
+        p_supplier_ids: p.supplier_ids || []
+      }));
+    } else if (op === "SEND_RFQ") {
+      ({ data, error } = await call("purchase_send_rfq_atomic", {
+        p_company_id: companyId,
+        p_rfq_id: p.id,
+        p_actor: user.email
+      }));
+    } else if (op === "CREATE_QUOTATION") {
+      ({ data, error } = await call("purchase_create_quotation_atomic", {
+        p_company_id: companyId,
+        p_supplier_id: p.supplier_id,
+        p_rfq_id: p.rfq_id || null,
+        p_valid_until: p.valid_until || null,
+        p_currency: await getSystemCurrency(),
+        p_created_by: user.email,
+        p_items: p.items || [],
+        p_operation_id: operationId
+      }));
+    } else if (op === "ACCEPT_QUOTATION") {
+      ({ data, error } = await call("purchase_accept_quotation_atomic", {
+        p_company_id: companyId,
+        p_quotation_id: p.id,
+        p_actor: user.email
+      }));
+    } else if (op === "CONVERT_QUOTATION_TO_PO") {
+      ({ data, error } = await call("purchase_convert_quotation_to_po_atomic", {
+        p_company_id: companyId,
+        p_quotation_id: p.id,
+        p_actor: user.email
+      }));
+    } else if (op === "CREATE_PO_INVOICE") {
+      ({ data, error } = await profileClient.rpc("purchase_create_po_invoice_atomic", {
+        p_company_id: companyId, p_supplier_id: p.supplier_id,
+        p_purchase_order_id: p.purchase_order_id, p_branch_id: p.branch_id || null,
+        p_due_date: p.due_date || null, p_supplier_invoice_no: p.supplier_invoice_no || null,
+        p_notes: p.notes || null, p_items: p.items || [], p_operation_id: operationId
+      }));
+    } else if (op === "UPDATE_PO_INVOICE") {
+      ({ data, error } = await profileClient.rpc("purchase_update_po_invoice_atomic", {
+        p_company_id: companyId, p_invoice_id: p.id, p_supplier_id: p.supplier_id,
+        p_purchase_order_id: p.purchase_order_id, p_branch_id: p.branch_id || null,
+        p_due_date: p.due_date || null, p_supplier_invoice_no: p.supplier_invoice_no || null,
+        p_notes: p.notes || null, p_items: p.items || [], p_operation_id: operationId
+      }));
+    } else if (op === "CREATE_QUICK_MARKET_INVOICE") {
+      ({ data, error } = await profileClient.rpc("purchase_create_quick_market_invoice_atomic", {
+        p_company_id: companyId, p_supplier_id: p.supplier_id, p_branch_id: p.branch_id,
+        p_due_date: p.due_date || null, p_supplier_invoice_no: p.supplier_invoice_no,
+        p_notes: p.notes || null, p_items: p.items || [],
+        p_settlement_source: p.settlement_source, p_cash_custody_id: p.cash_custody_id || null,
+        p_operation_id: operationId
+      }));
+    } else if (op === "UPDATE_QUICK_MARKET_INVOICE") {
+      ({ data, error } = await profileClient.rpc("purchase_update_quick_market_invoice_atomic", {
+        p_company_id: companyId, p_invoice_id: p.id, p_supplier_id: p.supplier_id,
+        p_branch_id: p.branch_id, p_due_date: p.due_date || null,
+        p_supplier_invoice_no: p.supplier_invoice_no, p_notes: p.notes || null,
+        p_items: p.items || [], p_settlement_source: p.settlement_source,
+        p_cash_custody_id: p.cash_custody_id || null, p_operation_id: operationId
+      }));
+    } else if (op === "REGISTER_QUICK_MARKET_HANDOVER") {
+      ({ data, error } = await profileClient.rpc("buyer_goods_custody_register_handover_atomic", {
+        p_company_id: companyId, p_invoice_id: p.invoice_id, p_vehicle_id: p.vehicle_id || null,
+        p_items: p.items || [], p_evidence_path: p.evidence_path || null,
+        p_notes: p.notes || null, p_operation_id: operationId
+      }));
+    } else if (op === "REGISTER_QUICK_MARKET_SUPPLIER_RETURN") {
+      const invoiceId = String(p.invoice_id || "").trim();
+      const evidencePath = String(p.evidence_path || "").trim();
+      const pathParts = evidencePath.split("/");
+      if (!invoiceId || pathParts.length !== 5 || pathParts[0] !== companyId ||
+          pathParts[1] !== profile.id || pathParts[2] !== "buyer-goods" ||
+          pathParts[3] !== invoiceId ||
+          !/^supplier-return-[0-9]{10,16}_[A-Za-z0-9._-]{1,80}$/.test(pathParts[4])) {
+        throw new Error("BUYER_GOODS_RETURN_EVIDENCE_PATH_INVALID");
+      }
+      if (!operationId || operationId.length > 180) throw new Error("BUYER_GOODS_RETURN_OPERATION_ID_INVALID");
+
+      const { data: invoice, error: invoiceError } = await sb.from("purchase_invoices")
+        .select("id,purchase_source,purchaser_user_id")
+        .eq("id", invoiceId).eq("company_id", companyId).maybeSingle();
+      if (invoiceError) throw invoiceError;
+      if (!invoice || invoice.purchase_source !== "QUICK_MARKET" || invoice.purchaser_user_id !== profile.id) {
+        throw new Error("QUICK_MARKET_INVOICE_OWNER_REQUIRED");
+      }
+
+      const { data: storedObject, error: storedObjectError } = await sb.storage
+        .from("employee-documents").info(evidencePath);
+      if (storedObjectError) throw storedObjectError;
+      if (!storedObject) throw new Error("BUYER_GOODS_RETURN_EVIDENCE_NOT_FOUND");
+      const metadata = storedObject.metadata || {};
+      const mimeType = String(storedObject.mimetype || storedObject.contentType || metadata.mimetype || "").trim().toLowerCase();
+      const fileSize = Number(storedObject.size || metadata.size || 0);
+      if (!["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(mimeType) ||
+          !Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
+        const cleanup = await sb.storage.from("employee-documents").remove([evidencePath]);
+        if (cleanup.error) console.warn("[Buyer] Invalid supplier-return evidence cleanup failed", cleanup.error);
+        throw new Error("BUYER_GOODS_RETURN_EVIDENCE_INVALID");
+      }
+
+      ({ data, error } = await profileClient.rpc("buyer_goods_custody_register_quick_market_supplier_return_atomi", {
+        p_company_id: companyId, p_invoice_id: invoiceId, p_items: p.items || [],
+        p_evidence_path: evidencePath, p_reason: p.reason || null, p_operation_id: operationId
+      }));
+
+      if (error) {
+        const { data: verify, error: verifyError } = await profileClient.rpc("buyer_goods_custody_get_invoice_handover_progress_atomic", {
+          p_company_id: companyId, p_invoice_id: invoiceId
+        });
+        if (!verifyError) {
+          const exactCommit = (verify?.return_events || []).some((event: any) =>
+            event.operation_id === operationId && event.evidence_path === evidencePath
+          );
+          if (exactCommit) {
+            data = { success: true, duplicate: true, operation_id: operationId };
+            error = null;
+          } else {
+            const cleanup = await sb.storage.from("employee-documents").remove([evidencePath]);
+            if (cleanup.error) console.warn("[Buyer] Uncommitted supplier-return evidence cleanup failed", cleanup.error);
+          }
+        }
+      }
     } else if (op === "GET_QUICK_MARKET_HANDOVER_PROGRESS") {
       ({ data, error } = await profileClient.rpc("buyer_goods_custody_get_invoice_handover_progress_atomic", {
         p_company_id: companyId, p_invoice_id: p.invoice_id
