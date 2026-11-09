@@ -464,14 +464,17 @@ var App = {
             if(sent!==accepted&&!reason){RW_UI.showError('سبب اختلاف الكمية المرسلة عن الكمية المقبولة مطلوب للصنف: '+(item.item_name||code));if(reasonInput)reasonInput.focus();return;}
             items.push({itemCode:code,itemName:item.item_name||code,unit:item.unit||'حبة',sentQty:sent,receivedQty:accepted,reason:reason});
         }
-        if(!items.some(function(item){return item.receivedQty>0;})){RW_UI.showError('لا يمكن اعتماد الاستلام دون كمية مقبولة موجبة واحدة على الأقل');return;}
         var fingerprint=this.receiptFingerprint(doc,items),stored=this.getPendingOperation(doc);
         if(stored&&stored.fingerprint!==fingerprint){
             RW_UI.showError('هناك محاولة استلام سابقة نتيجتها غير مؤكدة لهذا المستند. أعد المحاولة بنفس الكميات والبيانات أولًا حتى لا تتكرر حركة مخزنية.');return;
         }
         var operationId=stored&&stored.operation_id?stored.operation_id:this.newOperationId();
         var acceptedTotal=items.reduce(function(sum,item){return sum+item.receivedQty;},0);
-        RW_UI.showConfirm('تأكيد قبول '+this.formatQty(acceptedTotal)+' وحدة من '+this.docCode(doc)+'؟',function(){
+        var hasAccepted=items.some(function(item){return item.receivedQty>0;});
+        var confirmation=hasAccepted
+            ?'تأكيد قبول '+this.formatQty(acceptedTotal)+' وحدة من '+this.docCode(doc)+'؟'
+            :'تسجيل رفض كامل الشحنة الواردة للمستند '+this.docCode(doc)+' دون إضافة مخزون؟';
+        RW_UI.showConfirm(confirmation,function(){
             if(!self.storePendingOperation(doc,operationId,fingerprint)){RW_UI.showError('تعذر حفظ معرّف العملية محليًا. لا يمكن الإرسال دون ضمان إعادة المحاولة الآمنة.');return;}
             RW_UI.showLoader('جاري التحقق من الاستلام وترحيل الكمية المقبولة...');
             var payload={operation_id:operationId,itemsReceived:items,notes:'Receiver physical receipt; sent and accepted quantities captured separately'};
@@ -485,8 +488,11 @@ var App = {
                     RW_UI.showError(message);return;
                 }
                 self.clearPendingOperation(doc);
-                Swal.fire({icon:'success',titleText:'تم تسجيل الاستلام الفعلي',
-                    text:'المستند '+self.docCode(doc)+' — المقبول '+self.formatQty(json.total_received_qty||json.accepted_quantity||acceptedTotal)+' وحدة. تم تحديث المخزون وفق الكمية المقبولة فقط.',
+                var actualAccepted=Number(json.total_received_qty!=null?json.total_received_qty:(json.accepted_quantity!=null?json.accepted_quantity:acceptedTotal))||0;
+                Swal.fire({icon:'success',titleText:actualAccepted>0?'تم تسجيل الاستلام الفعلي':'تم تسجيل رفض الشحنة',
+                    text:actualAccepted>0
+                        ?'المستند '+self.docCode(doc)+' — المقبول '+self.formatQty(actualAccepted)+' وحدة. تم تحديث المخزون بالكمية المقبولة فقط.'
+                        :'تم حفظ الكميات المرسلة والمرفوضة وأسباب الرفض. لم تتم إضافة أي كمية للمخزون ولم تتغير حالة المستند أو عهدة المشتري.',
                     confirmButtonText:'حسنًا',customClass:{popup:'!rounded-3xl',confirmButton:'!rounded-xl !bg-emerald-600'}});
                 self.loadPurchaseOrders();
             });
