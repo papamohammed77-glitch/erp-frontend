@@ -195,6 +195,42 @@ assert.match(edge, /op === "REGISTER_QUICK_MARKET_SUPPLIER_RETURN"\)\s*\{\s*requ
 assert.match(edge, /buyer_goods_custody_register_quick_market_supplier_return_atomic/);
 assert.match(edge, /event\.operation_id === operationId && event\.evidence_path === evidencePath/);
 
+// Execute the actual Buyer goods-custody renderer against the live SMART ERP RPC shape.
+const vehicleStart = buyer.indexOf("renderVehicleBalance:async function(){");
+const vehicleEnd = buyer.indexOf("applyPOFilters:function()", vehicleStart);
+assert.ok(vehicleStart >= 0 && vehicleEnd > vehicleStart, "Buyer goods-custody renderer boundaries not found");
+const vehicleMember = buyer.slice(vehicleStart, vehicleEnd).trim().replace(/,\\s*$/, "");
+let renderedCustodyHtml = "";
+const vehicleContext = {
+  buyerEsc: value => String(value == null ? "" : value).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"),
+  buyerDate: value => String(value || "—"),
+  RW_UI: { byId: () => ({}), safeHTML: (_target, html) => { renderedCustodyHtml = html; } }
+};
+const vehicleObject = vm.runInNewContext("({" + vehicleMember + "})", vehicleContext);
+const liveShapeFixture = {
+  success: true,
+  events: [],
+  balances: [
+    {item_id:"item-1",item_code:"A-1",item_name:"بسكويت عجوة",unit:"علبة",branch_id:"branch-1",branch_name:"الفرع الرئيسي",balance_qty:5,ownership_class:"SUPPLIER_OWNED",supplier_id:"supplier-1",supplier_name:"المورد الأول",source_document_type:"PurchaseInvoice",source_document_id:"invoice-1002",source_document_code:"PINV-1002",last_movement_at:"2026-11-08"},
+    {item_id:"item-1",item_code:"A-1",item_name:"بسكويت عجوة",unit:"علبة",branch_id:"branch-1",branch_name:"الفرع الرئيسي",balance_qty:5,ownership_class:"SUPPLIER_OWNED",supplier_id:"supplier-2",supplier_name:"المورد الثاني",source_document_type:"PurchaseInvoice",source_document_id:"invoice-1003",source_document_code:"PINV-1003",last_movement_at:"2026-11-09"},
+    {item_id:"item-2",item_code:"B-2",item_name:"شيبس",unit:"كرتونه",branch_id:"branch-1",branch_name:"الفرع الرئيسي",balance_qty:4,ownership_class:"SUPPLIER_OWNED",supplier_id:"supplier-2",supplier_name:"المورد الثاني",source_document_type:"PurchaseInvoice",source_document_id:"invoice-1003",source_document_code:"PINV-1003",last_movement_at:"2026-11-09"},
+    {item_id:"item-3",item_code:"C-3",item_name:"عصير جوافة",unit:"شرنك",branch_id:"branch-1",branch_name:"الفرع الرئيسي",balance_qty:10,ownership_class:"SUPPLIER_OWNED",supplier_id:"supplier-1",supplier_name:"المورد الأول",source_document_type:"PurchaseInvoice",source_document_id:"invoice-1002",source_document_code:"PINV-1002",last_movement_at:"2026-11-08"},
+    {item_id:"item-4",item_code:"D-4",item_name:"عصير مانجو",unit:"شرنك",branch_id:"branch-1",branch_name:"الفرع الرئيسي",balance_qty:5,ownership_class:"SUPPLIER_OWNED",supplier_id:"supplier-1",supplier_name:"المورد الأول",source_document_type:"PurchaseInvoice",source_document_id:"invoice-1002",source_document_code:"PINV-1002",last_movement_at:"2026-11-08"}
+  ]
+};
+const vehicleApp = { pageLoading: () => {}, api: async operation => {
+  assert.equal(operation,"GET_BUYER_GOODS_CUSTODY_BALANCES");
+  return liveShapeFixture;
+}};
+await vehicleObject.renderVehicleBalance.call(vehicleApp);
+assert.match(renderedCustodyHtml,/رصيد الأصناف في عهدتي/);
+assert.match(renderedCustodyHtml,/10 علبة/);
+assert.match(renderedCustodyHtml,/PINV-1002/);
+assert.match(renderedCustodyHtml,/PINV-1003/);
+assert.match(renderedCustodyHtml,/4 كرتونه/);
+assert.match(renderedCustodyHtml,/10 شرنك/);
+assert.match(renderedCustodyHtml,/بضاعة مملوكة للمورد/);
+
 // SQL contract guards. These are static contract tests, not a live Postgres execution.
 assert.match(sql, /BEGIN;[\s\S]*COMMIT;/);
 assert.match(sql, /CREATE OR REPLACE FUNCTION public\.buyer_goods_custody_register_quick_market_supplier_return_atomic/);
