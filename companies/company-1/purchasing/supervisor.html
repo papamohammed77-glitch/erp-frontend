@@ -41,7 +41,10 @@
         <div class="flex items-center gap-2"><span class="text-xs font-bold" id="headerUserName"></span><button onclick="App.doLogout()" class="bg-white/10 w-8 h-8 rounded-full"><i class="fa-solid fa-arrow-right-from-bracket text-xs"></i></button></div>
     </header>
     <nav id="purchaseSupervisorTabs" aria-label="تبويبات دورة المشتريات" class="flex gap-1.5 p-2 bg-white border-b overflow-x-auto flex-shrink-0">
-        <button type="button" onclick="App.switchTab('dashboard')" id="tab-dashboard" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm bg-fuchsia-700 text-white shadow-sm">📊 لوحة المشتريات</button>
+        <button type="button" onclick="App.switchTab('dashboard')" id="tab-dashboard" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm bg-fuchsia-700 text-white shadow-sm">📊 KPI's</button>
+        <button type="button" onclick="App.switchTab('today')" id="tab-today" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">📅 اليوم</button>
+        <button type="button" onclick="App.switchTab('notifications')" id="tab-notifications" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">🔔 الإشعارات</button>
+        <button type="button" onclick="App.switchTab('suppliers')" id="tab-suppliers" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">🏭 الموردون</button>
         <button type="button" onclick="App.switchTab('requests')" id="tab-requests" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">📝 طلبات الشراء</button>
         <button type="button" onclick="App.switchTab('rfq')" id="tab-rfq" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">📨 طلبات عروض الأسعار</button>
         <button type="button" onclick="App.switchTab('quotations')" id="tab-quotations" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">💬 عروض الموردين</button>
@@ -51,7 +54,7 @@
         <button type="button" onclick="App.switchTab('payments')" id="tab-payments" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">💳 دفعات الموردين</button>
         <button type="button" onclick="App.switchTab('reports')" id="tab-reports" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">📈 التقارير</button>
         <button type="button" onclick="App.switchTab('settings')" id="tab-settings" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">⚙️ الإعدادات</button>
-        <button type="button" onclick="App.switchTab('suppliers')" id="tab-suppliers" class="whitespace-nowrap px-3.5 py-2.5 rounded-xl font-bold text-sm text-slate-600 hover:bg-fuchsia-50">🏭 الموردون</button>
+
     </nav>
     <main id="mainContent" class="flex-1 overflow-y-auto p-4"></main>
 </div>
@@ -215,7 +218,7 @@ var App = {
     },
     doLogout: function(){this.stopRealtime();var s=this;RW_Auth.doLogout(function(){RW_UI.byId('mainApp').classList.add('hidden');RW_UI.byId('loginScreen').classList.remove('hidden');});},
     switchTab: function(t){
-        var allowed = ['dashboard','requests','rfq','quotations','orders','invoices','returns','payments','reports','settings','suppliers'];
+        var allowed = ['dashboard','today','notifications','suppliers','requests','rfq','quotations','orders','invoices','returns','payments','reports','settings'];
         if (allowed.indexOf(t) === -1) return;
         this.currentTab = t;
         allowed.forEach(function(x){
@@ -233,7 +236,8 @@ var App = {
     },
     refreshCurrentTab: function(){
         var renderers = {
-            dashboard:'renderDashboard', requests:'renderRequests', rfq:'renderRFQs',
+            dashboard:'renderDashboard', today:'renderToday', notifications:'renderNotifications',
+            requests:'renderRequests', rfq:'renderRFQs',
             quotations:'renderQuotations', orders:'renderOrders', invoices:'renderInvoices',
             returns:'renderReturns', payments:'renderPayments', reports:'renderReports',
             settings:'renderSettings', suppliers:'renderSuppliers'
@@ -829,6 +833,94 @@ var App = {
         });
     },
 
+    renderToday: async function(){
+        var companyId = this.currentUser && this.currentUser.company_id;
+        if (!companyId) { RW_UI.showError('سياق الشركة غير متاح'); return; }
+        var today = RW_PurchSupervisorLocalDate();
+        RW_UI.showSkeleton('mainContent',4,'card');
+        try {
+            var specs = [
+                {table:'purchase_requests',date:'request_date',code:'request_code',title:'طلب شراء',cols:'id,company_id,request_code,request_date,status,created_at'},
+                {table:'purchase_rfqs',date:'rfq_date',code:'rfq_code',title:'طلب عرض سعر',cols:'id,company_id,rfq_code,rfq_date,status,created_at'},
+                {table:'purchase_quotations',date:'quotation_date',code:'quotation_code',title:'عرض مورد',cols:'id,company_id,quotation_code,quotation_date,status,currency,total_amount,created_at'},
+                {table:'purchase_orders',date:'po_date',code:'po_code',title:'أمر شراء',cols:'id,company_id,po_code,po_date,status,currency,total_amount,expected_delivery_date,created_at'},
+                {table:'purchase_invoices',date:'invoice_date',code:'invoice_code',title:'فاتورة شراء',cols:'id,company_id,invoice_code,invoice_date,status,currency,total_amount,created_at'},
+                {table:'purchase_returns',date:'return_date',code:'return_code',title:'مرتجع شراء',cols:'id,company_id,return_code,return_date,status,total_amount,created_at'},
+                {table:'purchase_payments',date:'payment_date',code:'payment_code',title:'دفعة مورد',cols:'id,company_id,payment_code,payment_date,status,amount,created_at'}
+            ];
+            var loaded = await Promise.all(specs.map(async function(spec){
+                var all = [], offset = 0, pageSize = 200;
+                while (true) {
+                    var page = await supabase.from(spec.table).select(spec.cols)
+                        .eq('company_id',companyId).eq(spec.date,today)
+                        .order(spec.date,{ascending:false}).order('id',{ascending:false})
+                        .range(offset,offset + pageSize - 1);
+                    if (page.error) throw page.error;
+                    var batch = page.data || [];
+                    all = all.concat(batch);
+                    if (batch.length < pageSize) break;
+                    offset += pageSize;
+                }
+                return all.map(function(row){
+                    return {date:row[spec.date],code:row[spec.code],title:spec.title,status:row.status,
+                        currency:row.currency || null,amount:row.currency && row.total_amount != null ? row.total_amount : null};
+                });
+            }));
+            var due = await supabase.from('purchase_orders')
+                .select('id,company_id,po_code,expected_delivery_date,status,supplier_name')
+                .eq('company_id',companyId).eq('expected_delivery_date',today)
+                .order('po_code',{ascending:true}).limit(200);
+            if (due.error) throw due.error;
+            var documents = [].concat.apply([],loaded);
+            documents.sort(function(a,b){ return String(b.date || '').localeCompare(String(a.date || '')); });
+            var counts = specs.map(function(spec,index){ return {title:spec.title,count:loaded[index].length}; });
+            var html = '<div class="space-y-4"><div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2"><div><div class="text-xs font-bold text-fuchsia-700">متابعة يومية</div><h2 class="text-2xl font-black text-slate-900">مشتريات اليوم</h2><p class="text-xs text-slate-500 mt-1">المستندات المؤرخة بتاريخ ' + RW_PurchSupervisorEsc(today) + ' ضمن الشركة الحالية</p></div><button type="button" onclick="App.refreshCurrentTab()" class="px-4 py-2 rounded-xl bg-fuchsia-50 text-fuchsia-700 font-bold">تحديث البيانات</button></div>';
+            html += '<div class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2">';
+            counts.forEach(function(x){ html += '<div class="stat-card border border-slate-100"><div class="text-xs text-slate-500">' + RW_PurchSupervisorEsc(x.title) + '</div><div class="text-2xl font-black mt-1">' + x.count.toLocaleString('en-US') + '</div></div>'; });
+            html += '</div><section class="card"><h3 class="font-black mb-3">المستندات المسجلة اليوم</h3>';
+            if (!documents.length) html += '<p class="text-sm text-slate-400 py-4 text-center">لا توجد مستندات مشتريات مؤرخة اليوم.</p>';
+            documents.forEach(function(x){
+                html += '<div class="flex flex-wrap items-center justify-between gap-2 py-3 border-b last:border-0"><div><b class="text-sm">' + RW_PurchSupervisorEsc(x.code || '—') + '</b><div class="text-xs text-slate-500">' + RW_PurchSupervisorEsc(x.title) + ' • ' + RW_PurchSupervisorEsc(x.date || '—') + '</div></div><div class="text-left"><div class="text-xs font-bold">' + RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(x.status)) + '</div>' + (x.amount != null ? '<div class="text-xs text-slate-500">' + RW_PurchSupervisorNum(x.amount) + ' ' + RW_PurchSupervisorEsc(x.currency) + '</div>' : '') + '</div></div>';
+            });
+            html += '</section><section class="card"><h3 class="font-black mb-2">أوامر التوريد المستحقة اليوم</h3>';
+            var dueRows = (due.data || []).filter(function(x){ return x.status !== 'Received' && x.status !== 'Cancelled'; });
+            if (!dueRows.length) html += '<p class="text-sm text-slate-400 py-3">لا توجد أوامر توريد مفتوحة مستحقة اليوم.</p>';
+            dueRows.forEach(function(x){
+                html += '<div class="flex flex-wrap items-center justify-between gap-2 py-2 border-b last:border-0"><div><b>' + RW_PurchSupervisorEsc(x.po_code || '—') + '</b><div class="text-xs text-slate-500">' + RW_PurchSupervisorEsc(x.supplier_name || '—') + '</div></div><span class="text-xs font-bold">' + RW_PurchSupervisorEsc(RW_PurchSupervisorStatus(x.status)) + '</span></div>';
+            });
+            html += '</section><p class="text-xs text-slate-400">هذه شاشة متابعة وقراءة فقط؛ لا تنشئ استلامًا أو حركة مخزون أو قيدًا ماليًا.</p></div>';
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+        } catch(e) {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-5 rounded-2xl bg-red-50 text-red-700 font-bold">' + RW_PurchSupervisorEsc(e.message || 'تعذر تحميل متابعة اليوم') + '</div>');
+        }
+    },
+    renderNotifications: async function(){
+        var email = String(this.currentUser && this.currentUser.email || '').trim();
+        if (!email) {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="card text-center text-amber-700">تعذر التحقق من بريد المستخدم؛ تم إيقاف قراءة الإشعارات حمايةً للخصوصية.</div>');
+            return;
+        }
+        RW_UI.showSkeleton('mainContent',3,'card');
+        try {
+            var result = await supabase.from('notifications')
+                .select('id,user_email,title,body,type,reference_table,reference_id,is_read,created_at')
+                .eq('user_email',email)
+                .order('created_at',{ascending:false})
+                .limit(100);
+            if (result.error) throw result.error;
+            var rows = result.data || [];
+            var unread = rows.filter(function(x){ return x.is_read !== true; }).length;
+            var html = '<div class="space-y-4"><div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2"><div><div class="text-xs font-bold text-fuchsia-700">تنبيهات الحساب</div><h2 class="text-2xl font-black text-slate-900">الإشعارات</h2><p class="text-xs text-slate-500 mt-1">إشعارات الحساب الحالي فقط • آخر ' + rows.length.toLocaleString('en-US') + ' إشعار</p></div><button type="button" onclick="App.refreshCurrentTab()" class="px-4 py-2 rounded-xl bg-fuchsia-50 text-fuchsia-700 font-bold">تحديث</button></div>';
+            html += '<div class="grid grid-cols-2 gap-2"><div class="stat-card"><div class="text-xs text-slate-500">غير مقروء</div><div class="text-2xl font-black text-fuchsia-700">' + unread.toLocaleString('en-US') + '</div></div><div class="stat-card"><div class="text-xs text-slate-500">إجمالي المعروض</div><div class="text-2xl font-black">' + rows.length.toLocaleString('en-US') + '</div></div></div>';
+            if (!rows.length) html += '<div class="card text-center text-slate-400 py-8">لا توجد إشعارات لهذا الحساب.</div>';
+            rows.forEach(function(x){
+                html += '<article class="card border ' + (x.is_read === true ? 'border-slate-100' : 'border-fuchsia-200') + '"><div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="font-black text-slate-900">' + RW_PurchSupervisorEsc(x.title || 'إشعار') + '</div><p class="text-sm text-slate-600 mt-1 whitespace-pre-wrap">' + RW_PurchSupervisorEsc(x.body || '') + '</p><div class="text-[11px] text-slate-400 mt-2">' + RW_PurchSupervisorEsc(x.type || 'info') + ' • ' + RW_PurchSupervisorEsc(x.created_at || '—') + (x.reference_table ? ' • ' + RW_PurchSupervisorEsc(x.reference_table) : '') + '</div></div><span class="shrink-0 text-xs font-bold ' + (x.is_read === true ? 'text-slate-400' : 'text-fuchsia-700') + '">' + (x.is_read === true ? 'مقروء' : 'جديد') + '</span></div></article>';
+            });
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),html);
+        } catch(e) {
+            RW_UI.safeHTML(RW_UI.byId('mainContent'),'<div class="p-5 rounded-2xl bg-red-50 text-red-700 font-bold">' + RW_PurchSupervisorEsc(e.message || 'تعذر تحميل الإشعارات') + '</div>');
+        }
+    },
     renderSuppliers: async function(){
         var self = this;
         RW_UI.showSkeleton('mainContent',3,'card');
