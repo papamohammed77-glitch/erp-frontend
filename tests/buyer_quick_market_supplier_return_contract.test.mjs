@@ -34,9 +34,12 @@ for (const [i, source] of inlineScripts.entries()) {
 // Source wiring and UI state guards.
 assert.match(buyer, /recordQuickMarketSupplierReturn:async function\(invoiceId\)/);
 assert.match(buyer, /App\.recordQuickMarketSupplierReturn/);
-assert.match(buyer, /var canRegisterHandover=quickMarketStatusEligible&&invoiceOwner&&hasHandoverPending/);
+assert.doesNotMatch(buyer, /هل استلمت البضاعة فعليًا من المورد؟/);
 assert.match(buyer, /var canReturnSupplier=quickMarketStatusEligible&&invoiceOwner&&hasReturnableCustody/);
-assert.match(buyer, /pending=Array\.isArray\(result\.pending_handover\)\?result\.pending_handover:\[\]/);
+assert.match(buyer, /إجمالي بضاعة مشترياتي بعهدتي/);
+assert.match(buyer, /بضاعة مشترياتي السريعة بعهدتي/);
+assert.doesNotMatch(buyer, /pending_handover/);
+assert.doesNotMatch(buyer, /var canRegisterHandover=/);
 assert.doesNotMatch(buyer.slice(buyer.indexOf("openInvoice:async function(id){"), buyer.indexOf("viewPurchaseAttachment:async function(path){")), /showDenyButton:isQuickMarket/);
 
 // Extract and execute the actual Buyer method with an isolated modal / storage / Edge-function mock.
