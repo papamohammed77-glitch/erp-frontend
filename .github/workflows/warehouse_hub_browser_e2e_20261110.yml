@@ -1,0 +1,136 @@
+name: RAWAEA — Unified Warehouse Hub Browser E2E
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'companies/company-1/warehouse/warehouse.html'
+      - 'companies/company-1/warehouse/receiver.html'
+      - 'companies/company-1/warehouse/picker.html'
+      - 'companies/company-1/warehouse/loader.html'
+      - 'companies/company-1/warehouse/returns.html'
+      - 'companies/company-1/warehouse/unloader.html'
+      - 'companies/company-1/warehouse/counter.html'
+      - 'companies/company-1/warehouse/vouchers.html'
+      - '.github/workflows/warehouse_hub_browser_e2e_20261110.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  warehouse-hub-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout current source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate hub source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('companies/company-1/warehouse/warehouse.html','utf8');
+          const scripts=[...s.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(m=>!/\bsrc\s*=/.test(m[1]||''));
+          if(!scripts.length) throw new Error('HUB_INLINE_SCRIPT_MISSING');
+          scripts.forEach((m,i)=>{try{new Function(m[2])}catch(e){throw new Error('HUB_JS_SYNTAX_'+(i+1)+':'+e.message)}});
+          for(const p of ['receiver.html','picker.html','loader.html','returns.html','unloader.html','counter.html','vouchers.html']) if(!s.includes(p)) throw new Error('HUB_ROUTE_MISSING:'+p);
+          for(const t of ['today','operations','vouchers','account']) if(!s.includes('data-tab="'+t+'"')) throw new Error('HUB_TAB_MISSING:'+t);
+          console.log('WAREHOUSE_HUB_SOURCE_CONTRACT=PASS');
+          NODE
+      - name: Install Playwright
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium
+      - name: Start local source server
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rawaea-warehouse-http.log 2>&1 &
+          echo $! >/tmp/rawaea-warehouse-http.pid
+          for n in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:4173/companies/company-1/warehouse/warehouse.html >/dev/null && exit 0
+            sleep 1
+          done
+          cat /tmp/rawaea-warehouse-http.log
+          exit 1
+      - name: Execute authenticated-mock warehouse hub E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { chromium } = require('playwright');
+          const target='http://127.0.0.1:4173/companies/company-1/warehouse/warehouse.html';
+          const qaUser={name:'QA Warehouse',email:'qa@rawaea.invalid'};
+          const snapshot=(role)=>({success:true,generated_at:new Date().toISOString(),
+            user:{id:'qa-user',company_id:'qa-company',role:'مخزني',active_warehouse_role:role,is_owner:false},
+            branch_scope:[{id:'qa-branch',code:'QA-01',name:'مخزن الاختبار'}],main_branch_access:true,
+            metrics:{pending_purchase_orders:2,active_runsheets:3,loading_runsheets:1,loaded_runsheets:1,returning_runsheets:1,pending_vouchers:2,open_counts:1}});
+          async function prepare(page,role,noSession){
+            await page.route('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.supabase = {};'}));
+            await page.route('**/core.js',r=>{
+              const sessionUser=noSession?'null':'qaUser';
+              const sessionError=noSession?'"NO_SESSION"':'null';
+              const data=JSON.stringify(snapshot(role));
+              const body='var qaUser='+JSON.stringify(qaUser)+';window.RW_Auth={init:function(cb){cb('+sessionUser+','+sessionError+');},getUser:function(){return qaUser;},doLogin:function(e,p,cb){cb(qaUser,null);},doLogout:function(cb){cb();}};window.supabase={rpc:function(name){return Promise.resolve({data:'+data+',error:null});}};';
+              r.fulfill({status:200,contentType:'application/javascript',body});
+            });
+            await page.route('**/register-sw.js',r=>r.fulfill({status:200,contentType:'application/javascript',body:''}));
+            await page.route(/https:\/\/(fonts\.googleapis\.com|cdnjs\.cloudflare\.com)/,r=>r.fulfill({status:200,contentType:'text/css',body:''}));
+          }
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            const context=await browser.newContext({serviceWorkers:'block'});
+            const page=await context.newPage(),consoleErrors=[],pageErrors=[];
+            page.on('console',m=>{if(m.type()==='error')consoleErrors.push(m.text())});
+            page.on('pageerror',e=>pageErrors.push(String(e.message||e)));
+            await prepare(page,'مخزن شامل',true);
+            await page.goto(target+'?noSession=1',{waitUntil:'domcontentloaded'});
+            if(await page.locator('#loginScreen').isHidden())throw new Error('LOGIN_SCREEN_NOT_SHOWN');
+            await page.locator('#loginEmail').fill('qa@rawaea.invalid');
+            await page.locator('#loginPass').fill('synthetic-only');
+            await page.locator('button[onclick*="doLogin"]').click();
+            await page.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
+            if(await page.locator('#mainApp').isHidden())throw new Error('AUTHENTICATED_HUB_NOT_SHOWN');
+            if(await page.locator('.metric').count()<7)throw new Error('DASHBOARD_METRICS_MISSING');
+            await page.locator('[data-tab="operations"]').click();
+            for(const p of ['receiver.html','picker.html','loader.html','returns.html','unloader.html','counter.html']) if(await page.locator('a[href="'+p+'"]').count()!==1)throw new Error('UNIFIED_ROLE_ROUTE_MISSING:'+p);
+            await page.locator('[data-tab="vouchers"]').click();
+            if(await page.locator('a[href="vouchers.html"]').count()!==5)throw new Error('VOUCHER_CARDS_MISSING');
+            await page.locator('[data-tab="account"]').click();
+            if(!(await page.locator('body').innerText()).includes('مخزن الاختبار'))throw new Error('BRANCH_SCOPE_NOT_RENDERED');
+            const restricted=await context.newPage(),restrictedErrors=[];
+            restricted.on('pageerror',e=>restrictedErrors.push(String(e.message||e)));
+            await prepare(restricted,'تحميل',false);
+            await restricted.goto(target+'?role=loader',{waitUntil:'domcontentloaded'});
+            await restricted.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
+            await restricted.locator('[data-tab="operations"]').click();
+            if(await restricted.locator('a[href="loader.html"]').count()!==1)throw new Error('LOADER_ROLE_NOT_ALLOWED');
+            for(const p of ['receiver.html','picker.html','returns.html','unloader.html','counter.html']) if(await restricted.locator('a[href="'+p+'"]').count()!==0)throw new Error('UNAUTHORIZED_OPERATION_ENABLED:'+p);
+            await restricted.locator('[data-tab="vouchers"]').click();
+            if(await restricted.locator('a[href="vouchers.html"]').count()!==0)throw new Error('UNAUTHORIZED_VOUCHERS_ENABLED');
+            if(consoleErrors.length||pageErrors.length||restrictedErrors.length)throw new Error('BROWSER_ERRORS:'+JSON.stringify({consoleErrors,pageErrors,restrictedErrors}));
+            console.log('WAREHOUSE_HUB_LOGIN_E2E=PASS');
+            console.log('WAREHOUSE_HUB_UNIFIED_ROLE_E2E=PASS');
+            console.log('WAREHOUSE_HUB_ROLE_RESTRICTION_E2E=PASS');
+            console.log('WAREHOUSE_HUB_BRANCH_SCOPE_E2E=PASS');
+            await browser.close();
+          })().catch(e=>{console.error('WAREHOUSE_HUB_E2E_FAILURE='+e.message);process.exit(1)});
+          NODE
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rawaea-warehouse-hub-e2e
+          path: /tmp/rawaea-warehouse-http.log
+          if-no-files-found: ignore
