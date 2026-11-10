@@ -413,6 +413,7 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+;
 
 CREATE OR REPLACE FUNCTION public.inventory_voucher_report(p_operation text, p_payload jsonb DEFAULT '{}'::jsonb)
  RETURNS jsonb
@@ -875,6 +876,7 @@ BEGIN
   );
 END;
 $function$
+;
 
 CREATE OR REPLACE FUNCTION public.create_branch_receipt_request_atomic(
   p_company_id uuid,p_source_branch_id uuid,p_reference text,p_notes text,
