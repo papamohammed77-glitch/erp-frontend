@@ -76,12 +76,12 @@ jobs:
           if(Object.keys(bundles).sort().join('|')!==keys.slice().sort().join('|')) throw new Error('SEVEN_NATIVE_MODULES_REQUIRED');
           for(const key of keys){
             const b=bundles[key];
-            const authInitCount=(b.script.match(/RW_Auth\\.init\\s*\\(/g)||[]).length;
+            const authInitCount=b.script.split('RW_Auth.init').length-1;
             if(authInitCount!==1) throw new Error('MODULE_SHARED_AUTH_INIT_COUNT:'+key+':'+authInitCount);
-            if(/createClient\\s*\\(/.test(b.script)) throw new Error('MODULE_CREATED_DUPLICATE_SUPABASE_CLIENT:'+key);
+            if(b.script.includes('createClient(')) throw new Error('MODULE_CREATED_DUPLICATE_SUPABASE_CLIENT:'+key);
             if(!b.script.includes('مخزن شامل')) throw new Error('MODULE_UNIFIED_WAREHOUSE_ROLE_MISSING:'+key);
             if(!b.html.includes('id="mainApp"')) throw new Error('MODULE_MARKUP_MISSING:'+key);
-            if(!b.script.includes('window.RW_NATIVE_APP_'+key+'.init()')) throw new Error('MODULE_BOOT_MISSING:'+key);if(/moduleApp\\./.test(b.script)) throw new Error('UNSCOPED_DYNAMIC_MODULE_ACTION:'+key);
+            if(!b.script.includes('window.RW_NATIVE_APP_'+key+'.init()')) throw new Error('MODULE_BOOT_MISSING:'+key);if(b.script.includes('moduleApp.')) throw new Error('UNSCOPED_DYNAMIC_MODULE_ACTION:'+key);
             if(!b.script.startsWith('(function(){')||!b.script.includes('var moduleRoot=window.document.getElementById(')) throw new Error('NATIVE_ROOT_BOOTSTRAP_ORDER_INVALID:'+key);
             new Function(b.script);
             if(/<iframe\b/i.test(b.html)) throw new Error('MODULE_IFRAME_FOUND:'+key);
