@@ -56,6 +56,16 @@ jobs:
             if(!html.includes(marker)) throw new Error('HOST_CONTRACT_MARKER_MISSING:'+marker);
           for(const pair of ['receiving:\'receiver\'','picking:\'picker\'','loading:\'loader\'','returns:\'returns\'','unloading:\'unloader\'','counting:\'counter\'','vouchers:\'vouchers\''])
             if(!html.includes(pair)) throw new Error('OPERATION_NATIVE_MODULE_ALIAS_MISSING:'+pair);
+          const cssScopeAliases={receiver:'receiving',picker:'picking',loader:'loading',returns:'returns',unloader:'unloading',counter:'counting',vouchers:'vouchers'};
+          for(const [nativeKey,operationKey] of Object.entries(cssScopeAliases)){
+            const selectorPrefix='.rw-native-module[data-rw-module=\'';
+            const scopedSelector=selectorPrefix+operationKey+'\']';
+            if(!html.includes(scopedSelector)) throw new Error('NATIVE_MODULE_CSS_SCOPE_MISSING:'+operationKey);
+            if(nativeKey!==operationKey){
+              const staleSelector=selectorPrefix+nativeKey+'\']';
+              if(html.includes(staleSelector)) throw new Error('NATIVE_MODULE_CSS_SCOPE_KEY_MISMATCH:'+nativeKey+'->'+operationKey);
+            }
+          }
           if(!html.includes('RW_NATIVE_APPS&&window.RW_NATIVE_APPS[self.moduleKey(key)]')) throw new Error('NATIVE_MODULE_LOGOUT_CLEANUP_ALIAS_MISSING');
           const bundleMatch=html.match(/var RW_NATIVE_BUNDLES=(\{[\s\S]*?\});\nvar App=/);
           if(!bundleMatch) throw new Error('NATIVE_MODULE_BUNDLE_OBJECT_MISSING');
@@ -88,6 +98,7 @@ jobs:
           console.log('WAREHOUSE_FOUR_TAB_CONTRACT=PASS');
           console.log('WAREHOUSE_NO_IFRAME_OR_CHILD_NAVIGATION=PASS');
           console.log('WAREHOUSE_SEVEN_NATIVE_OPERATION_BUNDLES=PASS');
+          console.log('WAREHOUSE_NATIVE_MODULE_CSS_SCOPE=PASS');
           console.log('WAREHOUSE_SHARED_CORE_SESSION=PASS');
           console.log('WAREHOUSE_PICKER_AUTH_ALIGNMENT=PASS');
           console.log('WAREHOUSE_FULL_NATIVE_WORKFLOWS_PRESERVED=PASS');
