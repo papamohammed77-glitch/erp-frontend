@@ -91,6 +91,11 @@ jobs:
           if(!bundles.picker.script.includes('RW_SHARED_SUPABASE')) throw new Error('PICKER_MUST_USE_SHARED_CLIENT');
           for(const marker of ['start-picking','complete-picking','reopen-picking','cancel-picking'])
             if(!bundles.picker.script.includes(marker)) throw new Error('PICKER_WORKFLOW_MISSING:'+marker);
+          if(bundles.picker.script.includes('this.currentUser.user_metadata.name')) throw new Error('PICKER_USES_NONEXISTENT_SHARED_USER_METADATA');
+          if(!bundles.picker.script.includes('var userName = this.currentUser.name')) throw new Error('PICKER_SHARED_PROFILE_NAME_MISSING');
+          if(!bundles.loader.script.includes('r[0].error') || !bundles.loader.script.includes('r[1].error')) throw new Error('LOADER_PENDING_RESULTS_MUST_CHECK_SUPABASE_ERRORS');
+          if(!bundles.unloader.script.includes('Unloader runsheets query failed:') || !bundles.unloader.script.includes('Unloader completed vouchers query failed:')) throw new Error('UNLOADER_RESULT_ERRORS_NOT_HANDLED');
+          if(!bundles.counter.script.includes('Counter inventory history query failed:')) throw new Error('COUNTER_HISTORY_RESULT_ERRORS_NOT_HANDLED');
           for(const marker of ['start-loading','complete-loading','reopen-loading','loaderVehicleSelect'])
             if(!bundles.loader.script.includes(marker)) throw new Error('LOADER_WORKFLOW_MISSING:'+marker);
           for(const marker of ['start-return','complete-return','report-discrepancy','reopen-return','returnReasons'])
@@ -232,6 +237,30 @@ jobs:
                 return {exists:!!root,ready:root&&root.dataset.rwReady,childVisible:!!(root&&root.querySelector('#mainApp')&&!root.querySelector('#mainApp').classList.contains('hidden')),accountTab:!!(root&&root.querySelector('#tab-account')),moduleKey:root&&root.dataset.rwModule};
               },key);
               if(!state.exists||state.ready!=='true'||!state.childVisible||state.accountTab||state.moduleKey!==key)throw new Error('NATIVE_WORKSPACE_NOT_READY:'+key+':'+JSON.stringify(state));
+              if(key==='picking'){
+                const pending=page.locator('#rw-native-root-picker #mainContent');
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-picker #mainContent')?.innerText.includes('مهام متاحة للتحضير'));
+                const pendingText=await pending.innerText();
+                if(pendingText.includes('فشل تحميل البيانات')||!pendingText.includes('QA Warehouse'))throw new Error('PICKER_PENDING_DATA_RENDER_FAILED:'+pendingText.slice(0,500));
+                await page.evaluate(()=>window.RW_NATIVE_APPS.picker.renderAccount());
+                const accountText=await pending.innerText();
+                if(!accountText.includes('QA Warehouse')||accountText.includes('undefined'))throw new Error('PICKER_SHARED_PROFILE_ACCOUNT_RENDER_FAILED:'+accountText.slice(0,400));
+                await page.evaluate(()=>window.RW_NATIVE_APPS.picker.switchTab('pending'));
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-picker #mainContent')?.innerText.includes('مهام متاحة للتحضير'));
+                console.log('WAREHOUSE_PICKER_DATA_AND_NORMALIZED_PROFILE_RENDER=PASS');
+              }
+              if(key==='loading'){
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-loader #mainContent')?.innerText.includes('مهام متاحة للتحميل'));
+                const loadingText=await page.locator('#rw-native-root-loader #mainContent').innerText();
+                if(loadingText.includes('فشل تحميل البيانات'))throw new Error('LOADER_PENDING_DATA_RENDER_FAILED:'+loadingText.slice(0,400));
+                console.log('WAREHOUSE_LOADER_PENDING_DATA_RENDER=PASS');
+              }
+              if(key==='unloading'){
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-unloader #mainContent')?.innerText.includes('رانشيتات جاهزة للتفريغ'));
+                const unloadingText=await page.locator('#rw-native-root-unloader #mainContent').innerText();
+                if(unloadingText.includes('فشل تحميل البيانات'))throw new Error('UNLOADER_PENDING_DATA_RENDER_FAILED:'+unloadingText.slice(0,400));
+                console.log('WAREHOUSE_UNLOADER_PENDING_DATA_RENDER=PASS');
+              }
               await page.locator('[data-workspace-back]').click();
               if(await page.locator('#rw-native-root-'+nativeKey).count()!==1)throw new Error('WORKSPACE_NOT_PERSISTED:'+key);
             }
