@@ -78,70 +78,45 @@ jobs:
           set -euo pipefail
           node <<'NODE'
           const { chromium } = require('playwright');
-
           (async () => {
             const browser = await chromium.launch({headless:true});
-            const context = await browser.newContext();
+            const context = await browser.newContext({serviceWorkers:'block'});
             const page = await context.newPage();
-
-            const consoleErrors = [];
-            const pageErrors = [];
-            const requests = [];
-            const responses = [];
-
-            page.on('console', m => {
-              if (m.type() === 'error') consoleErrors.push(m.text());
-            });
+            const consoleErrors = [], pageErrors = [], requests = [], responses = [];
+            page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
             page.on('pageerror', e => pageErrors.push(String(e.message || e)));
             page.on('request', r => requests.push(r.url()));
             page.on('response', r => responses.push({url:r.url(),status:r.status()}));
-
+            await page.route('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', r => r.fulfill({status:200,contentType:'application/javascript',body:'window.supabase = {};'}));
+            await page.route('**/core.js', r => r.fulfill({status:200,contentType:'application/javascript',body:
+              "window.supabase={auth:{getSession:function(){return Promise.resolve({data:{session:null},error:null});}},rpc:function(){return Promise.resolve({data:null,error:null});}};"+
+              "window.RW_Auth={init:function(cb){cb(null,'NO_SESSION');},doLogin:function(){},doLogout:function(cb){cb();},getUser:function(){return null;}};"+
+              "window.RW_SW={register:function(path){return fetch(path).then(function(r){if(!r.ok)throw new Error('SW_FETCH_FAILED');return r;});}};"
+            }));
+            await page.route('**/register-sw.js', r => r.fulfill({status:200,contentType:'application/javascript',body:''}));
+            await page.route(/https:\/\/(fonts\.googleapis\.com|cdnjs\.cloudflare\.com)/, r => r.fulfill({status:200,contentType:'text/css',body:''}));
             const target='http://127.0.0.1:4173/companies/company-1/warehouse/vouchers.html';
-            const response = await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000});
-            await page.waitForTimeout(4000);
-
-            const title = await page.title();
-            const source = await page.content();
-
-            const asset = url => responses.find(x => x.url === url);
-            const core = asset('http://127.0.0.1:4173/companies/company-1/core.js');
-            const sw = asset('http://127.0.0.1:4173/companies/company-1/sw.js');
-            const wrongSw = responses.filter(x => x.url.includes('/companies/company-1/warehouse/sw.js'));
-
-            const loginEmail = await page.locator('#loginEmail').count();
-            const loginPassword = await page.locator('#loginPass').count();
-            const loginButton = await page.locator('button[onclick*="doLogin"]').count();
-
-            console.log('TARGET=' + target);
-            console.log('HTTP=' + (response ? response.status() : 'NO_RESPONSE'));
-            console.log('TITLE=' + title);
-            console.log('CORE_STATUS=' + (core ? core.status : 'MISSING'));
-            console.log('SW_STATUS=' + (sw ? sw.status : 'MISSING'));
-            console.log('WRONG_SW_REQUESTS=' + wrongSw.length);
-            console.log('LOGIN_EMAIL_INPUT=' + loginEmail);
-            console.log('LOGIN_PASSWORD_INPUT=' + loginPassword);
-            console.log('LOGIN_BUTTON=' + loginButton);
-            console.log('CONSOLE_ERRORS=' + JSON.stringify(consoleErrors));
-            console.log('PAGE_ERRORS=' + JSON.stringify(pageErrors));
-            console.log('REQUEST_COUNT=' + requests.length);
-
-            if (!response || !response.ok()) throw new Error('VOUCHERS_HTTP_LOAD_FAILED');
-            if (!core || core.status !== 200) throw new Error('CORE_HTTP_LOAD_FAILED');
-            if (!sw || sw.status !== 200) throw new Error('SW_HTTP_LOAD_FAILED');
-            if (wrongSw.length) throw new Error('WRONG_WAREHOUSE_SW_REQUEST_DETECTED');
-            if (loginEmail < 1 || loginPassword < 1 || loginButton < 1) throw new Error('LOGIN_UI_MISSING');
-            if (consoleErrors.length) throw new Error('VOUCHERS_CONSOLE_ERRORS_PRESENT');
-            if (pageErrors.length) throw new Error('VOUCHERS_PAGEERROR_PRESENT');
-            if (!source.includes("RW_SW.register('../sw.js')")) throw new Error('SW_REGISTRATION_SOURCE_MISSING');
-
+            const response=await page.goto(target,{waitUntil:'domcontentloaded',timeout:30000});
+            await page.waitForTimeout(500);
+            const source=await page.content(), asset=url=>responses.find(x=>x.url===url);
+            const core=asset('http://127.0.0.1:4173/companies/company-1/core.js');
+            const sw=asset('http://127.0.0.1:4173/companies/company-1/sw.js');
+            const wrongSw=responses.filter(x=>x.url.includes('/companies/company-1/warehouse/sw.js'));
+            const email=await page.locator('#loginEmail').count(), password=await page.locator('#loginPass').count(), button=await page.locator('button[onclick*="doLogin"]').count();
+            console.log('HTTP='+(response?response.status():'NO_RESPONSE'),'CORE='+(core?core.status:'MISSING'),'SW='+(sw?sw.status:'MISSING'));
+            console.log('LOGIN_EMAIL='+email,'LOGIN_PASSWORD='+password,'LOGIN_BUTTON='+button,'WRONG_SW='+wrongSw.length);
+            console.log('CONSOLE_ERRORS='+JSON.stringify(consoleErrors),'PAGE_ERRORS='+JSON.stringify(pageErrors),'REQUESTS='+requests.length);
+            if(!response||!response.ok())throw new Error('VOUCHERS_HTTP_LOAD_FAILED');
+            if(!core||core.status!==200)throw new Error('CORE_HTTP_LOAD_FAILED');
+            if(!sw||sw.status!==200)throw new Error('SW_HTTP_LOAD_FAILED');
+            if(wrongSw.length)throw new Error('WRONG_WAREHOUSE_SW_REQUEST_DETECTED');
+            if(email<1||password<1||button<1)throw new Error('LOGIN_UI_MISSING');
+            if(consoleErrors.length||pageErrors.length)throw new Error('VOUCHERS_BROWSER_ERRORS');
+            if(!source.includes("RW_SW.register('../sw.js')"))throw new Error('SW_REGISTRATION_SOURCE_MISSING');
             console.log('VOUCHERS_BROWSER_BOOT_E2E=PASS');
             await browser.close();
-          })().catch(async e => {
-            console.error('VOUCHERS_BROWSER_E2E_FAILURE=' + e.message);
-            process.exit(1);
-          });
+          })().catch(e=>{console.error('VOUCHERS_BROWSER_E2E_FAILURE='+e.message);process.exit(1)});
           NODE
-
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
