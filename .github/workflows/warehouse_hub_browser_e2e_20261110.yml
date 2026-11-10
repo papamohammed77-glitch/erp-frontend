@@ -304,7 +304,39 @@ jobs:
               if(key==='receiving'){
                 const receiverRoot='#rw-native-root-receiver';
                 const receiverMain=receiverRoot+' #mainContent';
-                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #receiverDocumentCards')?.querySelectorAll('.doc-card').length===2);
+                try {
+                  await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #receiverDocumentCards')?.querySelectorAll('.doc-card').length===2,{},{timeout:12000});
+                } catch(queueError) {
+                  const queueDiag=await page.evaluate(()=>{
+                    const root=document.querySelector('#rw-native-root-receiver');
+                    const app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS.receiver;
+                    return {
+                      rootReady:root&&root.dataset.rwReady,
+                      rootText:root&&root.innerText.slice(0,2200),
+                      app:!!app,
+                      currentTab:app&&app.currentTab,
+                      currentUser:app&&app.currentUser?{
+                        id:app.currentUser.id,email:app.currentUser.email,company_id:app.currentUser.company_id,
+                        defaultBranchId:app.currentUser.defaultBranchId,allowedBranchIds:app.currentUser.allowedBranchIds,
+                        activeWarehouseRole:app.currentUser.activeWarehouseRole,permissions:app.currentUser.permissions
+                      }:null,
+                      queueLoaded:app&&app.queueLoaded,
+                      purchaseOrders:app&&Array.isArray(app.purchaseOrders)?app.purchaseOrders.map(x=>({
+                        doc_type:x.doc_type,id:x.id,po_code:x.po_code,invoice_code:x.invoice_code,
+                        status:x.status,branch_id:x.branch_id,items:x.items&&x.items.length
+                      })):null,
+                      allowedBranchIds:app&&app.allowedBranchIds,
+                      unrestrictedBranchScope:app&&app.unrestrictedBranchScope,
+                      mainBranchId:app&&app.mainBranchId,
+                      queueSignature:app&&app.queueSignature,
+                      loadSequence:app&&app.loadSequence,
+                      loadPending:app&&app.isSubmittingReceipt
+                    };
+                  });
+                  throw new Error('RECEIVER_INITIAL_QUEUE_DIAGNOSTIC:'+JSON.stringify({
+                    queueDiag,errors,consoleMessages:consoleMessages.slice(-40),wait:queueError.message
+                  }));
+                }
                 const initialQueue=await page.locator(receiverMain).innerText();
                 if(!initialQueue.includes('QA-PO-001')||!initialQueue.includes('QA-QMP-001'))throw new Error('RECEIVER_PO_AND_QMP_QUEUE_MISSING:'+initialQueue.slice(0,700));
                 await page.locator(receiverMain+' [data-action="source-filter"][data-filter="PURCHASE_ORDER"]').click();
