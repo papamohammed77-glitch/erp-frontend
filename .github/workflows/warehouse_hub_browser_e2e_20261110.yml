@@ -130,9 +130,10 @@ jobs:
             'u.id = driver_liabilities.driver_id'
           ]) if(!driverLiabilityMigration.includes(marker)) throw new Error('DRIVER_LIABILITY_SECURITY_BOUNDARY_MISSING:'+marker);
           if(driverLiabilityMigration.includes('GRANT INSERT ON TABLE public.driver_liabilities TO authenticated')) throw new Error('DRIVER_LIABILITY_DIRECT_CLIENT_WRITE_REGRANTED');
-          const designatedReceiverGuards=(designatedReceiverMigration.match(/COALESCE\(u\.active_warehouse_role,''\)='أذونات'\s+AND u\.default_branch_id=NEW\.to_id/g)||[]).length;
-          if(designatedReceiverGuards!==2) throw new Error('STANDARD_TRANSFER_RECEIVER_NOT_BOUND_TO_DESIGNATED_HOME_BRANCH:'+designatedReceiverGuards);
-          if(!designatedReceiverMigration.includes("ru.active_warehouse_role,'') IN ('أذونات','مخزن شامل')")) throw new Error('BRANCH_RECEIPT_ASSIGNED_REQUESTER_CONTRACT_LOST');
+          if(designatedReceiverMigration.trim()!==fullRoleReceiverMigration.trim())
+            throw new Error('LATER_TRANSFER_MIGRATION_WOULD_OVERWRITE_APPLIED_RECEIVER_FALLBACK');
+          if(!designatedReceiverMigration.includes("ru.active_warehouse_role,'') IN ('أذونات','مخزن شامل')"))
+            throw new Error('BRANCH_RECEIPT_ASSIGNED_REQUESTER_CONTRACT_LOST');
           for(const marker of [
             'eligible_voucher_role_receivers AS',
             'eligible_full_role_receivers AS',
@@ -140,7 +141,7 @@ jobs:
             'jsonb_array_length(u.allowed_branch_ids)=1',
             'WHERE NOT EXISTS (SELECT 1 FROM eligible_voucher_role_receivers)',
             'receiver_id:=receiver_candidates[1]'
-          ]) if(!fullRoleReceiverMigration.includes(marker)) throw new Error('UNIFIED_WAREHOUSE_TRANSFER_RECEIVER_FALLBACK_MISSING:'+marker);
+          ]) if(!designatedReceiverMigration.includes(marker)) throw new Error('UNIFIED_WAREHOUSE_TRANSFER_RECEIVER_FALLBACK_MISSING:'+marker);
           for(const tab of ['branch-count','vehicle-count','general-count'])
             if(!bundles.counter.html.includes('tab-'+tab)) throw new Error('PARENT_COUNT_TAB_MISSING:'+tab);
           for(const marker of ['COUNT_CREATE','COUNT_POPULATE','COUNT_GET','COUNT_UPSERT_LINE','COUNT_REFRESH','COUNT_FINALIZE','COUNT_CANCEL','allBranchesAllowed()'])
