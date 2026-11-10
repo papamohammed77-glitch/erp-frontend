@@ -1237,7 +1237,7 @@ var imgHtml = returnItemImageHTML(
             for (var i = 0; i < list.length; i++) {
                 var rs = list[i];
                 var driverName = (self._driverMap && rs.driver_id) ? (self._driverMap[rs.driver_id] || 'غير محدد') : 'غير محدد';
-                html += '<div class="card border-2 border-green-200 bg-green-50/20"><div class="flex flex-col items-center text-center"><span class="font-black text-base text-slate-800">' + rs.runsheet_code + '</span><p class="text-xs text-slate-400 mt-0.5">' + (rs.run_date || '') + '</p><p class="text-xs text-slate-500 mt-0.5"><i class="fa-solid fa-user ml-1 text-slate-400"></i>' + driverName + '</p><button onclick="App.reopenReturn(\'' + rs.runsheet_code + '\')" class="btn-warning text-xs py-1.5 px-3 w-full mt-2"><i class="fa-solid fa-pen-to-square ml-1"></i> تعديل المرتجعات</button></div></div>';
+                html += '<div class="card border-2 border-green-200 bg-green-50/20"><div class="flex flex-col items-center text-center"><span class="font-black text-base text-slate-800">' + rs.runsheet_code + '</span><p class="text-xs text-slate-400 mt-0.5">' + (rs.run_date || '') + '</p><p class="text-xs text-slate-500 mt-0.5"><i class="fa-solid fa-user ml-1 text-slate-400"></i>' + driverName + '</p><button type="button" disabled aria-disabled="true" title="إعادة الفتح متوقفة لحماية المخزون والآثار المحاسبية" class="btn-secondary text-xs py-1.5 px-3 w-full mt-2 opacity-60 cursor-not-allowed"><i class="fa-solid fa-lock ml-1"></i> إعادة الفتح متوقفة مؤقتًا</button></div></div>';
             }
             html += '</div>';
         }
@@ -1254,27 +1254,8 @@ var imgHtml = returnItemImageHTML(
     },
 
     reopenReturn: function(code){
-        var self = this;
-        supabase.from('runsheets').select('status').eq('runsheet_code', code).maybeSingle().then(function(res) {
-            if (!res.data || res.data.status !== 'Returned') {
-                Swal.fire({ title: 'لا يمكن التعديل', text: 'الرانشيت لم يعد في حالة مكتمل المرتجعات.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
-                self.loadCompleted();
-                return;
-            }
-            RW_UI.showConfirm('سيتم إعادة فتح الرانشيت ' + code + ' لتعديل المرتجعات. متابعة؟', function() {
-                RW_UI.showLoader('جاري إعادة الفتح...');
-                RW_API.call('reopen-return', { runsheet_code: code }, function(json) {
-                    RW_UI.hideLoader();
-                    if (json.success) {
-                        RW_UI.toast('تم إعادة فتح الرانشيت للتعديل', 'success');
-                        self.loadRunsheets();
-                    } else {
-                        RW_UI.showError(json.msg || 'فشل إعادة الفتح');
-                        self.loadCompleted();
-                    }
-                });
-            });
-        });
+        RW_UI.showError('إعادة فتح المرتجعات المكتملة متوقفة مؤقتًا لحماية المخزون والقيود المحاسبية. يلزم مسار عكس ذري معتمد قبل إتاحة التعديل.');
+        this.loadCompleted();
     },
 
     // ==================== تبويب حسابي ====================
