@@ -77,7 +77,7 @@ serve(async(req)=>{
       )
     }
 
-    const type=String(body?.type||'').trim()
+    const type=String(body?.type||(action==='request-branch-receipt'?'Transfer':'')).trim()
     const items=Array.isArray(body?.items)
       ?body.items
       :[]
