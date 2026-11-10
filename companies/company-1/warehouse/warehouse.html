@@ -154,10 +154,8 @@ button,input,select,textarea{font:inherit}
       <button class="tab" data-tab="receiving" type="button">الاستلام</button>
       <button class="tab" data-tab="picking" type="button">التحضير</button>
       <button class="tab" data-tab="loading" type="button">التحميل</button>
-      <button class="tab" data-tab="delivery" type="button">التوصيل</button>
       <button class="tab" data-tab="returns" type="button">المرتجعات</button>
       <button class="tab" data-tab="unloading" type="button">التفريغ</button>
-      <button class="tab" data-tab="settlement" type="button">التسوية اليومية</button>
       <button class="tab" data-tab="vouchers" type="button">الأذونات</button>
       <button class="tab" data-tab="inventory" type="button">الجرد والرقابة</button>
       <button class="tab" data-tab="account" type="button">حسابي</button>
@@ -4917,10 +4915,8 @@ var App = {
     receiving:{title:'استلام الوارد',role:['استلام','مخزن شامل'],method:'receiver',main:false,description:'أوامر الشراء وشراء السوق السريع والاستلام الفعلي وسجل الاستلام'},
     picking:{title:'التحضير',role:['تحضير','مخزن شامل'],method:'loadPicking',main:true,description:'بدء التحضير وحجز الكميات ومراجعة الأصناف والكميات الفعلية'},
     loading:{title:'التحميل',role:['تحميل','مخزن شامل'],method:'loadLoading',main:true,description:'مراجعة التحميل وإثبات الكميات المحملة للمركبة'},
-    delivery:{title:'التوصيل',role:['مخزن شامل'],method:'loadDelivery',main:true,description:'متابعة التسليم والرفض والكميات المسلمة'},
     returns:{title:'المرتجعات',role:['مرتجعات','مخزن شامل'],method:'loadReturn',main:true,description:'إثبات المرتجعات وربطها بدورة الرانشيت والمخزون'},
     unloading:{title:'التفريغ',role:['تفريغ','مخزن شامل'],method:'loadUnloading',main:true,description:'إعادة الكميات غير المسلمة للمخزون عبر التفريغ المعتمد'},
-    settlement:{title:'التسوية اليومية',role:['مخزن شامل'],method:'loadSettlement',main:true,description:'تسوية السيارة والفروقات والمسؤوليات من الدورة التشغيلية'},
     vouchers:{title:'الأذونات المخزنية',role:['أذونات','مخزن شامل'],method:'loadVouchers',main:false,description:'تحويلات وصرف سيارات ومرتجعات وأذونات يدوية معتمدة'},
     inventory:{title:'الجرد ورقابة المخزون',role:['جرد','مخزن شامل'],method:'loadInventoryControl',main:false,description:'أرصدة الفروع والحركات وإعادة الطلب والجرد وطلبات نقل المخزون'}
   },
@@ -5045,7 +5041,7 @@ var App = {
     h+='<div class="dashboard-head"><h3>نطاق الفروع المصرح</h3><span>'+branches.length+' فرع</span></div><div class="chips">'+branches.map(function(b){return '<span class="chip"><i class="fa-solid fa-location-dot ml-1 text-teal-600"></i>'+App.esc(b.name||b.code)+'</span>';}).join('')+'</div>';
     if(!this.snapshot.main_branch_access)h+='<div class="strip">لا يتضمن نطاقك المخزن الرئيسي؛ تم إخفاء عمليات الرانشيت التي تتطلب الوصول إليه.</div>';
     h+='<div class="dashboard-head"><h3>مساحات التشغيل المتاحة</h3><span>تظهر حسب دور المخزن النشط</span></div><div class="op-grid">';
-    h+=this.card('receiving','fa-box-open')+this.card('picking','fa-list-check')+this.card('loading','fa-truck-ramp-box')+this.card('delivery','fa-truck-fast')+this.card('returns','fa-rotate-left')+this.card('unloading','fa-boxes-stacked')+this.card('settlement','fa-scale-balanced')+this.card('vouchers','fa-file-circle-check')+this.card('inventory','fa-chart-column');
+    h+=this.card('receiving','fa-box-open')+this.card('picking','fa-list-check')+this.card('loading','fa-truck-ramp-box')+this.card('returns','fa-rotate-left')+this.card('unloading','fa-boxes-stacked')+this.card('vouchers','fa-file-circle-check')+this.card('inventory','fa-chart-column');
     h+='</div>';
     return h;
   },
@@ -5060,7 +5056,7 @@ var App = {
     return h;
   },
   stopModules:function(){
-    try{if(typeof RW_Receiver!=='undefined'&&RW_Receiver.stopRealtime)RW_Receiver.stopRealtime();}catch(e){}
+    try{this.stopReceiver();}catch(e){}
     try{if(window._rwInventoryControlChannel&&supabase){supabase.removeChannel(window._rwInventoryControlChannel);window._rwInventoryControlChannel=null;}}catch(e){}
   },
   logout:function(){
