@@ -634,13 +634,28 @@ var imgHtml = returnItemImageHTML(
             RW_UI.showLoader('جاري إلغاء المرتجعات...');
             RW_API.call('cancel-return', { runsheet_code: code }, function(json) {
                 RW_UI.hideLoader();
-                if (json.success) {
-                    RW_UI.toast('تم إلغاء المرتجعات', 'success');
-                    self.session = null;
-                    if (self.timerInterval) clearInterval(self.timerInterval);
-                    self.loadRunsheets();
+                if (json && json.success) {
+                    var finishCancel = function(cleanupError) {
+                        if (cleanupError) {
+                            console.error('[RW_Returns] cancelled session local-draft cleanup failed:', cleanupError);
+                            RW_UI.toast('تم إلغاء الجلسة على الخادم، لكن تعذر تنظيف مسودتها المحلية. أعد فتح التطبيق بعد التحقق من التخزين المحلي.', 'warning');
+                        } else {
+                            RW_UI.toast('تم إلغاء المرتجعات وحذف مسودتها المحلية', 'success');
+                        }
+                        self.session = null;
+                        if (self.timerInterval) clearInterval(self.timerInterval);
+                        window._rwHasActiveSession = false;
+                        self.loadRunsheets();
+                    };
+                    try {
+                        db.localChanges.where('runsheet_code').equals(code).delete()
+                            .then(function(){ finishCancel(null); })
+                            .catch(finishCancel);
+                    } catch (cleanupError) {
+                        finishCancel(cleanupError);
+                    }
                 } else {
-                    RW_UI.showError(json.msg || 'فشل إلغاء المرتجعات');
+                    RW_UI.showError((json && json.msg) || 'فشل إلغاء المرتجعات');
                 }
             });
         });
@@ -649,22 +664,44 @@ var imgHtml = returnItemImageHTML(
     // ==================== الجلسة النشطة ====================
     _loadLocalChanges: function(){
         var self = this;
+        var sessionStart = String(self.session && self.session.start_time || '');
+        var sessionStartMs = new Date(sessionStart).getTime();
         db.localChanges.where('runsheet_code').equals(self.session.runsheet_code).toArray().then(function(changes) {
-            if (changes.length > 0) {
-                for (var i = 0; i < changes.length; i++) {
-                    var ch = changes[i];
-                    for (var j = 0; j < self.session.items.length; j++) {
-                        if (self.session.items[j].item_code === ch.item_code) {
-                            self.session.items[j].qty_returned = ch.qty_returned || self.session.items[j].qty_returned;
-                            self.session.items[j].return_condition = ch.return_condition || self.session.items[j].return_condition;
-                            self.session.items[j].notes = ch.notes || self.session.items[j].notes;
-                            break;
+            var staleIds = [];
+            for (var i = 0; i < changes.length; i++) {
+                var ch = changes[i];
+                var belongsToSession = false;
+                if (ch.session_started_at) {
+                    belongsToSession = String(ch.session_started_at) === sessionStart;
+                } else {
+                    var legacyUpdatedAt = new Date(ch.updated_at || '').getTime();
+                    belongsToSession = isFinite(sessionStartMs) && isFinite(legacyUpdatedAt) && legacyUpdatedAt >= sessionStartMs;
+                }
+                if (!belongsToSession) {
+                    if (ch.id != null) staleIds.push(ch.id);
+                    continue;
+                }
+                for (var j = 0; j < self.session.items.length; j++) {
+                    var target = self.session.items[j];
+                    if (target.item_code === ch.item_code) {
+                        if (ch.qty_returned !== undefined && ch.qty_returned !== null) {
+                            target.qty_returned = Number(ch.qty_returned) || 0;
                         }
+                        if (ch.return_condition) target.return_condition = ch.return_condition;
+                        if (ch.notes !== undefined && ch.notes !== null) target.notes = String(ch.notes);
+                        break;
                     }
                 }
             }
+            if (staleIds.length) {
+                db.localChanges.bulkDelete(staleIds).catch(function(error) {
+                    console.warn('[RW_Returns] stale local draft cleanup failed:', error);
+                });
+            }
             self.renderActiveSession();
-        }).catch(function() {
+        }).catch(function(error) {
+            console.error('[RW_Returns] local drafts load failed:', error);
+            RW_UI.toast('تعذر قراءة مسودات المرتجعات المحلية. تحقق من التخزين على هذا الجهاز.', 'warning');
             self.renderActiveSession();
         });
     },
@@ -1061,10 +1098,11 @@ var imgHtml = returnItemImageHTML(
         var it = this.session.items[index];
         var draft = {
             runsheet_code: this.session.runsheet_code,
+            session_started_at: this.session.start_time || null,
             item_code: it.item_code,
             qty_returned: Number(it.qty_returned) || 0,
             return_condition: it.return_condition || 'good',
-            notes: it.notes || '',
+            notes: it.notes == null ? '' : String(it.notes),
             updated_at: new Date().toISOString()
         };
         db.localChanges.put(draft).catch(function(error) {
