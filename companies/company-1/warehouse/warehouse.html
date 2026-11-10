@@ -1763,18 +1763,30 @@ var rsRes = await supabase.from('runsheets')
         if (!c) return;
 
         safeText(byId('rw-header-title'), 'التفريغ (Unloading)');
-        safeHTML(c, '<div class="p-4">' +
-            '<div class="bg-white rounded-2xl shadow-sm border p-4 mb-4">' +
-                '<div class="grid grid-cols-2 md:grid-cols-6 gap-2">' +
+        safeHTML(c, '<div class="p-4 space-y-4">' +
+            '<section class="bg-white rounded-2xl shadow-sm border p-4">' +
+                '<div class="flex flex-wrap items-center justify-between gap-3 mb-3">' +
+                    '<div><h3 class="font-black text-slate-800">الرانشيتات الجاهزة للتفريغ</h3><p class="text-xs text-slate-500 mt-1">لا يظهر هنا إلا الرانشيت بحالة Loaded في نطاق الشركة</p></div>' +
+                    '<button onclick="RW_Warehouse.loadUnloading()" class="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs"><i class="fa-solid fa-rotate ml-1"></i> تحديث</button>' +
+                '</div>' +
+                '<div class="grid grid-cols-2 md:grid-cols-6 gap-2 mb-3">' +
                     '<input type="text" id="ul-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyUnloading()">' +
                     '<button onclick="RW_Warehouse._applyUnloading()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>' +
                 '</div>' +
-            '</div>' +
-            '<div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh">' +
-                '<table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr>' +
-                    '<th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th>' +
-                '</tr></thead><tbody id="ul-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table>' +
-            '</div>' +
+                '<div class="overflow-auto" style="max-height:55vh">' +
+                    '<table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr>' +
+                        '<th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض وتنفيذ</th>' +
+                    '</tr></thead><tbody id="ul-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table>' +
+                '</div>' +
+            '</section>' +
+            '<section class="bg-white rounded-2xl shadow-sm border p-4">' +
+                '<div class="flex items-center justify-between gap-3 mb-3"><div><h3 class="font-black text-slate-800">سجل التفريغ المكتمل</h3><p class="text-xs text-slate-500 mt-1">المستندات المكتملة من نفس سجل الأذونات المخزنية</p></div><span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">قراءة فقط</span></div>' +
+                '<div class="overflow-auto" style="max-height:40vh">' +
+                    '<table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr>' +
+                        '<th class="p-3">رقم الإذن</th><th class="p-3">التاريخ</th><th class="p-3">المرجع</th><th class="p-3">الحالة</th>' +
+                    '</tr></thead><tbody id="ul-completed-table"><tr><td colspan="4" class="text-center py-8">جاري تحميل السجل...</td></tr></tbody></table>' +
+                '</div>' +
+            '</section>' +
         '</div>');
 
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
@@ -1796,6 +1808,29 @@ var rsRes = await supabase.from('runsheets')
 
         window._unloadingData = res.data || [];
         _applyUnloading();
+
+        var historyRes = await supabase.from('stock_vouchers')
+            .select('voucher_code,voucher_date,reference')
+            .eq('company_id', companyId)
+            .eq('type', 'Unloading')
+            .eq('status', 'Completed')
+            .order('voucher_date', { ascending: false })
+            .limit(30);
+        var historyBody = byId('ul-completed-table');
+        if (historyRes.error) {
+            if (historyBody) safeHTML(historyBody, '<tr><td colspan="4" class="text-center py-6 text-red-600">تعذر تحميل سجل التفريغ: ' + esc(historyRes.error.message) + '</td></tr>');
+            return;
+        }
+        var completedRows = historyRes.data || [];
+        if (historyBody) {
+            if (!completedRows.length) {
+                safeHTML(historyBody, '<tr><td colspan="4" class="text-center py-6 text-slate-400">لا توجد عمليات تفريغ مكتملة بعد</td></tr>');
+            } else {
+                safeHTML(historyBody, completedRows.map(function(v) {
+                    return '<tr class="border-t"><td class="p-3 font-black text-emerald-700">' + esc(v.voucher_code || '') + '</td><td class="p-3">' + esc(v.voucher_date || '') + '</td><td class="p-3">' + esc(v.reference || '—') + '</td><td class="p-3"><span class="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">مكتمل</span></td></tr>';
+                }).join(''));
+            }
+        }
     }
 
     function _applyUnloading() {
@@ -1873,7 +1908,7 @@ var rsRes = await supabase.from('runsheets')
                 '<div class="bg-slate-50 rounded-xl p-3"><div class="text-xs text-slate-500">السائق</div><div class="font-bold">' + esc(rsRes.data.driver_id || '---') + '</div></div>' +
                 '<div class="bg-slate-50 rounded-xl p-3"><div class="text-xs text-slate-500">السيارة</div><div class="font-bold">' + esc(rsRes.data.vehicle_id || '---') + '</div></div>' +
             '</div>';
-            html += '<div class="mb-3 p-3 bg-orange-50 border border-orange-100 rounded-xl text-sm font-bold text-orange-800">هذه الشاشة للعرض والتأكد من الحمولة قبل التفريغ. تنفيذ التفريغ نفسه يتم عبر <code>unload-runsheet</code> ولا يتم هنا إجراء أي تعديل مخزني.</div>';
+            html += '<div class="mb-3 p-3 bg-orange-50 border border-orange-100 rounded-xl text-sm font-bold text-orange-800">مراجعة فقط: الرانشيت بحالة Loaded. عند التأكيد ستعيد خدمة التفريغ المركزية الكمية المحمّلة من مخزن السيارة إلى الفرع الرئيسي، وتمنع تكرار التفريغ للدورة نفسها.</div>';
             html += '<div class="overflow-auto max-h-[55vh]"><table class="w-full border text-sm"><thead class="bg-gray-100 sticky top-0"><tr>' +
                 '<th class="p-2 border">الكود</th><th class="p-2 border">الصنف</th><th class="p-2 border text-center">الوحدة</th><th class="p-2 border text-center">محمّل</th><th class="p-2 border text-center">مسلّم</th><th class="p-2 border text-center">مرفوض</th><th class="p-2 border text-center">مرتجع</th><th class="p-2 border text-center">المتبقي</th>' +
                 '</tr></thead><tbody>';
@@ -1904,7 +1939,9 @@ var rsRes = await supabase.from('runsheets')
             html += '<div class="mt-4 grid grid-cols-2 gap-3">' +
                 '<div class="bg-orange-50 rounded-xl p-3 text-center"><div class="text-xs text-slate-500">إجمالي المحمّل</div><div class="text-xl font-black text-orange-700">' + loadedTotal + '</div></div>' +
                 '<div class="bg-slate-50 rounded-xl p-3 text-center"><div class="text-xs text-slate-500">المتبقي قبل التفريغ</div><div class="text-xl font-black">' + remainingTotal + '</div></div>' +
-            '</div></div>';
+            '</div>' +
+            '<button type="button" onclick="RW_Warehouse._confirmUnload(\'' + String(code).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'") + '\')" class="mt-4 w-full rounded-2xl bg-cyan-700 hover:bg-cyan-800 text-white px-5 py-4 font-black shadow-lg"><i class="fa-solid fa-box-open ml-2"></i> تأكيد التفريغ وإعادة الكمية للمخزون</button>' +
+            '</div>';
 
             hideLoader();
             Swal.fire({
@@ -3029,11 +3066,13 @@ supabase.from('runsheets')
     }).catch(function(e) { hideLoader(); showToast('فشل تحميل بيانات الرانشيت', 'error'); });
 }
 function _confirmUnload(code) {
-    Swal.fire({ title: 'تأكيد التفريغ', text: 'إعادة جميع الكميات للمخزون؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم', cancelButtonText: 'لا' }).then(function(cf) {
+    if (!code) { showToast('رقم الرانشيت غير صالح', 'error'); return; }
+    Swal.fire({ title: 'تأكيد التفريغ', text: 'سيتم إعادة الكميات المحمّلة في دورة التحميل الحالية من مخزن السيارة إلى الفرع الرئيسي. لا يُنفذ التفريغ إلا إذا كانت حالة الرانشيت Loaded. متابعة؟', icon: 'warning', showCancelButton: true, confirmButtonText: 'نعم، نفّذ التفريغ', cancelButtonText: 'إلغاء' }).then(function(cf) {
         if (!cf.isConfirmed) return;
-        showLoader('جاري التفريغ...');
+        showLoader('جاري التحقق وتنفيذ التفريغ...');
         supabase.auth.getSession().then(function(ses) {
             var t = ses.data.session ? ses.data.session.access_token : null;
+            if (!t) throw new Error('انتهت الجلسة. أعد تسجيل الدخول.');
             return fetch(RW_SUPABASE_URL + '/functions/v1/unload-runsheet', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t },
@@ -3042,12 +3081,14 @@ function _confirmUnload(code) {
         }).then(function(res) { return res.json(); }).then(function(json) {
             hideLoader();
             if (json.success) {
-                showToast('تم التفريغ بنجاح', 'success');
+                var qty = Number(json.unloaded_total || 0).toLocaleString('ar-EG');
+                showToast('تم التفريغ بنجاح — الكمية المعادة: ' + qty, 'success');
                 if (typeof RW_Runsheets !== 'undefined' && RW_Runsheets._apply) RW_Runsheets._apply();
+                if (typeof RW_Warehouse !== 'undefined' && typeof RW_Warehouse.loadUnloading === 'function') RW_Warehouse.loadUnloading();
             } else {
                 showToast(json.msg || 'فشل التفريغ', 'error');
             }
-        }).catch(function(e) { hideLoader(); showToast('فشل الاتصال', 'error'); });
+        }).catch(function(e) { hideLoader(); showToast(e.message || 'فشل الاتصال', 'error'); });
     });
 }
 function _changeStatus(code, funcName) {
