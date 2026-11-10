@@ -706,6 +706,7 @@ var imgHtml = returnItemImageHTML(
         html += '<div><span class="font-black text-xl text-slate-800">' + ses.runsheet_code + '</span><p class="text-xs text-slate-400">السائق: ' + (ses.driver_name || 'غير محدد') + '</p></div>';
         html += '</div>';
         
+        html += '<div class="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-800"><i class="fa-solid fa-mobile-screen-button ml-1"></i> مسودة المرتجعات محفوظة على هذا الجهاز فقط؛ لا تُسجل مخزنيًا أو محاسبيًا ولا تنتقل إلى جهاز آخر إلا بعد «تأكيد وإنهاء المرتجعات» بنجاح.</div>';
         html += '<div class="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-slate-100 slide-in">';
         html += '<div class="flex items-center justify-between mb-3">';
         html += '<span class="font-bold text-slate-700">تقدم المرتجعات</span>';
@@ -1056,66 +1057,167 @@ var imgHtml = returnItemImageHTML(
     },
 
     saveReturnItem: function(index){
-        var self = this;
+        if (!this.session || !this.session.items || !this.session.items[index]) return;
         var it = this.session.items[index];
-        
-        db.localChanges.put({
+        var draft = {
             runsheet_code: this.session.runsheet_code,
             item_code: it.item_code,
-            qty_returned: it.qty_returned,
+            qty_returned: Number(it.qty_returned) || 0,
             return_condition: it.return_condition || 'good',
             notes: it.notes || '',
             updated_at: new Date().toISOString()
+        };
+        db.localChanges.put(draft).catch(function(error) {
+            console.error('[RW_Returns] local draft save failed:', error);
+            RW_UI.toast('تعذر حفظ المسودة على هذا الجهاز. لا تغلق الصفحة قبل معالجة المشكلة.', 'error');
         });
-        
-        supabase.from('run_sheet_details').update({
-            qty_returned: it.qty_returned,
-            return_condition: it.return_condition || 'good'
-        }).eq('runsheet_id', this.session.runsheet_id).eq('item_code', it.item_code).then(function() {});
     },
 
     // ==================== إبلاغ عن اختلاف ====================
     reportDiscrepancyGeneral: function(){
         var self = this;
-        if (!this.session || !this.session.items) { RW_UI.toast('لا توجد جلسة نشطة', 'warning'); return; }
-        
+        if (!this.session || !this.session.items) {
+            RW_UI.toast('لا توجد جلسة نشطة', 'warning');
+            return;
+        }
+
+        var candidates = [];
+        for (var i = 0; i < this.session.items.length; i++) {
+            var item = this.session.items[i] || {};
+            var remaining = Math.max(0, (Number(item.qty_loaded) || 0) - (Number(item.qty_delivered) || 0));
+            if (remaining > 0 && item.item_code) {
+                candidates.push({
+                    item_code: String(item.item_code),
+                    item_name: String(item.item_name || item.item_code),
+                    unit: String(item.unit || 'وحدة'),
+                    expected_qty: remaining,
+                    current_returned: Math.max(0, Number(item.qty_returned) || 0)
+                });
+            }
+        }
+        if (!candidates.length) {
+            RW_UI.toast('لا توجد أصناف متبقية للإبلاغ عن اختلاف بها', 'info');
+            return;
+        }
+
+        function escapeHTML(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         var html = '<div style="text-align:right;font-family:sans-serif;direction:rtl">';
-        html += '<p style="font-size:14px;color:#334155">🚨 الإبلاغ عن اختلاف في الرانشيت</p>';
-        html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع المشكلة</label>';
-        html += '<select id="discTypeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b;background:white">';
-        html += '<option value="surplus">زيادة</option><option value="shortage">نقص</option><option value="wrong_item">صنف مختلف</option><option value="damaged">تالف</option><option value="missing">مفقود</option><option value="other">سبب آخر</option>';
+        html += '<p style="font-size:13px;color:#475569;margin-bottom:12px">اختر الصنف وسجّل الكمية الفعلية التي تم جردها. الكمية المتوقعة تُحسب من بيانات الرانشيت.</p>';
+        html += '<div style="margin-bottom:12px"><label for="discItemGeneral" style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الصنف محل الاختلاف</label>';
+        html += '<select id="discItemGeneral" class="swal2-select" style="width:100%;max-width:100%;margin:0">';
+        for (var ci = 0; ci < candidates.length; ci++) {
+            var candidate = candidates[ci];
+            html += '<option value="' + escapeHTML(candidate.item_code) + '"' + (ci === 0 ? ' selected' : '') + '>' +
+                escapeHTML(candidate.item_code + ' — ' + candidate.item_name) + '</option>';
+        }
         html += '</select></div>';
-        html += '<div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات</label>';
-        html += '<textarea id="discNotesGeneral" rows="2" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;outline:none;color:#1e293b"></textarea></div>';
-        html += '<p style="font-size:12px;color:#dc2626;margin-top:12px">⚠️ سيتم تسجيل البلاغ. الرانشيت سيبقى معلقاً حتى المراجعة.</p></div>';
-        
+        html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
+        html += '<div><label style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية المتوقعة</label><div id="discExpectedQtyGeneral" style="padding:11px;background:#f1f5f9;border-radius:10px;font-weight:800">0</div></div>';
+        html += '<div><label for="discActualQtyGeneral" style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">الكمية الفعلية</label><input id="discActualQtyGeneral" type="number" min="0" step="any" inputmode="decimal" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:10px;font-size:14px" value="' + escapeHTML(candidates[0].current_returned) + '"></div>';
+        html += '</div>';
+        html += '<div style="margin-bottom:12px"><label for="discTypeGeneral" style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">نوع الاختلاف</label>';
+        html += '<select id="discTypeGeneral" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;color:#1e293b;background:white">';
+        html += '<option value="shortage">نقص عن الكمية المتوقعة</option><option value="surplus">زيادة عن الكمية المتوقعة</option><option value="wrong_item">وجود صنف بديل / مختلف</option><option value="other">اختلاف آخر</option>';
+        html += '</select></div>';
+        html += '<div id="discActualItemWrapGeneral" style="display:none;margin-bottom:12px"><label for="discActualItemCodeGeneral" style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">كود الصنف الموجود فعليًا</label><input id="discActualItemCodeGeneral" type="text" autocomplete="off" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:10px;font-size:13px" placeholder="امسح الباركود أو أدخل كود الصنف"></div>';
+        html += '<div style="margin-bottom:8px"><label for="discNotesGeneral" style="display:block;font-size:12px;font-weight:700;color:#64748b;margin-bottom:6px">ملاحظات المشرف / وصف الحالة</label><textarea id="discNotesGeneral" rows="2" style="width:100%;padding:10px;border:2px solid #e2e8f0;border-radius:12px;font-size:13px;color:#1e293b" placeholder="اذكر تفاصيل الاختلاف أو ظروفه"></textarea></div>';
+        html += '<p style="font-size:11px;color:#b45309;margin-top:10px">سيُسجل البلاغ للمراجعة، ولن تُنفذ بسببه حركة مخزنية أو مالية تلقائية.</p></div>';
+
         Swal.fire({
             title: '🚨 إبلاغ عن اختلاف',
-            html: html, icon: 'warning', showCancelButton: true,
-            confirmButtonText: 'إبلاغ', cancelButtonText: 'إلغاء',
+            html: html,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'تسجيل البلاغ',
+            cancelButtonText: 'إلغاء',
             customClass: { popup: '!rounded-3xl !p-5', confirmButton: '!rounded-xl !bg-orange-600 !px-8', cancelButton: '!rounded-xl !px-8' },
+            didOpen: function() {
+                var itemSelect = document.getElementById('discItemGeneral');
+                var typeSelect = document.getElementById('discTypeGeneral');
+                var expectedNode = document.getElementById('discExpectedQtyGeneral');
+                var actualInput = document.getElementById('discActualQtyGeneral');
+                var wrongWrap = document.getElementById('discActualItemWrapGeneral');
+                function syncDiscrepancyFields(resetActual) {
+                    var selected = null;
+                    for (var k = 0; k < candidates.length; k++) {
+                        if (candidates[k].item_code === itemSelect.value) { selected = candidates[k]; break; }
+                    }
+                    expectedNode.textContent = selected ? (selected.expected_qty + ' ' + selected.unit) : '—';
+                    if (resetActual && selected) actualInput.value = selected.current_returned;
+                    wrongWrap.style.display = typeSelect.value === 'wrong_item' ? 'block' : 'none';
+                }
+                itemSelect.addEventListener('change', function(){ syncDiscrepancyFields(true); });
+                typeSelect.addEventListener('change', function(){ syncDiscrepancyFields(false); });
+                syncDiscrepancyFields(false);
+            },
             preConfirm: function() {
-                var discType = document.getElementById('discTypeGeneral') ? document.getElementById('discTypeGeneral').value : 'other';
-                var notes = document.getElementById('discNotesGeneral') ? document.getElementById('discNotesGeneral').value : '';
-                return { discType: discType, notesText: notes };
+                var itemCode = document.getElementById('discItemGeneral').value;
+                var actualValue = document.getElementById('discActualQtyGeneral').value;
+                var discType = document.getElementById('discTypeGeneral').value;
+                var notes = document.getElementById('discNotesGeneral').value.trim();
+                var actualItemCode = document.getElementById('discActualItemCodeGeneral').value.trim();
+                var selected = null;
+                for (var k = 0; k < candidates.length; k++) {
+                    if (candidates[k].item_code === itemCode) { selected = candidates[k]; break; }
+                }
+                var actualQty = Number(actualValue);
+                if (!selected) {
+                    Swal.showValidationMessage('اختر صنفًا صحيحًا من الرانشيت.');
+                    return false;
+                }
+                if (actualValue === '' || !isFinite(actualQty) || actualQty < 0) {
+                    Swal.showValidationMessage('أدخل كمية فعلية صحيحة لا تقل عن صفر.');
+                    return false;
+                }
+                if (discType === 'shortage' && actualQty >= selected.expected_qty) {
+                    Swal.showValidationMessage('كمية النقص الفعلية يجب أن تكون أقل من الكمية المتوقعة.');
+                    return false;
+                }
+                if (discType === 'surplus' && actualQty <= selected.expected_qty) {
+                    Swal.showValidationMessage('كمية الزيادة الفعلية يجب أن تكون أكبر من الكمية المتوقعة.');
+                    return false;
+                }
+                if (discType === 'wrong_item' && (!actualItemCode || actualItemCode === selected.item_code || actualQty <= 0)) {
+                    Swal.showValidationMessage('أدخل كود الصنف الموجود فعليًا، مع كمية أكبر من صفر، ويجب أن يختلف عن الصنف المتوقع.');
+                    return false;
+                }
+                if (discType === 'other' && !notes) {
+                    Swal.showValidationMessage('اكتب وصفًا واضحًا للاختلاف الآخر.');
+                    return false;
+                }
+                return {
+                    runsheet_id: self.session.runsheet_id,
+                    item_code: selected.item_code,
+                    expected_item_code: selected.item_code,
+                    actual_item_code: discType === 'wrong_item' ? actualItemCode : null,
+                    expected_qty: selected.expected_qty,
+                    actual_qty: actualQty,
+                    discrepancy_type: discType,
+                    notes: notes
+                };
             }
         }).then(function(result) {
-            if (!result.isConfirmed) return;
-            var payload = {
-                runsheet_id: self.session.runsheet_id,
-                item_code: '',
-                item_name: '',
-                expected_qty: 0,
-                actual_qty: 0,
-                difference_qty: 0,
-                discrepancy_type: result.value.discType,
-                notes: result.value.notesText
-            };
-            RW_UI.showLoader();
-            RW_API.call('report-discrepancy', payload, function(json) {
+            if (!result.isConfirmed || !result.value) return;
+            if (!navigator.onLine) {
+                RW_UI.toast('لا يوجد اتصال. لم يتم إرسال البلاغ.', 'warning');
+                return;
+            }
+            RW_UI.showLoader('جاري تسجيل البلاغ...');
+            RW_API.call('report-discrepancy', result.value, function(json) {
                 RW_UI.hideLoader();
-                if (json.success) RW_UI.toast('تم تسجيل البلاغ', 'success');
-                else RW_UI.showError(json.msg || 'فشل الإبلاغ');
+                if (json && json.success) {
+                    RW_UI.toast('تم تسجيل البلاغ وإرساله للمراجعة', 'success');
+                } else {
+                    RW_UI.showError((json && json.msg) || 'فشل تسجيل البلاغ');
+                }
             });
         });
     },
@@ -1127,6 +1229,16 @@ var imgHtml = returnItemImageHTML(
         if (!navigator.onLine) { RW_UI.toast('أنت غير متصل', 'warning'); return; }
         
         supabase.from('stock_discrepancies').select('id').eq('runsheet_id', this.session.runsheet_id).eq('status', 'pending').then(function(discRes) {
+            if (!discRes || discRes.error) {
+                console.error('[RW_Returns] pending discrepancy check failed:', discRes && discRes.error);
+                Swal.fire({
+                    title: 'تعذر التحقق من بلاغات الاختلاف',
+                    text: 'لم يتم إنهاء المرتجعات لأن التحقق من البلاغات المعلقة فشل. تحقق من الاتصال والصلاحيات ثم أعد المحاولة.',
+                    icon: 'error',
+                    customClass: { popup: '!rounded-3xl' }
+                });
+                return;
+            }
             var pendingDisc = discRes.data || [];
             if (pendingDisc.length > 0) {
                 Swal.fire({ title: 'لا يمكن الإنهاء', text: 'يوجد ' + pendingDisc.length + ' بلاغات اختلاف معلقة. يجب مراجعة المشرف أولاً.', icon: 'warning', customClass: { popup: '!rounded-3xl' } });
