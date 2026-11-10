@@ -348,6 +348,24 @@ jobs:
             if(!sourceOptions.includes('فرع اختبار ثانٍ'))throw new Error('BRANCH_RECEIPT_SOURCE_BRANCH_SEARCH_MISSING:'+sourceOptions);
             console.log('WAREHOUSE_BRANCH_RECEIPT_FIXED_DESTINATION_ALL_SOURCE_BRANCHES=PASS');
 
+            await page.evaluate(()=>{
+              const app=window.RW_NATIVE_APPS.vouchers;
+              app.vouchers=[
+                {voucher_code:'QA-RECEIPT-01',type:'Transfer',request_origin:'WarehouseBranchReceipt',status:'Draft',reference:'طلب فرع اختبار',from_type:'Branch',from_id:'00000000-0000-4000-8000-000000000002',to_type:'Branch',to_id:'00000000-0000-4000-8000-000000000001',receiver_user_id:'qa-user',created_by:'qa@rawaea.invalid',voucher_date:'2026-11-10',created_at:'2026-11-10T10:00:00Z',notes:'طلب استلام اختبار'},
+                {voucher_code:'QA-TRANSFER-01',type:'Transfer',request_origin:null,status:'Draft',reference:'تحويل فرع اختبار',from_type:'Branch',from_id:'00000000-0000-4000-8000-000000000001',to_type:'Branch',to_id:'00000000-0000-4000-8000-000000000002',created_by:'qa@rawaea.invalid',voucher_date:'2026-11-10',created_at:'2026-11-10T09:00:00Z',notes:'تحويل عادي'}
+              ];
+              app.tabName='pending';
+              app.renderList('pending');
+            });
+            await page.locator('#rw-native-root-vouchers #listSearch').fill('استلام من مخزن فرع');
+            await page.waitForFunction(()=>document.querySelector('#rw-native-root-vouchers #listCount')?.textContent==='1');
+            await page.locator('#rw-native-root-vouchers #listSearch').fill('');
+            await page.locator('#rw-native-root-vouchers #listType').selectOption('BranchReceipt');
+            await page.waitForFunction(()=>document.querySelector('#rw-native-root-vouchers #listCount')?.textContent==='1');
+            await page.locator('#rw-native-root-vouchers #listType').selectOption('Transfer');
+            await page.waitForFunction(()=>document.querySelector('#rw-native-root-vouchers #listCount')?.textContent==='1');
+            console.log('WAREHOUSE_BRANCH_RECEIPT_SEARCH_AND_TYPE_FILTER_SEPARATION=PASS');
+
             await page.locator('#warehouseTabs [data-tab="account"]').click();
             if(!(await page.locator('#warehouseDashboard').innerText()).includes('QA Warehouse'))throw new Error('ACCOUNT_IDENTITY_MISSING');
             await page.locator('button[title="تسجيل الخروج"]').click();
