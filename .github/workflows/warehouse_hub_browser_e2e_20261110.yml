@@ -264,6 +264,16 @@ jobs:
           }
           (async()=>{
             const page=await context.newPage(),errors=[],consoleMessages=[];
+            let e2eStage='host boot';
+            const originalWaitForFunction=page.waitForFunction.bind(page);
+            page.waitForFunction=function(predicate,...args){
+              const predicateLabel=typeof predicate==='function'?String(predicate).replace(/\\s+/g,' ').slice(0,180):String(predicate);
+              const stage=e2eStage+' :: '+predicateLabel;
+              return originalWaitForFunction(predicate,...args).catch(error=>{
+                error.message=String(error.message||error)+' [E2E_WAIT='+stage+']';
+                throw error;
+              });
+            };
             page.on('pageerror',e=>errors.push(String(e.message||e)));
             page.on('console',m=>consoleMessages.push(m.type()+':'+m.text()));
             await prepare(page);
@@ -292,9 +302,11 @@ jobs:
             const operations=['receiving','picking','loading','returns','unloading','counting'];
             const nativeKeys={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};
             for(const key of operations){
+              e2eStage='opening operation workspace: '+key;
               const nativeKey=nativeKeys[key]||key;
               await page.locator('#warehouseDashboard [data-operation="'+key+'"]').click();
               try{await page.waitForFunction(k=>{const map={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};const native=map[k]||k;return document.getElementById('rw-native-root-'+native)?.dataset.rwReady==='true';},key,{timeout:12000});}catch(waitError){const diag=await page.evaluate(k=>{const map={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};const native=map[k]||k,root=document.getElementById('rw-native-root-'+native),app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS[native];return{native,root:!!root,rootId:root&&root.id,moduleAttr:root&&root.dataset.rwModule,ready:root&&root.dataset.rwReady,mainHidden:root&&root.querySelector('#mainApp')?.classList.contains('hidden'),loginText:root&&root.querySelector('#loginMsg')?.textContent,app:!!app,appKeys:Object.keys(window.RW_NATIVE_APPS||{}),status:document.querySelector('#rw-module-status')?.textContent,html:root&&root.innerText.slice(0,500)};},key);throw new Error('NATIVE_MODULE_BOOT_FAILED:'+key+':'+JSON.stringify({diag,errors,consoleMessages:consoleMessages.slice(-30),wait:waitError.message}));}
+              e2eStage='asserting operation workspace: '+key;
               const state=await page.evaluate(k=>{
                 const map={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};
                 const native=map[k]||k,root=document.getElementById('rw-native-root-'+native);
@@ -430,6 +442,7 @@ jobs:
                 console.log('WAREHOUSE_RETURNS_PENDING_DATA_RENDER=PASS');
               }
               if(key==='counting'){
+                e2eStage='counter tabs and scope checks';
                 const root='#rw-native-root-counter';
                 let counterStage='initial-tabs';
                 try{
@@ -438,23 +451,23 @@ jobs:
                     if(await page.locator(root+' #tab-'+tab).count()!==1)throw new Error('COUNTER_PARENT_TAB_MISSING:'+tab);
                   }
                   console.log('WAREHOUSE_COUNTER_TABS_RENDERED=PASS');
-                  counterStage='vehicle-count-render';
+                  counterStage='vehicle-count-render';e2eStage='counter vehicle mode';
                   await page.locator(root+' #tab-vehicle-count').click();
                   await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('السيارة محل الجرد'),null,{timeout:8000});
                   console.log('WAREHOUSE_COUNTER_VEHICLE_SCOPE=PASS');
-                  counterStage='general-count-denial';
+                  counterStage='general-count-denial';e2eStage='counter general mode guard';
                   await page.locator(root+' #tab-general-count').click();
                   await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('الجرد العام غير متاح'),null,{timeout:8000});
                   console.log('WAREHOUSE_COUNTER_GENERAL_SCOPE_GUARD=PASS');
-                  counterStage='branch-count-render';
+                  counterStage='branch-count-render';e2eStage='counter branch mode';
                   await page.locator(root+' #tab-branch-count').click();
                   await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('بدء الجرد وتحميل أصناف المخزون'),null,{timeout:8000});
                   console.log('WAREHOUSE_COUNTER_BRANCH_SCOPE=PASS');
-                  counterStage='create-count-session';
+                  counterStage='create-count-session';e2eStage='counter create and populate session';
                   await page.locator(root+' #mainContent button').filter({hasText:'بدء الجرد وتحميل أصناف المخزون'}).click();
                   await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #counted-0'),null,{timeout:10000});
                   console.log('WAREHOUSE_COUNTER_SESSION_CREATE_AND_POPULATE=PASS');
-                  counterStage='set-actual-count-and-save';
+                  counterStage='set-actual-count-and-save';e2eStage='counter save actual quantity';
                   await page.locator(root+' #counted-0').fill('7');
                   await page.locator(root+' #mainContent button').filter({hasText:'حفظ الكميات الفعلية'}).click();
                   await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #counted-0')?.value==='7',null,{timeout:10000});
@@ -489,11 +502,13 @@ jobs:
                   throw new Error('COUNTER_E2E_DIAGNOSTIC:'+counterStage+':'+JSON.stringify({counterDiag,error:counterError.message,errors,consoleMessages:consoleMessages.slice(-40)}));
                 }
               }
+              e2eStage='return from workspace: '+key;
               await page.locator('[data-workspace-back]').click();
               if(await page.locator('#rw-native-root-'+nativeKey).count()!==1)throw new Error('WORKSPACE_NOT_PERSISTED:'+key);
             }
             console.log('WAREHOUSE_SIX_FULL_NATIVE_OPERATION_WORKSPACES=PASS');
 
+            e2eStage='voucher top-level tab';
             await page.locator('#warehouseTabs [data-tab="vouchers"]').click();
             if(await page.locator('#warehouseDashboard [data-voucher-action]').count()!==5)throw new Error('FIVE_MANUAL_VOUCHER_ACTION_CARDS_MISSING');
             await page.locator('#warehouseDashboard [data-voucher-action="Transfer"]').click();
@@ -633,7 +648,7 @@ jobs:
             if(await branchLimited.locator('[data-operation="receiving"]').isDisabled()||await branchLimited.locator('[data-operation="counting"]').isDisabled())throw new Error('SCOPED_BRANCH_OPERATIONS_HIDDEN');
             console.log('WAREHOUSE_MAIN_VS_SCOPED_BRANCH_GATING=PASS');
             await browser.close();
-          })().catch(e=>{console.error('WAREHOUSE_E2E_FAILURE='+e.message);process.exit(1);});
+          })().catch(e=>{console.error('WAREHOUSE_E2E_FAILURE_STAGE='+e2eStage);console.error('WAREHOUSE_E2E_FAILURE='+e.message);console.error('WAREHOUSE_E2E_STACK='+e.stack);process.exit(1);});
           NODE
 
       - name: Upload diagnostics
