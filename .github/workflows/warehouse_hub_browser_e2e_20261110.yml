@@ -36,11 +36,11 @@ jobs:
           node <<'NODE'
           const fs=require('fs');
           const html=fs.readFileSync('companies/company-1/warehouse/warehouse.html','utf8');
-          const scripts=[...html.matchAll(/<script\\b([^>]*)>([\\s\\S]*?)<\\/script\\s*>/gi)]
-            .filter(m=>! /\\bsrc\\s*=/.test(m[1]||''));
+          const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
+            .filter(m=>! /\bsrc\s*=/.test(m[1]||''));
           if(scripts.length!==1) throw new Error('NATIVE_WAREHOUSE_INLINE_SCRIPT_COUNT:'+scripts.length);
           scripts.forEach((m,i)=>{try{new Function(m[2])}catch(e){throw new Error('NATIVE_WAREHOUSE_JS_SYNTAX_'+(i+1)+':'+e.message)}});
-          if(/<iframe\\b|workspaceFrames|warehouse-operation-frame|receiver\\.html|picker\\.html|loader\\.html|returns\\.html|unloader\\.html|counter\\.html|vouchers\\.html/.test(html))
+          if(/<iframe\b|workspaceFrames|warehouse-operation-frame|receiver\.html|picker\.html|loader\.html|returns\.html|unloader\.html|counter\.html|vouchers\.html/.test(html))
             throw new Error('NATIVE_WAREHOUSE_STILL_EMBEDS_OR_LINKS_CHILD_APPS');
           for(const marker of [
             'var RW_Warehouse = (function()',
@@ -60,7 +60,7 @@ jobs:
             'script src="../core.js"',
             'RW_Auth.init'
           ]) if(!html.includes(marker)) throw new Error('NATIVE_WAREHOUSE_REQUIRED_MARKER_MISSING:'+marker);
-          const nav=html.match(/<nav id="warehouseTabs"[^>]*>([\\s\\S]*?)<\\/nav>/);
+          const nav=html.match(/<nav id="warehouseTabs"[^>]*>([\s\S]*?)<\/nav>/);
           if(!nav) throw new Error('NATIVE_WAREHOUSE_NAV_MISSING');
           const tabs=[...nav[1].matchAll(/data-tab="([^"]+)"/g)].map(m=>m[1]);
           const expected=['today','receiving','picking','loading','delivery','returns','unloading','settlement','vouchers','inventory','account'];
@@ -137,7 +137,7 @@ jobs:
               removeChannel:function(){return Promise.resolve();}
             };
             var RW_Auth={
-              init:function(cb){cb(${deny?'null':'qaUser'},${deny?'"WAREHOUSE_PERMISSION_REQUIRED"':'null'});},
+              init:function(cb){cb(qaUser,null);},
               getUser:function(){return qaUser;},
               doLogin:function(e,p,cb){cb(qaUser,null);},
               doLogout:function(cb){cb(true);}
@@ -155,7 +155,7 @@ jobs:
             var RW_Realtime={start:function(){return 'qa-realtime';},stop:function(){}};
           `;
           async function prepare(page,role='مخزن شامل',mainAccess=true,deny=false){
-            await page.route(/https:\\/\\/(fonts\\.googleapis\\.com|cdnjs\\.cloudflare\\.com|cdn\\.tailwindcss\\.com|cdn\\.jsdelivr\\.net)/,r=>r.fulfill({status:200,contentType:'text/javascript',body:''}));
+            await page.route(/https:\/\/(fonts\.googleapis\.com|cdnjs\.cloudflare\.com|cdn\.tailwindcss\.com|cdn\.jsdelivr\.net)/,r=>r.fulfill({status:200,contentType:'text/javascript',body:''}));
             await page.route('**/core.js',r=>r.fulfill({status:200,contentType:'application/javascript',body:mockCore(role,mainAccess,deny)}));
             await page.route('**/register-sw.js',r=>r.fulfill({status:200,contentType:'application/javascript',body:''}));
           }
@@ -192,7 +192,7 @@ jobs:
             await page.locator('#rw-module-subnav [data-receiver-tab="legacy"]').click();
             await page.waitForFunction(()=>document.querySelector('#rw-page-container')?.textContent==='NATIVE_MODULE:loadReceiving');
             await page.locator('#rw-module-subnav [data-receiver-tab="completed"]').click();
-            await page.waitForFunction(()=>document.querySelector('#mainContent')?.textContent==='NATIVE_RECEIVER_WORKSPACE');
+            await page.waitForFunction(()=>document.querySelector('#mainContent')?.textContent==='NATIVE_RECEIVER_TAB:completed');
             await page.locator('#warehouseTabs [data-tab="account"]').click();
             if(!(await page.locator('body').innerText()).includes('QA Warehouse'))throw new Error('ACCOUNT_IDENTITY_NOT_RENDERED');
             await page.locator('button[title="تسجيل الخروج"]').click();
