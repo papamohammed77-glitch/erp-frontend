@@ -267,7 +267,40 @@ jobs:
               const url=route.request().url();
               let body='';
               if(url.includes('sweetalert2'))body="window.Swal={fire:function(){return Promise.resolve({isConfirmed:false});},showLoading:function(){},close:function(){},showValidationMessage:function(){},isVisible:function(){return false;}};";
-              else if(url.includes('dexie.min.js'))body="window.Dexie=function(){var db=this;var tab={get:function(){return Promise.resolve(null);},put:function(){return Promise.resolve(1);},add:function(){return Promise.resolve(1);},delete:function(){return Promise.resolve();},clear:function(){return Promise.resolve();},toArray:function(){return Promise.resolve([]);},where:function(){return tab;},equals:function(){return tab;},first:function(){return Promise.resolve(null);},count:function(){return Promise.resolve(0);},orderBy:function(){return tab;},reverse:function(){return tab;},limit:function(){return tab;},offset:function(){return tab;},each:function(){return Promise.resolve();},modify:function(){return Promise.resolve();}};db.version=function(){return {stores:function(){return db;}};};db.open=function(){return Promise.resolve(db);};db.table=function(){return tab;};db.transaction=function(){return Promise.resolve();};return new Proxy(db,{get:function(t,p){if(p in t)return t[p];return tab;}});};";
+              else if(url.includes('dexie.min.js'))body="window.Dexie=function(){
+              var db=this,stores={},seq={};
+              var keyPaths={session:'runsheet_code',localChanges:'id',meta:'key',returnReasons:'reason_code'};
+              function copy(value){return value==null?value:JSON.parse(JSON.stringify(value));}
+              function table(name){
+                if(!stores[name])stores[name]=[];
+                if(!seq[name])seq[name]=0;
+                var field=null,expected;
+                function matches(row){return field===null||String(row&&row[field])===String(expected);}
+                function primary(row){return keyPaths[name]||'id';}
+                var t={
+                  get:function(key){var pk=primary({});var row=stores[name].find(function(x){return x[pk]===key;});return Promise.resolve(copy(row||null));},
+                  put:function(value){var row=copy(value||{}),pk=primary(row);if(name==='localChanges'&&row.id==null)row.id=++seq[name];if(row[pk]==null)row[pk]=++seq[name];var at=stores[name].findIndex(function(x){return x[pk]===row[pk];});if(at>=0)stores[name][at]=row;else stores[name].push(row);return Promise.resolve(row[pk]);},
+                  add:function(value){var row=copy(value||{}),pk=primary(row);if(row[pk]==null)row[pk]=++seq[name];if(stores[name].some(function(x){return x[pk]===row[pk];}))return Promise.reject(new Error('ConstraintError'));stores[name].push(row);return Promise.resolve(row[pk]);},
+                  delete:function(key){if(arguments.length){var pk=primary({});stores[name]=stores[name].filter(function(x){return x[pk]!==key;});return Promise.resolve();}var before=stores[name].length;stores[name]=stores[name].filter(function(x){return !matches(x);});field=null;expected=undefined;return Promise.resolve(before-stores[name].length);},
+                  clear:function(){stores[name]=[];field=null;expected=undefined;return Promise.resolve();},
+                  toArray:function(){return Promise.resolve(copy(stores[name].filter(matches)));},
+                  where:function(name){field=name;expected=undefined;return t;},
+                  equals:function(value){expected=value;return t;},
+                  first:function(){var row=stores[name].find(matches);return Promise.resolve(copy(row||null));},
+                  count:function(){return Promise.resolve(stores[name].filter(matches).length);},
+                  orderBy:function(){return t;},reverse:function(){return t;},limit:function(){return t;},offset:function(){return t;},
+                  each:function(callback){stores[name].filter(matches).forEach(function(row){callback(copy(row));});return Promise.resolve();},
+                  modify:function(changes){stores[name].filter(matches).forEach(function(row){Object.assign(row,changes);});return Promise.resolve();},
+                  bulkDelete:function(keys){var set=new Set(keys||[]),pk=primary({});var before=stores[name].length;stores[name]=stores[name].filter(function(x){return !set.has(x[pk]);});return Promise.resolve(before-stores[name].length);}
+                };
+                return t;
+              }
+              db.version=function(){return {stores:function(){return db;}};};
+              db.open=function(){return Promise.resolve(db);};
+              db.table=function(name){return table(name);};
+              db.transaction=function(){return Promise.resolve();};
+              return new Proxy(db,{get:function(target,property){if(property in target)return target[property];if(typeof property==='string')return table(property);return target[property];}});
+            };";
               else if(url.includes('html5-qrcode'))body="window.Html5Qrcode=function(){this.start=function(){return Promise.resolve();};this.stop=function(){return Promise.resolve();};this.clear=function(){return Promise.resolve();};};";
               return route.fulfill({status:200,contentType:'application/javascript',body});
             });
