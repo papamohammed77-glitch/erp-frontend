@@ -153,8 +153,20 @@ jobs:
           if(!bundles.vouchers.script.includes('existing supplier return contract load failed:')) throw new Error('SUPPLIER_RETURN_EXISTING_CONTRACT_READ_NOT_FAIL_CLOSED');
           for(const marker of ['start-loading','complete-loading','reopen-loading','loaderVehicleSelect'])
             if(!bundles.loader.script.includes(marker)) throw new Error('LOADER_WORKFLOW_MISSING:'+marker);
-          for(const marker of ['start-return','complete-return','report-discrepancy','reopen-return','returnReasons'])
+          for(const marker of ['start-return','complete-return','report-discrepancy','returnReasons'])
             if(!bundles.returns.script.includes(marker)) throw new Error('RETURNS_WORKFLOW_MISSING:'+marker);
+          if(bundles.returns.script.includes("RW_API.call('reopen-return'") || bundles.returns.script.includes('RW_API.call("reopen-return"'))
+            throw new Error('UNSAFE_COMPLETED_RETURN_REOPEN_API_CALL_REMAINS');
+          if(!bundles.returns.script.includes('إعادة فتح المرتجعات المكتملة متوقفة مؤقتًا'))
+            throw new Error('COMPLETED_RETURN_REOPEN_FAIL_CLOSED_GUARD_MISSING');
+          if(!bundles.returns.script.includes('إعادة الفتح متوقفة مؤقتًا'))
+            throw new Error('COMPLETED_RETURN_REOPEN_DISABLED_UI_MISSING');
+          if(!bundles.returns.script.includes('[RW_Returns] local draft save failed:') || /supabase\\.from\\(['"]run_sheet_details['"]\\)\\.update/.test(bundles.returns.script))
+            throw new Error('RETURNS_DRAFT_MUST_REMAIN_DEVICE_LOCAL_UNTIL_ATOMIC_COMPLETION');
+          if(!bundles.returns.script.includes('pending discrepancy check failed'))
+            throw new Error('RETURNS_DISCREPANCY_CHECK_MUST_FAIL_CLOSED');
+          if(!bundles.returns.script.includes('الصنف محل الاختلاف') || !bundles.returns.script.includes('actual_item_code'))
+            throw new Error('RETURNS_DISCREPANCY_FORM_CONTRACT_INCOMPLETE');
           for(const marker of ['get_quick_market_receiving_queue_atomic','receive-purchase','receiptFingerprint','operation_id'])
             if(!bundles.receiver.script.includes(marker)) throw new Error('RECEIVING_WORKFLOW_MISSING:'+marker);
           if(!bundles.unloader.script.includes('unload-runsheet')) throw new Error('UNLOADING_WORKFLOW_MISSING');
