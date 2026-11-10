@@ -51,7 +51,7 @@ serve(async(req)=>{
       permissions.includes('*') ||
       permissions.includes('warehouse') ||
       (activeReceivingRole && permissions.includes('receiving'))
-    if(!isOwner && (!((activeReceivingRole || activeUnifiedWarehouseRole) && hasWarehousePermission)){
+    if(!isOwner && !((activeReceivingRole || activeUnifiedWarehouseRole) && hasWarehousePermission)){
       throw new Error('لا تملك صلاحية استلام أوامر الشراء')
     }
 
