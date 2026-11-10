@@ -312,6 +312,8 @@ jobs:
                 await page.locator(receiverMain+' [data-action="source-filter"][data-filter="QUICK_MARKET"]').click();
                 if(await page.locator(receiverMain+' #receiverDocumentCards .doc-card').count()!==1||!(await page.locator(receiverMain).innerText()).includes('QA-QMP-001'))throw new Error('RECEIVER_QUICK_MARKET_SOURCE_FILTER_FAILED');
                 await page.locator(receiverMain+' [data-action="source-filter"][data-filter="ALL"]').click();
+                await page.locator(receiverMain+' [data-action="source-filter"][data-filter="PURCHASE_ORDER"]').click();
+                if(await page.locator(receiverMain+' #receiverDocumentCards .doc-card').count()!==1)throw new Error('RECEIVER_PO_FILTER_NOT_ACTIVE_BEFORE_OPEN');
                 await page.locator(receiverMain+' [data-action="open-doc"][data-index="0"]').click();
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver [data-role="sent-qty"]'));
                 if(!(await page.locator(receiverMain).innerText()).includes('مساحة عمل الاستلام'))throw new Error('RECEIVER_PO_WORKSPACE_NOT_OPENED');
@@ -337,8 +339,9 @@ jobs:
                 await page.waitForFunction(()=>{const root=document.querySelector('#rw-native-root-receiver'),cards=root?.querySelectorAll('#receiverDocumentCards .doc-card');return !!(root&&root.innerText.includes('مركز الاستلام الذكي')&&cards?.length===1&&cards[0].innerText.includes('QA-PO-001'));});
                 if(!(await page.locator(receiverMain).innerText()).includes('مركز الاستلام الذكي'))throw new Error('RECEIVER_PO_SUCCESS_DID_NOT_RETURN_TO_PENDING_LIST');
                 console.log('WAREHOUSE_RECEIVER_PO_PHYSICAL_RECEIPT_GUARDS=PASS');
-                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #receiverDocumentCards')?.querySelectorAll('.doc-card').length===2);
+                if(await page.evaluate(()=>window.RW_NATIVE_APPS.receiver.currentSourceFilter)!=='PURCHASE_ORDER')throw new Error('RECEIVER_PO_SOURCE_FILTER_NOT_PRESERVED_AFTER_RECEIPT');
                 await page.locator(receiverMain+' [data-action="source-filter"][data-filter="QUICK_MARKET"]').click();
+                if(await page.locator(receiverMain+' #receiverDocumentCards .doc-card').count()!==1)throw new Error('RECEIVER_QMP_FILTER_NOT_ACTIVE_BEFORE_OPEN');
                 await page.locator(receiverMain+' [data-action="open-doc"]').click();
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver [data-role="sent-qty"]'));
                 await page.locator(receiverMain+' [data-role="sent-qty"]').first().fill('3');
@@ -349,7 +352,7 @@ jobs:
                 const qmpCall=await page.evaluate(()=>window.__qaReceiverCalls[1]);
                 if(qmpCall.payload.invoice_id!=='qa-invoice'||qmpCall.payload.po_code||qmpCall.payload.itemsReceived?.[0]?.sentQty!==3||qmpCall.payload.itemsReceived?.[0]?.receivedQty!==0||!qmpCall.payload.itemsReceived?.[0]?.reason)throw new Error('RECEIVER_QMP_FULL_REJECTION_CONTRACT_INVALID:'+JSON.stringify(qmpCall.payload));
                 if(qmpCall.payload.operation_id===poCall.payload.operation_id)throw new Error('RECEIVER_PHYSICAL_DELIVERIES_REUSED_OPERATION_ID');
-                await page.waitForFunction(()=>{const root=document.querySelector('#rw-native-root-receiver'),cards=root?.querySelectorAll('#receiverDocumentCards .doc-card');return !!(root&&root.innerText.includes('مركز الاستلام الذكي')&&cards?.length===1&&cards[0].innerText.includes('QA-QMP-001'));});
+                await page.waitForFunction(()=>{const root=document.querySelector('#rw-native-root-receiver'),cards=root?.querySelectorAll('#receiverDocumentCards .doc-card'),app=window.RW_NATIVE_APPS?.receiver;return !!(root&&root.innerText.includes('مركز الاستلام الذكي')&&app?.currentSourceFilter==='QUICK_MARKET'&&cards?.length===1&&cards[0].innerText.includes('QA-QMP-001'));});
                 if(!(await page.locator(receiverMain).innerText()).includes('مركز الاستلام الذكي'))throw new Error('RECEIVER_ZERO_ACCEPTANCE_SUCCESS_DID_NOT_RETURN_TO_PENDING_LIST');
                 console.log('WAREHOUSE_RECEIVER_SUCCESS_RETURNS_TO_PENDING_AFTER_UNCHANGED_QUEUE=PASS');
                 console.log('WAREHOUSE_RECEIVER_QUICK_MARKET_FULL_REJECTION_NO_STOCK_REQUEST=PASS');
