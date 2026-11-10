@@ -63,8 +63,9 @@ jobs:
           const nav=html.match(/<nav id="warehouseTabs"[^>]*>([\s\S]*?)<\/nav>/);
           if(!nav) throw new Error('NATIVE_WAREHOUSE_NAV_MISSING');
           const tabs=[...nav[1].matchAll(/data-tab="([^"]+)"/g)].map(m=>m[1]);
-          const expected=['today','receiving','picking','loading','delivery','returns','unloading','settlement','vouchers','inventory','account'];
+          const expected=['today','receiving','picking','loading','returns','unloading','vouchers','inventory','account'];
           if(tabs.join('|')!==expected.join('|')) throw new Error('NATIVE_WAREHOUSE_TAB_CONTRACT:'+tabs.join('|'));
+          if(nav[1].includes('data-tab="delivery"')||nav[1].includes('data-tab="settlement"')) throw new Error('NON_WAREHOUSE_DELIVERY_OR_FINANCIAL_SETTLEMENT_TAB_EXPOSED');
           for(const fn of ['loadReceiving','loadPicking','loadLoading','loadDelivery','loadReturn','loadUnloading','loadSettlement','loadVouchers','loadInventoryControl'])
             if(!html.includes(fn+': '+fn) && !html.includes(fn+':'+fn) && !html.includes(fn+': '+fn+'(') && !html.includes(fn+':'+fn+'('))
               throw new Error('PARENT_WAREHOUSE_MODULE_METHOD_NOT_COPIED:'+fn);
@@ -84,7 +85,7 @@ jobs:
           console.log('NATIVE_WAREHOUSE_NO_IFRAME_CONTRACT=PASS');
           console.log('NATIVE_WAREHOUSE_PARENT_MODULE_TRANSFER=PASS');
           console.log('NATIVE_WAREHOUSE_MODERN_RECEIVING_TRANSFER=PASS');
-          console.log('NATIVE_WAREHOUSE_ELEVEN_TAB_CONTRACT=PASS');
+          console.log('NATIVE_WAREHOUSE_NINE_TAB_CONTRACT=PASS');
           console.log('NATIVE_WAREHOUSE_CORE_AUTH_AND_SERVICE_CONTRACT=PASS');
           console.log('NATIVE_WAREHOUSE_RPC_ROLE_ALIGNMENT_MIGRATION=PASS');
           NODE
@@ -171,9 +172,16 @@ jobs:
             if(await page.locator('#mainApp').isHidden())throw new Error('NATIVE_HUB_NOT_VISIBLE');
             if(await page.locator('iframe').count()!==0)throw new Error('IFRAME_PRESENT_IN_NATIVE_HUB');
             if(await page.locator('#warehouseDashboard .metric').count()!==7)throw new Error('DASHBOARD_METRICS_MISSING');
-            if(await page.locator('#warehouseTabs [data-tab]:visible').count()!==11)throw new Error('FULL_ROLE_TAB_VISIBILITY_FAILED');
+            if(await page.locator('#warehouseTabs [data-tab]:visible').count()!==9)throw new Error('FULL_ROLE_TAB_VISIBILITY_FAILED');
+            await page.evaluate(async()=>{
+              await RW_Warehouse.loadVouchers();
+              if(!document.getElementById('vouchers-tbody')||!document.getElementById('vouchers-tbody').textContent.includes('لا توجد أذونات')) throw new Error('REAL_VOUCHER_READ_MODULE_FAILED');
+              await RW_Warehouse.loadUnloading();
+              if(!document.getElementById('rw-page-container').textContent.trim()) throw new Error('REAL_UNLOADING_READ_MODULE_FAILED');
+            });
+            console.log('NATIVE_WAREHOUSE_REAL_MODULE_READ_ONLY_SMOKE=PASS');
             await page.evaluate(()=>{
-              ['loadPicking','loadLoading','loadDelivery','loadReturn','loadUnloading','loadSettlement','loadVouchers','loadInventoryControl','loadReceiving'].forEach(function(name){
+              ['loadPicking','loadLoading','loadReturn','loadUnloading','loadVouchers','loadInventoryControl','loadReceiving'].forEach(function(name){
                 RW_Warehouse[name]=function(){var c=document.getElementById('rw-page-container');if(c)c.textContent='NATIVE_MODULE:'+name;};
               });
               RW_Receiver.enterApp=function(){var c=document.getElementById('mainContent');if(c)c.textContent='NATIVE_RECEIVER_WORKSPACE';};
@@ -181,7 +189,7 @@ jobs:
               RW_Receiver.startRealtime=function(){this.realtimeKey='qa-realtime';};
               RW_Receiver.stopRealtime=function(){this.realtimeKey=null;};
             });
-            for(const pair of [['picking','loadPicking'],['loading','loadLoading'],['delivery','loadDelivery'],['returns','loadReturn'],['unloading','loadUnloading'],['settlement','loadSettlement'],['vouchers','loadVouchers'],['inventory','loadInventoryControl']]){
+            for(const pair of [['picking','loadPicking'],['loading','loadLoading'],['returns','loadReturn'],['unloading','loadUnloading'],['vouchers','loadVouchers'],['inventory','loadInventoryControl']]){
               await page.locator('#warehouseTabs [data-tab="'+pair[0]+'"]').click();
               await page.waitForFunction(n=>document.querySelector('#rw-page-container')?.textContent==='NATIVE_MODULE:'+n,pair[1]);
             }
@@ -195,8 +203,11 @@ jobs:
             await page.waitForFunction(()=>document.querySelector('#mainContent')?.textContent==='NATIVE_RECEIVER_TAB:completed');
             await page.locator('#warehouseTabs [data-tab="account"]').click();
             if(!(await page.locator('body').innerText()).includes('QA Warehouse'))throw new Error('ACCOUNT_IDENTITY_NOT_RENDERED');
+            await page.evaluate(()=>{window.__receiverRefreshFired=false;RW_Receiver.refreshTimer=window.setTimeout(function(){window.__receiverRefreshFired=true;},30000);});
             await page.locator('button[title="تسجيل الخروج"]').click();
             if(await page.locator('#loginScreen').isHidden()||!await page.locator('#mainApp').isHidden())throw new Error('LOGOUT_CLEANUP_FAILED');
+            const receiverCleanup=await page.evaluate(()=>({timer:RW_Receiver.refreshTimer,fired:window.__receiverRefreshFired}));
+            if(receiverCleanup.timer!==null||receiverCleanup.fired)throw new Error('RECEIVER_REFRESH_TIMER_NOT_CLEANED_ON_LOGOUT');
             if(pageErrors.length)throw new Error('BROWSER_PAGE_ERRORS:'+JSON.stringify(pageErrors));
             console.log('NATIVE_WAREHOUSE_AUTH_DASHBOARD_E2E=PASS');
             console.log('NATIVE_WAREHOUSE_ALL_MODULE_ROUTES_E2E=PASS');
