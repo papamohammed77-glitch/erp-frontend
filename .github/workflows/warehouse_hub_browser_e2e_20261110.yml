@@ -15,6 +15,7 @@ on:
       - 'companies/company-1/core.js'
       - 'supabase/functions/create-stock-voucher/index.ts'
       - 'supabase/migrations/*warehouse_branch_receipt*'
+      - 'supabase/migrations/*inventory_count_role_and_company_isolation*'
       - '.github/workflows/warehouse_hub_browser_e2e_20261110.yml'
   workflow_dispatch: {}
 
@@ -43,6 +44,7 @@ jobs:
           node <<'NODE'
           const fs=require('fs');
           const html=fs.readFileSync('companies/company-1/warehouse/warehouse.html','utf8');
+          const countMigration=fs.readFileSync('supabase/migrations/20261110212000_inventory_count_role_and_company_isolation.sql','utf8');
           const inline=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
           if(inline.length!==1) throw new Error('HOST_INLINE_SCRIPT_COUNT:'+inline.length);
           new Function(inline[0][2]);
@@ -97,7 +99,7 @@ jobs:
           if(!bundles.picker.script.includes('var userName = this.currentUser.name')) throw new Error('PICKER_SHARED_PROFILE_NAME_MISSING');
           if(!bundles.loader.script.includes('r[0].error') || !bundles.loader.script.includes('r[1].error')) throw new Error('LOADER_PENDING_RESULTS_MUST_CHECK_SUPABASE_ERRORS');
           if(!bundles.unloader.script.includes('Unloader runsheets query failed:') || !bundles.unloader.script.includes('Unloader completed vouchers query failed:')) throw new Error('UNLOADER_RESULT_ERRORS_NOT_HANDLED');
-          if(!bundles.counter.script.includes('Counter inventory history query failed:')) throw new Error('COUNTER_HISTORY_RESULT_ERRORS_NOT_HANDLED');
+          if(!bundles.counter.script.includes('[RAWAEA Counter] completed history failed')) throw new Error('COUNTER_HISTORY_RESULT_ERRORS_NOT_HANDLED');
           for(const marker of ['request-branch-receipt','warehouseHomeBranch','send-request','exactReceiver)return \'request\''])
             if(!bundles.vouchers.script.includes(marker)) throw new Error('BRANCH_RECEIPT_REQUEST_FLOW_MISSING:'+marker);
           if(!bundles.vouchers.html.includes('استلام من مخزن فرع')) throw new Error('BRANCH_RECEIPT_MENU_MISSING');
@@ -118,6 +120,10 @@ jobs:
             if(!bundles.receiver.script.includes(marker)) throw new Error('RECEIVING_WORKFLOW_MISSING:'+marker);
           if(!bundles.unloader.script.includes('unload-runsheet')) throw new Error('UNLOADING_WORKFLOW_MISSING');
           if(!bundles.counter.script.includes('save-inventory-count')) throw new Error('COUNTING_WORKFLOW_MISSING');
+          if((countMigration.match(/COALESCE\(v_actor\.active_warehouse_role,''\) IN \('مخزن شامل','جرد'\)/g)||[]).length!==4) throw new Error('COUNT_ROLE_ENGINE_GUARDS_MISSING');
+          for(const marker of ['AND i.company_id=p_company_id','WHERE i.company_id=p_company_id AND i.item_code=v_item_code',"COALESCE(v.status,'Active')='Active'"])
+            if(!countMigration.includes(marker)) throw new Error('COUNT_TENANT_OR_VEHICLE_FENCE_MISSING:'+marker);
+          if(!bundles.vouchers.script.includes("labels[v.type==='Transfer'&&v.request_origin==='WarehouseBranchReceipt'?'BranchReceipt':v.type]")) throw new Error('BRANCH_RECEIPT_SEARCH_LABEL_MISSING');
           for(const marker of ['create-stock-voucher','receive-stock-voucher','inventory_voucher_report','supplierReturnFingerprint','openSupplierReturnContract','saveSupplierReturnContract','save_supplier_return_contract'])
             if(!bundles.vouchers.script.includes(marker)) throw new Error('VOUCHER_WORKFLOW_MISSING:'+marker);
           console.log('WAREHOUSE_FOUR_TAB_CONTRACT=PASS');
@@ -184,7 +190,7 @@ jobs:
               "var __qaUser=sessionStorage.getItem('qa-signed-out')==='1'?null:__qaProfile;",
               "var __qaSnapshot="+JSON.stringify(snapshot)+";",
               "var __qaDeny="+JSON.stringify(deny)+";",
-              "function __qaRows(table){if(table==='users')return [__qaUser];if(table==='app_settings')return [{main_branch_id:'00000000-0000-4000-8000-000000000001',currency:'EGP'}];if(table==='branches')return [{id:'00000000-0000-4000-8000-000000000001',company_id:'qa-company',branch_code:'BR-01',name:'فرع الاختبار',is_active:true},{id:'00000000-0000-4000-8000-000000000002',company_id:'qa-company',branch_code:'BR-02',name:'فرع اختبار ثانٍ',is_active:true}];if(table==='vehicles')return [];if(table==='suppliers')return [{id:'qa-supplier',company_id:'qa-company',name:'مورد اختبار',address:'عنوان اختبار',is_active:true}];return [];}",
+              "function __qaRows(table){if(table==='users')return [__qaUser];if(table==='app_settings')return [{main_branch_id:'00000000-0000-4000-8000-000000000001',currency:'EGP'}];if(table==='branches')return [{id:'00000000-0000-4000-8000-000000000001',company_id:'qa-company',branch_code:'BR-01',name:'فرع الاختبار',is_active:true},{id:'00000000-0000-4000-8000-000000000002',company_id:'qa-company',branch_code:'BR-02',name:'فرع اختبار ثانٍ',is_active:true}];if(table==='vehicles')return [{id:'qa-vehicle',company_id:'qa-company',vehicle_code:'VAN-QA',license_plate:'QA-001',model:'QA',mobile_branch_id:'00000000-0000-4000-8000-000000000001',mobile_stock_enabled:true,status:'Active'}];if(table==='suppliers')return [{id:'qa-supplier',company_id:'qa-company',name:'مورد اختبار',address:'عنوان اختبار',is_active:true}];return [];}",
               "function __qaQuery(table){var q={};['select','eq','neq','not','in','order','limit','range','gte','lte','gt','lt','or','is','filter','match','insert','update','upsert','delete'].forEach(function(k){q[k]=function(){return q;};});q.then=function(a,b){return Promise.resolve({data:__qaRows(table),error:null}).then(a,b);};q.maybeSingle=function(){var rows=__qaRows(table);return Promise.resolve({data:rows[0]||null,error:null});};q.single=q.maybeSingle;return q;}",
               "var supabase={auth:{getSession:function(){return Promise.resolve({data:{session:{user:__qaUser,access_token:'qa-token'}}});},getUser:function(){return Promise.resolve({data:{user:{id:'qa-auth',email:__qaUser.email,user_metadata:{}}}});},signOut:function(){return Promise.resolve({error:null});},signInWithPassword:function(){return Promise.resolve({data:{user:__qaUser},error:null});},onAuthStateChange:function(){return {data:{subscription:{unsubscribe:function(){}}}};}},from:function(t){return __qaQuery(t);},rpc:function(name,args){if(name==='get_warehouse_hub_snapshot')return Promise.resolve(__qaDeny?{data:null,error:{message:'WAREHOUSE_PERMISSION_REQUIRED'}}:{data:__qaSnapshot,error:null});if(name==='inventory_voucher_report')return Promise.resolve({data:args&&args.p_operation==='SUMMARY'?{summary:{statuses:[]}}:{rows:[],total:0},error:null});if(name==='inventory_control')return Promise.resolve({data:{success:true,rows:[],counts:[],vouchers:[]},error:null});return Promise.resolve({data:{success:true,rows:[],invoices:[],summary:{statuses:[]}},error:null});},channel:function(){var c={on:function(){return c;},subscribe:function(cb){if(cb)cb('SUBSCRIBED');return c;}};return c;},removeChannel:function(){return Promise.resolve();},storage:{from:function(){return {createSignedUrl:function(){return Promise.resolve({data:{signedUrl:'https://qa.invalid/file'},error:null});},upload:function(){return Promise.resolve({data:{path:'qa'},error:null});}};}}};",
               "var RW_Auth={init:function(cb){cb(__qaUser,__qaUser?null:'NO_SESSION');},getUser:function(){return __qaUser;},getToken:function(){return 'qa-token';},doLogin:function(e,p,cb){sessionStorage.removeItem('qa-signed-out');__qaUser=__qaProfile;if(cb)cb(__qaUser,null);},doLogout:function(cb){sessionStorage.setItem('qa-signed-out','1');__qaUser=null;supabase.auth.signOut().then(function(){if(cb)cb(true);});}};",
@@ -341,6 +347,18 @@ jobs:
             const sourceOptions=await page.locator('#rw-native-root-vouchers #wsFromMenu').innerText();
             if(!sourceOptions.includes('فرع اختبار ثانٍ'))throw new Error('BRANCH_RECEIPT_SOURCE_BRANCH_SEARCH_MISSING:'+sourceOptions);
             console.log('WAREHOUSE_BRANCH_RECEIPT_FIXED_DESTINATION_ALL_SOURCE_BRANCHES=PASS');
+
+            await page.locator('#warehouseTabs [data-tab="operations"]').click();
+            await page.locator('#warehouseDashboard [data-operation="counting"]').click();
+            await page.waitForFunction(()=>document.getElementById('rw-native-root-counter')?.dataset.rwReady==='true',null,{timeout:12000});
+            await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('الفرع محل الجرد'),null,{timeout:12000});
+            await page.locator('#rw-native-root-counter #tab-vehicle-count').click();
+            await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('السيارة محل الجرد'),null,{timeout:12000});
+            await page.locator('#rw-native-root-counter #tab-general-count').click();
+            await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('الجرد العام غير متاح'),null,{timeout:12000});
+            await page.locator('#rw-native-root-counter #tab-branch-count').click();
+            await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('الفرع محل الجرد'),null,{timeout:12000});
+            console.log('WAREHOUSE_THREE_PARENT_COUNT_TABS_AND_BRANCH_SCOPE=PASS');
 
             await page.locator('#warehouseTabs [data-tab="account"]').click();
             if(!(await page.locator('#warehouseDashboard').innerText()).includes('QA Warehouse'))throw new Error('ACCOUNT_IDENTITY_MISSING');
