@@ -66,6 +66,8 @@ jobs:
               if(html.includes(staleSelector)) throw new Error('NATIVE_MODULE_CSS_SCOPE_KEY_MISMATCH:'+nativeKey+'->'+operationKey);
             }
           }
+          if(!html.includes('window.RW_SHARED_SUPABASE=supabase')) throw new Error('SHARED_SUPABASE_CLIENT_EXPORT_MISSING');
+          if(!html.includes('src="../core.js"')) throw new Error('SHARED_CORE_SCRIPT_MISSING');
           if(!html.includes('RW_NATIVE_APPS&&window.RW_NATIVE_APPS[self.moduleKey(key)]')) throw new Error('NATIVE_MODULE_LOGOUT_CLEANUP_ALIAS_MISSING');
           const bundleMatch=html.match(/var RW_NATIVE_BUNDLES=(\{[\s\S]*?\});\nvar App=/);
           if(!bundleMatch) throw new Error('NATIVE_MODULE_BUNDLE_OBJECT_MISSING');
@@ -74,6 +76,10 @@ jobs:
           if(Object.keys(bundles).sort().join('|')!==keys.slice().sort().join('|')) throw new Error('SEVEN_NATIVE_MODULES_REQUIRED');
           for(const key of keys){
             const b=bundles[key];
+            const authInitCount=(b.script.match(/RW_Auth\\.init\\s*\\(/g)||[]).length;
+            if(authInitCount!==1) throw new Error('MODULE_SHARED_AUTH_INIT_COUNT:'+key+':'+authInitCount);
+            if(/createClient\\s*\\(/.test(b.script)) throw new Error('MODULE_CREATED_DUPLICATE_SUPABASE_CLIENT:'+key);
+            if(!b.script.includes('مخزن شامل')) throw new Error('MODULE_UNIFIED_WAREHOUSE_ROLE_MISSING:'+key);
             if(!b.html.includes('id="mainApp"')) throw new Error('MODULE_MARKUP_MISSING:'+key);
             if(!b.script.includes('window.RW_NATIVE_APP_'+key+'.init()')) throw new Error('MODULE_BOOT_MISSING:'+key);if(/moduleApp\\./.test(b.script)) throw new Error('UNSCOPED_DYNAMIC_MODULE_ACTION:'+key);
             if(!b.script.startsWith('(function(){')||!b.script.includes('var moduleRoot=window.document.getElementById(')) throw new Error('NATIVE_ROOT_BOOTSTRAP_ORDER_INVALID:'+key);
@@ -99,6 +105,7 @@ jobs:
           console.log('WAREHOUSE_NO_IFRAME_OR_CHILD_NAVIGATION=PASS');
           console.log('WAREHOUSE_SEVEN_NATIVE_OPERATION_BUNDLES=PASS');
           console.log('WAREHOUSE_NATIVE_MODULE_CSS_SCOPE=PASS');
+          console.log('WAREHOUSE_ALL_SEVEN_MODULES_SHARED_AUTH_NO_DUPLICATE_CLIENT=PASS');
           console.log('WAREHOUSE_SHARED_CORE_SESSION=PASS');
           console.log('WAREHOUSE_PICKER_AUTH_ALIGNMENT=PASS');
           console.log('WAREHOUSE_FULL_NATIVE_WORKFLOWS_PRESERVED=PASS');
