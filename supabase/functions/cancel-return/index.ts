@@ -1,6 +1,7 @@
 // cancel-return — cancel only a fresh, uncommitted Returns session.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { requireWarehouseRole, assertWarehouseMainBranch } from "../_shared/warehouse-auth.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -24,6 +25,8 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) throw new Error("غير مصرح")
+    const warehouseActor = await requireWarehouseRole(supabase, authHeader, "مرتجعات");
+    await assertWarehouseMainBranch(supabase, warehouseActor);
     const token = authHeader.replace(/^Bearer\s+/i, "").trim()
     if (!token) throw new Error("جلسة غير صالحة")
 
