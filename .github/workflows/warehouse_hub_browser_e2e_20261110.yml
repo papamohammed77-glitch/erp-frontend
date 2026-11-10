@@ -20,6 +20,7 @@ on:
       - 'supabase/migrations/*driver_liabilities_read_scope*'
       - 'supabase/migrations/*standard_transfer_requires_designated_branch_receiver*'
       - 'supabase/migrations/*standard_transfer_unified_warehouse_receiver_fallback*'
+      - 'supabase/migrations/*returns_discrepancy_integrity_gate*'
       - '.github/workflows/warehouse_hub_browser_e2e_20261110.yml'
   workflow_dispatch: {}
 
@@ -54,6 +55,8 @@ jobs:
           const driverLiabilityMigration=fs.readFileSync('supabase/migrations/20261110215500_driver_liabilities_read_scope_and_client_write_revocation.sql','utf8');
           const designatedReceiverMigration=fs.readFileSync('supabase/migrations/20261110222000_standard_transfer_requires_designated_branch_receiver.sql','utf8');
           const fullRoleReceiverMigration=fs.readFileSync('supabase/migrations/20261110213226_standard_transfer_unified_warehouse_receiver_fallback.sql','utf8');
+          const returnsIntegrityMigration=fs.readFileSync('supabase/migrations/20261110233152_returns_discrepancy_integrity_gate_20261111.sql','utf8');
+          const returnsStandalone=fs.readFileSync('companies/company-1/warehouse/returns.html','utf8');
           const inline=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
           if(inline.length!==1) throw new Error('HOST_INLINE_SCRIPT_COUNT:'+inline.length);
           new Function(inline[0][2]);
@@ -165,6 +168,21 @@ jobs:
             throw new Error('RETURNS_DRAFT_MUST_REMAIN_DEVICE_LOCAL_UNTIL_ATOMIC_COMPLETION');
           if(!bundles.returns.script.includes('pending discrepancy check failed'))
             throw new Error('RETURNS_DISCREPANCY_CHECK_MUST_FAIL_CLOSED');
+          const unresolvedDiscrepancyFilter=".in('status', ['pending', 'investigating'])";
+          if(!bundles.returns.script.includes(unresolvedDiscrepancyFilter) || !returnsStandalone.includes(unresolvedDiscrepancyFilter))
+            throw new Error('RETURNS_PENDING_AND_INVESTIGATING_STATES_NOT_BLOCKED');
+          for(const marker of [
+            'trg_stock_discrepancies_integrity',
+            'trg_runsheets_unresolved_discrepancy_close_guard',
+            "d.status IN ('pending', 'investigating')",
+            "current_user_has_permission('warehouse_supervisor')",
+            "current_user_has_permission('warehouse_manager')",
+            'ALTER COLUMN company_id SET NOT NULL',
+            'ALTER COLUMN reported_by SET NOT NULL',
+            'ALTER COLUMN status SET NOT NULL'
+          ]) if(!returnsIntegrityMigration.includes(marker))
+            throw new Error('RETURNS_DATABASE_INTEGRITY_GATE_MISSING:'+marker);
+          console.log('WAREHOUSE_RETURNS_UNRESOLVED_DISCREPANCY_DATABASE_GATE=PASS');
           if(!bundles.returns.script.includes('الصنف محل الاختلاف') || !bundles.returns.script.includes('actual_item_code'))
             throw new Error('RETURNS_DISCREPANCY_FORM_CONTRACT_INCOMPLETE');
           for(const marker of ['get_quick_market_receiving_queue_atomic','receive-purchase','receiptFingerprint','operation_id'])
