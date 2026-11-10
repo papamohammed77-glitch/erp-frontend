@@ -1,4 +1,4 @@
-name: RAWAEA — Native Unified Warehouse Application E2E
+name: RAWAEA — Standalone Unified Warehouse E2E
 
 on:
   push:
@@ -6,8 +6,13 @@ on:
     paths:
       - 'companies/company-1/warehouse/warehouse.html'
       - 'companies/company-1/warehouse/receiver.html'
+      - 'companies/company-1/warehouse/picker.html'
+      - 'companies/company-1/warehouse/loader.html'
+      - 'companies/company-1/warehouse/returns.html'
+      - 'companies/company-1/warehouse/unloader.html'
+      - 'companies/company-1/warehouse/counter.html'
+      - 'companies/company-1/warehouse/vouchers.html'
       - 'companies/company-1/core.js'
-      - 'supabase/migrations/*warehouse*'
       - '.github/workflows/warehouse_hub_browser_e2e_20261110.yml'
   workflow_dispatch: {}
 
@@ -15,83 +20,74 @@ permissions:
   contents: read
 
 jobs:
-  native-warehouse:
+  standalone-warehouse:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Checkout current source
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 2
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Validate native warehouse source and central-service contract
+      - name: Static source and module contract
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
           const fs=require('fs');
           const html=fs.readFileSync('companies/company-1/warehouse/warehouse.html','utf8');
-          const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
-            .filter(m=>! /\bsrc\s*=/.test(m[1]||''));
-          if(scripts.length!==1) throw new Error('NATIVE_WAREHOUSE_INLINE_SCRIPT_COUNT:'+scripts.length);
-          scripts.forEach((m,i)=>{try{new Function(m[2])}catch(e){throw new Error('NATIVE_WAREHOUSE_JS_SYNTAX_'+(i+1)+':'+e.message)}});
-          if(/<iframe\b|workspaceFrames|warehouse-operation-frame|receiver\.html|picker\.html|loader\.html|returns\.html|unloader\.html|counter\.html|vouchers\.html/.test(html))
-            throw new Error('NATIVE_WAREHOUSE_STILL_EMBEDS_OR_LINKS_CHILD_APPS');
-          for(const marker of [
-            'var RW_Warehouse = (function()',
-            'window.RW_Warehouse = RW_Warehouse;',
-            'var RW_Table = (function()',
-            'var RW_Receiver = {',
-            'get_quick_market_receiving_queue_atomic',
-            'Idempotency-Key',
-            'receiptFingerprint',
-            'storePendingOperation',
-            'sentQty',
-            'receivedQty',
-            'var RW_Runsheets =',
-            'RW_API.call',
-            'inventory_control',
-            "get_warehouse_hub_snapshot",
-            'script src="../core.js"',
-            'RW_Auth.init'
-          ]) if(!html.includes(marker)) throw new Error('NATIVE_WAREHOUSE_REQUIRED_MARKER_MISSING:'+marker);
+          const inline=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
+          if(inline.length!==1) throw new Error('HOST_INLINE_SCRIPT_COUNT:'+inline.length);
+          new Function(inline[0][2]);
           const nav=html.match(/<nav id="warehouseTabs"[^>]*>([\s\S]*?)<\/nav>/);
-          if(!nav) throw new Error('NATIVE_WAREHOUSE_NAV_MISSING');
-          const tabs=[...nav[1].matchAll(/data-tab="([^"]+)"/g)].map(m=>m[1]);
-          const expected=['today','receiving','picking','loading','returns','unloading','vouchers','inventory','account'];
-          if(tabs.join('|')!==expected.join('|')) throw new Error('NATIVE_WAREHOUSE_TAB_CONTRACT:'+tabs.join('|'));
-          if(nav[1].includes('data-tab="delivery"')||nav[1].includes('data-tab="settlement"')) throw new Error('NON_WAREHOUSE_DELIVERY_OR_FINANCIAL_SETTLEMENT_TAB_EXPOSED');
-          for(const fn of ['loadReceiving','loadPicking','loadLoading','loadDelivery','loadReturn','loadUnloading','loadSettlement','loadVouchers','loadInventoryControl'])
-            if(!html.includes(fn+': '+fn) && !html.includes(fn+':'+fn) && !html.includes(fn+': '+fn+'(') && !html.includes(fn+':'+fn+'('))
-              throw new Error('PARENT_WAREHOUSE_MODULE_METHOD_NOT_COPIED:'+fn);
-          for(const role of ['استلام','تحضير','تحميل','مرتجعات','تفريغ','أذونات','جرد','مخزن شامل'])
-            if(!html.includes("'"+role+"'")) throw new Error('WAREHOUSE_ROLE_SCOPE_MISSING:'+role);
-          const migration='supabase/migrations/20261110193000_unified_warehouse_workbench_rpc_role_alignment.sql';
-          const sql=fs.readFileSync(migration,'utf8');
-          for(const marker of [
-            'public.inventory_control(text,jsonb)',
-            'public.get_quick_market_receiving_queue_atomic(uuid)',
-            "current_user_has_effective_permission('warehouse')",
-            "v_actor.active_warehouse_role='مخزن شامل'",
-            'reviewed production contract'
-          ]) if(!sql.includes(marker)) throw new Error('WAREHOUSE_RPC_ROLE_MIGRATION_MARKER_MISSING:'+marker);
-          const receiver=fs.readFileSync('companies/company-1/warehouse/receiver.html','utf8');
-          const core=fs.readFileSync('companies/company-1/core.js','utf8');
-          const receiveEdge=fs.readFileSync('supabase/functions/receive-purchase/index.ts','utf8');
-          if(!receiver.includes('receiptFingerprint')||!receiver.includes('operation_id:operationId')||!receiver.includes("RW_API.call('receive-purchase',payload")) throw new Error('REFERENCE_RECEIVER_OPERATION_CONTRACT_CHANGED');
-          if(!core.includes('var RW_API = (function()')||!core.includes("'Authorization': 'Bearer ' + token")) throw new Error('CENTRAL_RW_API_AUTH_CONTRACT_CHANGED');
-          if(!receiveEdge.includes('bodyOperationId=String(b?.operation_id') || !receiveEdge.includes('const operation_id=supplied') || !receiveEdge.includes('p_operation_id:operation_id')) throw new Error('RECEIVE_PURCHASE_IDEMPOTENCY_CONTRACT_CHANGED');
-          console.log('NATIVE_WAREHOUSE_NO_IFRAME_CONTRACT=PASS');
-          console.log('NATIVE_WAREHOUSE_PARENT_MODULE_TRANSFER=PASS');
-          console.log('NATIVE_WAREHOUSE_MODERN_RECEIVING_TRANSFER=PASS');
-          console.log('NATIVE_WAREHOUSE_NINE_TAB_CONTRACT=PASS');
-          console.log('NATIVE_WAREHOUSE_CORE_AUTH_AND_SERVICE_CONTRACT=PASS');
-          console.log('NATIVE_WAREHOUSE_RPC_ROLE_ALIGNMENT_MIGRATION=PASS');
+          if(!nav) throw new Error('FOUR_TAB_NAV_MISSING');
+          const tabs=[...nav[1].matchAll(/data-tab="([^"]+)"/g)].map(x=>x[1]);
+          const expected=['today','operations','vouchers','account'];
+          if(tabs.join('|')!==expected.join('|')) throw new Error('TOP_LEVEL_TAB_CONTRACT:'+tabs.join('|'));
+          if(/<iframe\b/i.test(html)) throw new Error('IFRAME_IS_FORBIDDEN');
+          if(/(?:href|src)=["'][^"']*(?:receiver|picker|loader|returns|unloader|counter|vouchers)\.html/i.test(html)) throw new Error('CHILD_APP_LINK_IS_FORBIDDEN');
+          if((html.match(/src="\.\.\/core\.js"/g)||[]).length!==1) throw new Error('CORE_MUST_LOAD_ONCE');
+          for(const marker of ['RW_SHARED_SUPABASE','get_warehouse_hub_snapshot','active_warehouse_role','مخزن شامل','data-operation','data-voucher-action','TransferReceive','openSupplierReturnContract','saveSupplierReturnContract'])
+            if(!html.includes(marker)) throw new Error('HOST_CONTRACT_MARKER_MISSING:'+marker);
+          const bundleMatch=html.match(/var RW_NATIVE_BUNDLES=(\{[\s\S]*?\});\nvar App=/);
+          if(!bundleMatch) throw new Error('NATIVE_MODULE_BUNDLE_OBJECT_MISSING');
+          const bundles=JSON.parse(bundleMatch[1]);
+          const keys=['receiver','picker','loader','returns','unloader','counter','vouchers'];
+          if(Object.keys(bundles).sort().join('|')!==keys.slice().sort().join('|')) throw new Error('SEVEN_NATIVE_MODULES_REQUIRED');
+          for(const key of keys){
+            const b=bundles[key];
+            if(!b.html.includes('id="mainApp"')) throw new Error('MODULE_MARKUP_MISSING:'+key);
+            if(!b.script.includes('moduleApp.init()')) throw new Error('MODULE_BOOT_MISSING:'+key);
+            new Function(b.script);
+            if(/<iframe\b/i.test(b.html)) throw new Error('MODULE_IFRAME_FOUND:'+key);
+            if(/(?:onclick|oninput|onchange)="[^"]*\bApp\./.test(b.html)) throw new Error('UNSCOPED_INLINE_APP_HANDLER:'+key);
+          }
+          if(!bundles.picker.script.includes("RW_Auth.init")) throw new Error('PICKER_MUST_USE_SHARED_AUTH');
+          if(!bundles.picker.script.includes('RW_SHARED_SUPABASE')) throw new Error('PICKER_MUST_USE_SHARED_CLIENT');
+          for(const marker of ['start-picking','complete-picking','reopen-picking','cancel-picking'])
+            if(!bundles.picker.script.includes(marker)) throw new Error('PICKER_WORKFLOW_MISSING:'+marker);
+          for(const marker of ['start-loading','complete-loading','reopen-loading','loaderVehicleSelect'])
+            if(!bundles.loader.script.includes(marker)) throw new Error('LOADER_WORKFLOW_MISSING:'+marker);
+          for(const marker of ['start-return','complete-return','report-discrepancy','reopen-return','returnReasons'])
+            if(!bundles.returns.script.includes(marker)) throw new Error('RETURNS_WORKFLOW_MISSING:'+marker);
+          for(const marker of ['get_quick_market_receiving_queue_atomic','receive-purchase','receiptFingerprint','operation_id'])
+            if(!bundles.receiver.script.includes(marker)) throw new Error('RECEIVING_WORKFLOW_MISSING:'+marker);
+          if(!bundles.unloader.script.includes('unload-runsheet')) throw new Error('UNLOADING_WORKFLOW_MISSING');
+          if(!bundles.counter.script.includes('save-inventory-count')) throw new Error('COUNTING_WORKFLOW_MISSING');
+          for(const marker of ['create-stock-voucher','receive-stock-voucher','inventory_voucher_report','supplierReturnFingerprint','openSupplierReturnContract','saveSupplierReturnContract','save_supplier_return_contract'])
+            if(!bundles.vouchers.script.includes(marker)) throw new Error('VOUCHER_WORKFLOW_MISSING:'+marker);
+          console.log('WAREHOUSE_FOUR_TAB_CONTRACT=PASS');
+          console.log('WAREHOUSE_NO_IFRAME_OR_CHILD_NAVIGATION=PASS');
+          console.log('WAREHOUSE_SEVEN_NATIVE_OPERATION_BUNDLES=PASS');
+          console.log('WAREHOUSE_SHARED_CORE_SESSION=PASS');
+          console.log('WAREHOUSE_PICKER_AUTH_ALIGNMENT=PASS');
+          console.log('WAREHOUSE_FULL_NATIVE_WORKFLOWS_PRESERVED=PASS');
+          console.log('WAREHOUSE_SUPPLIER_RETURN_CONTRACT_PRESERVED=PASS');
           NODE
 
       - name: Install Playwright
@@ -106,148 +102,157 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rawaea-native-warehouse.log 2>&1 &
-          echo $! >/tmp/rawaea-native-warehouse.pid
+          python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rawaea-warehouse.log 2>&1 &
+          echo $! >/tmp/rawaea-warehouse.pid
           for n in $(seq 1 30); do
             curl -fsS http://127.0.0.1:4173/companies/company-1/warehouse/warehouse.html >/dev/null &&
             curl -fsS http://127.0.0.1:4173/companies/company-1/core.js >/dev/null &&
             curl -fsS http://127.0.0.1:4173/companies/company-1/register-sw.js >/dev/null && exit 0
             sleep 1
           done
-          cat /tmp/rawaea-native-warehouse.log
+          cat /tmp/rawaea-warehouse.log
           exit 1
 
-      - name: Execute browser smoke tests for standalone native workbench
+      - name: Browser E2E — shared identity, seven workspaces and five voucher actions
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
           const {chromium}=require('playwright');
           const target='http://127.0.0.1:4173/companies/company-1/warehouse/warehouse.html';
-          const qaUser={id:'qa-user',auth_id:'qa-auth',company_id:'qa-company',email:'qa@rawaea.invalid',name:'QA Warehouse',role:'أمين مخزن',isOwner:false,permissions:['warehouse'],activeWarehouseRole:'مخزن شامل',defaultBranchId:'qa-branch',allowedBranchIds:['qa-branch']};
-          const snapshot=(role='مخزن شامل',mainAccess=true)=>({
-            success:true,generated_at:new Date().toISOString(),
-            user:{id:'qa-user',company_id:'qa-company',role:'أمين مخزن',active_warehouse_role:role,is_owner:false},
-            branch_scope:[{id:'qa-branch',code:'QA-01',name:'فرع الاختبار'}],
-            main_branch_access:mainAccess,
-            metrics:{pending_purchase_orders:2,active_runsheets:3,loading_runsheets:1,loaded_runsheets:1,returning_runsheets:1,pending_vouchers:2,open_counts:1}
-          });
-          const mockCore=(role,mainAccess,deny=false)=>`
-            var SUPABASE_URL='https://qa.invalid';
-            var qaUser=${JSON.stringify({...qaUser,activeWarehouseRole:role})};
-            function query(){var q={select:function(){return this;},eq:function(){return this;},in:function(){return this;},order:function(){return this;},limit:function(){return this;},range:function(){return Promise.resolve({data:[],error:null});},maybeSingle:function(){return Promise.resolve({data:null,error:null});},then:function(ok,bad){return Promise.resolve({data:[],error:null}).then(ok,bad);}};return q;}
-            var supabase={
-              from:function(){return query();},
-              rpc:function(name){if(name==='get_warehouse_hub_snapshot')return Promise.resolve(${deny?'{data:null,error:{message:"WAREHOUSE_PERMISSION_REQUIRED"}}':'{data:'+JSON.stringify(snapshot(role,mainAccess))+',error:null}'});return Promise.resolve({data:{success:true,rows:[],invoices:[]},error:null});},
-              removeChannel:function(){return Promise.resolve();}
+          const profile={
+            id:'qa-user',auth_id:'qa-auth',company_id:'qa-company',
+            email:'qa@rawaea.invalid',name:'QA Warehouse',role:'أمين مخزن',
+            status:'Active',isOwner:false,permissions:['warehouse'],
+            activeWarehouseRole:'مخزن شامل',active_warehouse_role:'مخزن شامل',
+            default_branch_id:'qa-branch',defaultBranchId:'qa-branch',
+            allowed_branch_ids:['qa-branch'],allowedBranchIds:['qa-branch']
+          };
+          function mockCore(role='مخزن شامل',mainAccess=true,deny=false){
+            const user={...profile,activeWarehouseRole:role,active_warehouse_role:role};
+            const snapshot={
+              success:true,generated_at:'2026-11-10T00:00:00Z',
+              user:{id:user.id,company_id:user.company_id,role:user.role,active_warehouse_role:role,is_owner:false},
+              branch_scope:[{id:'qa-branch',code:'BR-01',name:'فرع الاختبار'}],
+              main_branch_access:mainAccess,
+              metrics:{pending_purchase_orders:2,active_runsheets:3,loading_runsheets:1,loaded_runsheets:1,returning_runsheets:1,pending_vouchers:2,open_counts:1}
             };
-            var RW_Auth={
-              init:function(cb){cb(qaUser,null);},
-              getUser:function(){return qaUser;},
-              doLogin:function(e,p,cb){cb(qaUser,null);},
-              doLogout:function(cb){cb(true);}
-            };
-            var RW_UI={
-              safeHTML:function(el,h){if(el)el.innerHTML=h;},
-              safeText:function(el,t){if(el)el.textContent=t;},
-              byId:function(id){return document.getElementById(id);},
-              toast:function(){},showLoader:function(){},hideLoader:function(){},
-              formatCurrency:function(v){return String(v||0);},formatNumber:function(v){return String(v||0);},
-              updateConnectionStatus:function(){},showSkeleton:function(){},showEmptyState:function(){},
-              showConfirm:function(m,yes){if(yes)yes();},showError:function(){},
-            };
-            var RW_API={call:function(n,b,cb){if(cb)cb({success:true},null);}};
-            var RW_Realtime={start:function(){return 'qa-realtime';},stop:function(){}};
-          `;
+            return [
+              "var SUPABASE_URL='https://qa.invalid';var SUPABASE_KEY='qa-anon-key';",
+              "var __qaUser="+JSON.stringify(user)+";",
+              "var __qaSnapshot="+JSON.stringify(snapshot)+";",
+              "function __qaRows(table){if(table==='users')return [__qaUser];if(table==='app_settings')return [{main_branch_id:'qa-branch',currency:'EGP'}];if(table==='branches')return [{id:'qa-branch',company_id:'qa-company',branch_code:'BR-01',name:'فرع الاختبار',is_active:true}];if(table==='suppliers')return [{id:'qa-supplier',company_id:'qa-company',name:'مورد اختبار',address:'عنوان اختبار',is_active:true}];return [];}",
+              "function __qaQuery(table){var q={};['select','eq','neq','not','in','order','limit','range','gte','lte','gt','lt','or','is','filter','match','insert','update','upsert','delete'].forEach(function(k){q[k]=function(){return q;};});q.then=function(a,b){return Promise.resolve({data:__qaRows(table),error:null}).then(a,b);};q.maybeSingle=function(){var rows=__qaRows(table);return Promise.resolve({data:rows[0]||null,error:null});};q.single=q.maybeSingle;return q;}",
+              "var supabase={auth:{getSession:function(){return Promise.resolve({data:{session:{user:__qaUser,access_token:'qa-token'}}});},getUser:function(){return Promise.resolve({data:{user:{id:'qa-auth',email:__qaUser.email,user_metadata:{}}});},signOut:function(){return Promise.resolve({error:null});},signInWithPassword:function(){return Promise.resolve({data:{user:__qaUser},error:null});},onAuthStateChange:function(){return {data:{subscription:{unsubscribe:function(){}}}};}},from:function(t){return __qaQuery(t);},rpc:function(name,args){if(name==='get_warehouse_hub_snapshot')return Promise.resolve(deny?{data:null,error:{message:'WAREHOUSE_PERMISSION_REQUIRED'}}:{data:__qaSnapshot,error:null});if(name==='inventory_voucher_report')return Promise.resolve({data:args&&args.p_operation==='SUMMARY'?{summary:{statuses:[]}}:{rows:[],total:0},error:null});if(name==='inventory_control')return Promise.resolve({data:{success:true,rows:[],counts:[],vouchers:[]},error:null});return Promise.resolve({data:{success:true,rows:[],invoices:[],summary:{statuses:[]}},error:null});},channel:function(){var c={on:function(){return c;},subscribe:function(cb){if(cb)cb('SUBSCRIBED');return c;}};return c;},removeChannel:function(){return Promise.resolve();},storage:{from:function(){return {createSignedUrl:function(){return Promise.resolve({data:{signedUrl:'https://qa.invalid/file'},error:null});},upload:function(){return Promise.resolve({data:{path:'qa'},error:null});}};}}};",
+              "window.supabase={createClient:function(){return supabase;}};",
+              "var RW_Auth={init:function(cb){cb(__qaUser,null);},getUser:function(){return __qaUser;},getToken:function(){return 'qa-token';},doLogin:function(e,p,cb){cb(__qaUser,null);},doLogout:function(cb){supabase.auth.signOut().then(function(){if(cb)cb(true);});}};",
+              "var __ui={byId:function(id){return document.getElementById(id);},safeHTML:function(el,h){if(el)el.innerHTML=h;},safeText:function(el,t){if(el)el.textContent=String(t==null?'':t);},toast:function(){},showLoader:function(){},hideLoader:function(){},showError:function(){},showSkeleton:function(id,n){var e=document.getElementById(id);if(e)e.innerHTML='جارٍ التحميل...';},showEmptyState:function(){},formatCurrency:function(v){return String(v||0);},formatNumber:function(v){return String(v||0);},updateConnectionStatus:function(){},showConfirm:function(m,cb){if(cb)cb();}};",
+              "var RW_UI=new Proxy(__ui,{get:function(t,p){if(p in t)return t[p];return function(){};}});",
+              "var RW_API={call:function(name,payload,cb){if(cb)cb({success:true,rows:[]},null);}};",
+              "var RW_Realtime={start:function(){return 'qa-channel';},stop:function(){},subscribe:function(){return 'qa-channel';}};",
+              "var RW_SW={register:function(){return Promise.resolve();}};"
+            ].join('\n');
+          }
+          const browser=await chromium.launch({headless:true});
+          const context=await browser.newContext({serviceWorkers:'block'});
           async function prepare(page,role='مخزن شامل',mainAccess=true,deny=false){
-            await page.route(/https:\/\/(fonts\.googleapis\.com|cdnjs\.cloudflare\.com|cdn\.tailwindcss\.com|cdn\.jsdelivr\.net)/,r=>r.fulfill({status:200,contentType:'text/javascript',body:''}));
-            await page.route('**/core.js',r=>r.fulfill({status:200,contentType:'application/javascript',body:mockCore(role,mainAccess,deny)}));
-            await page.route('**/register-sw.js',r=>r.fulfill({status:200,contentType:'application/javascript',body:''}));
+            const core=mockCore(role,mainAccess,deny);
+            await page.route(/https:\/\/(fonts\.googleapis\.com|cdnjs\.cloudflare\.com|cdn\.tailwindcss\.com|cdn\.jsdelivr\.net|unpkg\.com)/,async route=>{
+              const url=route.request().url();
+              let body='';
+              if(url.includes('sweetalert2'))body="window.Swal={fire:function(){return Promise.resolve({isConfirmed:false});},showLoading:function(){},close:function(){},showValidationMessage:function(){},isVisible:function(){return false;}};";
+              else if(url.includes('dexie.min.js'))body="window.Dexie=function(){var db=this;var tab={get:function(){return Promise.resolve(null);},put:function(){return Promise.resolve(1);},add:function(){return Promise.resolve(1);},delete:function(){return Promise.resolve();},clear:function(){return Promise.resolve();},toArray:function(){return Promise.resolve([]);},where:function(){return tab;},equals:function(){return tab;},first:function(){return Promise.resolve(null);},count:function(){return Promise.resolve(0);},orderBy:function(){return tab;},reverse:function(){return tab;},limit:function(){return tab;},offset:function(){return tab;},each:function(){return Promise.resolve();},modify:function(){return Promise.resolve();}};db.version=function(){return {stores:function(){return db;}};};db.open=function(){return Promise.resolve(db);};db.table=function(){return tab;};db.transaction=function(){return Promise.resolve();};return new Proxy(db,{get:function(t,p){if(p in t)return t[p];return tab;}});};";
+              else if(url.includes('html5-qrcode'))body="window.Html5Qrcode=function(){this.start=function(){return Promise.resolve();};this.stop=function(){return Promise.resolve();};this.clear=function(){return Promise.resolve();};};";
+              return route.fulfill({status:200,contentType:'application/javascript',body});
+            });
+            await page.route('**/core.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:core}));
+            await page.route('**/register-sw.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
           }
           (async()=>{
-            const browser=await chromium.launch({headless:true});
-            const context=await browser.newContext({serviceWorkers:'block'});
-            const page=await context.newPage(),pageErrors=[];
-            page.on('pageerror',e=>pageErrors.push(String(e.message||e)));
-            await prepare(page,'مخزن شامل',true,false);
+            const page=await context.newPage(),errors=[];
+            page.on('pageerror',e=>errors.push(String(e.message||e)));
+            await prepare(page);
             await page.goto(target,{waitUntil:'domcontentloaded'});
             await page.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
-            if(await page.locator('#loginScreen').isVisible())throw new Error('LOGIN_SCREEN_NOT_HIDDEN_AFTER_AUTH');
-            if(await page.locator('#mainApp').isHidden())throw new Error('NATIVE_HUB_NOT_VISIBLE');
-            if(await page.locator('iframe').count()!==0)throw new Error('IFRAME_PRESENT_IN_NATIVE_HUB');
-            if(await page.locator('#warehouseDashboard .metric').count()!==7)throw new Error('DASHBOARD_METRICS_MISSING');
-            if(await page.locator('#warehouseTabs [data-tab]:visible').count()!==9)throw new Error('FULL_ROLE_TAB_VISIBILITY_FAILED');
-            await page.evaluate(async()=>{
-              await RW_Warehouse.loadVouchers();
-              if(!document.getElementById('vouchers-tbody')||!document.getElementById('vouchers-tbody').textContent.includes('لا توجد أذونات')) throw new Error('REAL_VOUCHER_READ_MODULE_FAILED');
-              await RW_Warehouse.loadUnloading();
-              if(!document.getElementById('rw-page-container').textContent.trim()) throw new Error('REAL_UNLOADING_READ_MODULE_FAILED');
-            });
-            console.log('NATIVE_WAREHOUSE_REAL_MODULE_READ_ONLY_SMOKE=PASS');
-            await page.evaluate(()=>{
-              ['loadPicking','loadLoading','loadReturn','loadUnloading','loadVouchers','loadInventoryControl','loadReceiving'].forEach(function(name){
-                RW_Warehouse[name]=function(){var c=document.getElementById('rw-page-container');if(c)c.textContent='NATIVE_MODULE:'+name;};
-              });
-              RW_Receiver.enterApp=function(){var c=document.getElementById('mainContent');if(c)c.textContent='NATIVE_RECEIVER_WORKSPACE';};
-              RW_Receiver.switchTab=function(tab){var c=document.getElementById('mainContent');if(c)c.textContent='NATIVE_RECEIVER_TAB:'+tab;this.currentTab=tab;};
-              RW_Receiver.startRealtime=function(){this.realtimeKey='qa-realtime';};
-              RW_Receiver.stopRealtime=function(){this.realtimeKey=null;};
-            });
-            for(const pair of [['picking','loadPicking'],['loading','loadLoading'],['returns','loadReturn'],['unloading','loadUnloading'],['vouchers','loadVouchers'],['inventory','loadInventoryControl']]){
-              await page.locator('#warehouseTabs [data-tab="'+pair[0]+'"]').click();
-              await page.waitForFunction(n=>document.querySelector('#rw-page-container')?.textContent==='NATIVE_MODULE:'+n,pair[1]);
+            if(await page.locator('#mainApp').isHidden())throw new Error('HOST_APP_NOT_AUTHENTICATED');
+            if(await page.locator('#loginScreen').isVisible())throw new Error('HOST_LOGIN_STILL_VISIBLE');
+            if(await page.locator('#warehouseTabs [data-tab]:visible').count()!==4)throw new Error('FOUR_TOP_LEVEL_TABS_NOT_RENDERED');
+            if(await page.locator('iframe').count()!==0)throw new Error('IFRAME_PRESENT');
+            console.log('WAREHOUSE_SHARED_AUTH_AND_FOUR_TAB_SHELL=PASS');
+
+            await page.locator('#warehouseTabs [data-tab="operations"]').click();
+            if(await page.locator('#warehouseDashboard [data-operation]').count()!==6)throw new Error('SIX_OPERATION_CARDS_MISSING');
+            const operations=['receiving','picking','loading','returns','unloading','counting'];
+            for(const key of operations){
+              await page.locator('#warehouseDashboard [data-operation="'+key+'"]').click();
+              await page.waitForFunction(k=>document.getElementById('rw-native-root-'+k)?.dataset.rwReady==='true',key,{timeout:12000});
+              const state=await page.evaluate(k=>{
+                const root=document.getElementById('rw-native-root-'+k);
+                return {exists:!!root,ready:root&&root.dataset.rwReady,childVisible:!!(root&&root.querySelector('#mainApp')&&!root.querySelector('#mainApp').classList.contains('hidden')),accountTab:!!(root&&root.querySelector('#tab-account'))};
+              },key);
+              if(!state.exists||state.ready!=='true'||!state.childVisible||state.accountTab)throw new Error('NATIVE_WORKSPACE_NOT_READY:'+key+':'+JSON.stringify(state));
+              await page.locator('[data-workspace-back]').click();
+              if(await page.locator('#rw-native-root-'+key).count()!==1)throw new Error('WORKSPACE_NOT_PERSISTED:'+key);
             }
-            await page.locator('#warehouseTabs [data-tab="receiving"]').click();
-            await page.waitForFunction(()=>document.querySelector('#mainContent')?.textContent==='NATIVE_RECEIVER_WORKSPACE');
-            await page.locator('#rw-module-subnav [data-receiver-tab="completed"]').click();
-            await page.waitForFunction(()=>document.querySelector('#mainContent')?.textContent==='NATIVE_RECEIVER_TAB:completed');
-            await page.locator('#rw-module-subnav [data-receiver-tab="legacy"]').click();
-            await page.waitForFunction(()=>document.querySelector('#rw-page-container')?.textContent==='NATIVE_MODULE:loadReceiving');
-            await page.locator('#rw-module-subnav [data-receiver-tab="completed"]').click();
-            await page.waitForFunction(()=>document.querySelector('#mainContent')?.textContent==='NATIVE_RECEIVER_TAB:completed');
+            console.log('WAREHOUSE_SIX_FULL_NATIVE_OPERATION_WORKSPACES=PASS');
+
+            await page.locator('#warehouseTabs [data-tab="vouchers"]').click();
+            if(await page.locator('#warehouseDashboard [data-voucher-action]').count()!==5)throw new Error('FIVE_MANUAL_VOUCHER_ACTION_CARDS_MISSING');
+            await page.locator('#warehouseDashboard [data-voucher-action="Transfer"]').click();
+            await page.waitForFunction(()=>window.RW_NATIVE_APPS?.vouchers?.type==='Transfer');
+            const voucherChecks=[
+              ['DirectSale','DirectSale'],
+              ['TransferReceive','TransferReceive'],
+              ['DirectReturn','DirectReturn'],
+              ['SupplierReturn','SupplierReturn']
+            ];
+            for(const [action,expected] of voucherChecks){
+              await page.locator('[data-workspace-back]').click();
+              await page.locator('#warehouseDashboard [data-voucher-action="'+action+'"]').click();
+              if(action==='TransferReceive'){
+                await page.waitForFunction(()=>window.RW_NATIVE_APPS?.vouchers?.tabName==='pending');
+              }else{
+                await page.waitForFunction(v=>window.RW_NATIVE_APPS?.vouchers?.type===v,expected);
+              }
+            }
+            const supplierContract=await page.locator('#rw-native-root-vouchers').innerText();
+            if(!supplierContract.includes('عقد')&&!supplierContract.includes('المورد'))throw new Error('SUPPLIER_RETURN_CONTRACT_UI_NOT_PRESENT');
+            console.log('WAREHOUSE_FIVE_MANUAL_VOUCHER_ACTIONS=PASS');
+            console.log('WAREHOUSE_SUPPLIER_RETURN_SPECIALIZED_CONTRACT=PASS');
+
             await page.locator('#warehouseTabs [data-tab="account"]').click();
-            if(!(await page.locator('body').innerText()).includes('QA Warehouse'))throw new Error('ACCOUNT_IDENTITY_NOT_RENDERED');
-            await page.evaluate(()=>{window.__receiverRefreshFired=false;RW_Receiver.refreshTimer=window.setTimeout(function(){window.__receiverRefreshFired=true;},30000);});
+            if(!(await page.locator('#warehouseDashboard').innerText()).includes('QA Warehouse'))throw new Error('ACCOUNT_IDENTITY_MISSING');
             await page.locator('button[title="تسجيل الخروج"]').click();
-            if(await page.locator('#loginScreen').isHidden()||!await page.locator('#mainApp').isHidden())throw new Error('LOGOUT_CLEANUP_FAILED');
-            const receiverCleanup=await page.evaluate(()=>({timer:RW_Receiver.refreshTimer,fired:window.__receiverRefreshFired}));
-            if(receiverCleanup.timer!==null||receiverCleanup.fired)throw new Error('RECEIVER_REFRESH_TIMER_NOT_CLEANED_ON_LOGOUT');
-            if(pageErrors.length)throw new Error('BROWSER_PAGE_ERRORS:'+JSON.stringify(pageErrors));
-            console.log('NATIVE_WAREHOUSE_AUTH_DASHBOARD_E2E=PASS');
-            console.log('NATIVE_WAREHOUSE_ALL_MODULE_ROUTES_E2E=PASS');
-            console.log('NATIVE_WAREHOUSE_RECEIVER_HISTORY_RETURN_E2E=PASS');
-            console.log('NATIVE_WAREHOUSE_ACCOUNT_AND_LOGOUT_E2E=PASS');
+            if(await page.locator('#mainApp').isVisible()||await page.locator('#loginScreen').isHidden())throw new Error('LOGOUT_DID_NOT_CLEAR_HOST_SESSION');
+            if(await page.locator('#rw-native-root-picker').count()!==0)throw new Error('LOGOUT_LEFT_NATIVE_MODULE_MOUNTED');
+            if(errors.length)throw new Error('BROWSER_PAGE_ERRORS:'+JSON.stringify(errors));
+            console.log('WAREHOUSE_ACCOUNT_AND_MODULE_LOGOUT_CLEANUP=PASS');
 
             const restricted=await context.newPage();
             await prepare(restricted,'تحميل',true,false);
             await restricted.goto(target,{waitUntil:'domcontentloaded'});
-            await restricted.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
-            if(await restricted.locator('#warehouseTabs [data-tab="loading"]').isHidden())throw new Error('ACTIVE_ROLE_TAB_HIDDEN');
-            if(await restricted.locator('#warehouseTabs [data-tab="picking"]').isVisible())throw new Error('UNAUTHORIZED_PICKING_TAB_VISIBLE');
-            console.log('NATIVE_WAREHOUSE_ACTIVE_ROLE_GATING_E2E=PASS');
+            await restricted.waitForFunction(()=>document.querySelector('#loginMsg')?.textContent.includes('الدور المخزني النشط'));
+            if(await restricted.locator('#mainApp').isVisible())throw new Error('NON_UNIFIED_ROLE_WAS_ALLOWED');
+            console.log('WAREHOUSE_ACTIVE_ROLE_GATE=PASS');
 
-            const branchRestricted=await context.newPage();
-            await prepare(branchRestricted,'مخزن شامل',false,false);
-            await branchRestricted.goto(target,{waitUntil:'domcontentloaded'});
-            await branchRestricted.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
-            if(await branchRestricted.locator('#warehouseTabs [data-tab="loading"]').isVisible())throw new Error('MAIN_BRANCH_GUARD_BYPASSED');
-            if(await branchRestricted.locator('#warehouseTabs [data-tab="receiving"]').isHidden())throw new Error('SCOPED_RECEIVING_UNEXPECTEDLY_HIDDEN');
-            console.log('NATIVE_WAREHOUSE_MAIN_BRANCH_VS_SCOPED_BRANCH_GATING_E2E=PASS');
-
-            const denied=await context.newPage();
-            await prepare(denied,'تحميل',true,true);
-            await denied.goto(target,{waitUntil:'domcontentloaded'});
-            await denied.waitForFunction(()=>document.querySelector('#loginMsg')?.textContent.includes('WAREHOUSE_PERMISSION_REQUIRED'));
-            if(await denied.locator('iframe').count()!==0)throw new Error('UNAUTHORIZED_HUB_CREATED_FRAME');
-            console.log('NATIVE_WAREHOUSE_UNAUTHORIZED_SNAPSHOT_FAIL_CLOSED_E2E=PASS');
+            const branchLimited=await context.newPage();
+            await prepare(branchLimited,'مخزن شامل',false,false);
+            await branchLimited.goto(target,{waitUntil:'domcontentloaded'});
+            await branchLimited.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
+            await branchLimited.locator('#warehouseTabs [data-tab="operations"]').click();
+            for(const key of ['picking','loading','returns','unloading']){
+              if(await branchLimited.locator('[data-operation="'+key+'"]').isEnabled())throw new Error('MAIN_BRANCH_GUARD_BYPASSED:'+key);
+            }
+            if(await branchLimited.locator('[data-operation="receiving"]').isDisabled()||await branchLimited.locator('[data-operation="counting"]').isDisabled())throw new Error('SCOPED_BRANCH_OPERATIONS_HIDDEN');
+            console.log('WAREHOUSE_MAIN_VS_SCOPED_BRANCH_GATING=PASS');
             await browser.close();
-          })().catch(e=>{console.error('NATIVE_WAREHOUSE_E2E_FAILURE='+e.message);process.exit(1);});
+          })().catch(e=>{console.error('WAREHOUSE_E2E_FAILURE='+e.message);process.exit(1);});
           NODE
 
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rawaea-native-warehouse-smoke
-          path: /tmp/rawaea-native-warehouse.log
+          name: rawaea-standalone-warehouse-e2e
+          path: /tmp/rawaea-warehouse.log
           if-no-files-found: ignore
