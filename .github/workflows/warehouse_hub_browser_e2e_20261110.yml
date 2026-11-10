@@ -96,6 +96,9 @@ jobs:
           if(!bundles.loader.script.includes('r[0].error') || !bundles.loader.script.includes('r[1].error')) throw new Error('LOADER_PENDING_RESULTS_MUST_CHECK_SUPABASE_ERRORS');
           if(!bundles.unloader.script.includes('Unloader runsheets query failed:') || !bundles.unloader.script.includes('Unloader completed vouchers query failed:')) throw new Error('UNLOADER_RESULT_ERRORS_NOT_HANDLED');
           if(!bundles.counter.script.includes('Counter inventory history query failed:')) throw new Error('COUNTER_HISTORY_RESULT_ERRORS_NOT_HANDLED');
+          if(!bundles.returns.script.includes('[RW_Returns] completed runsheets query failed:')) throw new Error('RETURNS_COMPLETED_RESULT_ERRORS_NOT_HANDLED');
+          if(!bundles.vouchers.script.includes('if(parts[1]&&parts[1].error)throw parts[1].error;') || !bundles.vouchers.script.includes('if(parts[2]&&parts[2].error)throw parts[2].error;')) throw new Error('SUPPLIER_RETURN_PURCHASE_REFERENCES_ERRORS_NOT_HANDLED');
+          if(!bundles.vouchers.script.includes('existing supplier return contract load failed:')) throw new Error('SUPPLIER_RETURN_EXISTING_CONTRACT_READ_NOT_FAIL_CLOSED');
           for(const marker of ['start-loading','complete-loading','reopen-loading','loaderVehicleSelect'])
             if(!bundles.loader.script.includes(marker)) throw new Error('LOADER_WORKFLOW_MISSING:'+marker);
           for(const marker of ['start-return','complete-return','report-discrepancy','reopen-return','returnReasons'])
@@ -260,6 +263,12 @@ jobs:
                 const unloadingText=await page.locator('#rw-native-root-unloader #mainContent').innerText();
                 if(unloadingText.includes('فشل تحميل البيانات'))throw new Error('UNLOADER_PENDING_DATA_RENDER_FAILED:'+unloadingText.slice(0,400));
                 console.log('WAREHOUSE_UNLOADER_PENDING_DATA_RENDER=PASS');
+              }
+              if(key==='returns'){
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-returns #mainContent')?.innerText.includes('لا توجد رانشيتات مسلّمة'));
+                const returnText=await page.locator('#rw-native-root-returns #mainContent').innerText();
+                if(returnText.includes('فشل تحميل البيانات'))throw new Error('RETURNS_PENDING_DATA_RENDER_FAILED:'+returnText.slice(0,400));
+                console.log('WAREHOUSE_RETURNS_PENDING_DATA_RENDER=PASS');
               }
               await page.locator('[data-workspace-back]').click();
               if(await page.locator('#rw-native-root-'+nativeKey).count()!==1)throw new Error('WORKSPACE_NOT_PERSISTED:'+key);
