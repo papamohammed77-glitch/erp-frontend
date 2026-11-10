@@ -495,6 +495,36 @@ jobs:
                 });
                 if(discrepancyContract.error||!discrepancyContract.payload||discrepancyContract.payload.runsheet_id!=='QA-RETURNS-RS-01'||discrepancyContract.payload.item_code!=='QA-RET-001'||discrepancyContract.payload.expected_qty!==6||discrepancyContract.payload.actual_qty!==3||discrepancyContract.payload.discrepancy_type!=='shortage'||!discrepancyContract.hasItemOptions)throw new Error('RETURNS_DISCREPANCY_FORM_CONTRACT_FAILED:'+JSON.stringify(discrepancyContract));
                 console.log('WAREHOUSE_RETURNS_DISCREPANCY_FORM_CONTRACT=PASS');
+                const localDraftContract=await page.evaluate(async()=>{
+                  const app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS.returns;
+                  if(!app)return {error:'RETURNS_APP_NOT_REGISTERED'};
+                  const previousSession=app.session;
+                  const testItem={item_code:'QA-DRAFT-001',item_name:'صنف مسودة اختباري',unit:'كرتونة',qty_loaded:10,qty_delivered:0,qty_returned:0,return_condition:'good',notes:''};
+                  app.session={runsheet_id:'QA-DRAFT-RS-01',runsheet_code:'QA-DRAFT-RS-01',start_time:'2026-11-11T10:00:00.000Z',driver_name:'QA',items:[testItem]};
+                  try{
+                    app.saveReturnItem(0);
+                    await new Promise(resolve=>setTimeout(resolve,80));
+                    testItem.qty_returned=7;
+                    testItem.return_condition='damaged';
+                    testItem.notes='قيمة مؤقتة';
+                    app._loadLocalChanges();
+                    await new Promise(resolve=>setTimeout(resolve,100));
+                    const restored={qty_returned:testItem.qty_returned,return_condition:testItem.return_condition,notes:testItem.notes};
+                    app.session.start_time='2026-11-11T11:00:00.000Z';
+                    testItem.qty_returned=4;
+                    testItem.return_condition='damaged';
+                    testItem.notes='جلسة جديدة';
+                    app._loadLocalChanges();
+                    await new Promise(resolve=>setTimeout(resolve,120));
+                    return {restored,fresh:{qty_returned:testItem.qty_returned,return_condition:testItem.return_condition,notes:testItem.notes}};
+                  }finally{
+                    if(app.timerInterval)clearInterval(app.timerInterval);
+                    app.session=previousSession;
+                    window._rwHasActiveSession=false;
+                  }
+                });
+                if(localDraftContract.error||!localDraftContract.restored||localDraftContract.restored.qty_returned!==0||localDraftContract.restored.return_condition!=='good'||localDraftContract.restored.notes!==''||!localDraftContract.fresh||localDraftContract.fresh.qty_returned!==4||localDraftContract.fresh.notes!=='جلسة جديدة')throw new Error('RETURNS_SESSION_SCOPED_LOCAL_DRAFT_FAILED:'+JSON.stringify(localDraftContract));
+                console.log('WAREHOUSE_RETURNS_SESSION_SCOPED_LOCAL_DRAFT_AND_ZERO_VALUE=PASS');
               }
               if(key==='counting'){
                 e2eStage='counter tabs and scope checks';
