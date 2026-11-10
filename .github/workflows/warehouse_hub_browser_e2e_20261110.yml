@@ -461,6 +461,40 @@ jobs:
                 });
                 if(!reopenGuard.disabled||!reopenGuard.text.includes('إعادة الفتح متوقفة')||reopenGuard.onclick)throw new Error('RETURNS_UNSAFE_REOPEN_ACTION_STILL_AVAILABLE:'+JSON.stringify(reopenGuard));
                 console.log('WAREHOUSE_RETURNS_COMPLETED_REOPEN_FAIL_CLOSED_UI=PASS');
+                const discrepancyContract=await page.evaluate(()=>{
+                  const app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS.returns;
+                  if(!app)return {error:'RETURNS_APP_NOT_REGISTERED'};
+                  const previousSession=app.session;
+                  let fireOptions=null;
+                  const originalFire=window.Swal.fire;
+                  app.session={
+                    runsheet_id:'QA-RETURNS-RS-01',
+                    runsheet_code:'QA-RETURNS-RS-01',
+                    items:[{item_code:'QA-RET-001',item_name:'صنف مرتجعات اختباري',unit:'كرتونة',qty_loaded:10,qty_delivered:4,qty_returned:2}]
+                  };
+                  try{
+                    window.Swal.fire=function(options){fireOptions=options;return Promise.resolve({isConfirmed:false});};
+                    app.reportDiscrepancyGeneral();
+                  }finally{
+                    window.Swal.fire=originalFire;
+                  }
+                  if(!fireOptions||typeof fireOptions.preConfirm!=='function'){app.session=previousSession;return {error:'DISCREPANCY_DIALOG_NOT_OPENED'};}
+                  const holder=document.createElement('div');
+                  holder.innerHTML=fireOptions.html;
+                  document.body.appendChild(holder);
+                  try{
+                    holder.querySelector('#discTypeGeneral').value='shortage';
+                    holder.querySelector('#discActualQtyGeneral').value='3';
+                    holder.querySelector('#discNotesGeneral').value='فحص عقد البلاغ';
+                    const payload=fireOptions.preConfirm();
+                    return {payload,hasItemOptions:holder.querySelector('#discItemGeneral').options.length===1};
+                  }finally{
+                    holder.remove();
+                    app.session=previousSession;
+                  }
+                });
+                if(discrepancyContract.error||!discrepancyContract.payload||discrepancyContract.payload.runsheet_id!=='QA-RETURNS-RS-01'||discrepancyContract.payload.item_code!=='QA-RET-001'||discrepancyContract.payload.expected_qty!==6||discrepancyContract.payload.actual_qty!==3||discrepancyContract.payload.discrepancy_type!=='shortage'||!discrepancyContract.hasItemOptions)throw new Error('RETURNS_DISCREPANCY_FORM_CONTRACT_FAILED:'+JSON.stringify(discrepancyContract));
+                console.log('WAREHOUSE_RETURNS_DISCREPANCY_FORM_CONTRACT=PASS');
               }
               if(key==='counting'){
                 e2eStage='counter tabs and scope checks';
