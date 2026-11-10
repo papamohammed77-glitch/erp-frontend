@@ -44,12 +44,14 @@ serve(async(req)=>{
       ? profile.permissions.map((x:any)=>String(x))
       : []
     const isOwner=profile.isOwner===true
-    const activeReceivingRole=String(profile.active_warehouse_role||'').trim()==='استلام'
+    const activeWarehouseRole=String(profile.active_warehouse_role||'').trim()
+    const activeReceivingRole=activeWarehouseRole==='استلام'
+    const activeUnifiedWarehouseRole=activeWarehouseRole==='مخزن شامل'
     const hasWarehousePermission=
       permissions.includes('*') ||
       permissions.includes('warehouse') ||
-      permissions.includes('receiving')
-    if(!isOwner && !(activeReceivingRole && hasWarehousePermission)){
+      (activeReceivingRole && permissions.includes('receiving'))
+    if(!isOwner && (!((activeReceivingRole || activeUnifiedWarehouseRole) && hasWarehousePermission)){
       throw new Error('لا تملك صلاحية استلام أوامر الشراء')
     }
 
