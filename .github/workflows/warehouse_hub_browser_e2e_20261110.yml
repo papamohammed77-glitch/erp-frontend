@@ -48,6 +48,7 @@ jobs:
           node <<'NODE'
           const fs=require('fs');
           const html=fs.readFileSync('companies/company-1/warehouse/warehouse.html','utf8');
+          const receiver=fs.readFileSync('companies/company-1/warehouse/receiver.html','utf8');
           const countMigration=fs.readFileSync('supabase/migrations/20261110212000_inventory_count_role_and_company_isolation.sql','utf8');
           const receiptVisibilityMigration=fs.readFileSync('supabase/migrations/20261110214000_inventory_voucher_report_receipt_request_visibility.sql','utf8');
           const driverLiabilityMigration=fs.readFileSync('supabase/migrations/20261110215500_driver_liabilities_read_scope_and_client_write_revocation.sql','utf8');
@@ -108,6 +109,10 @@ jobs:
           if(!bundles.loader.script.includes('r[0].error') || !bundles.loader.script.includes('r[1].error')) throw new Error('LOADER_PENDING_RESULTS_MUST_CHECK_SUPABASE_ERRORS');
           if(!bundles.unloader.script.includes('Unloader runsheets query failed:') || !bundles.unloader.script.includes('Unloader completed vouchers query failed:')) throw new Error('UNLOADER_RESULT_ERRORS_NOT_HANDLED');
           if(!bundles.counter.script.includes('[RAWAEA Counter] completed history failed')) throw new Error('COUNTER_HISTORY_RESULT_ERRORS_NOT_HANDLED');
+          const receiverReturnToList = "self.activeDocumentIndex=null;\n                self.documentOpenSequence++;\n                self.renderList();\n                self.loadPurchaseOrders({silent:true});";
+          if(!receiver.includes(receiverReturnToList)||!bundles.receiver.script.includes(receiverReturnToList))
+            throw new Error('RECEIVER_SUCCESS_MUST_RETURN_TO_PENDING_EVEN_WHEN_QUEUE_SIGNATURE_IS_UNCHANGED');
+          console.log('WAREHOUSE_RECEIVER_SUCCESS_RETURN_TO_LIST_GUARD=PASS');
           for(const marker of ['request-branch-receipt','warehouseHomeBranch','send-request','exactReceiver)return \'request\''])
             if(!bundles.vouchers.script.includes(marker)) throw new Error('BRANCH_RECEIPT_REQUEST_FLOW_MISSING:'+marker);
           if(!bundles.vouchers.html.includes('استلام من مخزن فرع')) throw new Error('BRANCH_RECEIPT_MENU_MISSING');
@@ -328,6 +333,8 @@ jobs:
                 const poCall=await page.evaluate(()=>window.__qaReceiverCalls[0]);
                 if(poCall.payload.po_code!=='QA-PO-001'||poCall.payload.invoice_id||!poCall.payload.operation_id||!/^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(poCall.payload.operation_id))throw new Error('RECEIVER_PO_REQUEST_IDENTITY_OR_SOURCE_INVALID:'+JSON.stringify(poCall));
                 if(poCall.payload.itemsReceived?.length!==1||poCall.payload.itemsReceived[0].sentQty!==5||poCall.payload.itemsReceived[0].receivedQty!==4||poCall.payload.itemsReceived[0].reason!=='نقص كمية في الشحنة الاختبارية')throw new Error('RECEIVER_PO_SENT_ACCEPTED_CONTRACT_INVALID:'+JSON.stringify(poCall.payload));
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #receiverDocumentCards')?.querySelectorAll('.doc-card').length===2);
+                if(!(await page.locator(receiverMain).innerText()).includes('مركز الاستلام الذكي'))throw new Error('RECEIVER_PO_SUCCESS_DID_NOT_RETURN_TO_PENDING_LIST');
                 console.log('WAREHOUSE_RECEIVER_PO_PHYSICAL_RECEIPT_GUARDS=PASS');
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #receiverDocumentCards')?.querySelectorAll('.doc-card').length===2);
                 await page.locator(receiverMain+' [data-action="source-filter"][data-filter="QUICK_MARKET"]').click();
@@ -341,6 +348,9 @@ jobs:
                 const qmpCall=await page.evaluate(()=>window.__qaReceiverCalls[1]);
                 if(qmpCall.payload.invoice_id!=='qa-invoice'||qmpCall.payload.po_code||qmpCall.payload.itemsReceived?.[0]?.sentQty!==3||qmpCall.payload.itemsReceived?.[0]?.receivedQty!==0||!qmpCall.payload.itemsReceived?.[0]?.reason)throw new Error('RECEIVER_QMP_FULL_REJECTION_CONTRACT_INVALID:'+JSON.stringify(qmpCall.payload));
                 if(qmpCall.payload.operation_id===poCall.payload.operation_id)throw new Error('RECEIVER_PHYSICAL_DELIVERIES_REUSED_OPERATION_ID');
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #receiverDocumentCards')?.querySelectorAll('.doc-card').length===2);
+                if(!(await page.locator(receiverMain).innerText()).includes('مركز الاستلام الذكي'))throw new Error('RECEIVER_ZERO_ACCEPTANCE_SUCCESS_DID_NOT_RETURN_TO_PENDING_LIST');
+                console.log('WAREHOUSE_RECEIVER_SUCCESS_RETURNS_TO_PENDING_AFTER_UNCHANGED_QUEUE=PASS');
                 console.log('WAREHOUSE_RECEIVER_QUICK_MARKET_FULL_REJECTION_NO_STOCK_REQUEST=PASS');
                 await page.waitForFunction(()=>window.RW_NATIVE_APPS?.receiver);
                 await page.evaluate(()=>window.RW_NATIVE_APPS.receiver.switchTab('completed'));
