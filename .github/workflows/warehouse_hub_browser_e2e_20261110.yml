@@ -150,8 +150,8 @@ jobs:
             default_branch_id:'00000000-0000-4000-8000-000000000001',defaultBranchId:'00000000-0000-4000-8000-000000000001',
             allowed_branch_ids:['00000000-0000-4000-8000-000000000001'],allowedBranchIds:['00000000-0000-4000-8000-000000000001']
           };
-          function mockCore(role='مخزن شامل',mainAccess=true,deny=false){
-            const user={...profile,activeWarehouseRole:role,active_warehouse_role:role};
+          function mockCore(role='مخزن شامل',mainAccess=true,deny=false,jobRole='أمين مخزن'){
+            const user={...profile,role:jobRole,activeWarehouseRole:role,active_warehouse_role:role};
             const snapshot={
               success:true,generated_at:'2026-11-10T00:00:00Z',
               user:{id:user.id,company_id:user.company_id,role:user.role,active_warehouse_role:role,is_owner:false},
@@ -179,8 +179,8 @@ jobs:
           }
           const browser=await chromium.launch({headless:true});
           const context=await browser.newContext({serviceWorkers:'block'});
-          async function prepare(page,role='مخزن شامل',mainAccess=true,deny=false){
-            const core=mockCore(role,mainAccess,deny);
+          async function prepare(page,role='مخزن شامل',mainAccess=true,deny=false,jobRole='أمين مخزن'){
+            const core=mockCore(role,mainAccess,deny,jobRole);
             new Function(core);
             await page.route(/https:\/\/(fonts\.googleapis\.com|cdnjs\.cloudflare\.com|cdn\.tailwindcss\.com|cdn\.jsdelivr\.net|unpkg\.com)/,async route=>{
               const url=route.request().url();
@@ -202,6 +202,16 @@ jobs:
             await page.waitForTimeout(1200);
             const bootState=await page.evaluate(()=>({header:document.querySelector('#headerUserName')?.textContent||'',loginMsg:document.querySelector('#loginMsg')?.textContent||'',mainAppHidden:document.querySelector('#mainApp')?.classList.contains('hidden'),loginHidden:document.querySelector('#loginScreen')?.classList.contains('hidden'),authLoaded:!!window.RW_Auth,supabaseLoaded:!!window.supabase,appLoaded:!!window.App,sharedSupabase:!!window.RW_SHARED_SUPABASE}));
             if(bootState.header!=='QA Warehouse')throw new Error('HOST_BOOT_FAILED:'+JSON.stringify({bootState,errors,consoleMessages:consoleMessages.slice(-30)}));
+            if(!(await page.evaluate(()=>window.App?.user?.warehouseJobRole===true)))throw new Error('WAREHOUSE_EMPLOYEE_ROLE_NOT_NORMALIZED');
+            for(let cycle=0;cycle<2;cycle++){
+              for(const [tab,marker] of [['today','ملخص التشغيل اليومي'],['operations','العمليات المخزنية'],['vouchers','الأذونات المخزنية اليدوية'],['account','حسابي']]){
+                await page.locator('#warehouseTabs [data-tab="'+tab+'"]').click();
+                await page.waitForFunction(t=>document.querySelector('#warehouseTabs [data-tab="'+t+'"]').classList.contains('active')&&!document.querySelector('#warehouseDashboard').classList.contains('hidden')&&document.querySelector('#warehouseWorkspace').classList.contains('hidden'),tab);
+                const visible=await page.locator('#warehouseDashboard').innerText();
+                if(!visible.includes(marker))throw new Error('TOP_LEVEL_TAB_NOT_RESPONSIVE:'+tab+':'+visible.slice(0,240));
+              }
+            }
+            console.log('WAREHOUSE_FOUR_TABS_RESPONSIVE_REPEATED=PASS');
             if(await page.locator('#mainApp').isHidden())throw new Error('HOST_APP_NOT_AUTHENTICATED');
             if(await page.locator('#loginScreen').isVisible())throw new Error('HOST_LOGIN_STILL_VISIBLE');
             if(await page.locator('#warehouseTabs [data-tab]:visible').count()!==4)throw new Error('FOUR_TOP_LEVEL_TABS_NOT_RENDERED');
@@ -273,6 +283,17 @@ jobs:
             await restricted.waitForFunction(()=>document.querySelector('#loginMsg')?.textContent.includes('الدور المخزني النشط'));
             if(await restricted.locator('#mainApp').isVisible())throw new Error('NON_UNIFIED_ROLE_WAS_ALLOWED');
             console.log('WAREHOUSE_ACTIVE_ROLE_GATE=PASS');
+
+            for(const jobRole of ['أمين مخزن','امين مخزن','مخزني']){
+              const aliasPage=await context.newPage();
+              await prepare(aliasPage,'مخزن شامل',true,false,jobRole);
+              await aliasPage.goto(target,{waitUntil:'domcontentloaded'});
+              await aliasPage.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
+              const accepted=await aliasPage.evaluate(()=>({jobRole:window.App?.user?.role,normalized:window.App?.user?.warehouseJobRole,visible:!document.querySelector('#mainApp')?.classList.contains('hidden')}));
+              if(!accepted.normalized||!accepted.visible||accepted.jobRole!==jobRole)throw new Error('WAREHOUSE_EMPLOYEE_ROLE_ALIAS_REJECTED:'+JSON.stringify(accepted));
+              await aliasPage.close();
+            }
+            console.log('WAREHOUSE_EMPLOYEE_ROLE_ALIASES=PASS');
 
             const branchLimited=await context.newPage();
             await prepare(branchLimited,'مخزن شامل',false,false);
