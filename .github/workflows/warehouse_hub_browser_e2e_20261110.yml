@@ -81,7 +81,11 @@ jobs:
             'reviewed production contract'
           ]) if(!sql.includes(marker)) throw new Error('WAREHOUSE_RPC_ROLE_MIGRATION_MARKER_MISSING:'+marker);
           const receiver=fs.readFileSync('companies/company-1/warehouse/receiver.html','utf8');
-          if(!receiver.includes('receiptFingerprint')||!receiver.includes('Idempotency-Key')) throw new Error('REFERENCE_RECEIVER_CONTRACT_CHANGED');
+          const core=fs.readFileSync('companies/company-1/core.js','utf8');
+          const receiveEdge=fs.readFileSync('supabase/functions/receive-purchase/index.ts','utf8');
+          if(!receiver.includes('receiptFingerprint')||!receiver.includes('operation_id:operationId')||!receiver.includes("RW_API.call('receive-purchase',payload")) throw new Error('REFERENCE_RECEIVER_OPERATION_CONTRACT_CHANGED');
+          if(!core.includes('var RW_API = (function()')||!core.includes("'Authorization': 'Bearer ' + token")) throw new Error('CENTRAL_RW_API_AUTH_CONTRACT_CHANGED');
+          if(!receiveEdge.includes('const bodyOperationId=String(b?.operation_id||').includes || !receiveEdge.includes('const operation_id=supplied') || !receiveEdge.includes('p_operation_id:operation_id')) throw new Error('RECEIVE_PURCHASE_IDEMPOTENCY_CONTRACT_CHANGED');
           console.log('NATIVE_WAREHOUSE_NO_IFRAME_CONTRACT=PASS');
           console.log('NATIVE_WAREHOUSE_PARENT_MODULE_TRANSFER=PASS');
           console.log('NATIVE_WAREHOUSE_MODERN_RECEIVING_TRANSFER=PASS');
