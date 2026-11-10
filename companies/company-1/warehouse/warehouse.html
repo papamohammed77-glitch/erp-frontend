@@ -4443,8 +4443,7 @@ var RW_Receiver = {
         RW_UI.byId('loginScreen').classList.add('hidden');
         RW_UI.byId('mainApp').classList.remove('hidden');
         RW_UI.updateConnectionStatus('connDot', 'connLabel');
-        window.addEventListener('online', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
-        window.addEventListener('offline', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });
+        if(!this.connectionEventsBound){window.addEventListener('online', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });window.addEventListener('offline', function() { RW_UI.updateConnectionStatus('connDot', 'connLabel'); });this.connectionEventsBound=true;}
         this.bindEvents();
         this.switchTab('pending');
         this.startRealtime();
@@ -5107,6 +5106,7 @@ var App = {
   hideWorkspace:function(){byId('warehouseWorkspace').classList.add('hidden');byId('rw-module-subnav').innerHTML='';},
   mountReceiver:function(){
     var self=this;
+    RW_Receiver.eventsBound=false;
     byId('rw-module-subnav').innerHTML='<button type="button" class="wh-subtab active" data-receiver-tab="pending">الوارد المطلوب استلامه</button><button type="button" class="wh-subtab" data-receiver-tab="completed">سجل الاستلام المكتمل</button><button type="button" class="wh-subtab" data-receiver-tab="legacy">السجل التشغيلي</button>';
     byId('rw-page-container').innerHTML='<div id="mainContent" class="min-w-0"><div class="empty-state">جارٍ تحميل مستندات الوارد...</div></div>';
     RW_Receiver.currentUser=RW_Auth.getUser();
@@ -5114,7 +5114,7 @@ var App = {
     safeText(byId('rw-header-title'),'استلام الوارد — PO وشراء السوق السريع');
     safeText(byId('moduleStatus'),'مستند الاستلام لا يضيف إلا الكمية المقبولة فعليًا');
   },
-  stopReceiver:function(){if(typeof RW_Receiver!=='undefined'&&RW_Receiver.stopRealtime)RW_Receiver.stopRealtime();},
+  stopReceiver:function(){if(typeof RW_Receiver!=='undefined'){if(RW_Receiver.refreshTimer){clearTimeout(RW_Receiver.refreshTimer);RW_Receiver.refreshTimer=null;}if(RW_Receiver.stopRealtime)RW_Receiver.stopRealtime();}},
   receiverSubtab:function(tab){
     var buttons=document.querySelectorAll('#rw-module-subnav [data-receiver-tab]');
     for(var i=0;i<buttons.length;i++)buttons[i].classList.toggle('active',buttons[i].getAttribute('data-receiver-tab')===tab);
@@ -5123,6 +5123,7 @@ var App = {
       safeText(byId('rw-header-title'),'سجل الاستلام التشغيلي');
       RW_Warehouse.loadReceiving();
     }else{
+      if(!byId('mainContent'))this.mountReceiver();
       safeText(byId('rw-header-title'),tab==='completed'?'سجل الاستلام المكتمل':'استلام الوارد');
       RW_Receiver.currentUser=RW_Auth.getUser();
       RW_Receiver.switchTab(tab);
