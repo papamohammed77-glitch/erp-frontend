@@ -16,6 +16,7 @@ on:
       - 'supabase/functions/create-stock-voucher/index.ts'
       - 'supabase/migrations/*warehouse_branch_receipt*'
       - 'supabase/migrations/*inventory_count_role_and_company_isolation*'
+      - 'supabase/migrations/*inventory_voucher_report_receipt_request_visibility*'
       - '.github/workflows/warehouse_hub_browser_e2e_20261110.yml'
   workflow_dispatch: {}
 
@@ -45,6 +46,7 @@ jobs:
           const fs=require('fs');
           const html=fs.readFileSync('companies/company-1/warehouse/warehouse.html','utf8');
           const countMigration=fs.readFileSync('supabase/migrations/20261110212000_inventory_count_role_and_company_isolation.sql','utf8');
+          const receiptVisibilityMigration=fs.readFileSync('supabase/migrations/20261110214000_inventory_voucher_report_receipt_request_visibility.sql','utf8');
           const inline=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
           if(inline.length!==1) throw new Error('HOST_INLINE_SCRIPT_COUNT:'+inline.length);
           new Function(inline[0][2]);
@@ -106,6 +108,8 @@ jobs:
           for(const marker of ['listNewVoucherMenu','toggleListNewMenu','data-voucher-choice="BranchReceipt"',"s.type==='BranchReceipt' &&"])
             if(!bundles.vouchers.script.includes(marker)) throw new Error('BRANCH_RECEIPT_VISIBLE_SOURCE_SELECTION_MISSING:'+marker);
           if(!bundles.vouchers.script.includes("s.type!=='BranchReceipt' &&")) throw new Error('BRANCH_RECEIPT_SOURCE_SELECTION_STILL_BRANCH_SCOPED');
+          const receiptOwnerVisibility=(receiptVisibilityMigration.match(/v\\.receiver_user_id=v_actor\\.id OR v\\.from_id=any\\(v_scope_branch_ids\\)/g)||[]).length;
+          if(receiptOwnerVisibility!==5) throw new Error('BRANCH_RECEIPT_REQUESTER_PENDING_VISIBILITY_MISSING:'+receiptOwnerVisibility);
           for(const tab of ['branch-count','vehicle-count','general-count'])
             if(!bundles.counter.html.includes('tab-'+tab)) throw new Error('PARENT_COUNT_TAB_MISSING:'+tab);
           for(const marker of ['COUNT_CREATE','COUNT_POPULATE','COUNT_GET','COUNT_UPSERT_LINE','COUNT_REFRESH','COUNT_FINALIZE','COUNT_CANCEL','allBranchesAllowed()'])
@@ -382,6 +386,18 @@ jobs:
               app.tabName='pending';
               app.renderList('pending');
             });
+            const receiptActions=await page.evaluate(()=>{
+              const app=window.RW_NATIVE_APPS.vouchers;
+              const row=app.vouchers.find(v=>v.voucher_code==='QA-RECEIPT-01');
+              const requesterAction=app.actionFor(row);
+              const originalUser=app.user;
+              app.user={...originalUser,id:'qa-source-user',email:'source@rawaea.invalid',default_branch_id:null,allowed_branch_ids:['BR-02'],permissions:['warehouse'],role:'أمين مخزن',activeWarehouseRole:'مخزن شامل',active_warehouse_role:'مخزن شامل'};
+              const sourceAction=app.actionFor(row);
+              app.user=originalUser;
+              return {requesterAction,sourceAction};
+            });
+            if(receiptActions.requesterAction!=='request'||receiptActions.sourceAction!=='send-request')throw new Error('BRANCH_RECEIPT_REQUESTER_SOURCE_ACTION_SPLIT_INVALID:'+JSON.stringify(receiptActions));
+            console.log('WAREHOUSE_BRANCH_RECEIPT_REQUESTER_AND_SOURCE_BRANCH_ACTIONS=PASS');
             await page.locator('#rw-native-root-vouchers #listSearch').fill('استلام من مخزن فرع');
             await page.waitForFunction(()=>document.querySelector('#rw-native-root-vouchers #listCount')?.textContent==='1');
             await page.locator('#rw-native-root-vouchers #listSearch').fill('');
