@@ -17,6 +17,7 @@ on:
       - 'supabase/migrations/*warehouse_branch_receipt*'
       - 'supabase/migrations/*inventory_count_role_and_company_isolation*'
       - 'supabase/migrations/*inventory_voucher_report_receipt_request_visibility*'
+      - 'supabase/migrations/*driver_liabilities_read_scope*'
       - '.github/workflows/warehouse_hub_browser_e2e_20261110.yml'
   workflow_dispatch: {}
 
@@ -47,6 +48,7 @@ jobs:
           const html=fs.readFileSync('companies/company-1/warehouse/warehouse.html','utf8');
           const countMigration=fs.readFileSync('supabase/migrations/20261110212000_inventory_count_role_and_company_isolation.sql','utf8');
           const receiptVisibilityMigration=fs.readFileSync('supabase/migrations/20261110214000_inventory_voucher_report_receipt_request_visibility.sql','utf8');
+          const driverLiabilityMigration=fs.readFileSync('supabase/migrations/20261110215500_driver_liabilities_read_scope_and_client_write_revocation.sql','utf8');
           const inline=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
           if(inline.length!==1) throw new Error('HOST_INLINE_SCRIPT_COUNT:'+inline.length);
           new Function(inline[0][2]);
@@ -110,6 +112,15 @@ jobs:
           if(!bundles.vouchers.script.includes("s.type!=='BranchReceipt' &&")) throw new Error('BRANCH_RECEIPT_SOURCE_SELECTION_STILL_BRANCH_SCOPED');
           const receiptOwnerVisibility=(receiptVisibilityMigration.match(/v\.receiver_user_id=v_actor\.id OR v\.from_id=any\(v_scope_branch_ids\)/g)||[]).length;
           if(receiptOwnerVisibility!==5) throw new Error('BRANCH_RECEIPT_REQUESTER_PENDING_VISIBILITY_MISSING:'+receiptOwnerVisibility);
+          for(const marker of [
+            'REVOKE ALL ON TABLE public.driver_liabilities FROM PUBLIC',
+            'REVOKE ALL ON TABLE public.driver_liabilities FROM anon',
+            'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER',
+            'TO authenticated',
+            'company_id = app_private.current_user_company_id()',
+            'u.id = driver_liabilities.driver_id'
+          ]) if(!driverLiabilityMigration.includes(marker)) throw new Error('DRIVER_LIABILITY_SECURITY_BOUNDARY_MISSING:'+marker);
+          if(driverLiabilityMigration.includes('GRANT INSERT ON TABLE public.driver_liabilities TO authenticated')) throw new Error('DRIVER_LIABILITY_DIRECT_CLIENT_WRITE_REGRANTED');
           for(const tab of ['branch-count','vehicle-count','general-count'])
             if(!bundles.counter.html.includes('tab-'+tab)) throw new Error('PARENT_COUNT_TAB_MISSING:'+tab);
           for(const marker of ['COUNT_CREATE','COUNT_POPULATE','COUNT_GET','COUNT_UPSERT_LINE','COUNT_REFRESH','COUNT_FINALIZE','COUNT_CANCEL','allBranchesAllowed()'])
