@@ -88,19 +88,7 @@ BEGIN
   v_def := pg_get_functiondef('public.delete_manual_stock_voucher_atomic(uuid,text,text)'::regprocedure);
   v_old := $old_delete$  IF v_movement_count>0 THEN
     RAISE EXCEPTION 'لا يمكن حذف إذن سبق أن أنشأ حركة مخزنية';
-  END IF;
-
-  IF NOT(
-    coalesce(v_actor.permissions,'[]'::jsonb) @> '[ "*" ]'::jsonb
-    OR v_actor.allowed_branch_ids IS NULL
-    OR v_actor.allowed_branch_ids='[]'::jsonb
-    OR coalesce(trim(both '"' from v_actor.allowed_branch_ids::text),'')='*'
-    OR (
-      v.type='Transfer'
-      AND v_actor.role='مخزني'
-      AND coalesce(v_actor.active_warehouse_role,'')='أذونات'
-    )
-  ) THEN$old_delete$;
+  END IF;$old_delete$;
   v_new := $new_delete$  IF v_movement_count>0 THEN
     RAISE EXCEPTION 'لا يمكن حذف إذن سبق أن أنشأ حركة مخزنية';
   END IF;
@@ -113,9 +101,7 @@ BEGIN
        OR NOT app_private.user_can_access_warehouse_branch(v_actor.id,p_company_id,v_branch_id) THEN
       RAISE EXCEPTION 'الإذن خارج نطاق فروع المستخدم المسموح بها';
     END IF;
-  END IF;
-
-  IF NOT($new_delete$;
+  END IF;$new_delete$;
   IF position(v_old IN v_def)=0 OR length(v_def)-length(replace(v_def,v_old,''))<>length(v_old) THEN
     RAISE EXCEPTION 'Unexpected delete_manual_stock_voucher_atomic definition; refusing patch';
   END IF;
