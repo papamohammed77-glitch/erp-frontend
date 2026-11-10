@@ -43,6 +43,12 @@ jobs:
           scripts.forEach((m,i)=>{try{new Function(m[2])}catch(e){throw new Error('HUB_JS_SYNTAX_'+(i+1)+':'+e.message)}});
           for(const p of ['receiver.html','picker.html','loader.html','returns.html','unloader.html','counter.html','vouchers.html']) if(!s.includes(p)) throw new Error('HUB_ROUTE_MISSING:'+p);
           for(const t of ['today','operations','vouchers','account']) if(!s.includes('data-tab="'+t+'"')) throw new Error('HUB_TAB_MISSING:'+t);
+          if((s.match(/register-sw[.]js/g)||[]).length!==1 || s.includes('RW_SW.register')) throw new Error('HUB_SERVICE_WORKER_DUPLICATION');
+          const gates={receiver:"activeWarehouseRole !== 'مخزن شامل'",picker:"activeRole !== 'مخزن شامل'",loader:"activeWarehouseRole !== 'مخزن شامل'",returns:"activeWarehouseRole !== 'مخزن شامل'",unloader:"activeWarehouseRole !== 'مخزن شامل'",counter:"activeWarehouseRole!=='مخزن شامل'",vouchers:"activeWarehouseRole!=='مخزن شامل'"};
+          for(const [f,t] of Object.entries(gates)) if(!fs.readFileSync('companies/company-1/warehouse/'+f+'.html','utf8').includes(t)) throw new Error('UNIFIED_ROLE_GATE_MISSING:'+f);
+          const parent=fs.readFileSync('companies/company-1/main.html','utf8');
+          if(!parent.includes('openWarehouseHub')||!parent.includes('warehouse/warehouse.html')) throw new Error('PARENT_HUB_ENTRY_MISSING');
+          if(!fs.readFileSync('companies/company-1/warehouse/supervisor.html','utf8').includes('مخزن شامل')) throw new Error('SUPERVISOR_ROLE_MISSING');
           console.log('WAREHOUSE_HUB_SOURCE_CONTRACT=PASS');
           NODE
       - name: Install Playwright
@@ -59,7 +65,9 @@ jobs:
           python3 -m http.server 4173 --bind 127.0.0.1 >/tmp/rawaea-warehouse-http.log 2>&1 &
           echo $! >/tmp/rawaea-warehouse-http.pid
           for n in $(seq 1 30); do
-            curl -fsS http://127.0.0.1:4173/companies/company-1/warehouse/warehouse.html >/dev/null && exit 0
+            curl -fsS http://127.0.0.1:4173/companies/company-1/warehouse/warehouse.html >/dev/null &&
+            curl -fsS http://127.0.0.1:4173/companies/company-1/register-sw.js >/dev/null &&
+            curl -fsS http://127.0.0.1:4173/companies/company-1/sw.js >/dev/null && exit 0
             sleep 1
           done
           cat /tmp/rawaea-warehouse-http.log
@@ -72,17 +80,17 @@ jobs:
           const { chromium } = require('playwright');
           const target='http://127.0.0.1:4173/companies/company-1/warehouse/warehouse.html';
           const qaUser={name:'QA Warehouse',email:'qa@rawaea.invalid'};
-          const snapshot=(role)=>({success:true,generated_at:new Date().toISOString(),
+          const snapshot=(role,opts={})=>({success:true,generated_at:new Date().toISOString(),
             user:{id:'qa-user',company_id:'qa-company',role:'مخزني',active_warehouse_role:role,is_owner:false},
-            branch_scope:[{id:'qa-branch',code:'QA-01',name:'مخزن الاختبار'}],main_branch_access:true,
-            metrics:{pending_purchase_orders:2,active_runsheets:3,loading_runsheets:1,loaded_runsheets:1,returning_runsheets:1,pending_vouchers:2,open_counts:1}});
-          async function prepare(page,role,noSession){
+            branch_scope:opts.emptyScope?[]:[{id:'qa-branch',code:'QA-01',name:opts.branchName||'مخزن الاختبار'}],main_branch_access:opts.mainAccess!==false,
+            metrics:{pending_purchase_orders:2,active_runsheets:opts.mainAccess===false?0:3,loading_runsheets:opts.mainAccess===false?0:1,loaded_runsheets:opts.mainAccess===false?0:1,returning_runsheets:opts.mainAccess===false?0:1,pending_vouchers:2,open_counts:1}});
+          async function prepare(page,role,noSession,opts={}){
             await page.route('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.supabase = {};'}));
             await page.route('**/core.js',r=>{
               const sessionUser=noSession?'null':'qaUser';
               const sessionError=noSession?'"NO_SESSION"':'null';
-              const data=JSON.stringify(snapshot(role));
-              const body='var qaUser='+JSON.stringify(qaUser)+';window.RW_Auth={init:function(cb){cb('+sessionUser+','+sessionError+');},getUser:function(){return qaUser;},doLogin:function(e,p,cb){cb(qaUser,null);},doLogout:function(cb){cb();}};window.supabase={rpc:function(name){return Promise.resolve({data:'+data+',error:null});}};';
+              const response=opts.deny?'{data:null,error:{message:"WAREHOUSE_PERMISSION_REQUIRED"}}':'{data:'+JSON.stringify(snapshot(role,opts))+',error:null}';
+              const body='var qaUser='+JSON.stringify(qaUser)+';window.RW_Auth={init:function(cb){cb('+sessionUser+','+sessionError+');},getUser:function(){return qaUser;},doLogin:function(e,p,cb){cb(qaUser,null);},doLogout:function(cb){cb();}};window.supabase={rpc:function(name){return Promise.resolve('+response+');}};';
               r.fulfill({status:200,contentType:'application/javascript',body});
             });
             await page.route('**/register-sw.js',r=>r.fulfill({status:200,contentType:'application/javascript',body:''}));
@@ -109,6 +117,8 @@ jobs:
             if(await page.locator('a[href="vouchers.html"]').count()!==5)throw new Error('VOUCHER_CARDS_MISSING');
             await page.locator('[data-tab="account"]').click();
             if(!(await page.locator('body').innerText()).includes('مخزن الاختبار'))throw new Error('BRANCH_SCOPE_NOT_RENDERED');
+            await page.locator('button[title="خروج"]').click();
+            if(await page.locator('#loginScreen').isHidden()||!await page.locator('#mainApp').isHidden())throw new Error('LOGOUT_DID_NOT_CLEAR_HUB_SESSION');
             const restricted=await context.newPage(),restrictedErrors=[];
             restricted.on('pageerror',e=>restrictedErrors.push(String(e.message||e)));
             await prepare(restricted,'تحميل',false);
@@ -119,11 +129,28 @@ jobs:
             for(const p of ['receiver.html','picker.html','returns.html','unloader.html','counter.html']) if(await restricted.locator('a[href="'+p+'"]').count()!==0)throw new Error('UNAUTHORIZED_OPERATION_ENABLED:'+p);
             await restricted.locator('[data-tab="vouchers"]').click();
             if(await restricted.locator('a[href="vouchers.html"]').count()!==0)throw new Error('UNAUTHORIZED_VOUCHERS_ENABLED');
+            const noMain=await context.newPage();
+            await prepare(noMain,'مخزن شامل',false,{mainAccess:false});
+            await noMain.goto(target,{waitUntil:'domcontentloaded'});
+            await noMain.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
+            await noMain.locator('[data-tab="operations"]').click();
+            for(const p of ['receiver.html','picker.html','loader.html','returns.html','unloader.html']) if(await noMain.locator('a[href="'+p+'"]').count()!==0)throw new Error('MAIN_BRANCH_REQUIRED:'+p);
+            if(await noMain.locator('a[href="counter.html"]').count()!==1)throw new Error('BRANCH_SCOPED_COUNTER_MISSING');
+            await noMain.locator('[data-tab="vouchers"]').click();
+            if(await noMain.locator('a[href="vouchers.html"]').count()!==5)throw new Error('BRANCH_SCOPED_VOUCHERS_MISSING');
+            const denied=await context.newPage();
+            await prepare(denied,'تحميل',false,{deny:true});
+            await denied.goto(target,{waitUntil:'domcontentloaded'});
+            await denied.waitForFunction(()=>document.querySelector('.tabs')?.classList.contains('hidden'));
+            if(await denied.locator('a[href]').count()!==0)throw new Error('UNAUTHORIZED_USER_HAS_OPERATION_LINKS');
             if(consoleErrors.length||pageErrors.length||restrictedErrors.length)throw new Error('BROWSER_ERRORS:'+JSON.stringify({consoleErrors,pageErrors,restrictedErrors}));
             console.log('WAREHOUSE_HUB_LOGIN_E2E=PASS');
             console.log('WAREHOUSE_HUB_UNIFIED_ROLE_E2E=PASS');
             console.log('WAREHOUSE_HUB_ROLE_RESTRICTION_E2E=PASS');
             console.log('WAREHOUSE_HUB_BRANCH_SCOPE_E2E=PASS');
+            console.log('WAREHOUSE_HUB_MAIN_BRANCH_GUARD_E2E=PASS');
+            console.log('WAREHOUSE_HUB_UNAUTHORIZED_ACCESS_E2E=PASS');
+            console.log('WAREHOUSE_HUB_LOGOUT_E2E=PASS');
             await browser.close();
           })().catch(e=>{console.error('WAREHOUSE_HUB_E2E_FAILURE='+e.message);process.exit(1)});
           NODE
