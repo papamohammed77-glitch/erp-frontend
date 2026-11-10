@@ -1,3 +1,9 @@
+-- Standard transfer receiver resolution for the unified warehouse role.
+
+-- Prefer one eligible dedicated 'أذونات' user; use 'مخزن شامل' only when none exists.
+
+-- Full-role fallback requires a unique home branch (default_branch_id or one allowed branch token).
+
 CREATE OR REPLACE FUNCTION public.enforce_transfer_responsibility_contract()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -9,6 +15,7 @@ DECLARE
   actor_email text;
   actor_id uuid;
   receiver_id uuid;
+  receiver_candidates uuid[] := '{}'::uuid[];
   receiver_count integer;
   branch_code text;
   admin_override boolean := false;
@@ -273,32 +280,92 @@ BEGIN
         RAISE EXCEPTION 'فرع الوجهة غير صالح';
       END IF;
 
-      SELECT count(*)
-      INTO receiver_count
-      FROM public.users u
-      WHERE u.company_id=NEW.company_id
-        AND COALESCE(u.status,'Active')='Active'
-        AND u.role IN ('مخزني','أمين مخزن','امين مخزن')
-        AND COALESCE(u.active_warehouse_role,'')='أذونات'
-        AND u.default_branch_id=NEW.to_id
-        AND u.id<>actor.id
-        AND (
-          u.allowed_branch_ids IS NULL
-          OR u.allowed_branch_ids='[]'::jsonb
-          OR COALESCE(TRIM(BOTH '"' FROM u.allowed_branch_ids::text),'')='*'
-          OR (
-            jsonb_typeof(u.allowed_branch_ids)='array'
-            AND (
-              u.allowed_branch_ids @> jsonb_build_array(NEW.to_id::text)
-              OR u.allowed_branch_ids @> jsonb_build_array(branch_code)
+      WITH eligible_voucher_role_receivers AS (
+        SELECT u.id
+        FROM public.users u
+        WHERE u.company_id=NEW.company_id
+          AND COALESCE(u.status,'Active')='Active'
+          AND u.role IN ('مخزني','أمين مخزن','امين مخزن')
+          AND COALESCE(u.active_warehouse_role,'')='أذونات'
+          AND u.default_branch_id=NEW.to_id
+          AND u.id<>actor.id
+          AND (
+            u.allowed_branch_ids IS NULL
+            OR u.allowed_branch_ids='[]'::jsonb
+            OR COALESCE(TRIM(BOTH '"' FROM u.allowed_branch_ids::text),'')='*'
+            OR (
+              jsonb_typeof(u.allowed_branch_ids)='array'
+              AND (
+                u.allowed_branch_ids @> jsonb_build_array(NEW.to_id::text)
+                OR u.allowed_branch_ids @> jsonb_build_array(branch_code)
+              )
+            )
+            OR (
+              jsonb_typeof(u.allowed_branch_ids)='string'
+              AND TRIM(BOTH '"' FROM u.allowed_branch_ids::text)
+                  IN (branch_code, NEW.to_id::text, '*')
             )
           )
-          OR (
-            jsonb_typeof(u.allowed_branch_ids)='string'
-            AND TRIM(BOTH '"' FROM u.allowed_branch_ids::text)
-                IN (branch_code, NEW.to_id::text, '*')
+      ),
+      eligible_full_role_receivers AS (
+        SELECT u.id
+        FROM public.users u
+        WHERE u.company_id=NEW.company_id
+          AND COALESCE(u.status,'Active')='Active'
+          AND u.role IN ('مخزني','أمين مخزن','امين مخزن')
+          AND COALESCE(u.active_warehouse_role,'')='مخزن شامل'
+          AND (
+            u.default_branch_id=NEW.to_id
+            OR (
+              u.default_branch_id IS NULL
+              AND (
+                (
+                  jsonb_typeof(u.allowed_branch_ids)='array'
+                  AND jsonb_array_length(u.allowed_branch_ids)=1
+                  AND (
+                    u.allowed_branch_ids @> jsonb_build_array(NEW.to_id::text)
+                    OR u.allowed_branch_ids @> jsonb_build_array(branch_code)
+                  )
+                )
+                OR (
+                  jsonb_typeof(u.allowed_branch_ids)='string'
+                  AND TRIM(BOTH '"' FROM u.allowed_branch_ids::text)
+                      IN (branch_code, NEW.to_id::text)
+                )
+              )
+            )
           )
-        );
+          AND u.id<>actor.id
+          AND (
+            u.allowed_branch_ids IS NULL
+            OR u.allowed_branch_ids='[]'::jsonb
+            OR COALESCE(TRIM(BOTH '"' FROM u.allowed_branch_ids::text),'')='*'
+            OR (
+              jsonb_typeof(u.allowed_branch_ids)='array'
+              AND (
+                u.allowed_branch_ids @> jsonb_build_array(NEW.to_id::text)
+                OR u.allowed_branch_ids @> jsonb_build_array(branch_code)
+              )
+            )
+            OR (
+              jsonb_typeof(u.allowed_branch_ids)='string'
+              AND TRIM(BOTH '"' FROM u.allowed_branch_ids::text)
+                  IN (branch_code, NEW.to_id::text, '*')
+            )
+          )
+      ),
+      eligible_receivers AS (
+        SELECT id FROM eligible_voucher_role_receivers
+        UNION ALL
+        SELECT id
+        FROM eligible_full_role_receivers
+        WHERE NOT EXISTS (SELECT 1 FROM eligible_voucher_role_receivers)
+      )
+      SELECT COALESCE(array_agg(id ORDER BY id),'{}'::uuid[])
+      INTO receiver_candidates
+      FROM eligible_receivers;
+
+      receiver_count:=COALESCE(cardinality(receiver_candidates),0);
 
       IF receiver_count=0 THEN
         RAISE EXCEPTION 'لا يوجد مسؤول استلام مخزني مفعّل ومحدد للفرع الوجهة';
@@ -308,33 +375,7 @@ BEGIN
         RAISE EXCEPTION 'يوجد أكثر من مسؤول استلام للفرع الوجهة؛ عيّن مسؤولًا واحدًا من النظام الأم';
       END IF;
 
-      SELECT u.id
-      INTO receiver_id
-      FROM public.users u
-      WHERE u.company_id=NEW.company_id
-        AND COALESCE(u.status,'Active')='Active'
-        AND u.role IN ('مخزني','أمين مخزن','امين مخزن')
-        AND COALESCE(u.active_warehouse_role,'')='أذونات'
-        AND u.default_branch_id=NEW.to_id
-        AND u.id<>actor.id
-        AND (
-          u.allowed_branch_ids IS NULL
-          OR u.allowed_branch_ids='[]'::jsonb
-          OR COALESCE(TRIM(BOTH '"' FROM u.allowed_branch_ids::text),'')='*'
-          OR (
-            jsonb_typeof(u.allowed_branch_ids)='array'
-            AND (
-              u.allowed_branch_ids @> jsonb_build_array(NEW.to_id::text)
-              OR u.allowed_branch_ids @> jsonb_build_array(branch_code)
-            )
-          )
-          OR (
-            jsonb_typeof(u.allowed_branch_ids)='string'
-            AND TRIM(BOTH '"' FROM u.allowed_branch_ids::text)
-                IN (branch_code, NEW.to_id::text, '*')
-          )
-        )
-      LIMIT 1;
+      receiver_id:=receiver_candidates[1];
 
       IF receiver_id IS NULL OR receiver_id=actor.id THEN
         RAISE EXCEPTION 'مسؤول الاستلام غير صالح أو مطابق لمرسل التحويل';
