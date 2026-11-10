@@ -103,6 +103,9 @@ jobs:
           for(const marker of ['request-branch-receipt','warehouseHomeBranch','send-request','exactReceiver)return \'request\''])
             if(!bundles.vouchers.script.includes(marker)) throw new Error('BRANCH_RECEIPT_REQUEST_FLOW_MISSING:'+marker);
           if(!bundles.vouchers.html.includes('استلام من مخزن فرع')) throw new Error('BRANCH_RECEIPT_MENU_MISSING');
+          for(const marker of ['listNewVoucherMenu','toggleListNewMenu','data-voucher-choice="BranchReceipt"',"s.type==='BranchReceipt' &&"])
+            if(!bundles.vouchers.script.includes(marker)) throw new Error('BRANCH_RECEIPT_VISIBLE_SOURCE_SELECTION_MISSING:'+marker);
+          if(!bundles.vouchers.script.includes("s.type!=='BranchReceipt' &&")) throw new Error('BRANCH_RECEIPT_SOURCE_SELECTION_STILL_BRANCH_SCOPED');
           for(const tab of ['branch-count','vehicle-count','general-count'])
             if(!bundles.counter.html.includes('tab-'+tab)) throw new Error('PARENT_COUNT_TAB_MISSING:'+tab);
           for(const marker of ['COUNT_CREATE','COUNT_POPULATE','COUNT_GET','COUNT_UPSERT_LINE','COUNT_REFRESH','COUNT_FINALIZE','COUNT_CANCEL','allBranchesAllowed()'])
@@ -196,7 +199,7 @@ jobs:
               "var RW_Auth={init:function(cb){cb(__qaUser,__qaUser?null:'NO_SESSION');},getUser:function(){return __qaUser;},getToken:function(){return 'qa-token';},doLogin:function(e,p,cb){sessionStorage.removeItem('qa-signed-out');__qaUser=__qaProfile;if(cb)cb(__qaUser,null);},doLogout:function(cb){sessionStorage.setItem('qa-signed-out','1');__qaUser=null;supabase.auth.signOut().then(function(){if(cb)cb(true);});}};",
               "var __ui={byId:function(id){return document.getElementById(id);},safeHTML:function(el,h){if(el)el.innerHTML=h;},safeText:function(el,t){if(el)el.textContent=String(t==null?'':t);},toast:function(){},showLoader:function(){},hideLoader:function(){},showError:function(){},showSkeleton:function(id,n){var e=document.getElementById(id);if(e)e.innerHTML='جارٍ التحميل...';},showEmptyState:function(){},formatCurrency:function(v){return String(v||0);},formatNumber:function(v){return String(v||0);},updateConnectionStatus:function(){},showConfirm:function(m,cb){if(cb)cb();}};",
               "var RW_UI=new Proxy(__ui,{get:function(t,p){if(p in t)return t[p];return function(){};}});",
-              "var __qaCountDetails=[{id:'qa-line',branch_id:'00000000-0000-4000-8000-000000000001',branch_code:'BR-01',branch_name:'فرع الاختبار',item_id:'qa-item',item_code:'QA-001',item_name:'صنف اختبار',unit:'حبة',system_qty:4,counted_qty:null,variance_qty:0,adjusted:false}];var __qaCountCalls=[];var RW_API={call:function(name,payload,cb){if(name==='save-inventory-count'){var op=payload.operation;__qaCountCalls.push(op);if(op==='COUNT_CREATE'){if(cb)cb({success:true,count_id:'qa-count',status:'InProgress'});return;}if(op==='COUNT_POPULATE'){if(cb)cb({success:true,added_lines:1});return;}if(op==='COUNT_GET'){if(cb)cb({success:true,count:{id:'qa-count',type:'branch',branch_id:'00000000-0000-4000-8000-000000000001',reference:'جرد اختبار',count_date:'2026-11-10',status:'InProgress'},details:__qaCountDetails},null);return;}if(op==='COUNT_UPSERT_LINE'){__qaCountDetails[0].counted_qty=payload.payload.counted_qty;__qaCountDetails[0].variance_qty=payload.payload.counted_qty-4;if(cb)cb({success:true},null);return;}if(cb)cb({success:true},null);return;}if(cb)cb({success:true,rows:[]},null);}};",
+              "var __qaCountDetails=[{id:'qa-line',branch_id:'00000000-0000-4000-8000-000000000001',branch_code:'BR-01',branch_name:'فرع الاختبار',item_id:'qa-item',item_code:'QA-001',item_name:'صنف اختبار',unit:'حبة',system_qty:4,counted_qty:null,variance_qty:0,adjusted:false}];var __qaCountCalls=[];var __qaVoucherCalls=[];var RW_API={call:function(name,payload,cb){if(name==='create-stock-voucher'){__qaVoucherCalls.push({name:name,payload:payload});if(cb)cb({success:true,voucher_code:'QA-BR-RECEIPT-01',request_origin:'WarehouseBranchReceipt'},null);return;}if(name==='save-inventory-count'){var op=payload.operation;__qaCountCalls.push(op);if(op==='COUNT_CREATE'){if(cb)cb({success:true,count_id:'qa-count',status:'InProgress'});return;}if(op==='COUNT_POPULATE'){if(cb)cb({success:true,added_lines:1});return;}if(op==='COUNT_GET'){if(cb)cb({success:true,count:{id:'qa-count',type:'branch',branch_id:'00000000-0000-4000-8000-000000000001',reference:'جرد اختبار',count_date:'2026-11-10',status:'InProgress'},details:__qaCountDetails},null);return;}if(op==='COUNT_UPSERT_LINE'){__qaCountDetails[0].counted_qty=payload.payload.counted_qty;__qaCountDetails[0].variance_qty=payload.payload.counted_qty-4;if(cb)cb({success:true},null);return;}if(cb)cb({success:true},null);return;}if(cb)cb({success:true,rows:[]},null);}};",
               "var RW_Realtime={start:function(){return 'qa-channel';},stop:function(){},subscribe:function(){return 'qa-channel';}};",
               "var RW_ImageCache={loadAll:function(){return Promise.resolve();},clear:function(){},get:function(){return null;},set:function(){}};",
               "var RW_SW={register:function(){return Promise.resolve();}};"
@@ -340,9 +343,11 @@ jobs:
             await page.locator('#rw-native-root-vouchers button[onclick*="RW_NATIVE_APP_vouchers.back()"]').click();
             await page.waitForSelector('#rw-native-root-vouchers #listSearch',{state:'visible',timeout:12000});
             console.log('WAREHOUSE_VOUCHER_BACK_TO_LIST=PASS');
-            await page.locator('#rw-native-root-vouchers #typeBtn').click();
-            console.log('WAREHOUSE_NEW_VOUCHER_MENU_OPEN=PASS');
-            await page.locator('#rw-native-root-vouchers #typeMenu button').filter({hasText:'استلام من مخزن فرع'}).click();
+            await page.locator('#rw-native-root-vouchers #listNewVoucherBtn').click();
+            await page.waitForFunction(()=>!document.querySelector('#rw-native-root-vouchers #listNewVoucherMenu')?.classList.contains('hidden'));
+            if(await page.locator('#rw-native-root-vouchers #listNewVoucherMenu [data-voucher-choice]').count()!==7)throw new Error('VISIBLE_VOUCHER_ACTION_MENU_INCOMPLETE');
+            console.log('WAREHOUSE_VISIBLE_LIST_NEW_VOUCHER_MENU=PASS');
+            await page.locator('#rw-native-root-vouchers #listNewVoucherMenu [data-voucher-choice="BranchReceipt"]').click();
             await page.waitForFunction(()=>window.RW_NATIVE_APPS?.vouchers?.type==='BranchReceipt');
             await page.waitForFunction(()=>document.querySelector('#rw-native-root-vouchers #wsToSearch')&&document.querySelector('#rw-native-root-vouchers #wsFromSearch'));
             const fixedDestination=await page.locator('#rw-native-root-vouchers #wsToSearch').inputValue();
@@ -351,7 +356,22 @@ jobs:
             await page.waitForFunction(()=>document.querySelector('#rw-native-root-vouchers #wsFromMenu')?.innerText.includes('BR-02'));
             const sourceOptions=await page.locator('#rw-native-root-vouchers #wsFromMenu').innerText();
             if(!sourceOptions.includes('فرع اختبار ثانٍ'))throw new Error('BRANCH_RECEIPT_SOURCE_BRANCH_SEARCH_MISSING:'+sourceOptions);
-            console.log('WAREHOUSE_BRANCH_RECEIPT_FIXED_DESTINATION_ALL_SOURCE_BRANCHES=PASS');
+            await page.locator('#rw-native-root-vouchers #wsFromMenu .smart-row').filter({hasText:'فرع اختبار ثانٍ'}).click();
+            const sourceId=await page.locator('#rw-native-root-vouchers #wsFrom').inputValue();
+            if(sourceId!=='00000000-0000-4000-8000-000000000002')throw new Error('BRANCH_RECEIPT_ALL_BRANCH_SOURCE_SELECTION_FAILED:'+sourceId);
+            const selectedDestination=await page.locator('#rw-native-root-vouchers #wsTo').inputValue();
+            if(selectedDestination!=='00000000-0000-4000-8000-000000000001')throw new Error('BRANCH_RECEIPT_DESTINATION_ID_CHANGED:'+selectedDestination);
+            await page.locator('#rw-native-root-vouchers #wsRef').fill('QA-BR-RECEIPT-REQUEST-01');
+            await page.evaluate(()=>{
+              const app=window.RW_NATIVE_APPS.vouchers;
+              app.cart=[{id:'qa-item',code:'QA-001',name:'صنف اختبار',unit:'حبة',qty:3}];
+              app.renderCart();
+            });
+            await page.locator('#rw-native-root-vouchers button[onclick*="vouchers.submit()"]').first().click();
+            await page.waitForFunction(()=>window.__qaVoucherCalls?.some(x=>x.payload?.action==='request-branch-receipt'));
+            const requestPayload=await page.evaluate(()=>window.__qaVoucherCalls.find(x=>x.payload?.action==='request-branch-receipt')?.payload||null);
+            if(!requestPayload||requestPayload.fromId!=='00000000-0000-4000-8000-000000000002'||requestPayload.reference!=='QA-BR-RECEIPT-REQUEST-01'||!requestPayload.operation_id||requestPayload.items?.length!==1||requestPayload.items[0].itemCode!=='QA-001'||requestPayload.items[0].qty!==3)throw new Error('BRANCH_RECEIPT_REQUEST_API_CONTRACT_INVALID:'+JSON.stringify(requestPayload));
+            console.log('WAREHOUSE_BRANCH_RECEIPT_FIXED_DESTINATION_ALL_SOURCES_REQUEST_API=PASS');
 
             await page.evaluate(()=>{
               const app=window.RW_NATIVE_APPS.vouchers;
