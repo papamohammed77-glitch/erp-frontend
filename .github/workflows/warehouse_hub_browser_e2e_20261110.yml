@@ -54,6 +54,9 @@ jobs:
           if((html.match(/src="\.\.\/core\.js"/g)||[]).length!==1) throw new Error('CORE_MUST_LOAD_ONCE');
           for(const marker of ['RW_SHARED_SUPABASE','get_warehouse_hub_snapshot','active_warehouse_role','مخزن شامل','data-operation','data-voucher-action','TransferReceive','openSupplierReturnContract','saveSupplierReturnContract'])
             if(!html.includes(marker)) throw new Error('HOST_CONTRACT_MARKER_MISSING:'+marker);
+          for(const pair of ['receiving:\'receiver\'','picking:\'picker\'','loading:\'loader\'','returns:\'returns\'','unloading:\'unloader\'','counting:\'counter\'','vouchers:\'vouchers\''])
+            if(!html.includes(pair)) throw new Error('OPERATION_NATIVE_MODULE_ALIAS_MISSING:'+pair);
+          if(!html.includes('RW_NATIVE_APPS&&window.RW_NATIVE_APPS[self.moduleKey(key)]')) throw new Error('NATIVE_MODULE_LOGOUT_CLEANUP_ALIAS_MISSING');
           const bundleMatch=html.match(/var RW_NATIVE_BUNDLES=(\{[\s\S]*?\});\nvar App=/);
           if(!bundleMatch) throw new Error('NATIVE_MODULE_BUNDLE_OBJECT_MISSING');
           const bundles=JSON.parse(bundleMatch[1]);
@@ -184,16 +187,19 @@ jobs:
             await page.locator('#warehouseTabs [data-tab="operations"]').click();
             if(await page.locator('#warehouseDashboard [data-operation]').count()!==6)throw new Error('SIX_OPERATION_CARDS_MISSING');
             const operations=['receiving','picking','loading','returns','unloading','counting'];
+            const nativeKeys={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};
             for(const key of operations){
+              const nativeKey=nativeKeys[key]||key;
               await page.locator('#warehouseDashboard [data-operation="'+key+'"]').click();
-              await page.waitForFunction(k=>document.getElementById('rw-native-root-'+k)?.dataset.rwReady==='true',key,{timeout:12000});
+              await page.waitForFunction(k=>{const map={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};const native=map[k]||k;return document.getElementById('rw-native-root-'+native)?.dataset.rwReady==='true';},key,{timeout:12000});
               const state=await page.evaluate(k=>{
-                const root=document.getElementById('rw-native-root-'+k);
-                return {exists:!!root,ready:root&&root.dataset.rwReady,childVisible:!!(root&&root.querySelector('#mainApp')&&!root.querySelector('#mainApp').classList.contains('hidden')),accountTab:!!(root&&root.querySelector('#tab-account'))};
+                const map={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};
+                const native=map[k]||k,root=document.getElementById('rw-native-root-'+native);
+                return {exists:!!root,ready:root&&root.dataset.rwReady,childVisible:!!(root&&root.querySelector('#mainApp')&&!root.querySelector('#mainApp').classList.contains('hidden')),accountTab:!!(root&&root.querySelector('#tab-account')),moduleKey:root&&root.dataset.rwModule};
               },key);
-              if(!state.exists||state.ready!=='true'||!state.childVisible||state.accountTab)throw new Error('NATIVE_WORKSPACE_NOT_READY:'+key+':'+JSON.stringify(state));
+              if(!state.exists||state.ready!=='true'||!state.childVisible||state.accountTab||state.moduleKey!==key)throw new Error('NATIVE_WORKSPACE_NOT_READY:'+key+':'+JSON.stringify(state));
               await page.locator('[data-workspace-back]').click();
-              if(await page.locator('#rw-native-root-'+key).count()!==1)throw new Error('WORKSPACE_NOT_PERSISTED:'+key);
+              if(await page.locator('#rw-native-root-'+nativeKey).count()!==1)throw new Error('WORKSPACE_NOT_PERSISTED:'+key);
             }
             console.log('WAREHOUSE_SIX_FULL_NATIVE_OPERATION_WORKSPACES=PASS');
 
