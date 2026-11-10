@@ -19,6 +19,7 @@ on:
       - 'supabase/migrations/*inventory_voucher_report_receipt_request_visibility*'
       - 'supabase/migrations/*driver_liabilities_read_scope*'
       - 'supabase/migrations/*standard_transfer_requires_designated_branch_receiver*'
+      - 'supabase/migrations/*standard_transfer_unified_warehouse_receiver_fallback*'
       - '.github/workflows/warehouse_hub_browser_e2e_20261110.yml'
   workflow_dispatch: {}
 
@@ -51,6 +52,7 @@ jobs:
           const receiptVisibilityMigration=fs.readFileSync('supabase/migrations/20261110214000_inventory_voucher_report_receipt_request_visibility.sql','utf8');
           const driverLiabilityMigration=fs.readFileSync('supabase/migrations/20261110215500_driver_liabilities_read_scope_and_client_write_revocation.sql','utf8');
           const designatedReceiverMigration=fs.readFileSync('supabase/migrations/20261110222000_standard_transfer_requires_designated_branch_receiver.sql','utf8');
+          const fullRoleReceiverMigration=fs.readFileSync('supabase/migrations/20261110213226_standard_transfer_unified_warehouse_receiver_fallback.sql','utf8');
           const inline=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
           if(inline.length!==1) throw new Error('HOST_INLINE_SCRIPT_COUNT:'+inline.length);
           new Function(inline[0][2]);
@@ -126,6 +128,14 @@ jobs:
           const designatedReceiverGuards=(designatedReceiverMigration.match(/COALESCE\(u\.active_warehouse_role,''\)='أذونات'\s+AND u\.default_branch_id=NEW\.to_id/g)||[]).length;
           if(designatedReceiverGuards!==2) throw new Error('STANDARD_TRANSFER_RECEIVER_NOT_BOUND_TO_DESIGNATED_HOME_BRANCH:'+designatedReceiverGuards);
           if(!designatedReceiverMigration.includes("ru.active_warehouse_role,'') IN ('أذونات','مخزن شامل')")) throw new Error('BRANCH_RECEIPT_ASSIGNED_REQUESTER_CONTRACT_LOST');
+          for(const marker of [
+            'eligible_voucher_role_receivers AS',
+            'eligible_full_role_receivers AS',
+            "COALESCE(u.active_warehouse_role,'')='مخزن شامل'",
+            'jsonb_array_length(u.allowed_branch_ids)=1',
+            'WHERE NOT EXISTS (SELECT 1 FROM eligible_voucher_role_receivers)',
+            'receiver_id:=receiver_candidates[1]'
+          ]) if(!fullRoleReceiverMigration.includes(marker)) throw new Error('UNIFIED_WAREHOUSE_TRANSFER_RECEIVER_FALLBACK_MISSING:'+marker);
           for(const tab of ['branch-count','vehicle-count','general-count'])
             if(!bundles.counter.html.includes('tab-'+tab)) throw new Error('PARENT_COUNT_TAB_MISSING:'+tab);
           for(const marker of ['COUNT_CREATE','COUNT_POPULATE','COUNT_GET','COUNT_UPSERT_LINE','COUNT_REFRESH','COUNT_FINALIZE','COUNT_CANCEL','allBranchesAllowed()'])
@@ -409,11 +419,19 @@ jobs:
               const originalUser=app.user;
               app.user={...originalUser,id:'qa-source-user',email:'source@rawaea.invalid',default_branch_id:null,allowed_branch_ids:['BR-02'],permissions:['warehouse'],role:'أمين مخزن',activeWarehouseRole:'مخزن شامل',active_warehouse_role:'مخزن شامل'};
               const sourceAction=app.actionFor(row);
+              app.user={...originalUser,role:'أمين مخزن',activeWarehouseRole:'مخزن شامل',active_warehouse_role:'مخزن شامل'};
+              const standardTransferReceiveAction=app.actionFor({
+                voucher_code:'QA-TRANSFER-SENT-FULL-ROLE',type:'Transfer',request_origin:null,status:'Sent',
+                receiver_user_id:originalUser.id,from_type:'Branch',from_id:'00000000-0000-4000-8000-000000000002',
+                to_type:'Branch',to_id:'00000000-0000-4000-8000-000000000001',created_by:'source@rawaea.invalid'
+              });
               app.user=originalUser;
-              return {requesterAction,sourceAction};
+              return {requesterAction,sourceAction,standardTransferReceiveAction};
             });
             if(receiptActions.requesterAction!=='request'||receiptActions.sourceAction!=='send-request')throw new Error('BRANCH_RECEIPT_REQUESTER_SOURCE_ACTION_SPLIT_INVALID:'+JSON.stringify(receiptActions));
+            if(receiptActions.standardTransferReceiveAction!=='receive')throw new Error('UNIFIED_WAREHOUSE_STANDARD_TRANSFER_RECEIVE_ACTION_MISSING:'+JSON.stringify(receiptActions));
             console.log('WAREHOUSE_BRANCH_RECEIPT_REQUESTER_AND_SOURCE_BRANCH_ACTIONS=PASS');
+            console.log('WAREHOUSE_FULL_ROLE_STANDARD_TRANSFER_RECEIVE_ACTION=PASS');
             await page.locator('#rw-native-root-vouchers #listSearch').fill('استلام من مخزن فرع');
             await page.waitForFunction(()=>document.querySelector('#rw-native-root-vouchers #listCount')?.textContent==='1');
             await page.locator('#rw-native-root-vouchers #listSearch').fill('');
