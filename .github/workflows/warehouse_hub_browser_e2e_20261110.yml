@@ -436,7 +436,26 @@ jobs:
                   if(await page.locator(root+' #tab-'+tab).count()!==1)throw new Error('COUNTER_PARENT_TAB_MISSING:'+tab);
                 }
                 await page.locator(root+' #tab-vehicle-count').click();
-                await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('السيارة محل الجرد'));
+                try{
+                  await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('السيارة محل الجرد'),null,{timeout:10000});
+                }catch(waitError){
+                  const countDiag=await page.evaluate(()=>{
+                    const root=document.querySelector('#rw-native-root-counter');
+                    const app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS.counter;
+                    return{
+                      ready:root&&root.dataset.rwReady,
+                      activeTab:app&&app.currentTab,
+                      activeCountType:app&&app.activeCountType,
+                      refs:app&&app.refs,
+                      currentUser:app&&app.currentUser?{id:app.currentUser.id,company_id:app.currentUser.company_id,defaultBranchId:app.currentUser.defaultBranchId,allowedBranchIds:app.currentUser.allowedBranchIds}:null,
+                      mainText:root&&root.querySelector('#mainContent')?.innerText.slice(0,1600),
+                      branchTab:root&&root.querySelector('#tab-branch-count')?.className,
+                      vehicleTab:root&&root.querySelector('#tab-vehicle-count')?.className,
+                      generalTab:root&&root.querySelector('#tab-general-count')?.className
+                    };
+                  });
+                  throw new Error('COUNTER_VEHICLE_TAB_RENDER_FAILED:'+JSON.stringify({countDiag,errors,consoleMessages:consoleMessages.slice(-30),wait:waitError.message}));
+                }
                 await page.locator(root+' #tab-general-count').click();
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('الجرد العام غير متاح'));
                 await page.locator(root+' #tab-branch-count').click();
