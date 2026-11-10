@@ -431,44 +431,64 @@ jobs:
               }
               if(key==='counting'){
                 const root='#rw-native-root-counter';
-                await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #tab-branch-count'));
-                for(const tab of ['branch-count','vehicle-count','general-count']){
-                  if(await page.locator(root+' #tab-'+tab).count()!==1)throw new Error('COUNTER_PARENT_TAB_MISSING:'+tab);
-                }
-                await page.locator(root+' #tab-vehicle-count').click();
+                let counterStage='initial-tabs';
                 try{
-                  await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('السيارة محل الجرد'),null,{timeout:10000});
-                }catch(waitError){
-                  const countDiag=await page.evaluate(()=>{
+                  await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #tab-branch-count'),null,{timeout:8000});
+                  for(const tab of ['branch-count','vehicle-count','general-count']){
+                    if(await page.locator(root+' #tab-'+tab).count()!==1)throw new Error('COUNTER_PARENT_TAB_MISSING:'+tab);
+                  }
+                  console.log('WAREHOUSE_COUNTER_TABS_RENDERED=PASS');
+                  counterStage='vehicle-count-render';
+                  await page.locator(root+' #tab-vehicle-count').click();
+                  await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('السيارة محل الجرد'),null,{timeout:8000});
+                  console.log('WAREHOUSE_COUNTER_VEHICLE_SCOPE=PASS');
+                  counterStage='general-count-denial';
+                  await page.locator(root+' #tab-general-count').click();
+                  await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('الجرد العام غير متاح'),null,{timeout:8000});
+                  console.log('WAREHOUSE_COUNTER_GENERAL_SCOPE_GUARD=PASS');
+                  counterStage='branch-count-render';
+                  await page.locator(root+' #tab-branch-count').click();
+                  await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('بدء الجرد وتحميل أصناف المخزون'),null,{timeout:8000});
+                  console.log('WAREHOUSE_COUNTER_BRANCH_SCOPE=PASS');
+                  counterStage='create-count-session';
+                  await page.locator(root+' #mainContent button').filter({hasText:'بدء الجرد وتحميل أصناف المخزون'}).click();
+                  await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #counted-0'),null,{timeout:10000});
+                  console.log('WAREHOUSE_COUNTER_SESSION_CREATE_AND_POPULATE=PASS');
+                  counterStage='set-actual-count-and-save';
+                  await page.locator(root+' #counted-0').fill('7');
+                  await page.locator(root+' #mainContent button').filter({hasText:'حفظ الكميات الفعلية'}).click();
+                  await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #counted-0')?.value==='7',null,{timeout:10000});
+                  const countOps=await page.evaluate(()=>window.__qaCountCalls||[]);
+                  for(const op of ['COUNT_CREATE','COUNT_POPULATE','COUNT_GET','COUNT_UPSERT_LINE'])
+                    if(!countOps.includes(op))throw new Error('COUNTER_ENGINE_OPERATION_NOT_CALLED:'+op+':'+countOps.join(','));
+                  console.log('WAREHOUSE_THREE_COUNT_MODES_AND_SESSION_SAVE=PASS');
+                }catch(counterError){
+                  const counterDiag=await page.evaluate(()=>{
                     const root=document.querySelector('#rw-native-root-counter');
                     const app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS.counter;
-                    return{
+                    return {
                       ready:root&&root.dataset.rwReady,
+                      app:!!app,
                       activeTab:app&&app.currentTab,
                       activeCountType:app&&app.activeCountType,
-                      refs:app&&app.refs,
-                      currentUser:app&&app.currentUser?{id:app.currentUser.id,company_id:app.currentUser.company_id,defaultBranchId:app.currentUser.defaultBranchId,allowedBranchIds:app.currentUser.allowedBranchIds}:null,
-                      mainText:root&&root.querySelector('#mainContent')?.innerText.slice(0,1600),
-                      branchTab:root&&root.querySelector('#tab-branch-count')?.className,
-                      vehicleTab:root&&root.querySelector('#tab-vehicle-count')?.className,
-                      generalTab:root&&root.querySelector('#tab-general-count')?.className
+                      busy:app&&app.busy,
+                      currentUser:app&&app.currentUser?{
+                        id:app.currentUser.id,company_id:app.currentUser.company_id,
+                        defaultBranchId:app.currentUser.defaultBranchId,allowedBranchIds:app.currentUser.allowedBranchIds,
+                        activeWarehouseRole:app.currentUser.activeWarehouseRole
+                      }:null,
+                      branches:app&&app.refs&&app.refs.branches,
+                      vehicles:app&&app.refs&&app.refs.vehicles,
+                      currentCount:app&&app.currentCount,
+                      countLines:app&&app.countLines,
+                      countOps:window.__qaCountCalls||[],
+                      mainText:root&&root.querySelector('#mainContent')?.innerText.slice(0,1800),
+                      pageErrors:window.__qaErrors||[]
                     };
                   });
-                  throw new Error('COUNTER_VEHICLE_TAB_RENDER_FAILED:'+JSON.stringify({countDiag,errors,consoleMessages:consoleMessages.slice(-30),wait:waitError.message}));
+                  throw new Error('COUNTER_E2E_DIAGNOSTIC:'+counterStage+':'+JSON.stringify({counterDiag,error:counterError.message,errors,consoleMessages:consoleMessages.slice(-40)}));
                 }
-                await page.locator(root+' #tab-general-count').click();
-                await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('الجرد العام غير متاح'));
-                await page.locator(root+' #tab-branch-count').click();
-                await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #mainContent')?.innerText.includes('بدء الجرد وتحميل أصناف المخزون'));
-                await page.locator(root+' #mainContent button').filter({hasText:'بدء الجرد وتحميل أصناف المخزون'}).click();
-                await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #counted-0'));
-                await page.locator(root+' #counted-0').fill('7');
-                await page.locator(root+' #mainContent button').filter({hasText:'حفظ الكميات الفعلية'}).click();
-                await page.waitForFunction(()=>document.querySelector('#rw-native-root-counter #counted-0')?.value==='7');
-                const countOps=await page.evaluate(()=>window.__qaCountCalls||[]);
-                for(const op of ['COUNT_CREATE','COUNT_POPULATE','COUNT_GET','COUNT_UPSERT_LINE'])
-                  if(!countOps.includes(op))throw new Error('COUNTER_ENGINE_OPERATION_NOT_CALLED:'+op+':'+countOps.join(','));
-                console.log('WAREHOUSE_THREE_COUNT_MODES_AND_SESSION_SAVE=PASS');
+              }
               }
               await page.locator('[data-workspace-back]').click();
               if(await page.locator('#rw-native-root-'+nativeKey).count()!==1)throw new Error('WORKSPACE_NOT_PERSISTED:'+key);
