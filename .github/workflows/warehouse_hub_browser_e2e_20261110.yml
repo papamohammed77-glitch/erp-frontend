@@ -1,4 +1,4 @@
-name: RAWAEA — Unified Warehouse Hub Browser E2E
+name: RAWAEA — Unified Warehouse Operational Workbench E2E
 
 on:
   push:
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 jobs:
-  warehouse-hub-e2e:
+  warehouse-workbench-e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -31,25 +31,40 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Validate hub source contract
+      - name: Validate unified workbench source contract
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
           const fs=require('fs');
           const s=fs.readFileSync('companies/company-1/warehouse/warehouse.html','utf8');
-          const scripts=[...s.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(m=>!/\bsrc\s*=/.test(m[1]||''));
+          const scripts=[...s.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(m=>! /\bsrc\s*=/.test(m[1]||''));
           if(!scripts.length) throw new Error('HUB_INLINE_SCRIPT_MISSING');
           scripts.forEach((m,i)=>{try{new Function(m[2])}catch(e){throw new Error('HUB_JS_SYNTAX_'+(i+1)+':'+e.message)}});
-          for(const p of ['receiver.html','picker.html','loader.html','returns.html','unloader.html','counter.html','vouchers.html']) if(!s.includes(p)) throw new Error('HUB_ROUTE_MISSING:'+p);
-          for(const t of ['today','operations','vouchers','account']) if(!s.includes('data-tab="'+t+'"')) throw new Error('HUB_TAB_MISSING:'+t);
-          if((s.match(/register-sw[.]js/g)||[]).length!==1 || s.includes('RW_SW.register')) throw new Error('HUB_SERVICE_WORKER_DUPLICATION');
+          const nav=s.match(/<nav class="tabs" id="warehouseTabs">([\s\S]*?)<\/nav>/);
+          if(!nav) throw new Error('WAREHOUSE_TABS_MISSING');
+          const keys=[...nav[1].matchAll(/data-tab="([^"]+)"/g)].map(m=>m[1]);
+          const expected=['today','receiving','picking','loading','returns','unloading','counting','vouchers','account'];
+          if(keys.join('|')!==expected.join('|')) throw new Error('WAREHOUSE_TAB_CONTRACT:'+keys.join('|'));
+          if(s.includes('data-tab="operations"')||s.includes('operations:function(){')||s.includes('vouchers:function(){')) throw new Error('LEGACY_LAUNCHER_STILL_PRESENT');
+          const files={receiving:'receiver.html',picking:'picker.html',loading:'loader.html',returns:'returns.html',unloading:'unloader.html',counting:'counter.html',vouchers:'vouchers.html'};
+          for(const [key,file] of Object.entries(files)) {
+            if(!s.includes(key+':{title:')||!s.includes("file:'"+file+"'")) throw new Error('NATIVE_WORKSPACE_MAPPING_MISSING:'+key);
+          }
+          if(!s.includes('workspaceFrames:{}')||!s.includes('workspaceTimers:{}')) throw new Error('PERSISTENT_FRAME_REGISTRY_MISSING');
+          if(!s.includes('warehouse-embedded-presentation')||!s.includes("main.classList.contains('hidden')")) throw new Error('AUTH_GATED_EMBED_PRESENTATION_MISSING');
+          if(!s.includes('retryWorkspace:function(key)')) throw new Error('WORKSPACE_RETRY_MISSING');
+          if(s.includes("getElementById('tabContent').innerHTML")) throw new Error('TAB_CONTENT_REPLACEMENT_WOULD_DESTROY_FRAMES');
+          if(!s.includes("deck.innerHTML=''")) throw new Error('LOGOUT_FRAME_CLEANUP_MISSING');
+          if((s.match(/register-sw[.]js/g)||[]).length!==1||s.includes('RW_SW.register')) throw new Error('SERVICE_WORKER_REGISTRATION_DUPLICATION');
           const gates={receiver:"activeWarehouseRole !== 'مخزن شامل'",picker:"activeRole !== 'مخزن شامل'",loader:"activeWarehouseRole !== 'مخزن شامل'",returns:"activeWarehouseRole !== 'مخزن شامل'",unloader:"activeWarehouseRole !== 'مخزن شامل'",counter:"activeWarehouseRole!=='مخزن شامل'",vouchers:"activeWarehouseRole!=='مخزن شامل'"};
           for(const [f,t] of Object.entries(gates)) if(!fs.readFileSync('companies/company-1/warehouse/'+f+'.html','utf8').includes(t)) throw new Error('UNIFIED_ROLE_GATE_MISSING:'+f);
           const parent=fs.readFileSync('companies/company-1/main.html','utf8');
           if(!parent.includes('openWarehouseHub')||!parent.includes('warehouse/warehouse.html')) throw new Error('PARENT_HUB_ENTRY_MISSING');
           if(!fs.readFileSync('companies/company-1/warehouse/supervisor.html','utf8').includes('مخزن شامل')) throw new Error('SUPERVISOR_ROLE_MISSING');
-          console.log('WAREHOUSE_HUB_SOURCE_CONTRACT=PASS');
+          console.log('WAREHOUSE_WORKBENCH_SOURCE_CONTRACT=PASS');
+          console.log('WAREHOUSE_WORKBENCH_NINE_TAB_CONTRACT=PASS');
+          console.log('WAREHOUSE_WORKBENCH_NATIVE_MAPPING=PASS');
           NODE
       - name: Install Playwright
         shell: bash
@@ -72,7 +87,7 @@ jobs:
           done
           cat /tmp/rawaea-warehouse-http.log
           exit 1
-      - name: Execute authenticated-mock warehouse hub E2E
+      - name: Execute authenticated-mock native workbench E2E
         shell: bash
         run: |
           set -euo pipefail
@@ -80,17 +95,33 @@ jobs:
           const { chromium } = require('playwright');
           const target='http://127.0.0.1:4173/companies/company-1/warehouse/warehouse.html';
           const qaUser={name:'QA Warehouse',email:'qa@rawaea.invalid'};
+          const files={receiving:'receiver.html',picking:'picker.html',loading:'loader.html',returns:'returns.html',unloading:'unloader.html',counting:'counter.html',vouchers:'vouchers.html'};
           const snapshot=(role,opts={})=>({success:true,generated_at:new Date().toISOString(),
-            user:{id:'qa-user',company_id:'qa-company',role:'مخزني',active_warehouse_role:role,is_owner:false},
-            branch_scope:opts.emptyScope?[]:[{id:'qa-branch',code:'QA-01',name:opts.branchName||'مخزن الاختبار'}],main_branch_access:opts.mainAccess!==false,
+            user:{id:'qa-user',company_id:'qa-company',role:'أمين مخزن',active_warehouse_role:role,is_owner:false},
+            branch_scope:opts.emptyScope?[]:[{id:'qa-branch',code:'QA-01',name:opts.branchName||'مخزن الاختبار'}],
+            main_branch_access:opts.mainAccess!==false,
             metrics:{pending_purchase_orders:2,active_runsheets:opts.mainAccess===false?0:3,loading_runsheets:opts.mainAccess===false?0:1,loaded_runsheets:opts.mainAccess===false?0:1,returning_runsheets:opts.mainAccess===false?0:1,pending_vouchers:2,open_counts:1}});
-          async function prepare(page,role,noSession,opts={}){
+          async function mockChild(page,file,authenticated=true) {
+            await page.route('**/warehouse/'+file,route=>{
+              const login=authenticated?'hidden':'';
+              const main=authenticated?'':'hidden';
+              const body='<!doctype html><html><head><meta charset="utf-8"><style>.hidden{display:none!important}body{margin:0}</style></head><body>'+
+                '<div id="loginScreen" class="'+login+'">تسجيل دخول التطبيق الأصلي</div>'+
+                '<div id="mainApp" class="'+main+'"><header id="nativeHeader">رأس التطبيق الأصلي</header>'+
+                '<nav><button id="tab-pending">معلقة</button><button id="tab-completed">مكتملة</button><button id="tab-account">حسابي</button></nav>'+
+                '<main id="mainContent"><label>مسودة واجهة اختبار</label><input id="nativeDraft"><span id="nativePage">'+file+'</span></main></div>'+
+                (authenticated?'<script>setTimeout(function(){document.getElementById("mainApp").classList.remove("hidden")},20);</script>':'')+
+                '</body></html>';
+              route.fulfill({status:200,contentType:'text/html',body});
+            });
+          }
+          async function prepare(page,role,noSession=false,opts={}) {
             await page.route('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.supabase = {};'}));
             await page.route('**/core.js',r=>{
               const sessionUser=noSession?'null':'qaUser';
               const sessionError=noSession?'"NO_SESSION"':'null';
               const response=opts.deny?'{data:null,error:{message:"WAREHOUSE_PERMISSION_REQUIRED"}}':'{data:'+JSON.stringify(snapshot(role,opts))+',error:null}';
-              const body='var qaUser='+JSON.stringify(qaUser)+';window.RW_Auth={init:function(cb){cb('+sessionUser+','+sessionError+');},getUser:function(){return qaUser;},doLogin:function(e,p,cb){cb(qaUser,null);},doLogout:function(cb){cb();}};window.supabase={rpc:function(name){return Promise.resolve('+response+');}};';
+              const body='var qaUser='+JSON.stringify(qaUser)+';window.RW_Auth={init:function(cb){cb('+sessionUser+','+sessionError+');},getUser:function(){return qaUser;},doLogin:function(e,p,cb){cb(qaUser,null);},doLogout:function(cb){cb(true);}};window.supabase={rpc:function(){return Promise.resolve('+response+');}};';
               r.fulfill({status:200,contentType:'application/javascript',body});
             });
             await page.route('**/register-sw.js',r=>r.fulfill({status:200,contentType:'application/javascript',body:''}));
@@ -103,61 +134,106 @@ jobs:
             page.on('console',m=>{if(m.type()==='error')consoleErrors.push(m.text())});
             page.on('pageerror',e=>pageErrors.push(String(e.message||e)));
             await prepare(page,'مخزن شامل',true);
-            await page.goto(target+'?noSession=1',{waitUntil:'domcontentloaded'});
-            if(await page.locator('#loginScreen').isHidden())throw new Error('LOGIN_SCREEN_NOT_SHOWN');
+            for(const file of Object.values(files)) await mockChild(page,file,true);
+            await page.goto(target,{waitUntil:'domcontentloaded'});
+            if(await page.locator('#loginScreen').isHidden()) throw new Error('LOGIN_SCREEN_NOT_SHOWN');
             await page.locator('#loginEmail').fill('qa@rawaea.invalid');
             await page.locator('#loginPass').fill('synthetic-only');
             await page.locator('button[onclick*="doLogin"]').click();
             await page.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
-            if(await page.locator('#mainApp').isHidden())throw new Error('AUTHENTICATED_HUB_NOT_SHOWN');
-            if(await page.locator('.metric').count()<7)throw new Error('DASHBOARD_METRICS_MISSING');
-            await page.locator('[data-tab="operations"]').click();
-            for(const p of ['receiver.html','picker.html','loader.html','returns.html','unloader.html','counter.html']) if(await page.locator('a[href="'+p+'"]').count()!==1)throw new Error('UNIFIED_ROLE_ROUTE_MISSING:'+p);
-            await page.locator('[data-tab="vouchers"]').click();
-            if(await page.locator('a[href="vouchers.html"]').count()!==5)throw new Error('VOUCHER_CARDS_MISSING');
-            await page.locator('[data-tab="account"]').click();
-            if(!(await page.locator('body').innerText()).includes('مخزن الاختبار'))throw new Error('BRANCH_SCOPE_NOT_RENDERED');
+            if(await page.locator('#mainApp').isHidden()) throw new Error('AUTHENTICATED_HUB_NOT_SHOWN');
+            if(await page.locator('.metric').count()<7) throw new Error('DASHBOARD_METRICS_MISSING');
+            for(const key of Object.keys(files)) {
+              await page.locator('#warehouseTabs [data-tab="'+key+'"]').click();
+              await page.waitForFunction(k=>document.querySelector('#warehouse-frame-'+k)?.dataset.warehouseReady==='true',key);
+              const child=page.frame({url:new RegExp(files[key]+'$')});
+              if(!child) throw new Error('NATIVE_FRAME_MISSING:'+key);
+              if(await child.locator('#nativeHeader').isVisible()) throw new Error('NATIVE_HEADER_NOT_SUPPRESSED_AFTER_AUTH:'+key);
+              if(await child.locator('#tab-account').isVisible()) throw new Error('DUPLICATE_ACCOUNT_TAB_VISIBLE:'+key);
+              if(!await child.locator('#mainContent').isVisible()) throw new Error('NATIVE_OPERATION_CONTENT_MISSING:'+key);
+              if(await page.locator('#warehouse-frame-'+key).count()!==1) throw new Error('DUPLICATE_FRAME:'+key);
+              if(key==='receiving') await child.locator('#nativeDraft').fill('persist-this-native-session');
+            }
+            await page.locator('#warehouseTabs [data-tab="picking"]').click();
+            await page.locator('#warehouseTabs [data-tab="receiving"]').click();
+            const receiving=page.frame({url:/receiver\.html$/});
+            if(await receiving.locator('#nativeDraft').inputValue()!=='persist-this-native-session') throw new Error('WORKSPACE_STATE_NOT_PRESERVED');
+            if(await page.locator('.warehouse-operation-frame').count()!==7) throw new Error('EXPECTED_SEVEN_PERSISTENT_NATIVE_FRAMES');
+            await page.locator('#warehouseTabs [data-tab="today"]').click();
+            await page.locator('#warehouseDashboard [data-tab="receiving"]').click();
+            await page.waitForFunction(()=>document.querySelector('#warehouse-frame-receiving')?.dataset.warehouseReady==='true');
+            await page.locator('#warehouseTabs [data-tab="account"]').click();
+            if(!(await page.locator('body').innerText()).includes('مخزن الاختبار')) throw new Error('BRANCH_SCOPE_NOT_RENDERED');
             await page.locator('button[title="خروج"]').click();
-            if(await page.locator('#loginScreen').isHidden()||!await page.locator('#mainApp').isHidden())throw new Error('LOGOUT_DID_NOT_CLEAR_HUB_SESSION');
-            const restricted=await context.newPage(),restrictedErrors=[];
-            restricted.on('pageerror',e=>restrictedErrors.push(String(e.message||e)));
+            if(await page.locator('#loginScreen').isHidden()||!await page.locator('#mainApp').isHidden()) throw new Error('LOGOUT_DID_NOT_CLEAR_HUB_SESSION');
+            if(await page.locator('.warehouse-operation-frame').count()!==0) throw new Error('LOGOUT_LEFT_STALE_IFRAMES');
+            console.log('WAREHOUSE_WORKBENCH_LOGIN_E2E=PASS');
+            console.log('WAREHOUSE_WORKBENCH_ALL_SEVEN_NATIVE_TABS_E2E=PASS');
+            console.log('WAREHOUSE_WORKBENCH_SINGLE_FRAME_AND_STATE_PRESERVATION_E2E=PASS');
+            console.log('WAREHOUSE_WORKBENCH_DASHBOARD_ROUTING_E2E=PASS');
+            console.log('WAREHOUSE_WORKBENCH_LOGOUT_CLEANUP_E2E=PASS');
+
+            const restricted=await context.newPage();
             await prepare(restricted,'تحميل',false);
-            await restricted.goto(target+'?role=loader',{waitUntil:'domcontentloaded'});
+            await mockChild(restricted,'loader.html',true);
+            await restricted.goto(target,{waitUntil:'domcontentloaded'});
             await restricted.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
-            await restricted.locator('[data-tab="operations"]').click();
-            if(await restricted.locator('a[href="loader.html"]').count()!==1)throw new Error('LOADER_ROLE_NOT_ALLOWED');
-            for(const p of ['receiver.html','picker.html','returns.html','unloader.html','counter.html']) if(await restricted.locator('a[href="'+p+'"]').count()!==0)throw new Error('UNAUTHORIZED_OPERATION_ENABLED:'+p);
-            await restricted.locator('[data-tab="vouchers"]').click();
-            if(await restricted.locator('a[href="vouchers.html"]').count()!==0)throw new Error('UNAUTHORIZED_VOUCHERS_ENABLED');
+            await restricted.locator('#warehouseTabs [data-tab="receiving"]').click();
+            if(!await restricted.locator('#warehouseWorkspaceAccessMessage').isVisible()) throw new Error('ROLE_SCOPE_DENIAL_NOT_SHOWN');
+            if(await restricted.locator('#warehouse-frame-receiving').count()!==0) throw new Error('UNAUTHORIZED_FRAME_CREATED');
+            await restricted.locator('#warehouseTabs [data-tab="loading"]').click();
+            await restricted.waitForFunction(()=>document.querySelector('#warehouse-frame-loading')?.dataset.warehouseReady==='true');
+            await restricted.locator('#warehouseTabs [data-tab="vouchers"]').click();
+            if(await restricted.locator('#warehouseWorkspaceAccessMessage').isHidden()) throw new Error('VOUCHER_ROLE_DENIAL_NOT_SHOWN');
+            if(await restricted.locator('#warehouse-frame-vouchers').count()!==0) throw new Error('UNAUTHORIZED_VOUCHER_FRAME_CREATED');
+            console.log('WAREHOUSE_WORKBENCH_ROLE_SCOPE_E2E=PASS');
+
             const noMain=await context.newPage();
             await prepare(noMain,'مخزن شامل',false,{mainAccess:false});
+            await mockChild(noMain,'counter.html',true);
+            await mockChild(noMain,'vouchers.html',true);
             await noMain.goto(target,{waitUntil:'domcontentloaded'});
             await noMain.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
-            await noMain.locator('[data-tab="operations"]').click();
-            for(const p of ['receiver.html','picker.html','loader.html','returns.html','unloader.html']) if(await noMain.locator('a[href="'+p+'"]').count()!==0)throw new Error('MAIN_BRANCH_REQUIRED:'+p);
-            if(await noMain.locator('a[href="counter.html"]').count()!==1)throw new Error('BRANCH_SCOPED_COUNTER_MISSING');
-            await noMain.locator('[data-tab="vouchers"]').click();
-            if(await noMain.locator('a[href="vouchers.html"]').count()!==5)throw new Error('BRANCH_SCOPED_VOUCHERS_MISSING');
+            await noMain.locator('#warehouseTabs [data-tab="receiving"]').click();
+            if(await noMain.locator('#warehouse-frame-receiving').count()!==0) throw new Error('MAIN_BRANCH_SCOPE_BYPASSED');
+            await noMain.locator('#warehouseTabs [data-tab="counting"]').click();
+            await noMain.waitForFunction(()=>document.querySelector('#warehouse-frame-counting')?.dataset.warehouseReady==='true');
+            await noMain.locator('#warehouseTabs [data-tab="vouchers"]').click();
+            await noMain.waitForFunction(()=>document.querySelector('#warehouse-frame-vouchers')?.dataset.warehouseReady==='true');
+            console.log('WAREHOUSE_WORKBENCH_MAIN_BRANCH_VS_BRANCH_SCOPE_E2E=PASS');
+
             const denied=await context.newPage();
             await prepare(denied,'تحميل',false,{deny:true});
             await denied.goto(target,{waitUntil:'domcontentloaded'});
-            await denied.waitForFunction(()=>document.querySelector('.tabs')?.classList.contains('hidden'));
-            if(await denied.locator('a[href]').count()!==0)throw new Error('UNAUTHORIZED_USER_HAS_OPERATION_LINKS');
-            if(consoleErrors.length||pageErrors.length||restrictedErrors.length)throw new Error('BROWSER_ERRORS:'+JSON.stringify({consoleErrors,pageErrors,restrictedErrors}));
-            console.log('WAREHOUSE_HUB_LOGIN_E2E=PASS');
-            console.log('WAREHOUSE_HUB_UNIFIED_ROLE_E2E=PASS');
-            console.log('WAREHOUSE_HUB_ROLE_RESTRICTION_E2E=PASS');
-            console.log('WAREHOUSE_HUB_BRANCH_SCOPE_E2E=PASS');
-            console.log('WAREHOUSE_HUB_MAIN_BRANCH_GUARD_E2E=PASS');
-            console.log('WAREHOUSE_HUB_UNAUTHORIZED_ACCESS_E2E=PASS');
-            console.log('WAREHOUSE_HUB_LOGOUT_E2E=PASS');
+            await denied.waitForFunction(()=>document.querySelector('#warehouseTabs')?.classList.contains('hidden'));
+            if(await denied.locator('iframe').count()!==0) throw new Error('UNAUTHORIZED_SNAPSHOT_CREATED_FRAME');
+            console.log('WAREHOUSE_WORKBENCH_UNAUTHORIZED_SNAPSHOT_E2E=PASS');
+
+            const noSession=await context.newPage(),noSessionErrors=[];
+            noSession.on('pageerror',e=>noSessionErrors.push(String(e.message||e)));
+            await prepare(noSession,'مخزن شامل',true);
+            await mockChild(noSession,'picker.html',false);
+            await noSession.goto(target,{waitUntil:'domcontentloaded'});
+            await noSession.locator('#loginEmail').fill('qa@rawaea.invalid');
+            await noSession.locator('#loginPass').fill('synthetic-only');
+            await noSession.locator('button[onclick*="doLogin"]').click();
+            await noSession.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse');
+            await noSession.locator('#warehouseTabs [data-tab="picking"]').click();
+            await noSession.waitForFunction(()=>document.querySelector('#warehouse-frame-picking')?.dataset.warehouseReady==='false');
+            await noSession.waitForFunction(()=>document.querySelector('#warehouse-frame-status-picking')?.innerText.includes('تعذر مشاركة جلسة الدخول'),null,{timeout:15000});
+            if(await noSession.locator('#warehouse-frame-picking').evaluate(el=>getComputedStyle(el).visibility)!=='visible') throw new Error('NATIVE_LOGIN_WAS_HIDDEN_ON_SESSION_FAILURE');
+            if(!await noSession.frame({url:/picker\.html$/}).locator('#loginScreen').isVisible()) throw new Error('NATIVE_LOGIN_SCREEN_NOT_PRESERVED');
+            if(!await noSession.locator('#warehouse-frame-status-picking .warehouse-retry').isVisible()) throw new Error('NATIVE_FRAME_RETRY_MISSING');
+            console.log('WAREHOUSE_WORKBENCH_AUTH_FAIL_CLOSED_E2E=PASS');
+
+            if(consoleErrors.length||pageErrors.length||noSessionErrors.length) throw new Error('BROWSER_ERRORS:'+JSON.stringify({consoleErrors,pageErrors,noSessionErrors}));
             await browser.close();
-          })().catch(e=>{console.error('WAREHOUSE_HUB_E2E_FAILURE='+e.message);process.exit(1)});
+          })().catch(e=>{console.error('WAREHOUSE_WORKBENCH_E2E_FAILURE='+e.message);process.exit(1)});
           NODE
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rawaea-warehouse-hub-e2e
+          name: rawaea-unified-warehouse-workbench-e2e
           path: /tmp/rawaea-warehouse-http.log
           if-no-files-found: ignore
