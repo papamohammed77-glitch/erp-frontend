@@ -337,8 +337,17 @@ jobs:
             if(!supplierContract.includes('عقد')&&!supplierContract.includes('المورد'))throw new Error('SUPPLIER_RETURN_CONTRACT_UI_NOT_PRESENT');
             console.log('WAREHOUSE_FIVE_MANUAL_VOUCHER_ACTIONS=PASS');
             console.log('WAREHOUSE_SUPPLIER_RETURN_SPECIALIZED_CONTRACT=PASS');
-            await page.evaluate(()=>window.RW_NATIVE_APPS.vouchers.choose('BranchReceipt'));
-            await page.waitForFunction(()=>window.RW_NATIVE_APPS?.vouchers?.type==='BranchReceipt');
+            const branchChoice=await page.evaluate(()=>{
+              const app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS.vouchers;
+              const alias=window.RW_NATIVE_APP_vouchers;
+              if(!app||typeof app.choose!=='function')return {available:false,alias:!!alias};
+              const before=app.type;
+              app.choose('BranchReceipt');
+              return {available:true,sameAlias:app===alias,before:before,after:app.type,menu:!!document.querySelector('#rw-native-root-vouchers #typeMenu')};
+            });
+            console.log('WAREHOUSE_BRANCH_RECEIPT_CHOICE_STATE='+JSON.stringify(branchChoice));
+            if(!branchChoice.available||branchChoice.after!=='BranchReceipt')throw new Error('BRANCH_RECEIPT_TYPE_CHOICE_FAILED:'+JSON.stringify(branchChoice));
+            await page.waitForFunction(()=>document.querySelector('#rw-native-root-vouchers #wsToSearch'),null,{timeout:12000});
             const fixedDestination=await page.locator('#rw-native-root-vouchers #wsToSearch').inputValue();
             if(!fixedDestination.includes('BR-01'))throw new Error('BRANCH_RECEIPT_DESTINATION_NOT_FIXED:'+fixedDestination);
             await page.locator('#rw-native-root-vouchers #wsFromSearch').fill('BR-02');
