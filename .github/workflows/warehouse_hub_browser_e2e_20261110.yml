@@ -232,7 +232,12 @@ jobs:
               "var __qaCountDetails=[{id:'qa-line',branch_id:'00000000-0000-4000-8000-000000000001',branch_code:'BR-01',branch_name:'فرع الاختبار',item_id:'qa-item',item_code:'QA-001',item_name:'صنف اختبار',unit:'حبة',system_qty:4,counted_qty:null,variance_qty:0,adjusted:false}];var __qaCountCalls=[];var __qaVoucherCalls=[];var RW_API={call:function(name,payload,cb){if(name==='create-stock-voucher'){__qaVoucherCalls.push({name:name,payload:payload});if(cb)cb({success:true,voucher_code:'QA-BR-RECEIPT-01',request_origin:'WarehouseBranchReceipt'},null);return;}if(name==='save-inventory-count'){var op=payload.operation;__qaCountCalls.push(op);if(op==='COUNT_CREATE'){if(cb)cb({success:true,count_id:'qa-count',status:'InProgress'});return;}if(op==='COUNT_POPULATE'){if(cb)cb({success:true,added_lines:1});return;}if(op==='COUNT_GET'){if(cb)cb({success:true,count:{id:'qa-count',type:'branch',branch_id:'00000000-0000-4000-8000-000000000001',reference:'جرد اختبار',count_date:'2026-11-10',status:'InProgress'},details:__qaCountDetails},null);return;}if(op==='COUNT_UPSERT_LINE'){__qaCountDetails[0].counted_qty=payload.payload.counted_qty;__qaCountDetails[0].variance_qty=payload.payload.counted_qty-4;if(cb)cb({success:true},null);return;}if(cb)cb({success:true},null);return;}if(cb)cb({success:true,rows:[]},null);}};",
               "var RW_Realtime={start:function(){return 'qa-channel';},stop:function(){},subscribe:function(){return 'qa-channel';}};",
               "var RW_ImageCache={loadAll:function(){return Promise.resolve();},clear:function(){},get:function(){return null;},set:function(){}};",
-              "var RW_SW={register:function(){return Promise.resolve();}};"
+              "var RW_SW={register:function(){return Promise.resolve();}};",
+              "__qaRows=function(table){if(table==='purchase_orders')return [{id:'qa-po',company_id:'qa-company',po_code:'QA-PO-001',po_date:'2026-11-10',supplier_name:'مورد PO اختباري',status:'Approved',total_amount:700,branch_id:'00000000-0000-4000-8000-000000000001',supplier_id:'qa-supplier'}];if(table==='purchase_order_details')return [{po_id:'qa-po',item_id:'qa-item-po',item_code:'QA-001',item_name:'صنف أمر الشراء',qty_ordered:10,qty_received:0,unit:'كرتونة'}];if(table==='items')return [{id:'qa-item-po',company_id:'qa-company',item_code:'QA-001',barcode:'622000001',name:'صنف أمر الشراء',description:'وصف صنف اختبار PO',image_url:'https://qa.invalid/po-item.jpg',unit:'كرتونة'},{id:'qa-item-qmp',company_id:'qa-company',item_code:'QA-002',barcode:'622000002',name:'صنف السوق السريع',description:'وصف صنف اختبار السوق',image_url:'https://qa.invalid/qmp-item.jpg',unit:'كرتونة'}];if(table==='purchase_invoices')return [{id:'qa-invoice',invoice_code:'QA-QMP-001',supplier_invoice_no:'SUP-QA-001',branch_id:'00000000-0000-4000-8000-000000000001',supplier_id:'qa-supplier',supplier_name:'مورد سوق سريع اختباري',total_amount:300}];if(table==='receiving')return [{id:'qa-history-po',operation_id:'QA-HISTORY-PO',date:'2026-11-10',po_number:'QA-PO-001',responsible:'QA Receiver',status:'مكتمل',company_id:'qa-company',created_at:'2026-11-10T10:00:00Z'},{id:'qa-history-qmp',operation_id:'QA-HISTORY-QMP',date:'2026-11-10',po_number:'QA-QMP-001',purchase_invoice_id:'qa-invoice',responsible:'QA Receiver',status:'مكتمل',company_id:'qa-company',created_at:'2026-11-10T10:01:00Z'}];if(table==='receiving_details')return [{operation_id:'QA-HISTORY-PO',item_code:'QA-001',item_name:'صنف أمر الشراء',unit:'كرتونة',qty_expected:5,qty_received:4,difference:-1,reason:'نقص اختبار'},{operation_id:'QA-HISTORY-QMP',item_code:'QA-002',item_name:'صنف السوق السريع',unit:'كرتونة',qty_expected:3,qty_received:0,difference:-3,reason:'رفض اختبار'}];return [];};",
+              "var __qaReceiverCalls=[];var __qaErrors=[];",
+              "var __qaOriginalRpc=supabase.rpc;supabase.rpc=function(name,args){if(name==='get_quick_market_receiving_queue_atomic')return Promise.resolve({data:{success:true,count:1,invoices:[{id:'qa-invoice',doc_type:'QUICK_MARKET',po_code:'QA-QMP-001',invoice_code:'QA-QMP-001',supplier_invoice_no:'SUP-QA-001',po_date:'2026-11-10',supplier_name:'مورد سوق سريع اختباري',status:'Draft',receipt_status:'NOT_RECEIVED',branch_id:'00000000-0000-4000-8000-000000000001',items:[{purchase_invoice_detail_id:'qa-qmp-line',item_id:'qa-item-qmp',item_code:'QA-002',item_name:'صنف السوق السريع',unit:'كرتونة',qty_ordered:6,qty_received:0,handover_available:6,remaining_to_receive:6}]}]},error:null});return __qaOriginalRpc(name,args);};",
+              "var __qaOriginalCall=RW_API.call;RW_API.call=function(name,payload,cb){if(name==='receive-purchase'){__qaReceiverCalls.push({name:name,payload:JSON.parse(JSON.stringify(payload))});var accepted=(payload.itemsReceived||[]).reduce(function(sum,item){return sum+(Number(item.receivedQty)||0);},0);if(cb)cb({success:true,total_received_qty:accepted,operation_id:payload.operation_id},null);return;}__qaOriginalCall(name,payload,cb);};",
+              "RW_UI.showError=function(message){__qaErrors.push(String(message||''));};"
             ].join('\n');
           }
           const browser=await chromium.launch({headless:true});
@@ -290,6 +295,64 @@ jobs:
                 return {exists:!!root,ready:root&&root.dataset.rwReady,childVisible:!!(root&&root.querySelector('#mainApp')&&!root.querySelector('#mainApp').classList.contains('hidden')),accountTab:!!(root&&root.querySelector('#tab-account')),moduleKey:root&&root.dataset.rwModule};
               },key);
               if(!state.exists||state.ready!=='true'||!state.childVisible||state.accountTab||state.moduleKey!==key)throw new Error('NATIVE_WORKSPACE_NOT_READY:'+key+':'+JSON.stringify(state));
+              if(key==='receiving'){
+                const receiverRoot='#rw-native-root-receiver';
+                const receiverMain=receiverRoot+' #mainContent';
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #receiverDocumentCards')?.querySelectorAll('.doc-card').length===2);
+                const initialQueue=await page.locator(receiverMain).innerText();
+                if(!initialQueue.includes('QA-PO-001')||!initialQueue.includes('QA-QMP-001'))throw new Error('RECEIVER_PO_AND_QMP_QUEUE_MISSING:'+initialQueue.slice(0,700));
+                await page.locator(receiverMain+' [data-action="source-filter"][data-filter="PURCHASE_ORDER"]').click();
+                if(await page.locator(receiverMain+' #receiverDocumentCards .doc-card').count()!==1||!(await page.locator(receiverMain).innerText()).includes('QA-PO-001'))throw new Error('RECEIVER_PO_SOURCE_FILTER_FAILED');
+                await page.locator(receiverMain+' [data-action="source-filter"][data-filter="QUICK_MARKET"]').click();
+                if(await page.locator(receiverMain+' #receiverDocumentCards .doc-card').count()!==1||!(await page.locator(receiverMain).innerText()).includes('QA-QMP-001'))throw new Error('RECEIVER_QUICK_MARKET_SOURCE_FILTER_FAILED');
+                await page.locator(receiverMain+' [data-action="source-filter"][data-filter="ALL"]').click();
+                await page.locator(receiverMain+' [data-action="open-doc"][data-index="0"]').click();
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver [data-role="sent-qty"]'));
+                if(!(await page.locator(receiverMain).innerText()).includes('مساحة عمل الاستلام'))throw new Error('RECEIVER_PO_WORKSPACE_NOT_OPENED');
+                const sent=page.locator(receiverMain+' [data-role="sent-qty"]').first();
+                const accepted=page.locator(receiverMain+' [data-role="received-qty"]').first();
+                const reason=page.locator(receiverMain+' [data-role="reason"]').first();
+                await sent.fill('5');
+                await accepted.fill('6');
+                await page.locator(receiverMain+' [data-action="submit-receipt"]').click();
+                if(!(await page.evaluate(()=>window.__qaErrors||[])).some(x=>x.includes('الكمية المرسلة والمقبولة')))throw new Error('RECEIVER_ACCEPTED_GREATER_THAN_SENT_NOT_BLOCKED');
+                await accepted.fill('4');
+                await reason.fill('');
+                const callsBeforeMissingReason=await page.evaluate(()=>window.__qaReceiverCalls.length);
+                await page.locator(receiverMain+' [data-action="submit-receipt"]').click();
+                if(!(await page.evaluate(()=>window.__qaErrors||[])).some(x=>x.includes('سبب اختلاف الكمية')))throw new Error('RECEIVER_MISSING_DISCREPANCY_REASON_NOT_BLOCKED');
+                if(await page.evaluate(()=>window.__qaReceiverCalls.length)!==callsBeforeMissingReason)throw new Error('RECEIVER_INVALID_PO_SENT_TO_API');
+                await reason.fill('نقص كمية في الشحنة الاختبارية');
+                await page.locator(receiverMain+' [data-action="submit-receipt"]').click();
+                await page.waitForFunction(()=>window.__qaReceiverCalls?.length===1);
+                const poCall=await page.evaluate(()=>window.__qaReceiverCalls[0]);
+                if(poCall.payload.po_code!=='QA-PO-001'||poCall.payload.invoice_id||!poCall.payload.operation_id||!/^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(poCall.payload.operation_id))throw new Error('RECEIVER_PO_REQUEST_IDENTITY_OR_SOURCE_INVALID:'+JSON.stringify(poCall));
+                if(poCall.payload.itemsReceived?.length!==1||poCall.payload.itemsReceived[0].sentQty!==5||poCall.payload.itemsReceived[0].receivedQty!==4||poCall.payload.itemsReceived[0].reason!=='نقص كمية في الشحنة الاختبارية')throw new Error('RECEIVER_PO_SENT_ACCEPTED_CONTRACT_INVALID:'+JSON.stringify(poCall.payload));
+                console.log('WAREHOUSE_RECEIVER_PO_PHYSICAL_RECEIPT_GUARDS=PASS');
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #receiverDocumentCards')?.querySelectorAll('.doc-card').length===2);
+                await page.locator(receiverMain+' [data-action="source-filter"][data-filter="QUICK_MARKET"]').click();
+                await page.locator(receiverMain+' [data-action="open-doc"]').click();
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver [data-role="sent-qty"]'));
+                await page.locator(receiverMain+' [data-role="sent-qty"]').first().fill('3');
+                await page.locator(receiverMain+' [data-role="received-qty"]').first().fill('0');
+                await page.locator(receiverMain+' [data-role="reason"]').first().fill('رفض الشحنة بالكامل للاختبار');
+                await page.locator(receiverMain+' [data-action="submit-receipt"]').click();
+                await page.waitForFunction(()=>window.__qaReceiverCalls?.length===2);
+                const qmpCall=await page.evaluate(()=>window.__qaReceiverCalls[1]);
+                if(qmpCall.payload.invoice_id!=='qa-invoice'||qmpCall.payload.po_code||qmpCall.payload.itemsReceived?.[0]?.sentQty!==3||qmpCall.payload.itemsReceived?.[0]?.receivedQty!==0||!qmpCall.payload.itemsReceived?.[0]?.reason)throw new Error('RECEIVER_QMP_FULL_REJECTION_CONTRACT_INVALID:'+JSON.stringify(qmpCall.payload));
+                if(qmpCall.payload.operation_id===poCall.payload.operation_id)throw new Error('RECEIVER_PHYSICAL_DELIVERIES_REUSED_OPERATION_ID');
+                console.log('WAREHOUSE_RECEIVER_QUICK_MARKET_FULL_REJECTION_NO_STOCK_REQUEST=PASS');
+                await page.waitForFunction(()=>window.RW_NATIVE_APPS?.receiver);
+                await page.evaluate(()=>window.RW_NATIVE_APPS.receiver.switchTab('completed'));
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #receiverHistoryCards')?.querySelectorAll('.card').length===2);
+                const completedText=await page.locator(receiverMain).innerText();
+                if(!completedText.includes('QA-PO-001')||!completedText.includes('QA-QMP-001')||!completedText.includes('شحنة مرفوضة'))throw new Error('RECEIVER_COMPLETED_PO_QMP_HISTORY_MISSING:'+completedText.slice(0,700));
+                await page.locator(receiverMain+' [data-action="open-history"][data-index="1"]').click();
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-receiver #mainContent')?.innerText.includes('رقم العملية: QA-HISTORY-QMP'));
+                const historyDetail=await page.locator(receiverMain).innerText();
+                if(!historyDetail.includes('صنف السوق السريع')||!historyDetail.includes('رفض اختبار')||!historyDetail.includes('مقبول'))throw new Error('RECEIVER_COMPLETED_OPERATION_DETAIL_INCOMPLETE:'+historyDetail.slice(0,700));
+                console.log('WAREHOUSE_RECEIVER_COMPLETED_AUDIT_HISTORY=PASS');
+              }
               if(key==='picking'){
                 const pending=page.locator('#rw-native-root-picker #mainContent');
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-picker #mainContent')?.innerText.includes('مهام متاحة للتحضير'));
