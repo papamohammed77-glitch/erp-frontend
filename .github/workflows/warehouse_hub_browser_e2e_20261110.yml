@@ -440,6 +440,15 @@ jobs:
                 const returnText=await page.locator('#rw-native-root-returns #mainContent').innerText();
                 if(returnText.includes('فشل تحميل البيانات'))throw new Error('RETURNS_PENDING_DATA_RENDER_FAILED:'+returnText.slice(0,400));
                 console.log('WAREHOUSE_RETURNS_PENDING_DATA_RENDER=PASS');
+                const reopenGuard=await page.evaluate(()=>{
+                  const app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS.returns;
+                  if(!app)return {error:'RETURNS_APP_NOT_REGISTERED'};
+                  app.renderCompletedList([{runsheet_code:'QA-RETURNS-COMPLETED-LOCK',run_date:'2026-11-11',driver_id:null}]);
+                  const button=document.querySelector('#rw-native-root-returns #mainContent button[aria-disabled="true"]');
+                  return {disabled:!!(button&&button.disabled),text:button?button.textContent.trim():'',onclick:button?button.getAttribute('onclick'):null};
+                });
+                if(!reopenGuard.disabled||!reopenGuard.text.includes('إعادة الفتح متوقفة')||reopenGuard.onclick)throw new Error('RETURNS_UNSAFE_REOPEN_ACTION_STILL_AVAILABLE:'+JSON.stringify(reopenGuard));
+                console.log('WAREHOUSE_RETURNS_COMPLETED_REOPEN_FAIL_CLOSED_UI=PASS');
               }
               if(key==='counting'){
                 e2eStage='counter tabs and scope checks';
