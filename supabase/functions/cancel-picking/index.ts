@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { requireWarehouseRole, assertWarehouseMainBranch } from "../_shared/warehouse-auth.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -33,6 +34,8 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) throw new Error("غير مصرح")
+    const warehouseActor = await requireWarehouseRole(supabase, authHeader, "تحضير");
+    await assertWarehouseMainBranch(supabase, warehouseActor);
 
     const token = authHeader.replace("Bearer ", "")
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
@@ -81,7 +84,7 @@ serve(async (req) => {
       rolePermissions.includes("warehouse") ||
       verifiedOwner
     if (!hasWarehousePermission) throw new Error("ليس لديك صلاحية استخدام عمليات المخازن")
-    if (!verifiedOwner && pubUser.active_warehouse_role !== "تحضير") {
+    if (!verifiedOwner && pubUser.active_warehouse_role !== "تحضير" && pubUser.active_warehouse_role !== "مخزن شامل") {
       throw new Error("الدور المخزني النشط لا يسمح بعملية التحضير")
     }
 
