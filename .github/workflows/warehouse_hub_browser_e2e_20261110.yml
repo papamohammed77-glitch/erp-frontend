@@ -60,6 +60,7 @@ jobs:
           const fullRoleReceiverMigration=fs.readFileSync('supabase/migrations/20261110213226_standard_transfer_unified_warehouse_receiver_fallback.sql','utf8');
           const returnsIntegrityMigration=fs.readFileSync('supabase/migrations/20261110233152_returns_discrepancy_integrity_gate_20261111.sql','utf8');
           const returnsStandalone=fs.readFileSync('companies/company-1/warehouse/returns.html','utf8');
+          const loaderStandalone=fs.readFileSync('companies/company-1/warehouse/loader.html','utf8');
           const pickerStandalone=fs.readFileSync('companies/company-1/warehouse/picker.html','utf8');
           const parent=fs.readFileSync('companies/company-1/main.html','utf8');
           const serviceWorker=fs.readFileSync('companies/company-1/sw.js','utf8');
@@ -126,7 +127,26 @@ jobs:
           new Function(pickerInline[0][2]);
           for(const marker of ['_getPickingStockCheck: function','_showPickingStockWarning: function','refreshVisibleImages: function','data-rw-picker-image-code','stock_branches'])
             if(!pickerInline[0][2].includes(marker)||!bundles.picker.script.includes(marker)) throw new Error('PICKER_IMAGE_STOCK_GUARD_MISSING:'+marker);
-          console.log('PICKER_STANDALONE_AND_UNIFIED_IMAGE_STOCK_GUARDS=PASS');
+          const inlineScripts=(source)=>[...source.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||'')).map(x=>x[2]).filter(x=>x.trim());
+          const loaderInline=inlineScripts(loaderStandalone),returnsInline=inlineScripts(returnsStandalone);
+          if(loaderInline.length!==1||returnsInline.length!==1) throw new Error('LOADER_RETURNS_STANDALONE_INLINE_SCRIPT_COUNT');
+          const methodSurface=(source)=>[...new Set([...source.matchAll(/^\s{0,8}([A-Za-z_$][\w$]*)\s*:\s*function\s*\(/gm)].map(x=>x[1]))].sort().join('|');
+          for(const [key,standalone] of [['loader',loaderInline[0]],['returns',returnsInline[0]]){
+            const originalMethods=methodSurface(standalone),embeddedMethods=methodSurface(bundles[key].script);
+            if(originalMethods!==embeddedMethods) throw new Error('NATIVE_MODULE_METHOD_SURFACE_PARITY_MISMATCH:'+key+':'+JSON.stringify({originalMethods,embeddedMethods}));
+          }
+          for(const marker of ['_loaderImageHTML: function','_bindLoaderImageFallbacks: function','completeLoading: function','cancelLoading: function','reopenLoading: function'])
+            if(!loaderInline[0].includes(marker)||!bundles.loader.script.includes(marker)) throw new Error('LOADER_IMAGE_OR_WORKFLOW_PARITY_MISSING:'+marker);
+          for(const marker of ['function returnItemImageHTML','completeReturn: function','cancelReturn: function','reportDiscrepancyGeneral: function','renderActiveSession: function'])
+            if(!returnsInline[0].includes(marker)||!(marker==='function returnItemImageHTML'?bundles.returns.script.includes('function rw_returns_returnItemImageHTML'):bundles.returns.script.includes(marker)))
+              throw new Error('RETURNS_IMAGE_OR_WORKFLOW_PARITY_MISSING:'+marker);
+          const globalKeyboardMarkers=["window.addEventListener('keydown'","window.addEventListener(\"keydown\"","document.addEventListener('keydown'","document.addEventListener(\"keydown\"","window.onkeydown","document.onkeydown","window.addEventListener('keyup'","document.addEventListener('keyup'"];
+          for(const key of ['loader','returns']) if(globalKeyboardMarkers.some(marker=>bundles[key].script.includes(marker)))
+            throw new Error('NATIVE_MODULE_GLOBAL_KEYBOARD_LISTENER_LEAK:'+key);
+          console.log('WAREHOUSE_LOADER_RETURNS_STANDALONE_METHOD_SURFACE_PARITY=PASS');
+          console.log('WAREHOUSE_LOADER_RETURNS_IMAGE_RENDERERS_PRESERVED=PASS');
+          console.log('WAREHOUSE_LOADER_RETURNS_NO_GLOBAL_KEYBOARD_LISTENERS=PASS');
+           console.log('PICKER_STANDALONE_AND_UNIFIED_IMAGE_STOCK_GUARDS=PASS');
           if(!bundles.picker.script.includes('RW_SHARED_SUPABASE')) throw new Error('PICKER_MUST_USE_SHARED_CLIENT');
           for(const marker of ['start-picking','complete-picking','reopen-picking','cancel-picking'])
             if(!bundles.picker.script.includes(marker)) throw new Error('PICKER_WORKFLOW_MISSING:'+marker);
@@ -231,6 +251,13 @@ jobs:
           console.log('WAREHOUSE_FOUR_TAB_CONTRACT=PASS');
           console.log('WAREHOUSE_NO_IFRAME_OR_CHILD_NAVIGATION=PASS');
           console.log('WAREHOUSE_SEVEN_NATIVE_OPERATION_BUNDLES=PASS');
+          const returnsRootSelector=".rw-native-module[data-rw-module='returns']";
+          const returnsRootRules=html.split(returnsRootSelector).slice(1).map(rule=>rule.slice(0,rule.indexOf('}')));
+          if(returnsRootRules.some(rule=>rule.includes('position:fixed')||rule.includes('position: fixed')))
+            throw new Error('RETURNS_NATIVE_ROOT_MUST_NOT_BE_FIXED');
+          if(!html.includes('.rw-native-module{min-width:0;width:100%;height:calc(100dvh - 285px);min-height:520px;overflow:auto;position:relative;'))
+            throw new Error('NATIVE_WORKSPACE_BOUNDED_SCROLL_CONTAINER_MISSING');
+          console.log('WAREHOUSE_RETURNS_ROOT_LAYOUT_SCOPED_TO_WORKSPACE=PASS');
           console.log('WAREHOUSE_NATIVE_MODULE_CSS_SCOPE=PASS');
           console.log('WAREHOUSE_ALL_SEVEN_MODULES_SHARED_AUTH_NO_DUPLICATE_CLIENT=PASS');
           console.log('WAREHOUSE_SHARED_CORE_SESSION=PASS');
@@ -559,29 +586,26 @@ jobs:
                   window.RW_NATIVE_APPS.picker.openRunsheet('QA-RS-IMG');
                 });
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-picker #mainContent')?.innerText.includes('QA-RS-IMG'));
+                await page.waitForFunction(()=>window.RW_NATIVE_APPS?.picker?._img('QA-001').includes('https://qa.invalid/po-item.jpg')&&window.RW_NATIVE_APPS.picker._img('QA-002').includes('https://qa.invalid/qmp-item.jpg'),null,{timeout:5000});
                 const imagePlaceholders=await page.evaluate(()=>{
                   const root=document.querySelector('#rw-native-root-picker #mainContent');
                   return {count:root.querySelectorAll('[data-rw-picker-image-code]').length,images:root.querySelectorAll('[data-rw-picker-image-code] img').length};
                 });
-                if(imagePlaceholders.count!==2||imagePlaceholders.images!==0)throw new Error('PICKER_RUNSHEET_IMAGE_PLACEHOLDERS_NOT_RENDERED:'+JSON.stringify(imagePlaceholders));
+                if(imagePlaceholders.count!==2||imagePlaceholders.images>2)throw new Error('PICKER_RUNSHEET_IMAGE_NODES_INVALID:'+JSON.stringify(imagePlaceholders));
                 const imageRefresh=await page.evaluate(()=>{
-                  const app=window.RW_NATIVE_APPS.picker,original=app._img;
-                  app._img=function(code,mode){
-                    var url=code==='QA-001'?'https://qa.invalid/po-item.jpg':'https://qa.invalid/qmp-item.jpg';
-                    return '<span data-rw-picker-image-code="'+encodeURIComponent(String(code||''))+'" data-rw-picker-image-mode="'+(mode||'tile')+'" class="relative inline-flex w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0">'+
-                      '<img src="'+url+'" class="absolute inset-0 w-full h-full rounded-2xl object-cover border-2 border-white shadow-sm" onerror="this.onerror=null;this.style.display=&quot;none&quot;;if(this.nextElementSibling)this.nextElementSibling.classList.remove(&quot;hidden&quot;)">'+
-                      '<span class="absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400 hidden"><i class="fa-solid fa-box"></i></span></span>';
-                  };
-                  try{app.refreshVisibleImages();return {count:document.querySelectorAll('#rw-native-root-picker #mainContent [data-rw-picker-image-code] img').length};}
-                  finally{app._img=original;}
+                  const app=window.RW_NATIVE_APPS.picker;app.refreshVisibleImages();
+                  const root=document.querySelector('#rw-native-root-picker #mainContent');
+                  return {count:root.querySelectorAll('[data-rw-picker-image-code] img').length,
+                    good:root.querySelector('[data-rw-picker-image-code="QA-001"] img')?.getAttribute('src'),
+                    bad:root.querySelector('[data-rw-picker-image-code="QA-002"] img')?.getAttribute('src')};
                 });
-                if(imageRefresh.count!==2)throw new Error('PICKER_REFRESH_VISIBLE_IMAGES_DID_NOT_REPLACE_PLACEHOLDERS:'+JSON.stringify(imageRefresh));
+                if(imageRefresh.count!==2||imageRefresh.good!=='https://qa.invalid/po-item.jpg'||imageRefresh.bad!=='https://qa.invalid/qmp-item.jpg')throw new Error('PICKER_REAL_IMAGE_CACHE_REFRESH_FAILED:'+JSON.stringify(imageRefresh));
                 await page.waitForFunction(()=>{
                   const root=document.querySelector('#rw-native-root-picker #mainContent');
                   const good=root?.querySelector('[data-rw-picker-image-code="QA-001"] img'),bad=root?.querySelector('[data-rw-picker-image-code="QA-002"] img');
-                  return !!(good&&good.getAttribute('src')==='https://qa.invalid/po-item.jpg'&&good.complete&&good.naturalWidth>0&&bad&&bad.style.display==='none'&&bad.nextElementSibling&&!bad.nextElementSibling.classList.contains('hidden'));
+                  return !!(good&&good.complete&&good.naturalWidth>0&&bad&&bad.complete&&bad.naturalWidth===0&&bad.style.display==='none'&&bad.nextElementSibling&&!bad.nextElementSibling.classList.contains('hidden'));
                 },null,{timeout:5000});
-                console.log('WAREHOUSE_PICKER_RUNSHEET_IMAGE_REFRESH_AND_BROKEN_IMAGE_FALLBACK=PASS');
+                console.log('WAREHOUSE_PICKER_REAL_IMAGE_CACHE_REFRESH_AND_BROKEN_IMAGE_FALLBACK=PASS');
                 const stockGuard=await page.evaluate(async()=>{
                   const app=window.RW_NATIVE_APPS.picker,originalRows=window.__qaRows,oldFire=window.Swal.fire,oldFetch=window.fetch,alerts=[];let edgeCalls=0;
                   window.__qaRows=function(table){
@@ -623,7 +647,30 @@ jobs:
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-loader #mainContent')?.innerText.includes('مهام متاحة للتحميل'));
                 const loadingText=await page.locator('#rw-native-root-loader #mainContent').innerText();
                 if(loadingText.includes('فشل تحميل البيانات'))throw new Error('LOADER_PENDING_DATA_RENDER_FAILED:'+loadingText.slice(0,400));
-                console.log('WAREHOUSE_LOADER_PENDING_DATA_RENDER=PASS');
+                const loaderImageState=await page.evaluate(()=>{
+                  const app=window.RW_NATIVE_APPS.loader;
+                  app.session={runsheet_code:'QA-LOADER-IMAGE',start_time:new Date().toISOString(),items:[
+                    {item_code:'QA-001',item_name:'صنف تحميل بصورة صحيحة',unit:'كرتونة',qty_ordered:2,qty_picked:2,qty_loaded:0,items:{image_url:'https://qa.invalid/po-item.jpg',name:'صنف تحميل بصورة صحيحة'}},
+                    {item_code:'QA-002',item_name:'صنف تحميل بصورة معطوبة',unit:'كرتونة',qty_ordered:1,qty_picked:1,qty_loaded:0,items:{image_url:'https://qa.invalid/qmp-item.jpg',name:'صنف تحميل بصورة معطوبة'}}
+                  ]};
+                  app.renderActiveSession();
+                  return {count:document.querySelectorAll('#rw-native-root-loader #mainContent img[data-loader-image="true"]').length};
+                });
+                if(loaderImageState.count!==2)throw new Error('LOADER_SESSION_IMAGE_RENDER_COUNT:'+JSON.stringify(loaderImageState));
+                try{
+                  await page.waitForFunction(()=>{
+                    const root=document.querySelector('#rw-native-root-loader #mainContent');
+                    const good=root?.querySelector('img[data-loader-image="true"][src="https://qa.invalid/po-item.jpg"]');
+                    const bad=root?.querySelector('img[data-loader-image="true"][src="https://qa.invalid/qmp-item.jpg"]');
+                    return !!(good&&good.complete&&good.naturalWidth>0&&bad&&bad.complete&&bad.naturalWidth===0&&bad.classList.contains('hidden')&&bad.nextElementSibling&&!bad.nextElementSibling.classList.contains('hidden'));
+                  },null,{timeout:5000});
+                }finally{
+                  await page.evaluate(()=>{
+                    const app=window.RW_NATIVE_APPS.loader;
+                    if(app.timerInterval)clearInterval(app.timerInterval);app.timerInterval=null;app.session=null;app.renderPendingTab();
+                  });
+                }
+                console.log('WAREHOUSE_LOADER_REAL_IMAGE_RENDER_AND_BROKEN_IMAGE_FALLBACK=PASS');
               }
               if(key==='unloading'){
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-unloader #mainContent')?.innerText.includes('رانشيتات جاهزة للتفريغ'));
@@ -635,7 +682,40 @@ jobs:
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-returns #mainContent')?.innerText.includes('لا توجد رانشيتات مسلّمة'));
                 const returnText=await page.locator('#rw-native-root-returns #mainContent').innerText();
                 if(returnText.includes('فشل تحميل البيانات'))throw new Error('RETURNS_PENDING_DATA_RENDER_FAILED:'+returnText.slice(0,400));
-                console.log('WAREHOUSE_RETURNS_PENDING_DATA_RENDER=PASS');
+                const returnsLayout=await page.evaluate(()=>{
+                  const root=document.querySelector('#rw-native-root-returns'),container=document.querySelector('#rw-page-container'),main=root?.querySelector('#mainContent');
+                  if(!root||!container||!main)return {error:'RETURNS_WORKSPACE_NODES_MISSING'};
+                  const rootRect=root.getBoundingClientRect(),containerRect=container.getBoundingClientRect(),mainStyle=getComputedStyle(main);
+                  const original=main.innerHTML;main.innerHTML='<div style="height:1800px;width:100%">QA scroll fixture</div>';
+                  const canScroll=main.scrollHeight>main.clientHeight;main.scrollTop=320;const scrolled=main.scrollTop>0;main.innerHTML=original;
+                  return {position:getComputedStyle(root).position,width:rootRect.width,containerWidth:containerRect.width,leftDelta:Math.abs(rootRect.left-containerRect.left),rightWithin:rootRect.right<=containerRect.right+2,overflowY:mainStyle.overflowY,canScroll,scrolled};
+                });
+                if(returnsLayout.error||returnsLayout.position!=='relative'||returnsLayout.width>returnsLayout.containerWidth+2||returnsLayout.leftDelta>2||!returnsLayout.rightWithin||returnsLayout.overflowY!=='auto'||!returnsLayout.canScroll||!returnsLayout.scrolled)
+                  throw new Error('RETURNS_WORKSPACE_LAYOUT_OR_SCROLL_FAILED:'+JSON.stringify(returnsLayout));
+                console.log('WAREHOUSE_RETURNS_BOUNDED_WORKSPACE_AND_SCROLL=PASS');
+                const returnsImageState=await page.evaluate(()=>{
+                  const app=window.RW_NATIVE_APPS.returns;
+                  app.session={runsheet_id:'QA-RETURNS-IMAGE',runsheet_code:'QA-RETURNS-IMAGE',start_time:new Date().toISOString(),driver_name:'QA',items:[
+                    {item_code:'QA-001',item_name:'صنف مرتجعات بصورة صحيحة',unit:'كرتونة',qty_loaded:5,qty_delivered:2,qty_returned:0,items:{image_url:'https://qa.invalid/po-item.jpg',name:'صنف مرتجعات بصورة صحيحة'}},
+                    {item_code:'QA-002',item_name:'صنف مرتجعات بصورة معطوبة',unit:'كرتونة',qty_loaded:2,qty_delivered:1,qty_returned:0,items:{image_url:'https://qa.invalid/qmp-item.jpg',name:'صنف مرتجعات بصورة معطوبة'}}
+                  ]};
+                  app.renderActiveSession();
+                  return {count:document.querySelectorAll('#rw-native-root-returns #mainContent .grid-cards img').length};
+                });
+                if(returnsImageState.count!==2)throw new Error('RETURNS_SESSION_IMAGE_RENDER_COUNT:'+JSON.stringify(returnsImageState));
+                try{
+                  await page.waitForFunction(()=>{
+                    const root=document.querySelector('#rw-native-root-returns #mainContent .grid-cards');
+                    const images=root?.querySelectorAll('img')||[],good=images[0],bad=images[1];
+                    return !!(good&&good.complete&&good.naturalWidth>0&&bad&&bad.complete&&bad.naturalWidth===0&&bad.classList.contains('hidden')&&bad.nextElementSibling&&!bad.nextElementSibling.classList.contains('hidden'));
+                  },null,{timeout:5000});
+                }finally{
+                  await page.evaluate(()=>{
+                    const app=window.RW_NATIVE_APPS.returns;
+                    if(app.timerInterval)clearInterval(app.timerInterval);app.timerInterval=null;app.session=null;app.loadRunsheets();
+                  });
+                }
+                console.log('WAREHOUSE_RETURNS_REAL_IMAGE_RENDER_AND_BROKEN_IMAGE_FALLBACK=PASS');
                 const reopenGuard=await page.evaluate(()=>{
                   const app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS.returns;
                   if(!app)return {error:'RETURNS_APP_NOT_REGISTERED'};
