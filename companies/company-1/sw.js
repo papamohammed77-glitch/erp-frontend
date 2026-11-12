@@ -9,7 +9,7 @@
 // - No authentication or business-data caching.
 // - Known RW_HR syntax drift is repaired before HTML parse.
 
-var SW_BUILD = 'RAWAEA_SW_P156_HR_REPUBLISH_20260918';
+var SW_BUILD = 'RAWAEA_SW_P157_API_NETWORK_FAILURE_RESPONSE_20261112';
 var STATIC_CACHE = 'rw-static-' + SW_BUILD;
 var STATIC_EXTENSIONS = ['.css', '.woff', '.woff2', '.ttf', '.png', '.jpg', '.jpeg', '.svg', '.ico', '.webp'];
 var MAX_STATIC_ITEMS = 200;
@@ -167,7 +167,26 @@ self.addEventListener('fetch', function(event) {
 
     var url = new URL(request.url);
 
-    if (isNeverCacheRequest(url) || isAPIRequest(url) || isRuntimeRequest(url)) {
+    if (isAPIRequest(url)) {
+        event.respondWith(fetch(request).catch(function(error) {
+            // Keep network outages as explicit HTTP failures; never leave a rejected FetchEvent promise.
+            console.warn('[SW] API network request failed:', url.origin + url.pathname, error && error.message ? error.message : error);
+            return new Response(JSON.stringify({
+                code: 'NETWORK_ERROR',
+                message: 'تعذر الاتصال بالخدمة. تحقق من اتصال الإنترنت ثم أعد المحاولة.'
+            }), {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Cache-Control': 'no-store'
+                }
+            });
+        }));
+        return;
+    }
+
+    if (isNeverCacheRequest(url) || isRuntimeRequest(url)) {
         event.respondWith(fetch(request));
         return;
     }
