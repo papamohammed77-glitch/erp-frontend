@@ -13,6 +13,8 @@ on:
       - 'companies/company-1/warehouse/counter.html'
       - 'companies/company-1/warehouse/vouchers.html'
       - 'companies/company-1/core.js'
+      - 'companies/company-1/main.html'
+      - 'companies/company-1/sw.js'
       - 'supabase/functions/create-stock-voucher/index.ts'
       - 'supabase/migrations/*warehouse_branch_receipt*'
       - 'supabase/migrations/*inventory_count_role_and_company_isolation*'
@@ -57,6 +59,19 @@ jobs:
           const fullRoleReceiverMigration=fs.readFileSync('supabase/migrations/20261110213226_standard_transfer_unified_warehouse_receiver_fallback.sql','utf8');
           const returnsIntegrityMigration=fs.readFileSync('supabase/migrations/20261110233152_returns_discrepancy_integrity_gate_20261111.sql','utf8');
           const returnsStandalone=fs.readFileSync('companies/company-1/warehouse/returns.html','utf8');
+          const parent=fs.readFileSync('companies/company-1/main.html','utf8');
+          const serviceWorker=fs.readFileSync('companies/company-1/sw.js','utf8');
+          const receivingStart=parent.indexOf('async function loadReceiving()');
+          const receivingEnd=parent.indexOf('// ==================== VOUCHER FORM',receivingStart);
+          if(receivingStart<0||receivingEnd<0) throw new Error('PARENT_RECEIVING_SECTION_NOT_FOUND');
+          const receivingSection=parent.slice(receivingStart,receivingEnd);
+          for(const marker of ['رقم الفاتورة / المستند','وقت بداية الاستلام','وقت نهاية الاستلام','fmtReceivingTime','String(r.po_number || '').toLowerCase().indexOf(id)'])
+            if(!receivingSection.includes(marker)) throw new Error('PARENT_RECEIVING_LOG_CONTRACT_MISSING:'+marker);
+          if(receivingSection.includes('<th class="p-3">رقم العملية</th>')) throw new Error('PARENT_RECEIVING_LOG_STILL_EXPOSES_OPERATION_ID_AS_PRIMARY_COLUMN');
+          if(!serviceWorker.includes('RAWAEA_SW_P157_API_NETWORK_FAILURE_RESPONSE_20261112')||!serviceWorker.includes("code: 'NETWORK_ERROR'")||!serviceWorker.includes('status: 503'))
+            throw new Error('SERVICE_WORKER_API_NETWORK_FAILURE_RESPONSE_MISSING');
+          console.log('PARENT_RECEIVING_LOG_DOCUMENT_AND_TIMESTAMPS=PASS');
+          console.log('SERVICE_WORKER_API_NETWORK_FAILURE_HANDLING=PASS');
           const inline=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
           if(inline.length!==1) throw new Error('HOST_INLINE_SCRIPT_COUNT:'+inline.length);
           new Function(inline[0][2]);
