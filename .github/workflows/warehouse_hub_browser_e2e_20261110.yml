@@ -773,6 +773,41 @@ jobs:
             await page.waitForFunction(()=>document.getElementById('rw-native-root-receiver')?.dataset.rwReady==='true',null,{timeout:12000});
             console.log('WAREHOUSE_LOGOUT_RELOGIN_MODULE_REINITIALIZATION=PASS');
 
+            e2eStage='standalone receiver PO queue, legacy branch scope and completed history';
+            const standaloneReceiver=await context.newPage();
+            const standaloneReceiverErrors=[];
+            standaloneReceiver.on('pageerror',e=>standaloneReceiverErrors.push(String(e.message||e)));
+            await prepare(standaloneReceiver,'استلام',true,false);
+            await standaloneReceiver.goto('http://127.0.0.1:4173/companies/company-1/warehouse/receiver.html',{waitUntil:'domcontentloaded'});
+            await standaloneReceiver.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse',null,{timeout:12000});
+            await standaloneReceiver.waitForFunction(()=>document.querySelector('#receiverDocumentCards')?.querySelectorAll('.doc-card').length===2,null,{timeout:12000});
+            const standalonePendingText=await standaloneReceiver.locator('#receiverDocumentCards').innerText();
+            if(!standalonePendingText.includes('QA-PO-001')||!standalonePendingText.includes('QA-QMP-001')||standalonePendingText.includes('QA-PO-RECEIVED-001'))
+              throw new Error('STANDALONE_RECEIVER_PENDING_PO_CLASSIFICATION_FAILED:'+standalonePendingText.slice(0,700));
+            const scalarBranchScope=await standaloneReceiver.evaluate(async()=>{
+              const app=window.App;
+              app.currentUser.defaultBranchId=null;
+              app.currentUser.allowedBranchIds='BR-01';
+              await app.resolveBranchScope();
+              return {allowed:app.allowedBranchIds,unrestricted:app.unrestrictedBranchScope};
+            });
+            if(scalarBranchScope.unrestricted||scalarBranchScope.allowed?.join('|')!=='00000000-0000-4000-8000-000000000001')
+              throw new Error('STANDALONE_RECEIVER_LEGACY_SCALAR_BRANCH_SCOPE_FAILED:'+JSON.stringify(scalarBranchScope));
+            await standaloneReceiver.evaluate(()=>window.App.switchTab('completed'));
+            await standaloneReceiver.waitForFunction(()=>document.querySelector('#receiverHistoryCards')?.querySelectorAll('.card').length===3,null,{timeout:12000});
+            const standaloneHistoryText=await standaloneReceiver.locator('#receiverHistoryCards').innerText();
+            if(!standaloneHistoryText.includes('QA-PO-001')||!standaloneHistoryText.includes('QA-QMP-001')||!standaloneHistoryText.includes('QA-PO-RECEIVED-001'))
+              throw new Error('STANDALONE_RECEIVER_COMPLETED_HISTORY_MISSING:'+standaloneHistoryText.slice(0,900));
+            await standaloneReceiver.locator('#receiverHistoryCards .card').filter({hasText:'QA-PO-RECEIVED-001'}).click();
+            await standaloneReceiver.waitForFunction(()=>document.querySelector('#mainContent')?.innerText.includes('QA-PO-RECEIVED-001'),null,{timeout:12000});
+            const standaloneDetail=await standaloneReceiver.locator('#mainContent').innerText();
+            if(!standaloneDetail.includes('مكتمل')||!standaloneDetail.includes('صنف أمر الشراء'))
+              throw new Error('STANDALONE_RECEIVER_COMPLETED_DETAIL_INCOMPLETE:'+standaloneDetail.slice(0,700));
+            if(standaloneReceiverErrors.length)
+              throw new Error('STANDALONE_RECEIVER_BROWSER_ERRORS:'+JSON.stringify(standaloneReceiverErrors));
+            await standaloneReceiver.close();
+            console.log('WAREHOUSE_STANDALONE_RECEIVER_PO_QUEUE_LEGACY_BRANCH_AND_COMPLETED_HISTORY=PASS');
+
             const restricted=await context.newPage();
             await prepare(restricted,'تحميل',true,false);
             await restricted.goto(target,{waitUntil:'domcontentloaded'});
