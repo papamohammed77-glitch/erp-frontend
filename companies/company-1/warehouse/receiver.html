@@ -424,6 +424,15 @@ var App = {
                 (detail.data||[]).forEach(function(line){if(!lineMap[String(line.po_id)])lineMap[String(line.po_id)]=[];lineMap[String(line.po_id)].push(line);});
             }
             all.forEach(function(row){if(row.doc_type!=='QUICK_MARKET')row.items=lineMap[String(row.id)]||[];});
+            // A stale PO status must never keep a fully received order in the live receiving queue.
+            all=all.filter(function(row){
+                if(row.doc_type==='QUICK_MARKET')return true;
+                var items=row.items||[];
+                if(!items.length)return true;
+                return items.some(function(item){
+                    return (Number(item.qty_received)||0)+0.0001<(Number(item.qty_ordered)||0);
+                });
+            });
             var lines=[];all.forEach(function(row){lines=lines.concat(row.items||[]);});
             var enriched=await this.enrichItemLines(lines),cursor=0;
             all.forEach(function(row){
