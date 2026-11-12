@@ -758,11 +758,12 @@ self.openRunsheet(code);
     },
 
     _getPickingStockCheck: function(lines){
-        var self=this, requested=Object.create(null);
+        var self=this, requested=Object.create(null), scale=10000;
+        function toUnits(value){var n=Number(value);return isFinite(n)?Math.round(n*scale):0;}
         for(var i=0;i<(lines||[]).length;i++){
             var line=lines[i]||{},code=String(line.itemCode||line.item_code||'').trim();
             var qty=Number(line.pickedQty!==undefined?line.pickedQty:line.picked_qty);
-            if(code&&isFinite(qty)&&qty>0)requested[code]=(requested[code]||0)+qty;
+            if(code&&isFinite(qty)&&qty>0){var units=toUnits(qty);if(units>0)requested[code]=(requested[code]||0)+units;}
         }
         var codes=Object.keys(requested);
         if(!codes.length)return Promise.resolve({ok:true,shortages:[],unmapped:[]});
@@ -787,8 +788,8 @@ self.openRunsheet(code);
                                 for(var m=0;m<stockRows.length;m++)byItem[stockRows[m].item_id]=stockRows[m];
                                 for(var n=0;n<codes.length;n++){
                                     var code=codes[n],master=byCode[code],row=byItem[master.id]||null;
-                                    var available=row?Math.max((Number(row.qty)||0)-(Number(row.allocated_qty)||0),0):0;
-                                    if(requested[code]>available)shortages.push({code:code,name:master.name||code,requested:requested[code],available:available,missingBalance:!row});
+                                    var availableUnits=row?Math.max(toUnits(row.qty)-toUnits(row.allocated_qty),0):0;
+                                    if(requested[code]>availableUnits)shortages.push({code:code,name:master.name||code,requested:requested[code]/scale,available:availableUnits/scale,missingBalance:!row});
                                 }
                                 return {ok:true,shortages:shortages,unmapped:[]};
                             });
