@@ -195,6 +195,7 @@ var App = {
                 ITEMS_IMAGE_CACHE[items[i].item_code] = items[i].image_url;
             }
         }
+        self.refreshVisibleImages();
     })
     .catch(function(err){
         console.error('Picker items cache error:', err);
@@ -582,14 +583,23 @@ supabase
         });
     },
 
-    _img: function(code){
-        var url = ITEMS_IMAGE_CACHE[code];
-        return url ? '<img src="' + url + '" class="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow-sm" onerror="this.style.display=\'none\'">' : '<div class="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></div>';
+    _img: function(code,mode){
+        var url=ITEMS_IMAGE_CACHE[code];
+        var safeUrl=typeof url==='string'&&/^https?:\/\//i.test(url)?url.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'):'';
+        var key=encodeURIComponent(String(code||'')),size=mode||'tile';
+        var wrap='relative inline-flex w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0';
+        var image='absolute inset-0 w-full h-full rounded-2xl object-cover border-2 border-white shadow-sm';
+        var fallback='absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400';
+        var icon='fa-solid fa-box';
+        if(size==='detail'){wrap='relative block w-full h-80 rounded-2xl overflow-hidden mb-4 shadow-sm bg-white';image='absolute inset-0 w-full h-full object-contain bg-white rounded-2xl';fallback='absolute inset-0 w-full h-full bg-white rounded-2xl flex items-center justify-center text-slate-400';icon='fa-solid fa-box text-4xl';}
+        else if(size==='editor'){wrap='relative block w-full max-w-xs h-72 rounded-2xl overflow-hidden mx-auto shadow-sm mb-3 bg-white';image='absolute inset-0 w-full h-full object-contain bg-white rounded-2xl';fallback='absolute inset-0 w-full h-full rounded-2xl bg-white flex items-center justify-center text-slate-400';icon='fa-solid fa-box text-4xl';}
+        return '<span data-rw-picker-image-code="'+key+'" data-rw-picker-image-mode="'+size+'" class="'+wrap+'">'+
+            (safeUrl?'<img src="'+safeUrl+'" class="'+image+'" onerror="this.onerror=null;this.style.display=&quot;none&quot;;if(this.nextElementSibling)this.nextElementSibling.classList.remove(&quot;hidden&quot;)">':'')+
+            '<span class="'+fallback+(safeUrl?' hidden':'')+'"><i class="'+icon+'"></i></span></span>';
     },
 
     showItemDetail: function(code, name, unit, qty, desc){
-        var img = ITEMS_IMAGE_CACHE[code] || '';
-        var imgHtml = img ? '<img src="' + img + '" class="w-full h-80 object-contain bg-white rounded-2xl mb-4 shadow-sm" onerror="this.style.display=\'none\'">' : '<div class="w-full h-80 bg-white rounded-2xl flex items-center justify-center text-slate-400 mb-4"><i class="fa-solid fa-box text-4xl"></i></div>';
+        var imgHtml = this._img(code,'detail');
         Swal.fire({ html: '<div class="text-right">' + imgHtml + '<h3 class="font-black text-xl text-slate-800 mb-2">' + name + '</h3><div class="space-y-2 text-sm"><div class="flex justify-between"><span class="text-slate-400">الكود</span><span class="font-bold text-slate-600">' + code + '</span></div><div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + unit + '</span></div><div class="flex justify-between"><span class="text-slate-400">الكمية المطلوبة</span><span class="font-bold text-indigo-600 text-lg">' + qty + '</span></div></div>' + (desc ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + desc + '</p>' : '') + '</div>', width: 'min(92vw, 560px)', showCloseButton: true, showConfirmButton: false, customClass: { popup: '!rounded-3xl !p-5', closeButton: '!text-slate-300 !text-lg' } });
     },
 
@@ -673,8 +683,7 @@ self.openRunsheet(code);
     // ==================== نافذة تعديل الكمية (مع الصورة والوحدة والوصف) ====================
     editPickedItem: function(index){
         var self = this; var it = this.session.items[index];
-        var img = ITEMS_IMAGE_CACHE[it.item_code] || '';
-        var imgHtml = img ? '<img src="' + img + '" class="w-full max-w-xs h-72 rounded-2xl object-contain bg-white mx-auto shadow-sm mb-3" onerror="this.style.display=\'none\'">' : '<div class="w-full max-w-xs h-72 rounded-2xl bg-white mx-auto flex items-center justify-center text-slate-400 mb-3"><i class="fa-solid fa-box text-4xl"></i></div>';
+        var imgHtml = this._img(it.item_code,'editor');
         var unitHtml = it.unit ? '<div class="flex justify-between"><span class="text-slate-400">الوحدة</span><span class="font-bold text-slate-600">' + it.unit + '</span></div>' : '';
         var descHtml = it.description ? '<p class="text-sm text-slate-500 mt-3 pt-3 border-t border-slate-100">' + it.description + '</p>' : '';
 
@@ -748,6 +757,69 @@ self.openRunsheet(code);
         });
     },
 
+    _getPickingStockCheck: function(lines){
+        var self=this, requested=Object.create(null);
+        for(var i=0;i<(lines||[]).length;i++){
+            var line=lines[i]||{},code=String(line.itemCode||line.item_code||'').trim();
+            var qty=Number(line.pickedQty!==undefined?line.pickedQty:line.picked_qty);
+            if(code&&isFinite(qty)&&qty>0)requested[code]=(requested[code]||0)+qty;
+        }
+        var codes=Object.keys(requested);
+        if(!codes.length)return Promise.resolve({ok:true,shortages:[],unmapped:[]});
+        if(!self.companyId)return Promise.resolve({ok:false});
+        return supabase.from('app_settings').select('main_branch_id').eq('company_id',self.companyId)
+            .order('created_at',{ascending:true}).order('id',{ascending:true}).limit(1).maybeSingle()
+            .then(function(settings){
+                if(settings.error)throw settings.error;
+                var branchId=settings.data&&settings.data.main_branch_id;
+                if(!branchId)throw new Error('main_branch_not_configured');
+                return supabase.from('items').select('id,item_code,name').eq('company_id',self.companyId).in('item_code',codes)
+                    .then(function(result){
+                        if(result.error)throw result.error;
+                        var byCode=Object.create(null),ids=[],unmapped=[],rows=result.data||[];
+                        for(var j=0;j<rows.length;j++){var item=rows[j],key=String(item.item_code||'').trim();if(key&&!byCode[key]){byCode[key]=item;ids.push(item.id);}}
+                        for(var k=0;k<codes.length;k++)if(!byCode[codes[k]])unmapped.push(codes[k]);
+                        if(unmapped.length)return {ok:true,shortages:[],unmapped:unmapped};
+                        return supabase.from('stock_branches').select('item_id,qty,allocated_qty').eq('branch_id',branchId).in('item_id',ids)
+                            .then(function(stock){
+                                if(stock.error)throw stock.error;
+                                var byItem=Object.create(null),stockRows=stock.data||[],shortages=[];
+                                for(var m=0;m<stockRows.length;m++)byItem[stockRows[m].item_id]=stockRows[m];
+                                for(var n=0;n<codes.length;n++){
+                                    var code=codes[n],master=byCode[code],row=byItem[master.id]||null;
+                                    var available=row?Math.max((Number(row.qty)||0)-(Number(row.allocated_qty)||0),0):0;
+                                    if(requested[code]>available)shortages.push({code:code,name:master.name||code,requested:requested[code],available:available,missingBalance:!row});
+                                }
+                                return {ok:true,shortages:shortages,unmapped:[]};
+                            });
+                    });
+            }).catch(function(error){console.error('Picker stock preflight failed:',error);return {ok:false,error:error};});
+    },
+
+    _showPickingStockWarning: function(shortages){
+        var lines=(shortages||[]).map(function(item){
+            return '• '+(item.name||item.code)+' ['+item.code+'] — المحضّر: '+item.requested+' — المتاح: '+item.available+
+                (item.missingBalance?' — لا يوجد سجل رصيد لهذا الصنف في الفرع الرئيسي':' — المتاح أقل من الكمية المحضّرة');
+        });
+        Swal.fire({title:'راجع الكميات المتاحة قبل إنهاء التحضير',
+            text:'تعذر إتمام التحضير أو تثبيت حجز لأي صنف. راجع الكميات التالية:\n\n'+lines.join('\n'),
+            icon:'warning',confirmButtonText:'مراجعة الكميات',
+            customClass:{popup:'!rounded-3xl',htmlContainer:'!text-right !whitespace-pre-line'}});
+    },
+
+    refreshVisibleImages: function(){
+        var root=typeof rw_picker_byId==='function'?rw_picker_byId('mainContent'):(typeof byId==='function'?byId('mainContent'):null);
+        var roots=[];if(root)roots.push(root);
+        if(typeof Swal!=='undefined'&&Swal.getPopup){var popup=Swal.getPopup();if(popup)roots.push(popup);}
+        for(var r=0;r<roots.length;r++){
+            var nodes=roots[r].querySelectorAll('[data-rw-picker-image-code]');
+            for(var i=nodes.length-1;i>=0;i--){
+                var code='';try{code=decodeURIComponent(nodes[i].getAttribute('data-rw-picker-image-code')||'');}catch(e){continue;}
+                nodes[i].outerHTML=this._img(code,nodes[i].getAttribute('data-rw-picker-image-mode')||'tile');
+            }
+        }
+    },
+
     completePicking: function(){
         var self = this; if(!this.session) return; if(!navigator.onLine){ toast('أنت غير متصل', 'warning'); return; }
         if (!this.session.operation_id) {
@@ -778,6 +850,10 @@ self.openRunsheet(code);
             summaryHtml += '</ul>';
         }
         summaryHtml += '</div>';
+        this._getPickingStockCheck(items).then(function(check){
+            if(!check.ok){Swal.fire({title:'تعذر التحقق من رصيد المخزون',text:'لم يتم إرسال عملية إنهاء التحضير. تعذر قراءة رصيد الفرع الرئيسي؛ أعد المحاولة بعد استقرار الاتصال.',icon:'error',confirmButtonText:'إعادة المحاولة'});return;}
+            if(check.unmapped&&check.unmapped.length){Swal.fire({title:'تعذر مطابقة أصناف الرانشيت',text:'الأصناف غير الموجودة في دليل الأصناف: '+check.unmapped.join('، '),icon:'error',confirmButtonText:'مراجعة الأصناف'});return;}
+            if(check.shortages&&check.shortages.length){self._showPickingStockWarning(check.shortages);return;}
         Swal.fire({
             title: 'تأكيد إنهاء التحضير',
             html: summaryHtml,
@@ -823,23 +899,19 @@ self.renderPendingTab();
             }).catch(function(err){
     Swal.close();
     var message = err && err.message ? err.message : 'فشل الاتصال';
-    if (message.indexOf('insufficient available stock for reservation:') !== -1) {
-        var match = message.match(/item_code=([^,]+), requested=([^,]+), available=([^\s]+)/);
-        var detail = match
-            ? 'الصنف ' + match[1] + ' — المطلوب حجزه: ' + match[2] + ' — المتاح فعليًا: ' + match[3]
-            : message;
-        Swal.fire({
-            title: 'المخزون المتاح لا يكفي',
-            text: detail + '. سجّل الكمية المحضّرة الفعلية وسبب النقص، أو تأكد من وجود مخزون فعلي قبل إعادة المحاولة.',
-            icon: 'warning',
-            confirmButtonText: 'مراجعة الكميات',
-            customClass: { popup: '!rounded-3xl', confirmButton: '!rounded-xl !bg-amber-500 !px-6' }
+    if(message.indexOf('insufficient available stock for reservation:')!==-1||message.indexOf('stock balance not found')!==-1){
+        self._getPickingStockCheck(items).then(function(check){
+            if(!check.ok){Swal.fire({title:'تعذر التحقق من رصيد المخزون',text:'لم يكتمل التحضير. أعد تحميل البيانات ثم حاول مرة أخرى.',icon:'warning'});return;}
+            if(check.unmapped&&check.unmapped.length){Swal.fire({title:'تعذر مطابقة أصناف الرانشيت',text:'الأصناف غير الموجودة في دليل الأصناف: '+check.unmapped.join('، '),icon:'error'});return;}
+            if(check.shortages&&check.shortages.length){self._showPickingStockWarning(check.shortages);return;}
+            Swal.fire({title:'تغير رصيد المخزون أثناء إنهاء التحضير',text:'لم يكتمل التحضير. حدّث بيانات الرصيد وتأكد من توافر الكميات ثم أعد المحاولة بنفس الرانشيت.',icon:'warning',confirmButtonText:'مراجعة الكميات'});
         });
         return;
     }
     toast(message, 'error');
 });
         });
+        }).catch(function(error){console.error('Picker stock preflight error:',error);Swal.fire({title:'تعذر التحقق من رصيد المخزون',text:'لم يتم إرسال عملية إنهاء التحضير. أعد المحاولة بعد تحديث البيانات.',icon:'error',confirmButtonText:'إعادة المحاولة'});});
     },
 
     // ==================== تبويب مكتملة ====================

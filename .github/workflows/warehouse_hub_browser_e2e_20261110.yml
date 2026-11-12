@@ -59,6 +59,7 @@ jobs:
           const fullRoleReceiverMigration=fs.readFileSync('supabase/migrations/20261110213226_standard_transfer_unified_warehouse_receiver_fallback.sql','utf8');
           const returnsIntegrityMigration=fs.readFileSync('supabase/migrations/20261110233152_returns_discrepancy_integrity_gate_20261111.sql','utf8');
           const returnsStandalone=fs.readFileSync('companies/company-1/warehouse/returns.html','utf8');
+          const pickerStandalone=fs.readFileSync('companies/company-1/warehouse/picker.html','utf8');
           const parent=fs.readFileSync('companies/company-1/main.html','utf8');
           const serviceWorker=fs.readFileSync('companies/company-1/sw.js','utf8');
           const receivingStart=parent.indexOf('async function loadReceiving()');
@@ -119,6 +120,12 @@ jobs:
             if(/(?:onclick|oninput|onchange)="[^"]*\bApp\./.test(b.html)) throw new Error('UNSCOPED_INLINE_APP_HANDLER:'+key);
           }
           if(!bundles.picker.script.includes("RW_Auth.init")) throw new Error('PICKER_MUST_USE_SHARED_AUTH');
+          const pickerInline=[...pickerStandalone.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
+          if(pickerInline.length!==1) throw new Error('STANDALONE_PICKER_INLINE_SCRIPT_COUNT:'+pickerInline.length);
+          new Function(pickerInline[0][2]);
+          for(const marker of ['_getPickingStockCheck: function','_showPickingStockWarning: function','refreshVisibleImages: function','data-rw-picker-image-code','stock_branches'])
+            if(!pickerInline[0][2].includes(marker)||!bundles.picker.script.includes(marker)) throw new Error('PICKER_IMAGE_STOCK_GUARD_MISSING:'+marker);
+          console.log('PICKER_STANDALONE_AND_UNIFIED_IMAGE_STOCK_GUARDS=PASS');
           if(!bundles.picker.script.includes('RW_SHARED_SUPABASE')) throw new Error('PICKER_MUST_USE_SHARED_CLIENT');
           for(const marker of ['start-picking','complete-picking','reopen-picking','cancel-picking'])
             if(!bundles.picker.script.includes(marker)) throw new Error('PICKER_WORKFLOW_MISSING:'+marker);
@@ -280,12 +287,13 @@ jobs:
             };
             return [
               "var SUPABASE_URL='https://qa.invalid';var SUPABASE_KEY='qa-anon-key';",
+              "window.__qaDelayItems=false;",
               "var __qaProfile="+JSON.stringify(user)+";",
               "var __qaUser=sessionStorage.getItem('qa-signed-out')==='1'?null:__qaProfile;",
               "var __qaSnapshot="+JSON.stringify(snapshot)+";",
               "var __qaDeny="+JSON.stringify(deny)+";",
               "function __qaRows(table){if(table==='users')return [__qaUser];if(table==='app_settings')return [{main_branch_id:'00000000-0000-4000-8000-000000000001',currency:'EGP'}];if(table==='branches')return [{id:'00000000-0000-4000-8000-000000000001',company_id:'qa-company',branch_code:'BR-01',name:'فرع الاختبار',is_active:true},{id:'00000000-0000-4000-8000-000000000002',company_id:'qa-company',branch_code:'BR-02',name:'فرع اختبار ثانٍ',is_active:true}];if(table==='vehicles')return [{id:'qa-vehicle',company_id:'qa-company',vehicle_code:'VAN-QA',license_plate:'QA-001',model:'QA',mobile_branch_id:'00000000-0000-4000-8000-000000000001',mobile_stock_enabled:true,status:'Active'}];if(table==='suppliers')return [{id:'qa-supplier',company_id:'qa-company',name:'مورد اختبار',address:'عنوان اختبار',is_active:true}];return [];}",
-              "function __qaQuery(table){var q={};['select','eq','neq','not','in','order','limit','range','gte','lte','gt','lt','or','is','filter','match','insert','update','upsert','delete'].forEach(function(k){q[k]=function(){return q;};});q.then=function(a,b){return Promise.resolve({data:__qaRows(table),error:null}).then(a,b);};q.maybeSingle=function(){var rows=__qaRows(table);return Promise.resolve({data:rows[0]||null,error:null});};q.single=q.maybeSingle;return q;}",
+              "function __qaQuery(table){var q={},delayItems=table==='items'&&window.__qaDelayItems===true;['select','eq','neq','not','in','order','limit','range','gte','lte','gt','lt','or','is','filter','match','insert','update','upsert','delete'].forEach(function(k){q[k]=function(){return q;};});q.then=function(a,b){var result={data:__qaRows(table),error:null};var pending=delayItems?new Promise(function(resolve){setTimeout(function(){resolve(result);},1200);}):Promise.resolve(result);return pending.then(a,b);};q.maybeSingle=function(){var rows=__qaRows(table);return Promise.resolve({data:rows[0]||null,error:null});};q.single=q.maybeSingle;return q;}",
               "var supabase={auth:{getSession:function(){return Promise.resolve({data:{session:{user:__qaUser,access_token:'qa-token'}}});},getUser:function(){return Promise.resolve({data:{user:{id:'qa-auth',email:__qaUser.email,user_metadata:{}}}});},signOut:function(){return Promise.resolve({error:null});},signInWithPassword:function(){return Promise.resolve({data:{user:__qaUser},error:null});},onAuthStateChange:function(){return {data:{subscription:{unsubscribe:function(){}}}};}},from:function(t){return __qaQuery(t);},rpc:function(name,args){if(name==='get_warehouse_hub_snapshot')return Promise.resolve(__qaDeny?{data:null,error:{message:'WAREHOUSE_PERMISSION_REQUIRED'}}:{data:__qaSnapshot,error:null});if(name==='inventory_voucher_report')return Promise.resolve({data:args&&args.p_operation==='SUMMARY'?{summary:{statuses:[]}}:{rows:[],total:0},error:null});if(name==='inventory_control')return Promise.resolve({data:{success:true,rows:[],counts:[],vouchers:[]},error:null});return Promise.resolve({data:{success:true,rows:[],invoices:[],summary:{statuses:[]}},error:null});},channel:function(){var c={on:function(){return c;},subscribe:function(cb){if(cb)cb('SUBSCRIBED');return c;}};return c;},removeChannel:function(){return Promise.resolve();},storage:{from:function(){return {createSignedUrl:function(){return Promise.resolve({data:{signedUrl:'https://qa.invalid/file'},error:null});},upload:function(){return Promise.resolve({data:{path:'qa'},error:null});}};}}};",
               "var RW_Auth={init:function(cb){cb(__qaUser,__qaUser?null:'NO_SESSION');},getUser:function(){return __qaUser;},getToken:function(){return 'qa-token';},doLogin:function(e,p,cb){sessionStorage.removeItem('qa-signed-out');__qaUser=__qaProfile;if(cb)cb(__qaUser,null);},doLogout:function(cb){sessionStorage.setItem('qa-signed-out','1');__qaUser=null;supabase.auth.signOut().then(function(){if(cb)cb(true);});}};",
               "var __ui={byId:function(id){return document.getElementById(id);},safeHTML:function(el,h){if(el)el.innerHTML=h;},safeText:function(el,t){if(el)el.textContent=String(t==null?'':t);},toast:function(){},showLoader:function(){},hideLoader:function(){},showError:function(){},showSkeleton:function(id,n){var e=document.getElementById(id);if(e)e.innerHTML='جارٍ التحميل...';},showEmptyState:function(){},formatCurrency:function(v){return String(v||0);},formatNumber:function(v){return String(v||0);},updateConnectionStatus:function(){},showConfirm:function(m,cb){if(cb)cb();}};",
@@ -393,9 +401,11 @@ jobs:
             const nativeKeys={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};
             for(const key of operations){
               e2eStage='opening operation workspace: '+key;
+              if(key==='picking') await page.evaluate(()=>{window.__qaDelayItems=true;});
               const nativeKey=nativeKeys[key]||key;
               await page.locator('#warehouseDashboard [data-operation="'+key+'"]').click();
               try{await page.waitForFunction(k=>{const map={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};const native=map[k]||k;return document.getElementById('rw-native-root-'+native)?.dataset.rwReady==='true';},key,{timeout:12000});}catch(waitError){const diag=await page.evaluate(k=>{const map={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};const native=map[k]||k,root=document.getElementById('rw-native-root-'+native),app=window.RW_NATIVE_APPS&&window.RW_NATIVE_APPS[native];return{native,root:!!root,rootId:root&&root.id,moduleAttr:root&&root.dataset.rwModule,ready:root&&root.dataset.rwReady,mainHidden:root&&root.querySelector('#mainApp')?.classList.contains('hidden'),loginText:root&&root.querySelector('#loginMsg')?.textContent,app:!!app,appKeys:Object.keys(window.RW_NATIVE_APPS||{}),status:document.querySelector('#rw-module-status')?.textContent,html:root&&root.innerText.slice(0,500)};},key);throw new Error('NATIVE_MODULE_BOOT_FAILED:'+key+':'+JSON.stringify({diag,errors,consoleMessages:consoleMessages.slice(-30),wait:waitError.message}));}
+              if(key==='picking') await page.evaluate(()=>{window.__qaDelayItems=false;});
               e2eStage='asserting operation workspace: '+key;
               const state=await page.evaluate(k=>{
                 const map={receiving:'receiver',picking:'picker',loading:'loader',returns:'returns',unloading:'unloader',counting:'counter'};
@@ -536,6 +546,59 @@ jobs:
                 await page.evaluate(()=>window.RW_NATIVE_APPS.picker.switchTab('pending'));
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-picker #mainContent')?.innerText.includes('مهام متاحة للتحضير'));
                 console.log('WAREHOUSE_PICKER_DATA_AND_NORMALIZED_PROFILE_RENDER=PASS');
+                await page.route('https://qa.invalid/po-item.jpg',route=>route.fulfill({status:200,contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0n8AAAAASUVORK5CYII=','base64')}));
+                await page.route('https://qa.invalid/qmp-item.jpg',route=>route.fulfill({status:404,contentType:'image/png',body:''}));
+                await page.evaluate(()=>{
+                  const original=window.__qaRows;window.__qaPickerOriginalRows=original;
+                  window.__qaRows=function(table){
+                    if(table==='runsheets')return [{id:'qa-picker-rs',company_id:'qa-company',runsheet_code:'QA-RS-IMG',status:'Open',run_date:'2026-11-12',picker_id:null}];
+                    if(table==='run_sheet_details')return [
+                      {id:'qa-picker-line-1',runsheet_id:'qa-picker-rs',item_code:'QA-001',item_name:'صنف صورة أول',unit:'كرتونة',qty_ordered:2,qty_picked:0},
+                      {id:'qa-picker-line-2',runsheet_id:'qa-picker-rs',item_code:'QA-002',item_name:'صنف صورة ثانٍ',unit:'كرتونة',qty_ordered:1,qty_picked:0}
+                    ];
+                    return original(table);
+                  };
+                  window.RW_NATIVE_APPS.picker.openRunsheet('QA-RS-IMG');
+                });
+                await page.waitForFunction(()=>document.querySelector('#rw-native-root-picker #mainContent')?.innerText.includes('QA-RS-IMG'));
+                const imagePlaceholders=await page.evaluate(()=>{
+                  const root=document.querySelector('#rw-native-root-picker #mainContent');
+                  return {count:root.querySelectorAll('[data-rw-picker-image-code]').length,images:root.querySelectorAll('img[data-rw-picker-image-code]').length};
+                });
+                if(imagePlaceholders.count!==2||imagePlaceholders.images!==0)throw new Error('PICKER_IMAGE_CACHE_PENDING_PLACEHOLDERS_NOT_RENDERED:'+JSON.stringify(imagePlaceholders));
+                await page.waitForFunction(()=>{
+                  const root=document.querySelector('#rw-native-root-picker #mainContent');
+                  const a=root?.querySelector('[data-rw-picker-image-code="QA-001"] img'),b=root?.querySelector('[data-rw-picker-image-code="QA-002"] img');
+                  return !!(a&&a.getAttribute('src')==='https://qa.invalid/po-item.jpg'&&b&&b.getAttribute('src')==='https://qa.invalid/qmp-item.jpg');
+                },null,{timeout:5000});
+                await page.waitForFunction(()=>{
+                  const root=document.querySelector('#rw-native-root-picker #mainContent');
+                  const good=root?.querySelector('[data-rw-picker-image-code="QA-001"] img'),bad=root?.querySelector('[data-rw-picker-image-code="QA-002"] img');
+                  return !!(good&&good.complete&&good.naturalWidth>0&&bad&&bad.style.display==='none'&&bad.nextElementSibling&&!bad.nextElementSibling.classList.contains('hidden'));
+                },null,{timeout:5000});
+                console.log('WAREHOUSE_PICKER_RUNSHEET_IMAGE_ASYNC_REFRESH_AND_FALLBACK=PASS');
+                const stockGuard=await page.evaluate(async()=>{
+                  const app=window.RW_NATIVE_APPS.picker,originalRows=window.__qaRows,oldFire=window.Swal.fire,oldFetch=window.fetch,alerts=[];let edgeCalls=0;
+                  window.__qaRows=function(table){
+                    if(table==='app_settings')return [{main_branch_id:'00000000-0000-4000-8000-000000000001'}];
+                    if(table==='items')return [{id:'qa-pick-1',company_id:'qa-company',item_code:'QA-PICK-001',name:'صنف نقص جزئي'},{id:'qa-pick-2',company_id:'qa-company',item_code:'QA-PICK-002',name:'صنف بلا سجل رصيد'}];
+                    if(table==='stock_branches')return [{item_id:'qa-pick-1',qty:3,allocated_qty:2}];
+                    return originalRows(table);
+                  };
+                  window.Swal.fire=function(options){alerts.push(options);return Promise.resolve({isConfirmed:false});};
+                  window.fetch=function(url){if(String(url).includes('/functions/v1/complete-picking')){edgeCalls++;return Promise.resolve({ok:true,json:function(){return Promise.resolve({success:true});}});}return oldFetch.apply(this,arguments);};
+                  const previousSession=app.session,previousCompany=app.companyId;app.companyId='qa-company';
+                  app.session={runsheet_code:'QA-RS-STOCK',operation_id:'123e4567-e89b-42d3-a456-426614174000',items:[
+                    {item_code:'QA-PICK-001',item_name:'صنف نقص جزئي',qty_ordered:3,qty_picked:2,notes:'نقص'},
+                    {item_code:'QA-PICK-002',item_name:'صنف بلا سجل رصيد',qty_ordered:1,qty_picked:1,notes:''}
+                  ]};
+                  try{app.completePicking();await new Promise(resolve=>setTimeout(resolve,100));return {title:alerts[0]&&alerts[0].title,text:alerts[0]&&alerts[0].text,edgeCalls:edgeCalls};}
+                  finally{app.session=previousSession;app.companyId=previousCompany;window.__qaRows=originalRows;window.Swal.fire=oldFire;window.fetch=oldFetch;}
+                });
+                if(!stockGuard.title?.includes('راجع الكميات المتاحة')||!stockGuard.text?.includes('QA-PICK-001')||!stockGuard.text?.includes('QA-PICK-002')||!stockGuard.text?.includes('المتاح: 1')||!stockGuard.text?.includes('المتاح: 0')||!stockGuard.text?.includes('لا يوجد سجل رصيد')||stockGuard.edgeCalls!==0)
+                  throw new Error('PICKER_STOCK_PREFLIGHT_ALL_SHORTAGES_OR_NO_EDGE_WRITE_FAILED:'+JSON.stringify(stockGuard));
+                console.log('WAREHOUSE_PICKER_STOCK_PREFLIGHT_ALL_SHORTAGES_NO_EDGE_WRITE=PASS');
+                await page.evaluate(()=>{window.__qaRows=window.__qaPickerOriginalRows;window.RW_NATIVE_APPS.picker.switchTab('pending');});
               }
               if(key==='loading'){
                 await page.waitForFunction(()=>document.querySelector('#rw-native-root-loader #mainContent')?.innerText.includes('مهام متاحة للتحميل'));
