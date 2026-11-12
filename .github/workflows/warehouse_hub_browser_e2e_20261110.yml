@@ -908,6 +908,69 @@ jobs:
             await standaloneReceiver.close();
             console.log('WAREHOUSE_STANDALONE_RECEIVER_PO_QUEUE_LEGACY_BRANCH_AND_COMPLETED_HISTORY=PASS');
 
+            e2eStage='standalone Picker image refresh and stock preflight';
+            const standalonePicker=await context.newPage(),standalonePickerErrors=[];
+            standalonePicker.on('pageerror',e=>standalonePickerErrors.push(String(e.message||e)));
+            await prepare(standalonePicker,'تحضير',true,false);
+            const standaloneUser={id:'qa-user',auth_id:'qa-auth',company_id:'qa-company',name:'QA Warehouse',active_warehouse_role:'تحضير',status:'Active'};
+            const standaloneSupabaseMock=[
+              "var qaAuthUser={id:'qa-auth',email:'qa@rawaea.invalid',user_metadata:{permissions:['warehouse'],role:'أمين مخزن',name:'QA Warehouse'}};",
+              "window.__qaStandaloneRows=function(table){if(table==='users')return ["+JSON.stringify(standaloneUser)+"];if(table==='app_settings')return [{main_branch_id:'00000000-0000-4000-8000-000000000001'}];if(table==='items')return [{id:'qa-item-1',company_id:'qa-company',item_code:'QA-001',name:'صنف صورة أول',image_url:'https://qa.invalid/po-item.jpg'},{id:'qa-item-2',company_id:'qa-company',item_code:'QA-002',name:'صنف صورة ثانٍ',image_url:'https://qa.invalid/qmp-item.jpg'}];if(table==='runsheets'||table==='run_sheet_details'||table==='stock_branches')return [];return [];};",
+              "window.supabase={createClient:function(){function query(table){var q={};['select','eq','neq','in','order','limit','range','gte','lte','gt','lt','or','is','not','filter','match','insert','update','upsert','delete'].forEach(function(k){q[k]=function(){return q;};});q.then=function(resolve,reject){return Promise.resolve({data:window.__qaStandaloneRows(table),error:null}).then(resolve,reject);};q.maybeSingle=function(){var rows=window.__qaStandaloneRows(table);return Promise.resolve({data:rows[0]||null,error:null});};q.single=q.maybeSingle;return q;}var channel={on:function(){return channel;},subscribe:function(){return channel;}};return {auth:{getSession:function(){return Promise.resolve({data:{session:{user:qaAuthUser,access_token:'qa-token'}},error:null});},getUser:function(){return Promise.resolve({data:{user:qaAuthUser},error:null});},signOut:function(){return Promise.resolve({error:null});},signInWithPassword:function(){return Promise.resolve({data:{user:qaAuthUser},error:null});},onAuthStateChange:function(){return {data:{subscription:{unsubscribe:function(){}}}};}},from:query,rpc:function(){return Promise.resolve({data:{success:true},error:null});},channel:function(){return channel;},removeChannel:function(){return Promise.resolve();}};}};"
+            ].join('\n');
+            await standalonePicker.route('**/@supabase/supabase-js@2',route=>route.fulfill({status:200,contentType:'application/javascript',body:standaloneSupabaseMock}));
+            await standalonePicker.route('https://qa.invalid/po-item.jpg',route=>route.fulfill({status:200,contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0n8AAAAASUVORK5CYII=','base64')}));
+            await standalonePicker.route('https://qa.invalid/qmp-item.jpg',route=>route.fulfill({status:404,contentType:'image/png',body:''}));
+            await standalonePicker.goto('http://127.0.0.1:4173/companies/company-1/warehouse/picker.html',{waitUntil:'domcontentloaded'});
+            await standalonePicker.waitForFunction(()=>document.querySelector('#headerUserName')?.textContent==='QA Warehouse'&&!document.querySelector('#mainApp')?.classList.contains('hidden'),null,{timeout:12000});
+            await standalonePicker.evaluate(()=>{
+              const app=window.App,original=app._img;
+              window.__qaStandaloneRows=function(table){
+                if(table==='users')return [{id:'qa-user',auth_id:'qa-auth',company_id:'qa-company',name:'QA Warehouse',active_warehouse_role:'تحضير',status:'Active'}];
+                if(table==='app_settings')return [{main_branch_id:'00000000-0000-4000-8000-000000000001'}];
+                if(table==='items')return [{id:'qa-item-1',company_id:'qa-company',item_code:'QA-001',name:'صنف صورة أول',image_url:'https://qa.invalid/po-item.jpg'},{id:'qa-item-2',company_id:'qa-company',item_code:'QA-002',name:'صنف صورة ثانٍ',image_url:'https://qa.invalid/qmp-item.jpg'}];
+                if(table==='runsheets')return [{id:'qa-picker-rs',company_id:'qa-company',runsheet_code:'QA-RS-IMG',status:'Open',run_date:'2026-11-12',picker_id:null}];
+                if(table==='run_sheet_details')return [{id:'qa-picker-line-1',runsheet_id:'qa-picker-rs',item_code:'QA-001',item_name:'صنف صورة أول',unit:'كرتونة',qty_ordered:2,qty_picked:0},{id:'qa-picker-line-2',runsheet_id:'qa-picker-rs',item_code:'QA-002',item_name:'صنف صورة ثانٍ',unit:'كرتونة',qty_ordered:1,qty_picked:0}];
+                return [];
+              };
+              app._img=function(code,mode){return '<span data-rw-picker-image-code="'+encodeURIComponent(String(code||''))+'" data-rw-picker-image-mode="'+(mode||'tile')+'" class="relative inline-flex w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0"><span class="absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400"><i class="fa-solid fa-box"></i></span></span>';};
+              app.openRunsheet('QA-RS-IMG');
+            });
+            await standalonePicker.waitForFunction(()=>document.querySelector('#mainContent')?.innerText.includes('QA-RS-IMG'));
+            const standalonePlaceholders=await standalonePicker.evaluate(()=>({count:document.querySelectorAll('#mainContent [data-rw-picker-image-code]').length,images:document.querySelectorAll('#mainContent [data-rw-picker-image-code] img').length}));
+            if(standalonePlaceholders.count!==2||standalonePlaceholders.images!==0)throw new Error('STANDALONE_PICKER_RUNSHEET_PLACEHOLDERS_FAILED:'+JSON.stringify(standalonePlaceholders));
+            const standaloneRefresh=await standalonePicker.evaluate(()=>{
+              const app=window.App,placeholder=app._img,original=app._img;
+              app._img=function(code,mode){
+                const url=code==='QA-001'?'https://qa.invalid/po-item.jpg':'https://qa.invalid/qmp-item.jpg';
+                return '<span data-rw-picker-image-code="'+encodeURIComponent(String(code||''))+'" data-rw-picker-image-mode="'+(mode||'tile')+'" class="relative inline-flex w-14 h-14 rounded-2xl overflow-hidden flex-shrink-0"><img src="'+url+'" class="absolute inset-0 w-full h-full rounded-2xl object-cover border-2 border-white shadow-sm" onerror="this.onerror=null;this.style.display=&quot;none&quot;;if(this.nextElementSibling)this.nextElementSibling.classList.remove(&quot;hidden&quot;)"><span class="absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center text-slate-400 hidden"><i class="fa-solid fa-box"></i></span></span>';
+              };
+              try{app.refreshVisibleImages();return document.querySelectorAll('#mainContent [data-rw-picker-image-code] img').length;}
+              finally{app._img=original;}
+            });
+            if(standaloneRefresh!==2)throw new Error('STANDALONE_PICKER_REFRESH_VISIBLE_IMAGES_FAILED:'+standaloneRefresh);
+            await standalonePicker.waitForFunction(()=>{const a=document.querySelector('#mainContent [data-rw-picker-image-code="QA-001"] img'),b=document.querySelector('#mainContent [data-rw-picker-image-code="QA-002"] img');return !!(a&&a.complete&&a.naturalWidth>0&&b&&b.style.display==='none'&&b.nextElementSibling&&!b.nextElementSibling.classList.contains('hidden'));},null,{timeout:5000});
+            const standaloneStockGuard=await standalonePicker.evaluate(async()=>{
+              const app=window.App,oldRows=window.__qaStandaloneRows,oldFire=window.Swal.fire,oldFetch=window.fetch,alerts=[];let edgeCalls=0;
+              window.__qaStandaloneRows=function(table){
+                if(table==='app_settings')return [{main_branch_id:'00000000-0000-4000-8000-000000000001'}];
+                if(table==='items')return [{id:'qa-pick-1',company_id:'qa-company',item_code:'QA-PICK-001',name:'صنف نقص جزئي'},{id:'qa-pick-2',company_id:'qa-company',item_code:'QA-PICK-002',name:'صنف بلا سجل رصيد'}];
+                if(table==='stock_branches')return [{item_id:'qa-pick-1',qty:3,allocated_qty:2}];
+                return [];
+              };
+              window.Swal.fire=function(options){alerts.push(options);return Promise.resolve({isConfirmed:false});};
+              window.fetch=function(url){if(String(url).includes('/functions/v1/complete-picking')){edgeCalls++;return Promise.resolve({ok:true,json:function(){return Promise.resolve({success:true});}});}return oldFetch.apply(this,arguments);};
+              const previousSession=app.session,previousCompany=app.companyId;app.companyId='qa-company';
+              app.session={runsheet_code:'QA-RS-STOCK',operation_id:'123e4567-e89b-42d3-a456-426614174000',items:[{item_code:'QA-PICK-001',item_name:'صنف نقص جزئي',qty_ordered:3,qty_picked:2,notes:'نقص'},{item_code:'QA-PICK-002',item_name:'صنف بلا سجل رصيد',qty_ordered:1,qty_picked:1,notes:''}]};
+              try{app.completePicking();await new Promise(resolve=>setTimeout(resolve,100));return {title:alerts[0]&&alerts[0].title,text:alerts[0]&&alerts[0].text,edgeCalls:edgeCalls};}
+              finally{app.session=previousSession;app.companyId=previousCompany;window.__qaStandaloneRows=oldRows;window.Swal.fire=oldFire;window.fetch=oldFetch;}
+            });
+            if(!standaloneStockGuard.title?.includes('راجع الكميات المتاحة')||!standaloneStockGuard.text?.includes('QA-PICK-001')||!standaloneStockGuard.text?.includes('QA-PICK-002')||!standaloneStockGuard.text?.includes('المتاح: 1')||!standaloneStockGuard.text?.includes('المتاح: 0')||standaloneStockGuard.edgeCalls!==0)
+              throw new Error('STANDALONE_PICKER_STOCK_PREFLIGHT_FAILED:'+JSON.stringify(standaloneStockGuard));
+            if(standalonePickerErrors.length)throw new Error('STANDALONE_PICKER_BROWSER_ERRORS:'+JSON.stringify(standalonePickerErrors));
+            await standalonePicker.close();
+            console.log('STANDALONE_PICKER_RUNSHEET_IMAGE_REFRESH_AND_STOCK_PREFLIGHT=PASS');
+
             const restricted=await context.newPage();
             await prepare(restricted,'تحميل',true,false);
             await restricted.goto(target,{waitUntil:'domcontentloaded'});
