@@ -34,6 +34,29 @@ Deno.serve(async (req: Request) => {
     const companyId = appUser.company_id
 
     const operation = String(body?.operation || "").trim().toUpperCase()
+    if (operation.startsWith("COUNT_")) {
+      const profileClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        {
+          global: { headers: { Authorization: authHeader } },
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+        }
+      )
+      const { data: profile, error: profileError } = await profileClient.rpc("get_my_effective_profile")
+      if (
+        profileError ||
+        !profile?.id ||
+        profile.auth_id !== user.id ||
+        profile.company_id !== companyId ||
+        String(profile.status || "").toLowerCase() !== "active"
+      ) throw new Error("تعذر التحقق من صلاحيات جلسة الجرد")
+      if (
+        String(profile.active_warehouse_role || "") === "مخزن شامل" &&
+        profile.isOwner !== true &&
+        !(Array.isArray(profile.permissions) && profile.permissions.includes("warehouse"))
+      ) throw new Error("صلاحية المخزن الشامل غير متاحة لهذا المستخدم")
+    }
     const payload = body?.payload && typeof body.payload === "object" ? body.payload : {}
     const operationId = String(body?.operation_id || req.headers.get("Idempotency-Key") || "").trim() || null
 
