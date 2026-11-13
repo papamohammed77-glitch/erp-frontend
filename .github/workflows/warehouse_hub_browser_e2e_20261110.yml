@@ -27,6 +27,7 @@ on:
       - 'supabase/functions/complete-picking/index.ts'
       - 'supabase/functions/start-return/index.ts'
       - 'supabase/functions/complete-return/index.ts'
+      - 'supabase/functions/save-inventory-count/index.ts'
       - 'supabase/functions/_shared/warehouse-auth.ts'
       - 'scripts/warehouse-adjustment-access.test.mjs'
       - 'supabase/migrations/*warehouse_branch_receipt*'
@@ -91,6 +92,7 @@ jobs:
           const startReturnEdge=fs.readFileSync('supabase/functions/start-return/index.ts','utf8');
           const completeReturnEdge=fs.readFileSync('supabase/functions/complete-return/index.ts','utf8');
           const warehouseAuth=fs.readFileSync('supabase/functions/_shared/warehouse-auth.ts','utf8');
+          const saveInventoryCountEdge=fs.readFileSync('supabase/functions/save-inventory-count/index.ts','utf8');
           const receivingStart=parent.indexOf('async function loadReceiving()');
           const receivingEnd=parent.indexOf('// ==================== VOUCHER FORM',receivingStart);
           if(receivingStart<0||receivingEnd<0) throw new Error('PARENT_RECEIVING_SECTION_NOT_FOUND');
@@ -162,6 +164,9 @@ jobs:
               throw new Error('WAREHOUSE_EDGE_DUPLICATES_INCOMPLETE_ROLE_PERMISSION_LOOKUP:'+name);
           }
           console.log('WAREHOUSE_EFFECTIVE_ROLE_PERMISSION_EDGE_ALIGNMENT=PASS');
+          for(const marker of ['operation.startsWith("COUNT_")','get_my_effective_profile','profile.active_warehouse_role','profile.permissions.includes("warehouse")'])
+            if(!saveInventoryCountEdge.includes(marker)) throw new Error('UNIFIED_COUNT_EFFECTIVE_PERMISSION_GUARD_MISSING:'+marker);
+          console.log('WAREHOUSE_COUNT_EFFECTIVE_PERMISSION_GUARD=PASS');
           for(const key of keys){
             const b=bundles[key];
             const authInitCount=b.script.split('RW_Auth.init').length-1;
