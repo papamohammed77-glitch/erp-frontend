@@ -330,7 +330,7 @@ jobs:
           cat /tmp/rawaea-warehouse.log
           exit 1
 
-      - name: Browser E2E — shared identity, seven workspaces and five voucher actions
+      - name: Browser E2E — shared identity, seven workspaces and seven voucher actions
         shell: bash
         run: |
           set -euo pipefail
@@ -933,14 +933,16 @@ jobs:
 
             e2eStage='voucher top-level tab';
             await page.locator('#warehouseTabs [data-tab="vouchers"]').click();
-            if(await page.locator('#warehouseDashboard [data-voucher-action]').count()!==5)throw new Error('FIVE_MANUAL_VOUCHER_ACTION_CARDS_MISSING');
+            if(await page.locator('#warehouseDashboard [data-voucher-action]').count()!==7)throw new Error('SEVEN_MANUAL_VOUCHER_ACTION_CARDS_MISSING');
             await page.locator('#warehouseDashboard [data-voucher-action="Transfer"]').click();
             await page.waitForFunction(()=>window.RW_NATIVE_APPS?.vouchers?.type==='Transfer');
             const voucherChecks=[
               ['DirectSale','DirectSale'],
               ['TransferReceive','TransferReceive'],
               ['DirectReturn','DirectReturn'],
-              ['SupplierReturn','SupplierReturn']
+              ['SupplierReturn','SupplierReturn'],
+              ['Scrap','Scrap'],
+              ['Adjustment','Adjustment']
             ];
             for(const [action,expected] of voucherChecks){
               await page.locator('[data-workspace-back]').click();
@@ -949,11 +951,15 @@ jobs:
                 await page.waitForFunction(()=>window.RW_NATIVE_APPS?.vouchers?.tabName==='pending');
               }else{
                 await page.waitForFunction(v=>window.RW_NATIVE_APPS?.vouchers?.type===v,expected);
+                if(action==='Scrap'||action==='Adjustment'){
+                  const mode=await page.evaluate(()=>window.RW_NATIVE_APPS?.vouchers?.mode);
+                  if(mode!=='engine')throw new Error('WAREHOUSE_ADJUSTMENT_MUST_USE_CENTRAL_ENGINE:'+action+':'+mode);
+                }
               }
             }
             const supplierContract=await page.locator('#rw-native-root-vouchers').innerText();
             if(!supplierContract.includes('عقد')&&!supplierContract.includes('المورد'))throw new Error('SUPPLIER_RETURN_CONTRACT_UI_NOT_PRESENT');
-            console.log('WAREHOUSE_FIVE_MANUAL_VOUCHER_ACTIONS=PASS');
+            console.log('WAREHOUSE_SEVEN_MANUAL_VOUCHER_ACTIONS=PASS');
             console.log('WAREHOUSE_SUPPLIER_RETURN_SPECIALIZED_CONTRACT=PASS');
             await page.locator('#rw-native-root-vouchers button[onclick*="RW_NATIVE_APP_vouchers.back()"]').click();
             await page.waitForSelector('#rw-native-root-vouchers #listSearch',{state:'visible',timeout:12000});
