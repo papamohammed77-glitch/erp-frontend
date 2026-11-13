@@ -45,36 +45,6 @@ Deno.serve(async (req: Request) => {
     if (runsheet_code) {
       const whActor = await requireWarehouseRole(supabase, authHeader, "مرتجعات");
       await assertWarehouseMainBranch(supabase, whActor);
-      const directPermissions = Array.isArray(appUser.permissions) ? appUser.permissions : []
-      let rolePermissions = []
-      if (appUser.role_id) {
-        const { data: roleData, error: roleError } = await supabase
-          .from("roles")
-          .select("permissions")
-          .eq("id", appUser.role_id)
-          .eq("company_id", appUser.company_id)
-          .maybeSingle()
-        if (roleError) throw new Error("فشل التحقق من صلاحيات الدور")
-        rolePermissions = Array.isArray(roleData?.permissions) ? roleData.permissions : []
-      }
-
-      const { data: ownerProfile, error: ownerError } = await supabase
-        .from("owner_profile")
-        .select("auth_user_id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle()
-      if (ownerError) throw new Error("فشل التحقق من ملف المالك")
-
-      const verifiedOwner = directPermissions.includes("*") && !!ownerProfile?.auth_user_id
-      const hasWarehousePermission =
-        directPermissions.includes("warehouse") ||
-        rolePermissions.includes("warehouse") ||
-        verifiedOwner
-      if (!hasWarehousePermission) throw new Error("ليس لديك صلاحية استخدام عمليات المخازن")
-      if (!verifiedOwner && !["مرتجعات","مخزن شامل"].includes(appUser.active_warehouse_role)) {
-        throw new Error("الدور المخزني النشط لا يسمح بإنهاء المرتجعات")
-      }
-
       const { data: runsheet, error: runsheetError } = await supabase
         .from("runsheets")
         .select("id,status,return_handler_id")
