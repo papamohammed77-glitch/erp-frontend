@@ -917,64 +917,23 @@ self.renderPendingTab();
 
     // ==================== تبويب مكتملة ====================
 renderCompletedTab: function(){
-    var self = this;
-
-    safeHTML(
-        byId('mainContent'),
-        '<div class="text-center py-20"><div class="skeleton h-12 w-3/4 mb-3"></div></div>'
-    );
-
-    if(!this.pubUserId || !this.companyId){
-        safeHTML(
-            byId('mainContent'),
-            '<div class="text-center py-20 text-red-400">تعذر تحديد سياق الشركة للمستخدم.</div>'
-        );
-        return;
-    }
-
-    supabase
-        .from('runsheets')
-        .select('runsheet_code, run_date, status')
-        .eq('company_id', this.companyId)
-        .eq('status', 'Picked')
-        .eq('picker_id', this.pubUserId)
-        .order('run_date', { ascending: false })
-        .limit(50)
-        .then(function(res){
-
-            if(res.error){
-                throw res.error;
-            }
-
-            self.completedRunsheets = res.data || [];
-            self.renderCompletedList(self.completedRunsheets);
-
-        })
-        .catch(function(){
-            safeHTML(
-                byId('mainContent'),
-                '<div class="text-center py-20 text-red-400">فشل تحميل البيانات</div>'
-            );
-        });
+ var self=this,email=String(this.currentUser&&this.currentUser.email||'').trim().toLowerCase();
+ safeHTML(byId('mainContent'),'<div class="text-center py-20"><div class="skeleton h-12 w-3/4 mb-3"></div></div>');
+ if(!this.pubUserId||!this.companyId||!email){safeHTML(byId('mainContent'),'<div class="text-center py-20 text-red-400">تعذر تحديد المستخدم أو سياق الشركة.</div>');return;}
+ supabase.from('erp_operation_registry').select('id,request_payload,response_payload,created_at,completed_at').eq('company_id',this.companyId).eq('operation_type','complete_runsheet_picking').eq('status','completed').eq('request_payload->>user_email',email).order('created_at',{ascending:false}).limit(100)
+ .then(function(res){if(res.error)throw res.error;var events=(res.data||[]).filter(function(e){var q=e.request_payload||{};return String(q.user_email||'').trim().toLowerCase()===email&&!!q.runsheet_code;});var codes=Array.from(new Set(events.map(function(e){return e.request_payload.runsheet_code;})));if(!codes.length){self.completedRunsheets=[];self.renderCompletedList(self.completedRunsheets);return null;}
+ return supabase.from('runsheets').select('runsheet_code,status,picker_id').eq('company_id',self.companyId).in('runsheet_code',codes).then(function(cur){if(cur.error)throw cur.error;var byCode={};(cur.data||[]).forEach(function(r){byCode[r.runsheet_code]=r;});var seen=Object.create(null);self.completedRunsheets=events.map(function(e){var code=e.request_payload.runsheet_code,now=byCode[code]||null,latest=!seen[code];seen[code]=true;return {runsheet_code:code,completed_at:e.completed_at||e.created_at,current_status:now&&now.status||'غير متاح',can_reopen:!!(latest&&now&&now.status==='Picked'&&now.picker_id===self.pubUserId)};});self.renderCompletedList(self.completedRunsheets);});})
+ .catch(function(err){console.error('Picker completed operation registry query failed:',err);safeHTML(byId('mainContent'),'<div class="text-center py-20 text-red-400">تعذر تحميل سجل التحضير المكتمل؛ راجع الصلاحيات والاتصال.</div>');});
 },
 
-    renderCompletedList: function(list){
-        var html = '<h2 class="text-lg font-black text-slate-800 mb-4">✅ الرانشيتات التي أنهيتها</h2>';
-        html += '<input type="text" id="searchCompleted" placeholder="🔍 ابحث في المكتملة..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-indigo-400 outline-none font-semibold text-sm transition-all shadow-sm mb-4" oninput="App.searchCompleted(this.value)">';
-        if(!list.length){
-            html += '<div class="text-center py-16"><div class="text-6xl mb-4">🏆</div><p class="text-slate-400 font-bold">لم تنهِ أي رانشيت بعد. العمل الجاد يُؤتي ثماره!</p></div>';
-        } else {
-            html += '<div id="completedList">';
-            for(var i = 0; i < list.length; i++){
-                var rs = list[i];
-                html += '<div class="card mb-3 slide-in"><div class="flex justify-between items-center"><div><span class="font-black text-base text-slate-800">' + rs.runsheet_code + '</span><p class="text-xs text-slate-400 mt-0.5">' + rs.run_date + '</p></div><button onclick="App.reopenPicking(\'' + rs.runsheet_code + '\')" class="btn-reopen text-xs px-3 py-1.5"><i class="fa-solid fa-pen-to-square ml-1"></i> تعديل التحضير</button></div></div>';
-            }
-            html += '</div>';
-        }
-        safeHTML(byId('mainContent'), html);
-    },
+ renderCompletedList: function(list){
+ var html='<h2 class="text-lg font-black text-slate-800 mb-4">✅ سجل عمليات التحضير المكتملة</h2><input type="text" id="searchCompleted" placeholder="🔍 ابحث في المكتملة..." class="w-full p-4 bg-white rounded-2xl border-2 border-slate-100 focus:border-indigo-400 outline-none font-semibold text-sm transition-all shadow-sm mb-4" oninput="App.searchCompleted(this.value)">';
+ if(!list.length)html+='<div class="text-center py-16"><div class="text-6xl mb-4">🏆</div><p class="text-slate-400 font-bold">لا توجد عمليات تحضير مكتملة مسجلة لهذا المستخدم.</p></div>';
+ else{html+='<div id="completedList">';for(var i=0;i<list.length;i++){var r=list[i],dt=r.completed_at?new Date(r.completed_at).toLocaleString('ar-EG'):'—',action=r.can_reopen?'<button onclick="App.reopenPicking(\''+r.runsheet_code+'\')" class="btn-reopen text-xs px-3 py-1.5"><i class="fa-solid fa-pen-to-square ml-1"></i> تعديل التحضير</button>':'<span class="text-xs text-slate-500">الحالة الحالية: '+r.current_status+'</span>';html+='<div class="card mb-3 slide-in"><div class="flex justify-between items-center gap-3"><div><span class="font-black text-base text-slate-800">'+r.runsheet_code+'</span><p class="text-xs text-slate-400 mt-0.5">اكتمل التحضير: '+dt+'</p></div>'+action+'</div></div>';}html+='</div>';}
+ safeHTML(byId('mainContent'),html);
+},
 
-    searchCompleted: function(query){
+ searchCompleted: function(query){
         var filtered = this.completedRunsheets;
         if(query && query.trim()){
             var q = query.trim().toLowerCase();

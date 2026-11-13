@@ -61,6 +61,7 @@ jobs:
           const returnsIntegrityMigration=fs.readFileSync('supabase/migrations/20261110233152_returns_discrepancy_integrity_gate_20261111.sql','utf8');
           const returnsStandalone=fs.readFileSync('companies/company-1/warehouse/returns.html','utf8');
           const loaderStandalone=fs.readFileSync('companies/company-1/warehouse/loader.html','utf8');
+          const unloaderStandalone=fs.readFileSync('companies/company-1/warehouse/unloader.html','utf8');
           const pickerStandalone=fs.readFileSync('companies/company-1/warehouse/picker.html','utf8');
           const parent=fs.readFileSync('companies/company-1/main.html','utf8');
           const serviceWorker=fs.readFileSync('companies/company-1/sw.js','utf8');
@@ -153,8 +154,16 @@ jobs:
           if(bundles.picker.script.includes('this.currentUser.user_metadata.name')) throw new Error('PICKER_USES_NONEXISTENT_SHARED_USER_METADATA');
           if(!bundles.picker.script.includes('var userName = this.currentUser.name')) throw new Error('PICKER_SHARED_PROFILE_NAME_MISSING');
           if(!bundles.loader.script.includes('r[0].error') || !bundles.loader.script.includes('r[1].error')) throw new Error('LOADER_PENDING_RESULTS_MUST_CHECK_SUPABASE_ERRORS');
-          if(!bundles.unloader.script.includes('Unloader runsheets query failed:') || !bundles.unloader.script.includes('Unloader completed vouchers query failed:')) throw new Error('UNLOADER_RESULT_ERRORS_NOT_HANDLED');
+          if(!bundles.unloader.script.includes('Unloader runsheets query failed:') || !bundles.unloader.script.includes('Unloader completed operation registry query failed:')) throw new Error('UNLOADER_RESULT_ERRORS_NOT_HANDLED');
           if(!bundles.counter.script.includes('[RAWAEA Counter] completed history failed')) throw new Error('COUNTER_HISTORY_RESULT_ERRORS_NOT_HANDLED');
+
+          const hs=(s,a,z)=>{const i=s.indexOf(a),j=i<0?-1:s.indexOf(z,i+a.length);if(i<0||j<0)throw Error('HISTORY_METHOD_MISSING:'+a);return s.slice(i,j);};
+          for(const [n,s] of [['picker-original',pickerStandalone],['picker-bundle',bundles.picker.script],['loader-original',loaderStandalone],['loader-bundle',bundles.loader.script],['unloader-original',unloaderStandalone],['unloader-bundle',bundles.unloader.script]]){
+            if(n.startsWith('picker')){const x=hs(s,'renderCompletedTab: function','renderCompletedList: function');if(!x.includes("from('erp_operation_registry')")||!x.includes('complete_runsheet_picking')||!x.includes('request_payload->>user_email')||x.includes(".eq('status', 'Picked')"))throw Error('PICKER_HISTORY_CONTRACT:'+n);}
+            else if(n.startsWith('loader')){const x=hs(s,'renderCompletedTab: function','renderCompletedList: function');if(!x.includes("from('erp_operation_registry')")||!x.includes('complete_runsheet_loading')||!x.includes('request_payload->>user_email')||!x.includes('response.loading_cycle_id')||x.includes(".eq('status', 'Loaded')"))throw Error('LOADER_HISTORY_CONTRACT:'+n);}
+            else{const x=hs(s,'loadCompleted: function','renderCompletedList: function');if(!x.includes("from('erp_operation_registry')")||!x.includes('complete_runsheet_unloading')||!x.includes('request_payload->>user_email')||x.includes("from('stock_vouchers')"))throw Error('UNLOADER_HISTORY_CONTRACT:'+n);for(const [k,q] of [['queue',hs(s,'loadRunsheets: function','renderList: function')],['search',hs(s,'onSearchInput: function','renderSearchDropdown: function')]])if(!q.includes(".eq('status', 'Loaded')")||!q.includes(".not('loading_cycle_id', 'is', null)")||q.includes('Delivering'))throw Error('UNLOADER_ELIGIBILITY:'+n+':'+k);}
+          }
+          console.log('WAREHOUSE_COMPLETED_HISTORY_SOURCE_CONTRACT=PASS');
           const receiverReturnToList = "self.activeDocumentIndex=null;\n                self.documentOpenSequence++;\n                self.renderList();\n                self.loadPurchaseOrders({silent:true});";
           if(!receiver.includes(receiverReturnToList)||!bundles.receiver.script.includes(receiverReturnToList))
             throw new Error('RECEIVER_SUCCESS_MUST_RETURN_TO_PENDING_EVEN_WHEN_QUEUE_SIGNATURE_IS_UNCHANGED');
@@ -855,6 +864,39 @@ jobs:
               await page.locator('[data-workspace-back]').click();
               if(await page.locator('#rw-native-root-'+nativeKey).count()!==1)throw new Error('WORKSPACE_NOT_PERSISTED:'+key);
             }
+
+            const historyE2E=await page.evaluate(async()=>{
+              const client=window.RW_SHARED_SUPABASE;if(!client)return {error:'SHARED_CLIENT_MISSING'};const original=client.from.bind(client),calls=[];
+              const events=[
+                {company_id:'qa-company',operation_type:'complete_runsheet_picking',status:'completed',request_payload:{runsheet_code:'QA-PICK-DELIVERED',user_email:'qa@rawaea.invalid'},created_at:'2026-11-12T10:00:00Z',completed_at:'2026-11-12T10:00:00Z'},
+                {company_id:'qa-company',operation_type:'complete_runsheet_picking',status:'completed',request_payload:{runsheet_code:'QA-PICK-RETURNED',user_email:'qa@rawaea.invalid'},created_at:'2026-11-12T09:00:00Z',completed_at:'2026-11-12T09:00:00Z'},
+                {company_id:'qa-company',operation_type:'complete_runsheet_picking',status:'completed',request_payload:{runsheet_code:'QA-PICK-ELIGIBLE',user_email:'qa@rawaea.invalid'},created_at:'2026-11-12T08:00:00Z',completed_at:'2026-11-12T08:00:00Z'},
+                {company_id:'qa-company',operation_type:'complete_runsheet_loading',status:'completed',request_payload:{runsheet_code:'QA-LOAD-DELIVERED',user_email:'qa@rawaea.invalid'},response_payload:{loaded_total:4,loading_cycle_id:'cycle-d'},created_at:'2026-11-12T10:00:00Z',completed_at:'2026-11-12T10:00:00Z'},
+                {company_id:'qa-company',operation_type:'complete_runsheet_loading',status:'completed',request_payload:{runsheet_code:'QA-LOAD-RETURNED',user_email:'qa@rawaea.invalid'},response_payload:{loaded_total:3,loading_cycle_id:'cycle-r'},created_at:'2026-11-12T09:00:00Z',completed_at:'2026-11-12T09:00:00Z'},
+                {company_id:'qa-company',operation_type:'complete_runsheet_loading',status:'completed',request_payload:{runsheet_code:'QA-LOAD-ELIGIBLE',user_email:'qa@rawaea.invalid'},response_payload:{loaded_total:5,loading_cycle_id:'cycle-now'},created_at:'2026-11-12T08:00:00Z',completed_at:'2026-11-12T08:00:00Z'},
+                {company_id:'qa-company',operation_type:'complete_runsheet_loading',status:'completed',request_payload:{runsheet_code:'QA-LOAD-ELIGIBLE',user_email:'qa@rawaea.invalid'},response_payload:{loaded_total:2,loading_cycle_id:'cycle-old'},created_at:'2026-11-12T07:00:00Z',completed_at:'2026-11-12T07:00:00Z'},
+                {company_id:'qa-company',operation_type:'complete_runsheet_unloading',status:'completed',request_payload:{runsheet_code:'QA-UNLOAD-01',user_email:'qa@rawaea.invalid',loading_cycle_id:'cycle-u'},response_payload:{unloaded_total:7},created_at:'2026-11-12T06:00:00Z',completed_at:'2026-11-12T06:00:00Z'},
+                {company_id:'qa-company',operation_type:'complete_runsheet_picking',status:'completed',request_payload:{runsheet_code:'QA-OTHER',user_email:'other@rawaea.invalid'},created_at:'2026-11-12T05:00:00Z',completed_at:'2026-11-12T05:00:00Z'}
+              ];
+              const runs=[{company_id:'qa-company',runsheet_code:'QA-PICK-DELIVERED',status:'Delivered',picker_id:'qa-user'},{company_id:'qa-company',runsheet_code:'QA-PICK-RETURNED',status:'Returned',picker_id:'qa-user'},{company_id:'qa-company',runsheet_code:'QA-PICK-ELIGIBLE',status:'Picked',picker_id:'qa-user'},{company_id:'qa-company',runsheet_code:'QA-LOAD-DELIVERED',status:'Delivered',loader_id:'qa-user',loading_cycle_id:null},{company_id:'qa-company',runsheet_code:'QA-LOAD-RETURNED',status:'Returned',loader_id:'qa-user',loading_cycle_id:null},{company_id:'qa-company',runsheet_code:'QA-LOAD-ELIGIBLE',status:'Loaded',loader_id:'qa-user',loading_cycle_id:'cycle-now'},{company_id:'qa-company',runsheet_code:'QA-UNLOAD-READY',status:'Loaded',loading_cycle_id:'cycle-ready',run_date:'2026-11-12',driver_id:'QA'},{company_id:'qa-company',runsheet_code:'QA-UNLOAD-DELIVERING',status:'Delivering',loading_cycle_id:'cycle-no',run_date:'2026-11-12',driver_id:'QA'}];
+              const val=(r,k)=>k==='request_payload->>user_email'?(r.request_payload&&r.request_payload.user_email):r[k];
+              client.from=function(table){const fs=[];let ord=null,lim=null;const q={select(){return q;},eq(k,v){fs.push(['eq',k,v]);return q;},in(k,v){fs.push(['in',k,v]);return q;},not(k,o,v){fs.push(['not',k,o,v]);return q;},ilike(k,v){fs.push(['ilike',k,v]);return q;},order(k,o){ord={k,asc:!!(o&&o.ascending)};return q;},limit(n){lim=n;return q;},then(ok,bad){calls.push({table,fs});let rows=(table==='erp_operation_registry'?events:table==='runsheets'?runs:[]).slice().filter(r=>fs.every(([t,k,a,b])=>{const v=val(r,k);if(t==='eq')return v===a;if(t==='in')return a.includes(v);if(t==='not'&&a==='is'&&b===null)return v!==null&&v!==undefined;if(t==='ilike')return String(v||'').toLowerCase().includes(String(a).replace(/%/g,'').toLowerCase());return true;}));if(ord)rows.sort((a,b)=>ord.asc?String(val(a,ord.k)||'').localeCompare(String(val(b,ord.k)||'')):String(val(b,ord.k)||'').localeCompare(String(val(a,ord.k)||'')));if(lim!=null)rows=rows.slice(0,lim);return Promise.resolve({data:rows,error:null}).then(ok,bad);}};return q;};
+              try{const p=window.RW_NATIVE_APPS.picker,l=window.RW_NATIVE_APPS.loader,u=window.RW_NATIVE_APPS.unloader;p.currentUser={...(p.currentUser||{}),email:'qa@rawaea.invalid'};p.companyId='qa-company';p.pubUserId='qa-user';l.currentUser={...(l.currentUser||{}),email:'qa@rawaea.invalid',company_id:'qa-company',id:'qa-user'};u.currentUser={...(u.currentUser||{}),email:'qa@rawaea.invalid',company_id:'qa-company',id:'qa-user'};
+                p.renderCompletedTab();await new Promise(r=>setTimeout(r,60));const pr=document.querySelector('#rw-native-root-picker #mainContent'),pt=pr?.innerText||'',pb=pr?.querySelectorAll('#completedList button.btn-reopen').length||0;
+                l.renderCompletedTab();await new Promise(r=>setTimeout(r,60));const lr=document.querySelector('#rw-native-root-loader #mainContent'),lt=lr?.innerText||'',lb=lr?.querySelectorAll('button.btn-reopen').length||0;
+                u.loadCompleted();await new Promise(r=>setTimeout(r,60));const ur=document.querySelector('#rw-native-root-unloader #mainContent'),ut=ur?.innerText||'';u.loadRunsheets();await new Promise(r=>setTimeout(r,60));const uq=ur?.innerText||'';
+                return {pt,pb,lt,lb,ut,uq,calls,stockVoucherReads:calls.filter(c=>c.table==='stock_vouchers').length};
+              }finally{client.from=original;}
+            });
+            if(historyE2E.error)throw Error('HISTORY_E2E_SETUP:'+historyE2E.error);
+            for(const c of ['QA-PICK-DELIVERED','QA-PICK-RETURNED','QA-PICK-ELIGIBLE'])if(!historyE2E.pt.includes(c))throw Error('PICKER_HISTORY_LOST:'+c+':'+historyE2E.pt);
+            if(historyE2E.pb!==1)throw Error('PICKER_REOPEN_GUARD:'+historyE2E.pb);
+            for(const c of ['QA-LOAD-DELIVERED','QA-LOAD-RETURNED','QA-LOAD-ELIGIBLE'])if(!historyE2E.lt.includes(c))throw Error('LOADER_HISTORY_LOST:'+c+':'+historyE2E.lt);
+            if(historyE2E.lb!==1)throw Error('LOADER_CYCLE_GUARD:'+historyE2E.lb);
+            if(!historyE2E.ut.includes('QA-UNLOAD-01')||!historyE2E.ut.includes('7')||historyE2E.stockVoucherReads!==0)throw Error('UNLOADER_REGISTRY_HISTORY:'+JSON.stringify(historyE2E));
+            if(!historyE2E.uq.includes('QA-UNLOAD-READY')||historyE2E.uq.includes('QA-UNLOAD-DELIVERING'))throw Error('UNLOADER_ELIGIBILITY:'+historyE2E.uq);
+            console.log('WAREHOUSE_COMPLETED_HISTORY_E2E=PASS');
+            console.log('WAREHOUSE_UNLOADER_RPC_ELIGIBILITY_E2E=PASS');
             console.log('WAREHOUSE_SIX_FULL_NATIVE_OPERATION_WORKSPACES=PASS');
 
             e2eStage='voucher top-level tab';

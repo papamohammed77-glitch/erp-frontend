@@ -147,17 +147,13 @@ var App = {
     },
 
     loadRunsheets: function(){
-        var self = this;
-        RW_UI.showSkeleton('mainContent', 3, 'card');
-        supabase.from('runsheets').select('runsheet_code, run_date, driver_id, status').in('status', ['Loaded', 'Delivering']).order('run_date', { ascending: false }).limit(30).then(function(res) {
-            self.runsheets = res.data || [];
-            self.renderList();
-        }).catch(function() {
-            RW_UI.showEmptyState('mainContent', 'فشل تحميل البيانات. تأكد من الاتصال.', '📡');
-        });
-    },
+ var self=this,u=this.currentUser;if(!u||!u.company_id){RW_UI.showError('تعذر تحديد الشركة الحالية.');return;}moduleUI.showSkeleton('mainContent',3,'card');
+ supabase.from('runsheets').select('runsheet_code,run_date,driver_id,status,loading_cycle_id').eq('company_id',u.company_id).eq('status','Loaded').not('loading_cycle_id','is',null).order('run_date',{ascending:false}).limit(30)
+ .then(function(r){if(r.error){console.error('Unloader runsheets query failed:',r.error);RW_UI.showEmptyState('mainContent','تعذر تحميل رانشيتات التفريغ؛ راجع الصلاحيات والاتصال.','📡');return;}self.runsheets=r.data||[];self.renderList();})
+ .catch(function(err){console.error('Unloader runsheets request/render failed:',err);RW_UI.showEmptyState('mainContent','فشل تحميل بيانات التفريغ؛ راجع الاتصال ثم أعد المحاولة.','📡');});
+},
 
-    renderList: function(){
+ renderList: function(){
         var self = this;
         var html = '';
         html += '<div class="mb-4"><p class="text-slate-400 text-sm">أهلاً، <span class="font-bold text-slate-700">' + (this.currentUser.name || 'زميل') + '</span> 👋</p></div>';
@@ -208,28 +204,15 @@ var App = {
         RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
     },
 
-    onSearchInput: function(query) {
-        var self = this;
-        if (this.searchTimer) clearTimeout(this.searchTimer);
-        if (!query || query.trim().length < 1) {
-            var dd = RW_UI.byId('searchDropdown'); if (dd) dd.classList.add('hidden');
-            self.renderList();
-            return;
-        }
-        this.searchTimer = setTimeout(function() {
-            supabase.from('runsheets')
-                .select('runsheet_code, run_date, driver_id, status')
-                .in('status', ['Loaded', 'Delivering'])
-                .ilike('runsheet_code', '%' + query.trim() + '%')
-                .limit(10)
-                .then(function(res) {
-                    self.searchResults = res.data || [];
-                    self.renderSearchDropdown();
-                });
-        }, 300);
-    },
+    onSearchInput: function(query){
+ var self=this,u=this.currentUser;if(!u||!u.company_id)return;if(this.searchTimer)clearTimeout(this.searchTimer);
+ if(!query||query.trim().length<1){var dd=RW_UI.byId('searchDropdown');if(dd)dd.classList.add('hidden');self.renderList();return;}
+ this.searchTimer=setTimeout(function(){supabase.from('runsheets').select('runsheet_code,run_date,driver_id,status,loading_cycle_id').eq('company_id',u.company_id).eq('status','Loaded').not('loading_cycle_id','is',null).ilike('runsheet_code','%'+query.trim()+'%').limit(10)
+ .then(function(r){if(r.error){console.error('Unloader runsheet search failed:',r.error);self.searchResults=[];self.renderSearchDropdown();return;}self.searchResults=r.data||[];self.renderSearchDropdown();})
+ .catch(function(err){console.error('Unloader runsheet search request failed:',err);self.searchResults=[];self.renderSearchDropdown();});},300);
+},
 
-    renderSearchDropdown: function() {
+ renderSearchDropdown: function() {
         var dd = RW_UI.byId('searchDropdown');
         if (!dd) return;
         if (!this.searchResults || this.searchResults.length === 0) {
@@ -309,38 +292,19 @@ var App = {
     },
 
     loadCompleted: function(){
-        var self = this;
-        RW_UI.showSkeleton('mainContent', 3, 'card');
-        supabase.from('stock_vouchers')
-            .select('voucher_code, voucher_date, reference')
-            .eq('type', 'Unloading')
-            .eq('status', 'Completed')
-            .order('voucher_date', { ascending: false })
-            .limit(30)
-            .then(function(res) {
-                self.completedRunsheets = res.data || [];
-                self.renderCompletedList();
-            }).catch(function() {
-                RW_UI.showEmptyState('mainContent', 'فشل تحميل سجل التفريغ.', '📡');
-            });
-    },
+ var self=this,u=this.currentUser,email=String(u&&u.email||'').trim().toLowerCase();if(!u||!u.company_id||!email){RW_UI.showError('تعذر تحديد الشركة أو البريد الإلكتروني للمستخدم الحالي.');return;}moduleUI.showSkeleton('mainContent',3,'card');
+ supabase.from('erp_operation_registry').select('id,request_payload,response_payload,created_at,completed_at').eq('company_id',u.company_id).eq('operation_type','complete_runsheet_unloading').eq('status','completed').eq('request_payload->>user_email',email).order('created_at',{ascending:false}).limit(50)
+ .then(function(r){if(r.error)throw r.error;self.completedRunsheets=(r.data||[]).filter(function(e){var p=e.request_payload||{};return String(p.user_email||'').trim().toLowerCase()===email&&!!p.runsheet_code;}).map(function(e){var p=e.request_payload||{},v=e.response_payload||{};return {runsheet_code:p.runsheet_code,completed_at:e.completed_at||e.created_at,unloaded_total:v.unloaded_total,loading_cycle_id:p.loading_cycle_id};});self.renderCompletedList();})
+ .catch(function(err){console.error('Unloader completed operation registry query failed:',err);RW_UI.showEmptyState('mainContent','تعذر تحميل سجل التفريغ المكتمل؛ راجع الصلاحيات والاتصال.','📡');});
+},
 
-    renderCompletedList: function(){
-        var html = '<h2 class="text-lg font-black mb-4">✅ سجل التفريغ المكتمل</h2>';
-        if (!this.completedRunsheets.length) {
-            html += '<div class="text-center py-16"><div class="text-5xl mb-4">🏆</div><p class="text-slate-400 font-bold">لا توجد عمليات تفريغ مكتملة بعد.</p><p class="text-slate-300 text-sm mt-1">كل ما تفرغه سيظهر هنا.</p></div>';
-        } else {
-            html += '<div class="space-y-2">';
-            for (var i = 0; i < this.completedRunsheets.length; i++) {
-                var v = this.completedRunsheets[i];
-                html += '<div class="card slide-in"><div class="flex justify-between items-center"><div><span class="font-bold text-slate-700">' + v.voucher_code + '</span><p class="text-xs text-slate-400">' + v.voucher_date + '</p></div><span class="text-xs text-slate-500">' + (v.reference || '---') + '</span></div></div>';
-            }
-            html += '</div>';
-        }
-        RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
-    },
-
-    renderAccount: function(){
+ renderCompletedList: function(){
+ var h='<h2 class="text-lg font-black mb-4">✅ سجل التفريغ المكتمل</h2>';
+ if(!this.completedRunsheets.length)h+='<div class="text-center py-16"><div class="text-5xl mb-4">🏆</div><p class="text-slate-400 font-bold">لا توجد عمليات تفريغ مكتملة مسجلة لهذا المستخدم.</p><p class="text-slate-300 text-sm mt-1">ستظهر هنا العمليات التي اكتمل تفريغها فعليًا.</p></div>';
+ else{h+='<div class="space-y-2">';for(var i=0;i<this.completedRunsheets.length;i++){var v=this.completedRunsheets[i],dt=v.completed_at?new Date(v.completed_at).toLocaleString('ar-EG'):'—',qty=v.unloaded_total!=null?v.unloaded_total:'—';h+='<div class="card slide-in"><div class="flex justify-between items-center gap-3"><div><span class="font-bold text-slate-700">'+v.runsheet_code+'</span><p class="text-xs text-slate-400">'+dt+'</p></div><span class="text-xs text-slate-500">الكمية المفرغة: '+qty+'</span></div></div>';}h+='</div>';}
+ RW_UI.safeHTML(moduleUI.byId('mainContent'),h);
+},
+ renderAccount: function(){
         var self = this;
         var html = '<div class="text-center mb-8 mt-4"><div class="w-20 h-20 bg-gradient-to-br from-cyan-400 to-cyan-600 rounded-3xl mx-auto flex items-center justify-center text-white text-3xl font-black shadow-lg mb-4">' + (this.currentUser.name || '?').charAt(0) + '</div><h2 class="font-black text-xl">' + (this.currentUser.name || this.currentUser.email) + '</h2><p class="text-sm text-slate-400">مسؤول تفريغ</p></div><div class="card mb-3"><div class="flex items-center gap-3"><div class="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center"><i class="fa-solid fa-envelope"></i></div><div><p class="text-xs text-slate-400">البريد الإلكتروني</p><p class="font-bold text-sm">' + this.currentUser.email + '</p></div></div></div><button onclick="App.doLogout()" class="w-full bg-white border-2 border-red-100 text-red-500 py-4 rounded-2xl font-bold mt-6"><i class="fa-solid fa-arrow-right-from-bracket ml-2"></i> تسجيل الخروج</button>';
         RW_UI.safeHTML(RW_UI.byId('mainContent'), html);
