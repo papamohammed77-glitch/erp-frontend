@@ -4,22 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 const supabase=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
 serve(async(req)=>{const origin=req.headers.get("Origin")||"*";const cors={"Access-Control-Allow-Origin":origin,"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};if(req.method==="OPTIONS")return new Response("ok",{headers:cors});try{const b=await req.json().catch(()=>({})),code=String(b?.runsheet_code||"").trim();if(!code)throw new Error("رقم الرانشيت مطلوب");const ah=req.headers.get("Authorization");if(!ah)throw new Error("غير مصرح");
 const whActor = await requireWarehouseRole(supabase, ah, "مرتجعات");
-await assertWarehouseMainBranch(supabase, whActor);const {data:{user},error:ae}=await supabase.auth.getUser(ah.replace("Bearer ",""));if(ae||!user?.id||!user?.email)throw new Error("جلسة غير صالحة");const {data:pu,error:ue}=await supabase.from("users").select("id,company_id,status,permissions,role_id,active_warehouse_role").eq("auth_id",user.id).maybeSingle();
-if(ue)throw new Error("فشل قراءة ملف المستخدم: "+ue.message);
-if(!pu?.id||!pu?.company_id||(pu.status&&String(pu.status).toLowerCase()!=="active"))throw new Error("المستخدم غير موجود أو غير نشط");
-const directPermissions=Array.isArray(pu.permissions)?pu.permissions:[];
-let rolePermissions=[];
-if(pu.role_id){
- const {data:roleData,error:roleError}=await supabase.from("roles").select("permissions").eq("id",pu.role_id).eq("company_id",pu.company_id).maybeSingle();
- if(roleError)throw new Error("فشل التحقق من صلاحيات الدور");
- rolePermissions=Array.isArray(roleData?.permissions)?roleData.permissions:[];
-}
-const {data:ownerProfile,error:ownerError}=await supabase.from("owner_profile").select("auth_user_id").eq("auth_user_id",user.id).maybeSingle();
-if(ownerError)throw new Error("فشل التحقق من ملف المالك");
-const verifiedOwner=directPermissions.includes("*")&&!!ownerProfile?.auth_user_id;
-const hasWarehousePermission=directPermissions.includes("warehouse")||rolePermissions.includes("warehouse")||verifiedOwner;
-if(!hasWarehousePermission)throw new Error("ليس لديك صلاحية استخدام عمليات المخازن");
-if(!verifiedOwner&&!["مرتجعات","مخزن شامل"].includes(pu.active_warehouse_role))throw new Error("الدور المخزني النشط لا يسمح بعملية المرتجعات");
+await assertWarehouseMainBranch(supabase, whActor);const user=whActor.authUser;const pu=whActor.appUser;
 const {data:active,error:re1}=await supabase.from("runsheets").select("runsheet_code").eq("company_id",pu.company_id).eq("status","Returning").eq("return_handler_id",pu.id).maybeSingle();
 if(re1)throw new Error("فشل التحقق من المرتجعات النشطة: "+re1.message);
 if(active)throw new Error("لديك بالفعل رانشيت قيد المرتجعات: "+active.runsheet_code+". أنهِه أو ألغِه أولاً.");
