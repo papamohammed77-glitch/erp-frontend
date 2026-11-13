@@ -26,46 +26,8 @@ serve(async (req) => {
     if (!authHeader) throw new Error("غير مصرح")
     const whActor = await requireWarehouseRole(supabase, authHeader, "تحضير");
     await assertWarehouseMainBranch(supabase, whActor);
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim()
-    if (!token) throw new Error("جلسة غير صالحة")
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user?.id) throw new Error("جلسة غير صالحة")
-    const { data: pubUser, error: userLookupError } = await supabase.from("users").select("id, company_id, status, permissions, role_id, active_warehouse_role").eq("auth_id", user.id).maybeSingle()
-    if (userLookupError) throw new Error("فشل قراءة المستخدم: " + userLookupError.message)
-    if (!pubUser?.id || !pubUser?.company_id) throw new Error("المستخدم غير مسجل في النظام أو سياق الشركة غير محدد")
-    if (pubUser.status && pubUser.status !== "Active") throw new Error("المستخدم غير نشط")
-    const directPermissions = Array.isArray(pubUser.permissions) ? pubUser.permissions : []
-    let rolePermissions: string[] = []
-    if (pubUser.role_id) {
-      const { data: roleData, error: roleError } = await supabase
-        .from("roles")
-        .select("permissions")
-        .eq("id", pubUser.role_id)
-        .maybeSingle()
-      if (roleError) throw new Error("فشل التحقق من صلاحيات الدور")
-      rolePermissions = Array.isArray(roleData?.permissions) ? roleData.permissions : []
-    }
-
-    const metadata = user.user_metadata || {}
-    let verifiedOwner = false
-    if (metadata.isOwner === true || metadata.isOwner === "true") {
-      const { data: ownerProfile, error: ownerError } = await supabase
-        .from("owner_profile")
-        .select("auth_user_id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle()
-      if (ownerError) throw new Error("فشل التحقق من ملف المالك")
-      verifiedOwner = directPermissions.includes("*") && !!ownerProfile?.auth_user_id
-    }
-
-    const hasWarehousePermission =
-      directPermissions.includes("warehouse") ||
-      rolePermissions.includes("warehouse") ||
-      verifiedOwner
-    if (!hasWarehousePermission) throw new Error("ليس لديك صلاحية استخدام عمليات المخازن")
-    if (!verifiedOwner && !["تحضير","مخزن شامل"].includes(pubUser.active_warehouse_role)) {
-      throw new Error("الدور المخزني النشط لا يسمح بعملية التحضير")
-    }
+    const user = whActor.authUser;
+    const pubUser = whActor.appUser;
     const companyId = pubUser.company_id
     const { data: runsheet, error: runsheetError } = await supabase.from("runsheets").select("id,status,picker_id,picker_start").eq("company_id", companyId).eq("runsheet_code", runsheet_code).maybeSingle()
     if (runsheetError) throw new Error("خطأ في البحث عن الرانشيت: " + runsheetError.message)
