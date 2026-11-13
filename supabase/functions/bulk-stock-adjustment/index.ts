@@ -18,7 +18,7 @@ async function getActor(req: Request) {
   if (!authHeader) throw new Error("مصادقة مطلوبة");
 
   const { data: { user }, error: authError } =
-    await db.auth.getUser(authHeader.replace(/^Bearer\\s+/i, ""));
+    await db.auth.getUser(authHeader.replace(/^Bearer\s+/i, ""));
   if (authError || !user?.id) throw new Error("جلسة غير صالحة");
 
   // Use the same effective permission contract as the parent and warehouse hub.
