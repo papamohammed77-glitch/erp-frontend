@@ -17,6 +17,13 @@ on:
       - 'companies/company-1/main.html'
       - 'companies/company-1/sw.js'
       - 'supabase/functions/create-stock-voucher/index.ts'
+      - 'supabase/functions/bulk-stock-adjustment/index.ts'
+      - 'supabase/functions/bulk-stock-adjustment/warehouse-adjustment-access.mjs'
+      - 'supabase/functions/send-stock-voucher/index.ts'
+      - 'supabase/functions/receive-stock-voucher/index.ts'
+      - 'supabase/functions/complete-stock-voucher/index.ts'
+      - 'supabase/functions/cancel-stock-voucher/index.ts'
+      - 'scripts/warehouse-adjustment-access.test.mjs'
       - 'supabase/migrations/*warehouse_branch_receipt*'
       - 'supabase/migrations/*inventory_count_role_and_company_isolation*'
       - 'supabase/migrations/*inventory_voucher_report_receipt_request_visibility*'
@@ -45,6 +52,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Unified warehouse adjustment authorization unit tests
+        run: node --test scripts/warehouse-adjustment-access.test.mjs
+
       - name: Static source and module contract
         shell: bash
         run: |
@@ -65,6 +75,12 @@ jobs:
           const pickerStandalone=fs.readFileSync('companies/company-1/warehouse/picker.html','utf8');
           const parent=fs.readFileSync('companies/company-1/main.html','utf8');
           const serviceWorker=fs.readFileSync('companies/company-1/sw.js','utf8');
+          const bulkAdjustment=fs.readFileSync('supabase/functions/bulk-stock-adjustment/index.ts','utf8');
+          const adjustmentAccess=fs.readFileSync('supabase/functions/bulk-stock-adjustment/warehouse-adjustment-access.mjs','utf8');
+          const sendVoucherEdge=fs.readFileSync('supabase/functions/send-stock-voucher/index.ts','utf8');
+          const receiveVoucherEdge=fs.readFileSync('supabase/functions/receive-stock-voucher/index.ts','utf8');
+          const completeVoucherEdge=fs.readFileSync('supabase/functions/complete-stock-voucher/index.ts','utf8');
+          const cancelVoucherEdge=fs.readFileSync('supabase/functions/cancel-stock-voucher/index.ts','utf8');
           const receivingStart=parent.indexOf('async function loadReceiving()');
           const receivingEnd=parent.indexOf('// ==================== VOUCHER FORM',receivingStart);
           if(receivingStart<0||receivingEnd<0) throw new Error('PARENT_RECEIVING_SECTION_NOT_FOUND');
@@ -109,6 +125,25 @@ jobs:
           const bundles=JSON.parse(bundleMatch[1]);
           const keys=['receiver','picker','loader','returns','unloader','counter','vouchers'];
           if(Object.keys(bundles).sort().join('|')!==keys.slice().sort().join('|')) throw new Error('SEVEN_NATIVE_MODULES_REQUIRED');
+
+          const voucherDashboard=html.slice(html.indexOf('vouchers:function()'),html.indexOf('account:function()'));
+          for(const marker of ["voucherCard('Scrap'","voucherCard('Adjustment'","Scrap:'إتلاف / إعدام'","Adjustment:'تسوية مخزنية'"])
+            if(!html.includes(marker)) throw new Error('UNIFIED_WAREHOUSE_ADJUSTMENT_ACTION_MISSING:'+marker);
+          if(!voucherDashboard.includes("voucherCard('Scrap'")||!voucherDashboard.includes("voucherCard('Adjustment'"))
+            throw new Error('UNIFIED_WAREHOUSE_DASHBOARD_MUST_EXPOSE_SCRAP_AND_ADJUSTMENT');
+          for(const marker of ["get_my_effective_profile","canAdjustStock(profile)","canAccessAdjustmentBranch(profile, branch)","post_inventory_adjustment_atomic"])
+            if(!bulkAdjustment.includes(marker)) throw new Error('BULK_ADJUSTMENT_SERVER_GUARD_MISSING:'+marker);
+          for(const marker of ["active_warehouse_role","permissions.includes(\"warehouse\")","default_branch_id","allowed_branch_ids"])
+            if(!adjustmentAccess.includes(marker)) throw new Error('BULK_ADJUSTMENT_ACCESS_MODEL_MISSING:'+marker);
+          if(!bundles.vouchers.script.includes("bulk-stock-adjustment")||!bundles.vouchers.script.includes("choose('Scrap')")||!bundles.vouchers.script.includes("choose('Adjustment')"))
+            throw new Error('VOUCHER_ORIGINAL_ADJUSTMENT_WORKFLOWS_NOT_EMBEDDED');
+          for(const [name,source,rpc] of [
+            ['send',sendVoucherEdge,'send_stock_voucher_atomic'],
+            ['receive',receiveVoucherEdge,'post_manual_stock_voucher_atomic'],
+            ['complete',completeVoucherEdge,'complete_manual_stock_voucher_atomic'],
+            ['cancel',cancelVoucherEdge,'cancel_manual_stock_voucher_atomic']
+          ]) if(!source.includes(rpc)) throw new Error('RESTORED_VOUCHER_EDGE_SOURCE_CONTRACT:'+name+':'+rpc);
+          console.log('WAREHOUSE_SCRAP_ADJUSTMENT_AND_EDGE_SOURCE_CONTRACT=PASS');
           for(const key of keys){
             const b=bundles[key];
             const authInitCount=b.script.split('RW_Auth.init').length-1;
