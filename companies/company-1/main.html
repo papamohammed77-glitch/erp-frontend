@@ -15402,7 +15402,7 @@ async function _saveAndSendVoucher() {
                 </div>
             </div>
             <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh" id="vouchers-table-container">
-                <table class="w-full"><thead class="bg-gray-800 text-white sticky top-0"><tr><th class="p-3">رقم الإذن</th><th class="p-3">النوع</th><th class="p-3">التاريخ</th><th class="p-3">الحالة</th><th class="p-3">المرجع</th><th class="p-3">من</th><th class="p-3">إلى</th><th class="p-3">المندوب</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="vouchers-tbody"><tr><td colspan="9" class="text-center py-8">جاري التحميل...</td></tr></tbody></table>
+                <table class="w-full"><thead class="bg-gray-800 text-white sticky top-0"><tr><th class="p-3">رقم الإذن</th><th class="p-3">النوع</th><th class="p-3">التاريخ</th><th class="p-3">المنشئ</th><th class="p-3">الحالة</th><th class="p-3">المرجع</th><th class="p-3">من</th><th class="p-3">إلى</th><th class="p-3">المندوب</th><th class="p-3 text-center">إجراءات</th></tr></thead><tbody id="vouchers-tbody"><tr><td colspan="9" class="text-center py-8">جاري التحميل...</td></tr></tbody></table>
             </div>
         </div>`);
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
@@ -15461,7 +15461,7 @@ var res = await supabase.from('stock_vouchers').select('*').eq('company_id', com
         if (to) d = d.filter(function(v) { return v.voucher_date <= to; });
         if (search) d = d.filter(function(v) { return (v.voucher_code||'').toLowerCase().indexOf(search) !== -1; });
         var tb = byId('vouchers-tbody'); if (!tb) return;
-        if (!d.length) { safeHTML(tb, '<tr><td colspan="9" class="text-center py-8">لا توجد أذونات</td></tr>'); return; }
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="10" class="text-center py-8">لا توجد أذونات</td></tr>'); return; }
         RW_Table.paginate('vouchers-tbody', d, 1, 50, function(v) {
             var statusBadge = { 'Draft':'bg-gray-100 text-gray-600', 'Sent':'bg-blue-100 text-blue-700', 'Received':'bg-purple-100 text-purple-700', 'Completed':'bg-green-100 text-green-700' }[v.status] || 'bg-gray-100 text-gray-700';
             var isSystem = (v.source === 'Auto' || ['Picking','Loading','Return','Unloading'].indexOf(v.type) !== -1);
@@ -15469,7 +15469,7 @@ var res = await supabase.from('stock_vouchers').select('*').eq('company_id', com
             if (v.status === 'Draft' && !isSystem) actions += '<button onclick="RW_Warehouse._sendVoucher(\'' + v.voucher_code + '\')" class="text-blue-600 mx-1"><i class="fa-solid fa-paper-plane"></i></button>';
             if (v.status === 'Sent') actions += '<button onclick="RW_Warehouse._receiveVoucher(\'' + v.voucher_code + '\')" class="text-green-600 mx-1"><i class="fa-solid fa-check-circle"></i></button>';
             var sourceIndicator = isSystem ? ' <i class="fa-solid fa-robot text-gray-400 text-xs" title="تلقائي"></i>' : '';
-            return '<tr class="hover:bg-gray-50"><td class="p-3 font-bold text-indigo-700">' + (v.voucher_code||'') + sourceIndicator + '</td><td class="p-3">' + (v.type||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + statusBadge + '">' + (v.status||'') + '</span></td><td class="p-3">' + (v.reference||'-') + '</td><td class="p-3">' + (v.from_id||'-') + '</td><td class="p-3">' + (v.to_id||'-') + '</td><td class="p-3">' + esc(v._custodian_name||'-') + '</td><td class="p-3 text-center">' + actions + '</td></tr>';
+            return '<tr class="hover:bg-gray-50"><td class="p-3 font-bold text-indigo-700">' + (v.voucher_code||'') + sourceIndicator + '</td><td class="p-3">' + (v.type||'') + '</td><td class="p-3">' + (v.voucher_date||'') + '</td><td class="p-3">' + esc(v.created_by || '—') + '</td><td class="p-3"><span class="px-2 py-1 rounded-full text-xs ' + statusBadge + '">' + (v.status||'') + '</span></td><td class="p-3">' + (v.reference||'-') + '</td><td class="p-3">' + (v.from_id||'-') + '</td><td class="p-3">' + (v.to_id||'-') + '</td><td class="p-3">' + esc(v._custodian_name||'-') + '</td><td class="p-3 text-center">' + actions + '</td></tr>';
         });
     }
 
@@ -16083,7 +16083,7 @@ var items = itemsRes.data || [];
                 <input type="text" id="dv-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyDelivery()">
                 <button onclick="RW_Warehouse._applyDelivery()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
             </div></div>
-            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="dv-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">مسؤول المرتجع</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="dv-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
         </div>`);
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
 if (!companyId) { showToast('سياق الشركة غير محدد', 'error'); return; }
@@ -16162,6 +16162,22 @@ try {
     if (res.error) throw res.error;
 
     window._returnData = res.data || [];
+    window._returnUsersById = {};
+    var returnHandlerIds = Array.from(new Set(window._returnData.map(function(r) { return r.return_handler_id; }).filter(Boolean)));
+    if (returnHandlerIds.length) {
+        try {
+            var returnUsersRes = await supabase.from('users')
+                .select('id,name,email')
+                .eq('company_id', companyId)
+                .in('id', returnHandlerIds);
+            if (returnUsersRes.error) throw returnUsersRes.error;
+            (returnUsersRes.data || []).forEach(function(u) {
+                window._returnUsersById[String(u.id)] = u.name || u.email || '';
+            });
+        } catch (userLookupError) {
+            console.warn('Parent return handler lookup failed:', userLookupError);
+        }
+    }
     var deliveredRows = window._returnData.filter(function(r) { return r.status === 'Delivered'; });
     var deliveredIds = deliveredRows.map(function(r) { return r.id; }).filter(Boolean);
     var pendingReturnByRunsheet = {};
@@ -16199,7 +16215,7 @@ try {
         var id = (byId('rt-f-id')?.value||'').toLowerCase();
         if (id) d = d.filter(function(r) { return (r.runsheet_code||'').toLowerCase().indexOf(id) !== -1; });
         var tb = byId('rt-table'); if (!tb) return;
-        if (!d.length) { safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات مرتجعة</td></tr>'); return; }
+        if (!d.length) { safeHTML(tb, '<tr><td colspan="6" class="text-center py-8">لا توجد رانشيتات مرتجعة</td></tr>'); return; }
         RW_Table.paginate('rt-table', d, 1, 50, function(r) {
                         var statusLabel = r.status === 'Delivered' && Number(r.pending_return_qty) > 0
                 ? 'بانتظار المرتجع: ' + Number(r.pending_return_qty).toLocaleString('ar-EG') + ' وحدة'
@@ -16209,6 +16225,7 @@ try {
                 '<td class="p-3 font-bold">' + esc(r.runsheet_code || '') + '</td>' +
                 '<td class="p-3">' + esc(r.run_date || '') + '</td>' +
                 '<td class="p-3">' + esc(r.driver_id || '---') + '</td>' +
+                '<td class="p-3">' + esc((window._returnUsersById || {})[String(r.return_handler_id || '')] || r.return_handler_id || '—') + '</td>' +
                 '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-rose-100 text-rose-700">' + statusLabel + '</span></td>' +
                 '<td class="p-3 text-center"><button class="text-blue-600"><i class="fa-solid fa-eye"></i></button></td></tr>';
         });
@@ -16260,6 +16277,10 @@ var rsRes = await supabase.from('runsheets')
                     '<th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th>' +
                 '</tr></thead><tbody id="ul-table"><tr><td colspan="5" class="text-center py-8">جاري التحميل...</td></tr></tbody></table>' +
             '</div>' +
+            '<div class="bg-white rounded-2xl shadow-sm border overflow-auto mt-4" style="max-height:45vh">' +
+                '<div class="p-4 border-b"><div class="font-bold text-slate-800">سجل عمليات التفريغ المكتملة</div><div class="text-xs text-slate-500 mt-1">يعرض عمليات التفريغ من جميع تطبيقات المخازن عبر سجل العمليات المركزي، مع منفذ العملية والكمية المنقولة</div></div>' +
+                '<table class="w-full"><thead class="bg-slate-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">وقت الإتمام</th><th class="p-3">منفذ التفريغ</th><th class="p-3">إجمالي الكمية</th><th class="p-3">الحالة</th></tr></thead><tbody id="ul-completed-table"><tr><td colspan="5" class="text-center py-8">جاري تحميل السجل...</td></tr></tbody></table>' +
+            '</div>' +
         '</div>');
 
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
@@ -16268,23 +16289,74 @@ var rsRes = await supabase.from('runsheets')
             return;
         }
 
-        var res = await supabase.from('runsheets')
+        try {
+            await _refreshUnloadingData(companyId);
+            _subscribeUnloadingHistory(companyId);
+        } catch (err) {
+            showToast(err.message || 'تعذر تحميل بيانات التفريغ', 'error');
+        }
+    }
+
+    async function _refreshUnloadingData(companyId) {
+        var queueRes = await supabase.from('runsheets')
             .select('id,runsheet_code,run_date,driver_id,vehicle_id,status')
             .eq('company_id', companyId)
             .eq('status', 'Loaded')
             .order('run_date', { ascending: false });
+        if (queueRes.error) throw queueRes.error;
+        window._unloadingData = queueRes.data || [];
 
-        if (res.error) {
-            showToast(res.error.message, 'error');
-            return;
+        var historyRes = await supabase.from('erp_operation_registry')
+            .select('id,operation_type,request_payload,response_payload,status,created_at,completed_at')
+            .eq('company_id', companyId)
+            .eq('operation_type', 'complete_runsheet_unloading')
+            .eq('status', 'completed')
+            .order('completed_at', { ascending: false })
+            .limit(100);
+        if (historyRes.error) {
+            window._unloadingHistory = [];
+            window._unloadingHistoryError = historyRes.error.message || 'تعذر قراءة سجل التفريغ المركزي';
+        } else {
+            window._unloadingHistory = historyRes.data || [];
+            window._unloadingHistoryError = '';
         }
-
-        window._unloadingData = res.data || [];
         _applyUnloading();
     }
 
+    function _subscribeUnloadingHistory(companyId) {
+        try {
+            if (window._rwParentUnloadingChannel) {
+                supabase.removeChannel(window._rwParentUnloadingChannel);
+                window._rwParentUnloadingChannel = null;
+            }
+            if (!supabase || typeof supabase.channel !== 'function') return;
+            window._rwParentUnloadingChannel = supabase
+                .channel('rw-parent-unloading-' + companyId)
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'erp_operation_registry',
+                    filter: 'company_id=eq.' + companyId
+                }, function(payload) {
+                    var row = payload && payload.new ? payload.new : {};
+                    if (row.operation_type !== 'complete_runsheet_unloading' || row.status !== 'completed') return;
+                    if (!RW_STATE || !RW_STATE.app || RW_STATE.app.currentView !== 'unloading') return;
+                    if (window._rwParentUnloadingRefreshTimer) clearTimeout(window._rwParentUnloadingRefreshTimer);
+                    window._rwParentUnloadingRefreshTimer = setTimeout(function() {
+                        if (RW_STATE.app.currentView !== 'unloading') return;
+                        _refreshUnloadingData(companyId).catch(function(err) {
+                            console.error('Parent unloading realtime refresh failed:', err);
+                        });
+                    }, 250);
+                })
+                .subscribe();
+        } catch (err) {
+            console.warn('Parent unloading realtime subscription failed:', err);
+        }
+    }
+
     function _applyUnloading() {
-        var d = window._unloadingData || [];
+        var d = (window._unloadingData || []).slice();
         var id = (byId('ul-f-id')?.value || '').trim().toLowerCase();
         if (id) {
             d = d.filter(function(r) {
@@ -16294,22 +16366,63 @@ var rsRes = await supabase.from('runsheets')
 
         var tb = byId('ul-table');
         if (!tb) return;
-
         if (!d.length) {
             safeHTML(tb, '<tr><td colspan="5" class="text-center py-8">لا توجد رانشيتات جاهزة للتفريغ</td></tr>');
+        } else {
+            RW_Table.paginate('ul-table', d, 1, 50, function(r) {
+                var code = String(r.runsheet_code || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                return "<tr class=\"border-b hover:bg-gray-50 cursor-pointer\" onclick=\"RW_Warehouse._showUnloadingDetails('" + code + "')\">" +
+                    '<td class="p-3 font-bold">' + esc(r.runsheet_code || '') + '</td>' +
+                    '<td class="p-3">' + esc(r.run_date || '') + '</td>' +
+                    '<td class="p-3">' + esc(r.driver_id || '---') + '</td>' +
+                    '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-700">Loaded</span></td>' +
+                    "<td class=\"p-3 text-center\"><button class=\"text-blue-600\" onclick=\"event.stopPropagation(); RW_Warehouse._showUnloadingDetails('" + code + "')\"><i class=\"fa-solid fa-eye\"></i></button></td>" +
+                '</tr>';
+            });
+        }
+        _applyCompletedUnloading();
+    }
+
+    function _applyCompletedUnloading() {
+        var tb = byId('ul-completed-table');
+        if (!tb) return;
+        if (window._unloadingHistoryError) {
+            safeHTML(tb, '<tr><td colspan="5" class="text-center py-6 text-rose-600">' + esc(window._unloadingHistoryError) + '</td></tr>');
             return;
         }
-
-        RW_Table.paginate('ul-table', d, 1, 50, function(r) {
-            var code = String(r.runsheet_code || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-            return "<tr class=\"border-b hover:bg-gray-50 cursor-pointer\" onclick=\"RW_Warehouse._showUnloadingDetails('" + code + "')\">" +
-                '<td class="p-3 font-bold">' + esc(r.runsheet_code || '') + '</td>' +
-                '<td class="p-3">' + esc(r.run_date || '') + '</td>' +
-                '<td class="p-3">' + esc(r.driver_id || '---') + '</td>' +
-                '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-orange-100 text-orange-700">Loaded</span></td>' +
-                "<td class=\"p-3 text-center\"><button class=\"text-blue-600\" onclick=\"event.stopPropagation(); RW_Warehouse._showUnloadingDetails('" + code + "')\"><i class=\"fa-solid fa-eye\"></i></button></td>" +
+        var d = (window._unloadingHistory || []).slice();
+        var id = (byId('ul-f-id')?.value || '').trim().toLowerCase();
+        if (id) {
+            d = d.filter(function(r) {
+                var payload = r.request_payload || {};
+                return String(payload.runsheet_code || '').toLowerCase().indexOf(id) !== -1;
+            });
+        }
+        if (!d.length) {
+            safeHTML(tb, '<tr><td colspan="5" class="text-center py-6 text-slate-500">لا توجد عمليات تفريغ مكتملة مسجلة</td></tr>');
+            return;
+        }
+        var html = '';
+        d.forEach(function(r) {
+            var request = r.request_payload || {};
+            var response = r.response_payload || {};
+            var completedAt = r.completed_at || r.created_at || '';
+            var completedLabel = '—';
+            if (completedAt) {
+                var completedDate = new Date(completedAt);
+                completedLabel = Number.isNaN(completedDate.getTime()) ? esc(String(completedAt)) : esc(completedDate.toLocaleString('ar-EG'));
+            }
+            var actor = String(request.user_email || request.user_name || '').trim() || '—';
+            var total = Number(response.unloaded_total || 0);
+            html += '<tr class="border-b hover:bg-slate-50">' +
+                '<td class="p-3 font-bold">' + esc(request.runsheet_code || '—') + '</td>' +
+                '<td class="p-3 whitespace-nowrap">' + completedLabel + '</td>' +
+                '<td class="p-3">' + esc(actor) + '</td>' +
+                '<td class="p-3 text-center font-bold">' + total.toLocaleString('ar-EG', { maximumFractionDigits: 3 }) + '</td>' +
+                '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-emerald-100 text-emerald-700">مكتمل</span></td>' +
             '</tr>';
         });
+        safeHTML(tb, html);
     }
 
     async function _showUnloadingDetails(code) {
@@ -17880,8 +17993,8 @@ function _changeStatus(code, funcName) {
         }
 
         function renderCounts() {
-            var h = '<table class="w-full text-sm"><thead class="bg-slate-800 text-white"><tr><th class="p-3">التاريخ</th><th class="p-3">النوع</th><th class="p-3">الحالة</th><th class="p-3">المرجع</th><th class="p-3">عملية</th><th class="p-3">إجراء</th></tr></thead><tbody>';
-            if (!state.counts.length) h += '<tr><td colspan="6" class="p-8 text-center text-slate-500">لا توجد جلسات جرد</td></tr>';
+            var h = '<table class="w-full text-sm"><thead class="bg-slate-800 text-white"><tr><th class="p-3">التاريخ</th><th class="p-3">النوع</th><th class="p-3">الحالة</th><th class="p-3">المرجع</th><th class="p-3">المنشئ</th><th class="p-3">عملية</th><th class="p-3">إجراء</th></tr></thead><tbody>';
+            if (!state.counts.length) h += '<tr><td colspan="7" class="p-8 text-center text-slate-500">لا توجد جلسات جرد</td></tr>';
             for (var i = 0; i < state.counts.length; i++) {
                 var x = state.counts[i];
                 var actionable = ['InProgress','Draft'].indexOf(x.status) !== -1;
@@ -17890,6 +18003,7 @@ function _changeStatus(code, funcName) {
                     '<td class="p-3">' + escIC(x.type) + '</td>' +
                     '<td class="p-3 font-bold">' + escIC(x.status) + '</td>' +
                     '<td class="p-3">' + escIC(x.reference || '') + '</td>' +
+                    '<td class="p-3">' + escIC(x.created_by || '—') + '</td>' +
                     '<td class="p-3 font-mono text-xs">' + escIC(x.operation_id || '') + '</td>' +
                     '<td class="p-3">' +
                         (actionable ? '<button data-count-id="' + escIC(x.id) + '" data-count-action="cancel" class="ic-count-cancel px-3 py-1 rounded-lg bg-red-50 text-red-700 font-bold">إلغاء</button>' : '-') +
