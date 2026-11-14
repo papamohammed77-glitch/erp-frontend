@@ -1172,12 +1172,13 @@ jobs:
                 if(table==='stock_branches')return [{item_id:'qa-pick-1',qty:3,allocated_qty:2}];
                 return [];
               };
+              window.__qaRows=window.__qaStandaloneRows;
               window.Swal.fire=function(options){alerts.push(options);return Promise.resolve({isConfirmed:false});};
               window.fetch=function(url){if(String(url).includes('/functions/v1/complete-picking')){edgeCalls++;return Promise.resolve({ok:true,json:function(){return Promise.resolve({success:true});}});}return oldFetch.apply(this,arguments);};
               const previousSession=app.session,previousCompany=app.companyId;app.companyId='qa-company';
               app.session={runsheet_code:'QA-RS-STOCK',operation_id:'123e4567-e89b-42d3-a456-426614174000',items:[{item_code:'QA-PICK-001',item_name:'صنف نقص جزئي',qty_ordered:3,qty_picked:2,notes:'نقص'},{item_code:'QA-PICK-002',item_name:'صنف بلا سجل رصيد',qty_ordered:1,qty_picked:1,notes:''}]};
               try{app.completePicking();await new Promise(resolve=>setTimeout(resolve,100));return {title:alerts[0]&&alerts[0].title,text:alerts[0]&&alerts[0].text,edgeCalls:edgeCalls};}
-              finally{app.session=previousSession;app.companyId=previousCompany;window.__qaStandaloneRows=oldRows;window.Swal.fire=oldFire;window.fetch=oldFetch;}
+              finally{app.session=previousSession;app.companyId=previousCompany;window.__qaStandaloneRows=oldRows;window.__qaRows=oldRows;window.Swal.fire=oldFire;window.fetch=oldFetch;}
             });
             if(!standaloneStockGuard.title?.includes('راجع الكميات المتاحة')||!standaloneStockGuard.text?.includes('QA-PICK-001')||!standaloneStockGuard.text?.includes('QA-PICK-002')||!standaloneStockGuard.text?.includes('المتاح: 1')||!standaloneStockGuard.text?.includes('المتاح: 0')||standaloneStockGuard.edgeCalls!==0)
               throw new Error('STANDALONE_PICKER_STOCK_PREFLIGHT_FAILED:'+JSON.stringify(standaloneStockGuard));
@@ -1189,8 +1190,9 @@ jobs:
                 if(table==='stock_branches')return [{item_id:'qa-pick-3',qty:0.3,allocated_qty:0},{item_id:'qa-pick-4',qty:0.3,allocated_qty:0.1}];
                 return [];
               };
+              window.__qaRows=window.__qaStandaloneRows;
               try{return await app._getPickingStockCheck([{itemCode:'QA-PICK-003',pickedQty:0.1},{itemCode:'QA-PICK-003',pickedQty:0.2},{itemCode:'QA-PICK-004',pickedQty:0.3}]);}
-              finally{window.__qaStandaloneRows=originalRows;}
+              finally{window.__qaStandaloneRows=originalRows;window.__qaRows=originalRows;}
             });
             if(!standaloneFractionalGuard.ok||standaloneFractionalGuard.shortages.length!==1||standaloneFractionalGuard.shortages[0].code!=='QA-PICK-004'||standaloneFractionalGuard.shortages[0].requested!==0.3||standaloneFractionalGuard.shortages[0].available!==0.2)
               throw new Error('STANDALONE_PICKER_FOUR_DECIMAL_STOCK_COMPARISON_FAILED:'+JSON.stringify(standaloneFractionalGuard));
