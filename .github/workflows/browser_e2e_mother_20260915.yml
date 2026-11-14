@@ -103,6 +103,34 @@ jobs:
             const pageErrors=[];
             page.on('console', m => { if (m.type()==='error') consoleErrors.push(m.text()); });
             page.on('pageerror', e => pageErrors.push(String(e.message||e)));
+            await page.route('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js', route => route.fulfill({
+              status:200,
+              contentType:'application/javascript',
+              body:`
+                window.__qaSupabaseCreateCount=0;
+                window.__qaSupabaseChannels=[];
+                window.__qaSession=null;
+                window.supabase={createClient:function(url,key,options){
+                  window.__qaSupabaseCreateCount++;
+                  var client={
+                    auth:{
+                      getSession:function(){return Promise.resolve({data:{session:window.__qaSession},error:null});},
+                      onAuthStateChange:function(callback){window.__qaAuthListener=callback;return {data:{subscription:{unsubscribe:function(){}}}};},
+                      signInWithPassword:function(){return Promise.resolve({data:{session:window.__qaSession},error:null});},
+                      signOut:function(){window.__qaSession=null;if(window.__qaAuthListener)window.__qaAuthListener('SIGNED_OUT',null);return Promise.resolve({error:null});},
+                      resetPasswordForEmail:function(){return Promise.resolve({error:null});}
+                    },
+                    from:function(table){var q={};['select','eq','neq','in','order','limit','range','gte','lte','gt','lt','or','is','not','filter','match','insert','update','upsert','delete'].forEach(function(k){q[k]=function(){return q;};});q.then=function(resolve,reject){return Promise.resolve({data:[],error:null}).then(resolve,reject);};q.maybeSingle=function(){return Promise.resolve({data:null,error:null});};q.single=q.maybeSingle;return q;},
+                    rpc:function(name){if(name==='get_my_effective_profile')return Promise.resolve({data:{id:'qa-parent-user',auth_id:'qa-parent-auth',company_id:'qa-parent-company',email:'qa-parent@example.invalid',name:'QA Parent',role:'أمين مخزن',status:'Active',permissions:['warehouse'],active_warehouse_role:'مخزن شامل'},error:null});return Promise.resolve({data:null,error:null});},
+                    channel:function(name){var c={name:name,filters:[],on:function(event,filter,callback){c.filters.push(filter);return c;},subscribe:function(callback){if(callback)callback('SUBSCRIBED');return c;}};window.__qaSupabaseChannels.push(c);return c;},
+                    removeChannel:function(channel){window.__qaSupabaseChannels=window.__qaSupabaseChannels.filter(function(x){return x!==channel;});return Promise.resolve('ok');},
+                    realtime:{setAuth:function(){}}
+                  };
+                  window.__qaSupabaseClient=client;
+                  return client;
+                }};
+              `
+            }));
             const response = await page.goto(target,{waitUntil:'domcontentloaded',timeout:60000});
             await page.waitForLoadState('networkidle',{timeout:30000}).catch(()=>{});
             const title = await page.title();
@@ -117,6 +145,33 @@ jobs:
                 repairedHeaderPresent: performance.getEntriesByType('resource').length >= 0
               };
             }).catch(()=>({canonicalShell:false,repairedHeaderPresent:false}));
+            const coreBridge = await page.evaluate(async () => {
+              const sameClient = window.RW_SUPABASE_CLIENT === window.RW_SHARED_SUPABASE &&
+                window.RW_SHARED_SUPABASE === window.__qaSupabaseClient && window.supabase === window.RW_SHARED_SUPABASE;
+              const clientCount = window.__qaSupabaseCreateCount;
+              window.__qaSession = { access_token:'qa-token', user:{ id:'qa-parent-auth', email:'qa-parent@example.invalid', user_metadata:{} } };
+              const verified = await new Promise(resolve => window.RW_Auth.init((user,error) => resolve({user:user||null,error:error||null})));
+              const channelKey = window.RW_Realtime.start({
+                appId:'parent-core-bridge-e2e', companyId:'qa-parent-company', tables:['erp_operation_registry'],
+                onEvent:function(){}, onReconcile:function(){}
+              });
+              return {
+                clientCount:clientCount,
+                sameClient:sameClient,
+                coreAuth:typeof window.RW_Auth.init==='function',
+                coreRealtime:typeof window.RW_Realtime.start==='function',
+                verifiedCompany:verified.user&&verified.user.company_id,
+                authError:verified.error,
+                channelKey:channelKey,
+                channelCount:window.__qaSupabaseChannels.length,
+                companyFilter:window.__qaSupabaseChannels[0]&&window.__qaSupabaseChannels[0].filters[0]&&window.__qaSupabaseChannels[0].filters[0].filter
+              };
+            });
+            console.log('PARENT_CORE_BRIDGE='+JSON.stringify(coreBridge));
+            if(coreBridge.clientCount!==1||!coreBridge.sameClient||!coreBridge.coreAuth||!coreBridge.coreRealtime||
+              coreBridge.verifiedCompany!=='qa-parent-company'||coreBridge.authError||!coreBridge.channelKey||
+              coreBridge.channelCount!==1||coreBridge.companyFilter!=='company_id=eq.qa-parent-company')
+              throw new Error('PARENT_CORE_SINGLE_CLIENT_AUTH_REALTIME_BRIDGE_FAILED');
             console.log('TARGET_URL='+target);
             console.log('HTTP_STATUS='+(response ? response.status() : 'NO_RESPONSE'));
             console.log('TITLE='+title);
