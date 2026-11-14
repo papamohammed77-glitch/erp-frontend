@@ -182,6 +182,12 @@ jobs:
             if(/(?:onclick|oninput|onchange)="[^"]*\bApp\./.test(b.html)) throw new Error('UNSCOPED_INLINE_APP_HANDLER:'+key);
           }
           if(!bundles.picker.script.includes("RW_Auth.init")) throw new Error('PICKER_MUST_USE_SHARED_AUTH');
+          if(!pickerStandalone.includes('src="../core.js"')) throw new Error('STANDALONE_PICKER_CORE_SCRIPT_MISSING');
+          if(pickerStandalone.includes('window.supabase.createClient')) throw new Error('STANDALONE_PICKER_DUPLICATE_SUPABASE_CLIENT');
+          for(const marker of ['window.RW_SHARED_SUPABASE = window.supabase','window.RW_Auth.doLogin','window.RW_Auth.init','checkPermission(\'picking\')','appId: \'warehouse-picker\'','run_sheet_details','erp_operation_registry'])
+            if(!pickerStandalone.includes(marker)) throw new Error('STANDALONE_PICKER_CORE_CONTRACT_MISSING:'+marker);
+          if(pickerStandalone.includes("activeRole !== 'مخزن شامل'")) throw new Error('STANDALONE_PICKER_UNIFIED_ROLE_MUST_NOT_GRANT_PICKING');
+
           const pickerInline=[...pickerStandalone.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
           if(pickerInline.length!==1) throw new Error('STANDALONE_PICKER_INLINE_SCRIPT_COUNT:'+pickerInline.length);
           new Function(pickerInline[0][2]);
@@ -372,8 +378,8 @@ jobs:
             default_branch_id:'00000000-0000-4000-8000-000000000001',defaultBranchId:'00000000-0000-4000-8000-000000000001',
             allowed_branch_ids:['00000000-0000-4000-8000-000000000001'],allowedBranchIds:['00000000-0000-4000-8000-000000000001']
           };
-          function mockCore(role='مخزن شامل',mainAccess=true,deny=false,jobRole='أمين مخزن'){
-            const user={...profile,role:jobRole,activeWarehouseRole:role,active_warehouse_role:role};
+          function mockCore(role='مخزن شامل',mainAccess=true,deny=false,jobRole='أمين مخزن',permissions=profile.permissions){
+            const user={...profile,role:jobRole,permissions:permissions,activeWarehouseRole:role,active_warehouse_role:role};
             const snapshot={
               success:true,generated_at:'2026-11-10T00:00:00Z',
               user:{id:user.id,company_id:user.company_id,role:user.role,active_warehouse_role:role,is_owner:false},
@@ -390,11 +396,11 @@ jobs:
               "function __qaRows(table){if(table==='users')return [__qaUser];if(table==='app_settings')return [{main_branch_id:'00000000-0000-4000-8000-000000000001',currency:'EGP'}];if(table==='branches')return [{id:'00000000-0000-4000-8000-000000000001',company_id:'qa-company',branch_code:'BR-01',name:'فرع الاختبار',is_active:true},{id:'00000000-0000-4000-8000-000000000002',company_id:'qa-company',branch_code:'BR-02',name:'فرع اختبار ثانٍ',is_active:true}];if(table==='vehicles')return [{id:'qa-vehicle',company_id:'qa-company',vehicle_code:'VAN-QA',license_plate:'QA-001',model:'QA',mobile_branch_id:'00000000-0000-4000-8000-000000000001',mobile_stock_enabled:true,status:'Active'}];if(table==='suppliers')return [{id:'qa-supplier',company_id:'qa-company',name:'مورد اختبار',address:'عنوان اختبار',is_active:true}];return [];}",
               "function __qaQuery(table){var q={};['select','eq','neq','not','in','order','limit','range','gte','lte','gt','lt','or','is','filter','match','insert','update','upsert','delete'].forEach(function(k){q[k]=function(){return q;};});q.then=function(a,b){return Promise.resolve({data:__qaRows(table),error:null}).then(a,b);};q.maybeSingle=function(){var rows=__qaRows(table);return Promise.resolve({data:rows[0]||null,error:null});};q.single=q.maybeSingle;return q;}",
               "var supabase={auth:{getSession:function(){return Promise.resolve({data:{session:{user:__qaUser,access_token:'qa-token'}}});},getUser:function(){return Promise.resolve({data:{user:{id:'qa-auth',email:__qaUser.email,user_metadata:{}}}});},signOut:function(){return Promise.resolve({error:null});},signInWithPassword:function(){return Promise.resolve({data:{user:__qaUser},error:null});},onAuthStateChange:function(){return {data:{subscription:{unsubscribe:function(){}}}};}},from:function(t){return __qaQuery(t);},rpc:function(name,args){if(name==='get_warehouse_hub_snapshot')return Promise.resolve(__qaDeny?{data:null,error:{message:'WAREHOUSE_PERMISSION_REQUIRED'}}:{data:__qaSnapshot,error:null});if(name==='inventory_voucher_report')return Promise.resolve({data:args&&args.p_operation==='SUMMARY'?{summary:{statuses:[]}}:{rows:[],total:0},error:null});if(name==='inventory_control')return Promise.resolve({data:{success:true,rows:[],counts:[],vouchers:[]},error:null});return Promise.resolve({data:{success:true,rows:[],invoices:[],summary:{statuses:[]}},error:null});},channel:function(){var c={on:function(){return c;},subscribe:function(cb){if(cb)cb('SUBSCRIBED');return c;}};return c;},removeChannel:function(){return Promise.resolve();},storage:{from:function(){return {createSignedUrl:function(){return Promise.resolve({data:{signedUrl:'https://qa.invalid/file'},error:null});},upload:function(){return Promise.resolve({data:{path:'qa'},error:null});}};}}};",
-              "var RW_Auth={init:function(cb){cb(__qaUser,__qaUser?null:'NO_SESSION');},getUser:function(){return __qaUser;},getToken:function(){return 'qa-token';},doLogin:function(e,p,cb){sessionStorage.removeItem('qa-signed-out');__qaUser=__qaProfile;if(cb)cb(__qaUser,null);},doLogout:function(cb){sessionStorage.setItem('qa-signed-out','1');__qaUser=null;supabase.auth.signOut().then(function(){if(cb)cb(true);});}};",
+              "var RW_Auth={init:function(cb){cb(__qaUser,__qaUser?null:'NO_SESSION');},getUser:function(){return __qaUser;},getToken:function(){return 'qa-token';},checkPermission:function(key){return !!(__qaUser&&Array.isArray(__qaUser.permissions)&&__qaUser.permissions.indexOf(key)!==-1);},doLogin:function(e,p,cb){sessionStorage.removeItem('qa-signed-out');__qaUser=__qaProfile;if(cb)cb(__qaUser,null);},doLogout:function(cb){sessionStorage.setItem('qa-signed-out','1');__qaUser=null;supabase.auth.signOut().then(function(){if(cb)cb(true);});}};",
               "var __ui={byId:function(id){return document.getElementById(id);},safeHTML:function(el,h){if(el)el.innerHTML=h;},safeText:function(el,t){if(el)el.textContent=String(t==null?'':t);},toast:function(){},showLoader:function(){},hideLoader:function(){},showError:function(){},showSkeleton:function(id,n){var e=document.getElementById(id);if(e)e.innerHTML='جارٍ التحميل...';},showEmptyState:function(){},formatCurrency:function(v){return String(v||0);},formatNumber:function(v){return String(v||0);},updateConnectionStatus:function(){},showConfirm:function(m,cb){if(cb)cb();}};",
               "var RW_UI=new Proxy(__ui,{get:function(t,p){if(p in t)return t[p];return function(){};}});",
               "var __qaCountDetails=[{id:'qa-line',branch_id:'00000000-0000-4000-8000-000000000001',branch_code:'BR-01',branch_name:'فرع الاختبار',item_id:'qa-item',item_code:'QA-001',item_name:'صنف اختبار',unit:'حبة',system_qty:4,counted_qty:null,variance_qty:0,adjusted:false}];var __qaCountCalls=[];var __qaVoucherCalls=[];var RW_API={call:function(name,payload,cb){if(name==='create-stock-voucher'){__qaVoucherCalls.push({name:name,payload:payload});if(cb)cb({success:true,voucher_code:'QA-BR-RECEIPT-01',request_origin:'WarehouseBranchReceipt'},null);return;}if(name==='save-inventory-count'){var op=payload.operation;__qaCountCalls.push(op);if(op==='COUNT_CREATE'){if(cb)cb({success:true,count_id:'qa-count',status:'InProgress'});return;}if(op==='COUNT_POPULATE'){if(cb)cb({success:true,added_lines:1});return;}if(op==='COUNT_GET'){if(cb)cb({success:true,count:{id:'qa-count',type:'branch',branch_id:'00000000-0000-4000-8000-000000000001',reference:'جرد اختبار',count_date:'2026-11-10',status:'InProgress'},details:__qaCountDetails},null);return;}if(op==='COUNT_UPSERT_LINE'){__qaCountDetails[0].counted_qty=payload.payload.counted_qty;__qaCountDetails[0].variance_qty=payload.payload.counted_qty-4;if(cb)cb({success:true},null);return;}if(cb)cb({success:true},null);return;}if(cb)cb({success:true,rows:[]},null);}};",
-              "var RW_Realtime={start:function(){return 'qa-channel';},stop:function(){},subscribe:function(){return 'qa-channel';}};",
+              "var __qaRealtimeStarts=[];var RW_Realtime={start:function(config){__qaRealtimeStarts.push(config||{});return 'qa-channel';},stop:function(){},subscribe:function(){return 'qa-channel';}};",
               "var RW_ImageCache={loadAll:function(){return Promise.resolve();},clear:function(){},get:function(){return null;},set:function(){}};",
               "var RW_SW={register:function(){return Promise.resolve();}};",
               "window.__qaHideSupplier=false;var __qaBaseRows=__qaRows;__qaRows=function(table){if(table==='purchase_orders')return [{id:'qa-po',company_id:'qa-company',po_code:'QA-PO-001',po_date:'2026-11-10',supplier_name:'مورد PO اختباري',status:'Approved',total_amount:700,branch_id:'00000000-0000-4000-8000-000000000001',supplier_id:'qa-supplier'},{id:'qa-po-received',company_id:'qa-company',po_code:'QA-PO-RECEIVED-001',po_date:'2026-11-10',supplier_name:'مورد PO مكتمل اختباري',status:'Approved',total_amount:500,branch_id:'00000000-0000-4000-8000-000000000001',supplier_id:'qa-supplier'}];if(table==='purchase_order_details')return [{po_id:'qa-po',item_id:'qa-item-po',item_code:'QA-001',item_name:'صنف أمر الشراء',qty_ordered:10,qty_received:0,unit:'كرتونة'},{po_id:'qa-po-received',item_id:'qa-item-po',item_code:'QA-001',item_name:'صنف أمر الشراء',qty_ordered:5,qty_received:5,unit:'كرتونة'}];if(table==='items')return [{id:'qa-item-po',company_id:'qa-company',item_code:'QA-001',barcode:'622000001',name:'صنف أمر الشراء',description:'وصف صنف اختبار PO',image_url:'https://qa.invalid/po-item.jpg',unit:'كرتونة'},{id:'qa-item-qmp',company_id:'qa-company',item_code:'QA-002',barcode:'622000002',name:'صنف السوق السريع',description:'وصف صنف اختبار السوق',image_url:'https://qa.invalid/qmp-item.jpg',unit:'كرتونة'}];if(table==='purchase_invoices')return [{id:'qa-invoice',invoice_code:'QA-QMP-001',supplier_invoice_no:'SUP-QA-001',branch_id:'00000000-0000-4000-8000-000000000001',supplier_id:'qa-supplier',supplier:window.__qaHideSupplier?null:{id:'qa-supplier',name:'مورد سوق سريع اختباري'},total_amount:300}];if(table==='receiving')return [{id:'qa-history-po',operation_id:'QA-HISTORY-PO',date:'2026-11-10',po_number:'QA-PO-001',responsible:'QA Receiver',status:'مكتمل',company_id:'qa-company',created_at:'2026-11-10T10:00:00Z'},{id:'qa-history-qmp',operation_id:'QA-HISTORY-QMP',date:'2026-11-10',po_number:'QA-QMP-001',purchase_invoice_id:'qa-invoice',responsible:'QA Receiver',status:'مكتمل',company_id:'qa-company',created_at:'2026-11-10T10:01:00Z'},{id:'qa-history-po-received',operation_id:'QA-HISTORY-PO-RECEIVED',date:'2026-11-10',po_number:'QA-PO-RECEIVED-001',responsible:'QA Receiver',status:'مكتمل',company_id:'qa-company',created_at:'2026-11-10T10:02:00Z'}];if(table==='receiving_details')return [{operation_id:'QA-HISTORY-PO',item_code:'QA-001',item_name:'صنف أمر الشراء',unit:'كرتونة',qty_expected:5,qty_received:4,difference:-1,reason:'نقص اختبار'},{operation_id:'QA-HISTORY-QMP',item_code:'QA-002',item_name:'صنف السوق السريع',unit:'كرتونة',qty_expected:3,qty_received:0,difference:-3,reason:'رفض اختبار'},{operation_id:'QA-HISTORY-PO-RECEIVED',item_code:'QA-001',item_name:'صنف أمر الشراء',unit:'كرتونة',qty_expected:5,qty_received:5,difference:0,reason:null}];return __qaBaseRows(table);};",
@@ -406,8 +412,8 @@ jobs:
           }
           const browser=await chromium.launch({headless:true});
           const context=await browser.newContext({serviceWorkers:'block'});
-          async function prepare(page,role='مخزن شامل',mainAccess=true,deny=false,jobRole='أمين مخزن'){
-            const core=mockCore(role,mainAccess,deny,jobRole);
+          async function prepare(page,role='مخزن شامل',mainAccess=true,deny=false,jobRole='أمين مخزن',permissions=profile.permissions){
+            const core=mockCore(role,mainAccess,deny,jobRole,permissions);
             new Function(core);
             await page.route(/https:\/\/(fonts\.googleapis\.com|cdnjs\.cloudflare\.com|cdn\.tailwindcss\.com|cdn\.jsdelivr\.net|unpkg\.com)/,async route=>{
               const url=route.request().url();
@@ -1186,6 +1192,39 @@ jobs:
             if(!standaloneFractionalGuard.ok||standaloneFractionalGuard.shortages.length!==1||standaloneFractionalGuard.shortages[0].code!=='QA-PICK-004'||standaloneFractionalGuard.shortages[0].requested!==0.3||standaloneFractionalGuard.shortages[0].available!==0.2)
               throw new Error('STANDALONE_PICKER_FOUR_DECIMAL_STOCK_COMPARISON_FAILED:'+JSON.stringify(standaloneFractionalGuard));
             console.log('STANDALONE_PICKER_FOUR_DECIMAL_STOCK_COMPARISON=PASS');
+            const realtimeContract=await standalonePicker.evaluate(()=>({
+              starts:window.__qaRealtimeStarts||[],
+              sharedClient:window.supabase===window.RW_SHARED_SUPABASE,
+              authUser:window.RW_Auth.getUser()
+            }));
+            const pickerRealtime=realtimeContract.starts.find(x=>x.appId==='warehouse-picker');
+            if(!pickerRealtime||pickerRealtime.companyId!=='qa-company'||!pickerRealtime.tables.includes('runsheets')||!pickerRealtime.tables.includes('erp_operation_registry')||!pickerRealtime.tables.some(x=>typeof x==='object'&&x.name==='run_sheet_details'&&x.companyColumn===false)||!realtimeContract.sharedClient)
+              throw new Error('STANDALONE_PICKER_CORE_REALTIME_WIRING_FAILED:'+JSON.stringify({appId:pickerRealtime&&pickerRealtime.appId,companyId:pickerRealtime&&pickerRealtime.companyId,tables:pickerRealtime&&pickerRealtime.tables,sharedClient:realtimeContract.sharedClient}));
+            const permissionBoundary=await standalonePicker.evaluate(async()=>{
+              const app=window.App;
+              app.doLogout();
+              await new Promise(r=>setTimeout(r,30));
+              window.__qaProfile.role='أمين مخزن';
+              window.__qaProfile.activeWarehouseRole='مخزن شامل';
+              window.__qaProfile.active_warehouse_role='مخزن شامل';
+              window.__qaProfile.permissions=['warehouse'];
+              document.getElementById('loginEmail').value='qa@rawaea.invalid';
+              document.getElementById('loginPass').value='qa-password';
+              app.doLogin();
+              await new Promise(r=>setTimeout(r,50));
+              const denied={mainHidden:document.getElementById('mainApp').classList.contains('hidden'),loginVisible:!document.getElementById('loginScreen').classList.contains('hidden')};
+              window.__qaProfile.role='مشرف مخازن';
+              window.__qaProfile.activeWarehouseRole='مخزن شامل';
+              window.__qaProfile.active_warehouse_role='مخزن شامل';
+              window.__qaProfile.permissions=['warehouse','picking'];
+              app.doLogin();
+              await new Promise(r=>setTimeout(r,50));
+              return {denied,supervisorAllowed:!document.getElementById('mainApp').classList.contains('hidden')};
+            });
+            if(!permissionBoundary.denied.mainHidden||!permissionBoundary.denied.loginVisible||!permissionBoundary.supervisorAllowed)
+              throw new Error('STANDALONE_PICKER_PARENT_PERMISSION_BOUNDARY_FAILED:'+JSON.stringify(permissionBoundary));
+            console.log('STANDALONE_PICKER_CORE_REALTIME_AND_PARENT_PERMISSION_BOUNDARY=PASS');
+
 
             if(standalonePickerErrors.length)throw new Error('STANDALONE_PICKER_BROWSER_ERRORS:'+JSON.stringify(standalonePickerErrors));
             await standalonePicker.close();
