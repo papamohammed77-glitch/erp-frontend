@@ -150,7 +150,7 @@
 <script>
 (function () {
     var url = 'https://fiilmooggumokxanwiyx.supabase.co';
-    var key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJmaWlsbW9vZ2d1bW9reGFud2l5eCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc4NzA5MDkyLCJleHAiOjIwOTQyODUwOTl9.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+    var key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
     if (!window.supabase || typeof window.supabase.createClient !== 'function') {
         console.error('RAWAEA shared Supabase bootstrap failed: SDK unavailable');
         return;
@@ -268,7 +268,7 @@ function RW_Audit_log(action, tableName, recordId, oldData, newData) {
             var session = sessionRes && sessionRes.data && sessionRes.data.session;
             var token = session ? session.access_token : null;
 
-            if (action !== 'failed_login' && !token) return;
+            if (!token) return;
 
             var headers = { 'Content-Type': 'application/json' };
             if (token) headers.Authorization = 'Bearer ' + token;
@@ -1241,6 +1241,39 @@ Object.defineProperty(RW_STATE.app, 'companyId', {
     }
 });
 window.RW_STATE = RW_STATE;
+
+function rwApplyCoreProfile(coreUser) {
+    if (!coreUser || !coreUser.id || !coreUser.company_id) {
+        throw new Error('ملف المستخدم الفعّال غير مكتمل');
+    }
+    var authUser = coreUser.session && coreUser.session.user ? coreUser.session.user : null;
+    var meta = authUser && authUser.user_metadata ? authUser.user_metadata : {};
+    var effectivePermissions = Array.isArray(coreUser.permissions) ? coreUser.permissions.slice() : [];
+
+    RW_STATE.app.currentUser = {
+        id: coreUser.id,
+        auth_id: coreUser.auth_id || (authUser && authUser.id) || null,
+        company_id: coreUser.company_id,
+        name: coreUser.name || coreUser.email || (authUser && authUser.email) || 'مستخدم',
+        email: coreUser.email || (authUser && authUser.email) || '',
+        role: coreUser.role || 'موظف',
+        isOwner: coreUser.isOwner === true,
+        permissions: effectivePermissions,
+        default_branch_id: coreUser.defaultBranchId || null,
+        allowed_branch_ids: coreUser.allowedBranchIds || [],
+        active_warehouse_role: coreUser.activeWarehouseRole || ''
+    };
+
+    RW_STATE.permissions = effectivePermissions.slice();
+    RW_STATE.app.company = {
+        id: coreUser.company_id,
+        name: meta.companyName || 'الروائع ERP',
+        logo: meta.companyLogo || 'ر'
+    };
+    RW_STATE.app.authenticated = true;
+    return RW_STATE.app.currentUser;
+}
+
 const RW_Auth = {
     login: function(username, password) {
         if (!username || !password) {
@@ -1253,74 +1286,37 @@ const RW_Auth = {
             showToast('خطأ داخلي: عميل Supabase غير مهيأ', 'error');
             return;
         }
+        if (!window.RW_Auth || typeof window.RW_Auth.doLogin !== 'function') {
+            hideLoader();
+            showToast('خدمة المصادقة المركزية غير متاحة', 'error');
+            console.error('Parent login stopped: Core RW_Auth.doLogin is unavailable');
+            return;
+        }
+
         var self = this;
-        RW_SUPABASE_CLIENT.auth.signInWithPassword({
-            email: username,
-            password: password
-        }).then(function(authRes) {
-            if (authRes.error) {
+        window.RW_Auth.doLogin(username, password, function(coreUser, error) {
+            if (error || !coreUser) {
                 hideLoader();
-                var msg = authRes.error.message || 'بيانات الدخول غير صحيحة';
-                RW_Audit_log('failed_login', 'auth', username, null, { reason: msg });
-                showToast('فشل الدخول: ' + msg, 'error');
+                showToast('فشل الدخول: ' + (error || 'تعذر تحميل ملف المستخدم والصلاحيات'), 'error');
                 return;
             }
-var user = authRes.data.user;
-var meta = user.user_metadata || {};
 
-return RW_SUPABASE_CLIENT
-    .from('users')
-    .select('id, company_id, status, permissions, name, default_branch_id, allowed_branch_ids')
-    .eq('auth_id', user.id)
-    .maybeSingle()
-    .then(function(profileRes) {
-        if (profileRes.error) throw profileRes.error;
-        if (!profileRes.data || !profileRes.data.company_id) {
-            throw new Error('بيانات سياق الشركة للمستخدم غير مكتملة');
-        }
-        if (profileRes.data.status === 'Inactive') {
-            throw new Error('حساب المستخدم غير نشط');
-        }
-
-        var dbPermissions = Array.isArray(profileRes.data.permissions)
-            ? profileRes.data.permissions
-                .map(function(p) { return String(p).trim(); })
-                .filter(function(p) { return !!p; })
-            : [];
-        var isOwner = dbPermissions.indexOf('*') !== -1;
-
-        RW_STATE.app.authenticated = true;
-        RW_STATE.app.currentUser = {
-            id: profileRes.data.id,
-            company_id: profileRes.data.company_id,
-            name: profileRes.data.name || meta.name || user.email,
-            email: user.email,
-            role: meta.role || 'مدير النظام',
-            isOwner: isOwner,
-            permissions: dbPermissions,
-            default_branch_id: profileRes.data.default_branch_id || null,
-            allowed_branch_ids: profileRes.data.allowed_branch_ids || []
-        };
-
-        RW_STATE.permissions = dbPermissions;
-        RW_STATE.app.company = {
-            id: profileRes.data.company_id,
-            name: meta.companyName || 'الروائع ERP',
-            logo: meta.companyLogo || 'ر'
-        };
-
-        RW_Audit_log('login', 'auth', user.id, null, {
-            email: user.email,
-            role: meta.role || 'مدير النظام',
-            company_id: profileRes.data.company_id
-        });
-
-        return self.enterSystem();
-    });
-        }).catch(function(e) {
-            hideLoader();
-            showToast('حدث خطأ أثناء الاتصال', 'error');
-            console.error(e);
+            try {
+                rwApplyCoreProfile(coreUser);
+                RW_Audit_log('login', 'auth', coreUser.auth_id || coreUser.id, null, {
+                    email: coreUser.email,
+                    role: coreUser.role,
+                    company_id: coreUser.company_id
+                });
+                self.enterSystem();
+            } catch (profileError) {
+                RW_STATE.app.authenticated = false;
+                RW_STATE.app.currentUser = null;
+                RW_STATE.permissions = [];
+                hideLoader();
+                showToast('تعذر التحقق من ملف المستخدم الفعّال: ' + (profileError.message || profileError), 'error');
+                console.error('Parent login profile rejected:', profileError);
+            }
         });
     },
 enterSystem: function() {
@@ -34417,51 +34413,34 @@ function boot() {
         console.log('RAWAEA ERP BOOTING...');
         bindEvents();
         
-        // ✅ التحقق من وجود جلسة سابقة
-        supabase.auth.getSession().then(function(res) {
-            if (res.data && res.data.session) {
-                console.log('✅ Session restored');
-                var user = res.data.session.user;
-                var meta = user.user_metadata || {};
-                
-                RW_STATE.app.authenticated = true;
-                RW_STATE.app.currentUser = {
-                    name: meta.name || user.email,
-                    email: user.email,
-                    role: meta.role || 'مدير النظام',
-                    isOwner: meta.isOwner === true || meta.isOwner === 'true'
-                };
-                RW_STATE.permissions = meta.permissions || ['*'];
-                return RW_SUPABASE_CLIENT
-                    .from('users')
-                    .select('id, company_id, status, default_branch_id, allowed_branch_ids')
-                    .eq('auth_id', user.id)
-                    .maybeSingle()
-                    .then(function(profileRes) {
-                        if (profileRes.error) throw profileRes.error;
-                        if (!profileRes.data || !profileRes.data.company_id) {
-                            throw new Error('بيانات سياق الشركة للمستخدم غير مكتملة');
-                        }
-                        if (profileRes.data.status === 'Inactive') {
-                            throw new Error('حساب المستخدم غير نشط');
-                        }
+        // Restore identity and effective permissions through Core; fail closed.
+        if (!window.RW_Auth || typeof window.RW_Auth.init !== 'function') {
+            throw new Error('خدمة المصادقة المركزية غير متاحة');
+        }
+        window.RW_Auth.init(function(coreUser, error) {
+            if (error === 'NO_SESSION') return;
 
-                        RW_STATE.app.currentUser.id = profileRes.data.id;
-                        RW_STATE.app.currentUser.company_id = profileRes.data.company_id;
-                        RW_STATE.app.currentUser.default_branch_id = profileRes.data.default_branch_id || null;
-                        RW_STATE.app.currentUser.allowed_branch_ids = profileRes.data.allowed_branch_ids || [];
-
-                        RW_STATE.app.company = {
-                            id: profileRes.data.company_id,
-                            name: meta.companyName || 'الروائع ERP',
-                            logo: meta.companyLogo || 'ر'
-                        };
-
-                        RW_Auth.enterSystem();
-                    });
+            if (error || !coreUser) {
+                RW_STATE.app.authenticated = false;
+                RW_STATE.app.currentUser = null;
+                RW_STATE.permissions = [];
+                hideLoader();
+                console.error('Parent session restore rejected:', error || 'INVALID_EFFECTIVE_PROFILE');
+                showToast('تعذر التحقق من الهوية والصلاحيات. أعد تسجيل الدخول.', 'error');
+                return;
             }
-        }).catch(function() {
-            console.log('No session found');
+
+            try {
+                rwApplyCoreProfile(coreUser);
+                RW_Auth.enterSystem();
+            } catch (profileError) {
+                RW_STATE.app.authenticated = false;
+                RW_STATE.app.currentUser = null;
+                RW_STATE.permissions = [];
+                hideLoader();
+                console.error('Parent restored profile rejected:', profileError);
+                showToast('تعذر التحقق من ملف المستخدم الفعّال.', 'error');
+            }
         });
         
         RW_STATE.app.initialized = true;
