@@ -148,12 +148,33 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.107.0/dist/umd/supabase.min.js">
 </script>
 <script>
+(function () {
+    var url = 'https://fiilmooggumokxanwiyx.supabase.co';
+    var key = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJmaWlsbW9vZ2d1bW9reGFud2l5eCIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzc4NzA5MDkyLCJleHAiOjIwOTQyODUwOTl9.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        console.error('RAWAEA shared Supabase bootstrap failed: SDK unavailable');
+        return;
+    }
+    window.RW_SUPABASE_CLIENT = window.supabase.createClient(url, key, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+        global: { headers: { apikey: key } }
+    });
+    window.RW_SHARED_SUPABASE = window.RW_SUPABASE_CLIENT;
+})();
+</script>
+<script src="core.js"></script>
+<script>
 (function() {
 'use strict';
 var RW_SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var RW_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 
 var RW_SUPABASE_CLIENT = (function () {
+    if (window.RW_SUPABASE_CLIENT && typeof window.RW_SUPABASE_CLIENT.from === 'function' && window.RW_SUPABASE_CLIENT.auth) {
+        window.RW_SHARED_SUPABASE = window.RW_SUPABASE_CLIENT;
+        console.log('✅ Parent and Core share one Supabase client');
+        return window.RW_SUPABASE_CLIENT;
+    }
     if (!window.supabase || typeof window.supabase.createClient !== 'function') {
         console.error('❌ Supabase SDK not loaded correctly');
         return null;
@@ -170,8 +191,8 @@ var RW_SUPABASE_CLIENT = (function () {
             }
         }
     });
-    // تعريض العميل على window لضمان عدم تظليله
     window.RW_SUPABASE_CLIENT = client;
+    window.RW_SHARED_SUPABASE = client;
     console.log('✅ Supabase Client initialized successfully');
     return client;
 })();
@@ -15713,7 +15734,80 @@ async function _openNewVoucherModal() {
         safeHTML(tb, html);
     }
 
+    var _rwParentCoreRealtimeState = { companyId: null, key: null, starting: false };
+
+    function _refreshVisibleParentWarehouseHistory(companyId) {
+        if (!RW_STATE || !RW_STATE.app || !companyId) return;
+        var view = RW_STATE.app.currentView;
+        if (view === 'picking') {
+            _refreshParentOperationHistory(companyId, 'complete_runsheet_picking', '_parentPickingHistory', 'pk-completed-table', 'pk-f-id', 'picked_qty', 'picked_total');
+        } else if (view === 'loading') {
+            _refreshParentOperationHistory(companyId, 'complete_runsheet_loading', '_parentLoadingHistory', 'ld-completed-table', 'ld-f-id', 'loaded_qty', 'loaded_total');
+        } else if (view === 'unloading') {
+            _refreshUnloadingData(companyId).catch(function(err) {
+                console.error('Parent Core unloading reconciliation failed:', err);
+            });
+        }
+    }
+
+    function _ensureParentCoreRealtime(companyId) {
+        var auth = window.RW_Auth;
+        var realtime = window.RW_Realtime;
+        var state = _rwParentCoreRealtimeState;
+        if (!companyId || !auth || typeof auth.init !== 'function' || !realtime || typeof realtime.start !== 'function') return false;
+
+        if (state.key && state.companyId === companyId) {
+            var liveStatus = typeof realtime.getStatus === 'function' ? realtime.getStatus(state.key) : 'SUBSCRIBED';
+            if (liveStatus !== 'STOPPED') return true;
+            state.key = null;
+            state.starting = false;
+        }
+        if (state.key && state.companyId !== companyId) {
+            realtime.stop(state.key);
+            state.key = null;
+            state.starting = false;
+        }
+        if (state.starting && state.companyId === companyId) return true;
+
+        state.companyId = companyId;
+        state.starting = true;
+        auth.init(function(coreUser, error) {
+            state.starting = false;
+            if (error || !coreUser || !coreUser.company_id || String(coreUser.company_id) !== String(companyId)) {
+                console.warn('Parent Core warehouse realtime identity unavailable:', error || 'COMPANY_SCOPE_MISMATCH');
+                return;
+            }
+            if (state.key && state.companyId === companyId) {
+                var status = typeof realtime.getStatus === 'function' ? realtime.getStatus(state.key) : 'SUBSCRIBED';
+                if (status !== 'STOPPED') return;
+                state.key = null;
+            }
+            var key = realtime.start({
+                appId: 'parent-warehouse-history',
+                companyId: companyId,
+                tables: ['erp_operation_registry'],
+                debounceMs: 350,
+                reconcileMs: 30000,
+                onEvent: function() {
+                    _refreshVisibleParentWarehouseHistory(companyId);
+                },
+                onReconcile: function() {
+                    _refreshVisibleParentWarehouseHistory(companyId);
+                },
+                onStatus: function(info) {
+                    if (info && info.status === 'CHANNEL_ERROR') {
+                        console.warn('Parent Core warehouse history channel temporarily unavailable; reconciliation remains enabled.');
+                    }
+                }
+            });
+            state.key = key || null;
+            if (!key) console.warn('Parent Core warehouse realtime did not start; manual refresh remains available.');
+        });
+        return true;
+    }
+
     function _subscribeParentOperationHistory(companyId, operationType, stateKey, tableId, filterId, quantityKey, totalKey, viewName) {
+        if (_ensureParentCoreRealtime(companyId)) return;
         try {
             var channelKey = '_rwParentHistory_' + operationType;
             if (window[channelKey]) {
@@ -16429,6 +16523,7 @@ var rsRes = await supabase.from('runsheets')
     }
 
     function _subscribeUnloadingHistory(companyId) {
+        if (_ensureParentCoreRealtime(companyId)) return;
         try {
             if (window._rwParentUnloadingChannel) {
                 supabase.removeChannel(window._rwParentUnloadingChannel);
