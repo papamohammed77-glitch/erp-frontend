@@ -80,6 +80,8 @@ jobs:
           const loaderStandalone=fs.readFileSync('companies/company-1/warehouse/loader.html','utf8');
           const unloaderStandalone=fs.readFileSync('companies/company-1/warehouse/unloader.html','utf8');
           const pickerStandalone=fs.readFileSync('companies/company-1/warehouse/picker.html','utf8');
+          const counterStandalone=fs.readFileSync('companies/company-1/warehouse/counter.html','utf8');
+          const vouchersStandalone=fs.readFileSync('companies/company-1/warehouse/vouchers.html','utf8');
           const parent=fs.readFileSync('companies/company-1/main.html','utf8');
           const serviceWorker=fs.readFileSync('companies/company-1/sw.js','utf8');
           const bulkAdjustment=fs.readFileSync('supabase/functions/bulk-stock-adjustment/index.ts','utf8');
@@ -191,6 +193,31 @@ jobs:
           const pickerInline=[...pickerStandalone.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||''));
           if(pickerInline.length!==1) throw new Error('STANDALONE_PICKER_INLINE_SCRIPT_COUNT:'+pickerInline.length);
           new Function(pickerInline[0][2]);
+          const standaloneEntitlementContracts=[
+            ['receiver',receiver,"activeWarehouseRole !== 'استلام' && !hasReceivingPermission","indexOf('receiving') !== -1"],
+            ['picker',pickerStandalone,"activeRole !== 'تحضير'","checkPermission('picking')"],
+            ['loader',loaderStandalone,"activeWarehouseRole !== 'تحميل' && !hasLoadingPermission","indexOf('loading') !== -1"],
+            ['returns',returnsStandalone,"activeWarehouseRole !== 'مرتجعات' && !hasReturnPermission","indexOf('return') !== -1"],
+            ['unloader',unloaderStandalone,"activeWarehouseRole !== 'تفريغ' && !hasUnloadingPermission","indexOf('unloading') !== -1"],
+            ['counter',counterStandalone,"activeWarehouseRole!=='جرد'&&!hasCountPermission","vehicle-count","branch-count","general-count"],
+            ['vouchers',vouchersStandalone,"activeWarehouseRole!=='أذونات'","voucherPermissions.indexOf('vouchers')===-1"]
+          ];
+          for(const [name,source,...markers] of standaloneEntitlementContracts){
+            for(const marker of markers) if(!source.includes(marker)) throw new Error('STANDALONE_PARENT_ENTITLEMENT_MISSING:'+name+':'+marker);
+            if(name!=='vouchers' && /activeWarehouseRole\s*!==?\s*['"]مخزن شامل['"]/.test(source))
+              throw new Error('STANDALONE_UNIFIED_ROLE_MUST_NOT_GRANT_APP_ACCESS:'+name);
+          }
+          const hubStart=html.indexOf('allowed:function(key)');
+          const hubEnd=html.indexOf('tab:function(t)',hubStart);
+          const hubGate=hubStart>=0&&hubEnd>hubStart?html.slice(hubStart,hubEnd):'';
+          if(!hubGate.includes("active_warehouse_role||'')!=='مخزن شامل'")||!hubGate.includes("permissions.includes(\"warehouse\")"))
+            throw new Error('UNIFIED_WAREHOUSE_HUB_MUST_REMAIN_SEPARATE_FROM_STANDALONE_APP_GRANTS');
+          console.log('WAREHOUSE_SEVEN_STANDALONE_PARENT_APP_ENTITLEMENTS=PASS');
+          for(const [name,source] of [['counter',counterStandalone],['vouchers',vouchersStandalone]]){
+            const inline=[...source.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||'')).map(x=>x[2]).filter(x=>x.trim());
+            if(inline.length!==1) throw new Error('STANDALONE_AUTH_INLINE_SCRIPT_COUNT:'+name+':'+inline.length);
+            new Function(inline[0]);
+          }
           for(const marker of ['_getPickingStockCheck: function','_showPickingStockWarning: function','refreshVisibleImages: function','data-rw-picker-image-code','stock_branches'])
             if(!pickerInline[0][2].includes(marker)||!bundles.picker.script.includes(marker)) throw new Error('PICKER_IMAGE_STOCK_GUARD_MISSING:'+marker);
           const inlineScripts=(source)=>[...source.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)].filter(x=>!/\bsrc\s*=/.test(x[1]||'')).map(x=>x[2]).filter(x=>x.trim());
