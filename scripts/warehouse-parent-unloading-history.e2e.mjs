@@ -27,6 +27,16 @@ try {
         driver_id: 'QA-DRIVER-001',
         vehicle_id: 'QA-VEHICLE-001',
         status: 'Loaded',
+        loading_cycle_id: 'QA-LOAD-CYCLE-001',
+        company_id: 'QA-COMPANY-001'
+      }, {
+        id: 'QA-RUNSHEET-NO-CYCLE',
+        runsheet_code: 'QA-UNLOAD-NO-CYCLE',
+        run_date: '2026-11-14',
+        driver_id: 'QA-DRIVER-INVALID',
+        vehicle_id: 'QA-VEHICLE-001',
+        status: 'Loaded',
+        loading_cycle_id: null,
         company_id: 'QA-COMPANY-001'
       }],
       erp_operation_registry: [{
@@ -42,8 +52,27 @@ try {
         status: 'completed',
         created_at: '2026-11-14T08:00:00.000Z',
         completed_at: '2026-11-14T08:00:03.000Z'
+      }, {
+        id: 'QA-PICK-EVENT-001',
+        company_id: 'QA-COMPANY-001',
+        operation_type: 'complete_runsheet_picking',
+        request_payload: { runsheet_code: 'QA-PICK-001', user_email: 'qa.picker@rawaea.invalid', items: [{ item_code: 'QA-ITEM-1', picked_qty: 5 }] },
+        response_payload: { success: true },
+        status: 'completed',
+        created_at: '2026-11-14T07:00:00.000Z',
+        completed_at: '2026-11-14T07:00:05.000Z'
+      }, {
+        id: 'QA-LOAD-EVENT-001',
+        company_id: 'QA-COMPANY-001',
+        operation_type: 'complete_runsheet_loading',
+        request_payload: { runsheet_code: 'QA-LOAD-001', user_email: 'qa.loader@rawaea.invalid', items: [{ item_code: 'QA-ITEM-1', loaded_qty: 7 }] },
+        response_payload: { success: true, loaded_total: 7 },
+        status: 'completed',
+        created_at: '2026-11-14T09:10:00.000Z',
+        completed_at: '2026-11-14T09:10:05.000Z'
       }],
       users: [],
+      orders: [],
       run_sheet_details: []
     };
 
@@ -67,12 +96,14 @@ try {
 
     function makeQuery(table) {
       const filters = [];
+      const notFilters = [];
       const ordering = [];
       let maxRows = null;
       const query = {
         select() { return this; },
         eq(column, value) { filters.push([column, value]); return this; },
         in(column, values) { filters.push([column, values]); return this; },
+        not(column, operator, value) { notFilters.push([column, operator, value]); return this; },
         or() { return this; },
         order(column, options = {}) { ordering.push([column, options.ascending !== false]); return this; },
         limit(value) { maxRows = value; return this; },
@@ -87,6 +118,8 @@ try {
               Array.isArray(value)
                 ? value.map(String).includes(String(row[column]))
                 : String(row[column]) === String(value)
+            ) && notFilters.every(([column, operator, value]) =>
+              operator === 'is' && value === null ? row[column] != null : String(row[column]) !== String(value)
             )
           );
           for (const [column, ascending] of ordering) {
@@ -135,7 +168,9 @@ try {
     await window.RW_Warehouse.loadUnloading();
   }, { moduleSource });
 
-  assert.match(await page.locator('#ul-table').innerText(), /QA-UNLOAD-READY-001/, 'CURRENT_UNLOADING_QUEUE_NOT_RENDERED');
+  const unloadingQueue = await page.locator('#ul-table').innerText();
+  assert.match(unloadingQueue, /QA-UNLOAD-READY-001/, 'CURRENT_UNLOADING_QUEUE_NOT_RENDERED');
+  assert.doesNotMatch(unloadingQueue, /QA-UNLOAD-NO-CYCLE/, 'UNLOADING_QUEUE_ACCEPTED_MISSING_LOADING_CYCLE');
   const initialHistory = await page.locator('#ul-completed-table').innerText();
   assert.match(initialHistory, /QA-UNLOAD-DONE-001/, 'COMPLETED_UNLOADING_EVENT_NOT_RENDERED');
   assert.match(initialHistory, /qa\.unloader@rawaea\.invalid/, 'UNLOADING_ACTOR_NOT_RENDERED');
@@ -172,6 +207,29 @@ try {
     { timeout: 5000 }
   );
   assert.match(await page.locator('#ul-completed-table').innerText(), /qa\.second-unloader@rawaea\.invalid/, 'REALTIME_ACTOR_NOT_RENDERED');
+
+  await page.evaluate(async () => {
+    window.__qaFixtures.runsheets = [{
+      id: 'QA-RUNSHEET-PICKED',
+      runsheet_code: 'QA-PICK-001',
+      run_date: '2026-11-14',
+      driver_id: 'QA-DRIVER-PICK',
+      picker_id: 'QA-USER-PICKER',
+      status: 'Delivered',
+      company_id: 'QA-COMPANY-001'
+    }];
+    window.__qaFixtures.users = [{
+      id: 'QA-USER-PICKER',
+      company_id: 'QA-COMPANY-001',
+      name: 'QA Picking Operator',
+      email: 'qa.picker@rawaea.invalid'
+    }];
+    await window.RW_Warehouse.loadPicking();
+  });
+  const pickingHistory = await page.locator('#pk-completed-table').innerText();
+  assert.match(pickingHistory, /QA-PICK-001/, 'PARENT_PICKING_HISTORY_ROW_MISSING');
+  assert.match(pickingHistory, /qa\.picker@rawaea\.invalid/, 'PARENT_PICKING_HISTORY_ACTOR_MISSING');
+  assert.match(pickingHistory, /5/, 'PARENT_PICKING_HISTORY_TOTAL_MISSING');
 
   await page.evaluate(async () => {
     window.__qaFixtures.runsheets = [{
@@ -221,6 +279,10 @@ try {
   const loadingRows = await page.locator('#ld-table').innerText();
   assert.match(loadingRows, /QA-LOAD-001/, 'PARENT_LOADING_ROW_MISSING');
   assert.match(loadingRows, /QA Loading Operator/, 'PARENT_LOADING_ACTOR_NOT_RENDERED');
+  const loadingHistory = await page.locator('#ld-completed-table').innerText();
+  assert.match(loadingHistory, /QA-LOAD-001/, 'PARENT_LOADING_HISTORY_ROW_MISSING');
+  assert.match(loadingHistory, /qa\.loader@rawaea\.invalid/, 'PARENT_LOADING_HISTORY_ACTOR_MISSING');
+  assert.match(loadingHistory, /7/, 'PARENT_LOADING_HISTORY_TOTAL_MISSING');
 
   const counters = await page.evaluate(() => window.__qaCounters());
   assert.equal(counters.writes, 0, 'TEST_ATTEMPTED_A_DATA_WRITE');

@@ -15648,6 +15648,102 @@ async function _openNewVoucherModal() {
 }
 
     // ==================== PICKING ====================
+    async function _refreshParentOperationHistory(companyId, operationType, stateKey, tableId, filterId, quantityKey, totalKey) {
+        try {
+            var historyRes = await supabase.from('erp_operation_registry')
+                .select('id,operation_type,request_payload,response_payload,status,created_at,completed_at')
+                .eq('company_id', companyId)
+                .eq('operation_type', operationType)
+                .eq('status', 'completed')
+                .order('completed_at', { ascending: false })
+                .limit(100);
+            if (historyRes.error) throw historyRes.error;
+            window[stateKey] = historyRes.data || [];
+            window[stateKey + 'Error'] = '';
+        } catch (err) {
+            window[stateKey] = [];
+            window[stateKey + 'Error'] = err.message || 'تعذر تحميل سجل العمليات المكتملة';
+            console.warn('Parent operation history load failed:', operationType, err);
+        }
+        _applyParentOperationHistory(window[stateKey] || [], window[stateKey + 'Error'] || '', tableId, filterId, quantityKey, totalKey);
+    }
+
+    function _applyParentOperationHistory(rows, error, tableId, filterId, quantityKey, totalKey) {
+        var tb = byId(tableId);
+        if (!tb) return;
+        if (error) {
+            safeHTML(tb, '<tr><td colspan="6" class="text-center py-6 text-rose-600">' + esc(error) + '</td></tr>');
+            return;
+        }
+        var filter = (byId(filterId)?.value || '').trim().toLowerCase();
+        var data = (rows || []).filter(function(r) {
+            var request = r.request_payload || {};
+            return !filter || String(request.runsheet_code || '').toLowerCase().indexOf(filter) !== -1;
+        });
+        if (!data.length) {
+            safeHTML(tb, '<tr><td colspan="6" class="text-center py-6 text-slate-500">لا توجد عمليات مكتملة مسجلة</td></tr>');
+            return;
+        }
+        var html = '';
+        data.forEach(function(r) {
+            var request = r.request_payload || {};
+            var response = r.response_payload || {};
+            var items = Array.isArray(request.items) ? request.items : [];
+            var calculatedTotal = items.reduce(function(sum, item) {
+                return sum + Math.max(0, Number(item && item[quantityKey]) || 0);
+            }, 0);
+            var rawTotal = response[totalKey];
+            var total = rawTotal == null ? calculatedTotal : Number(rawTotal);
+            var completedAt = r.completed_at || r.created_at || '';
+            var dateLabel = '—';
+            if (completedAt) {
+                var date = new Date(completedAt);
+                dateLabel = Number.isNaN(date.getTime()) ? esc(String(completedAt)) : esc(date.toLocaleString('ar-EG'));
+            }
+            var actor = String(request.user_email || request.user_name || '').trim() || '—';
+            html += '<tr class="border-b hover:bg-slate-50">' +
+                '<td class="p-3 font-bold">' + esc(request.runsheet_code || '—') + '</td>' +
+                '<td class="p-3 whitespace-nowrap">' + dateLabel + '</td>' +
+                '<td class="p-3">' + esc(actor) + '</td>' +
+                '<td class="p-3 text-center font-bold">' + total.toLocaleString('ar-EG', { maximumFractionDigits: 3 }) + '</td>' +
+                '<td class="p-3 text-center">' + items.length.toLocaleString('ar-EG') + '</td>' +
+                '<td class="p-3"><span class="px-2 py-1 rounded-full text-xs bg-emerald-100 text-emerald-700">مكتمل</span></td>' +
+            '</tr>';
+        });
+        safeHTML(tb, html);
+    }
+
+    function _subscribeParentOperationHistory(companyId, operationType, stateKey, tableId, filterId, quantityKey, totalKey, viewName) {
+        try {
+            var channelKey = '_rwParentHistory_' + operationType;
+            if (window[channelKey]) {
+                supabase.removeChannel(window[channelKey]);
+                window[channelKey] = null;
+            }
+            if (!supabase || typeof supabase.channel !== 'function') return;
+            window[channelKey] = supabase.channel('rw-parent-history-' + operationType + '-' + companyId)
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'erp_operation_registry',
+                    filter: 'company_id=eq.' + companyId
+                }, function(payload) {
+                    var row = payload && payload.new ? payload.new : {};
+                    if (row.operation_type !== operationType || row.status !== 'completed') return;
+                    if (!RW_STATE || !RW_STATE.app || RW_STATE.app.currentView !== viewName) return;
+                    var timerKey = '_rwParentHistoryTimer_' + operationType;
+                    if (window[timerKey]) clearTimeout(window[timerKey]);
+                    window[timerKey] = setTimeout(function() {
+                        if (!RW_STATE || !RW_STATE.app || RW_STATE.app.currentView !== viewName) return;
+                        _refreshParentOperationHistory(companyId, operationType, stateKey, tableId, filterId, quantityKey, totalKey);
+                    }, 250);
+                })
+                .subscribe();
+        } catch (err) {
+            console.warn('Parent operation history realtime subscription failed:', operationType, err);
+        }
+    }
+
     async function loadPicking() {
         var c = byId('rw-page-container'); if (!c) return;
         safeText(byId('rw-header-title'), 'التحضير (Picking)');
@@ -15683,12 +15779,18 @@ async function _openNewVoucherModal() {
     </tbody>
   </table>
 </div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto mt-4" style="max-height:40vh">
+                <div class="p-4 border-b"><div class="font-bold text-slate-800">سجل عمليات التحضير المكتملة</div><div class="text-xs text-slate-500 mt-1">سجل مركزي يحتفظ بكل دورة تحضير حتى بعد تغيّر حالة الرانشيت</div></div>
+                <table class="w-full"><thead class="bg-slate-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">وقت الإتمام</th><th class="p-3">منفذ التحضير</th><th class="p-3">إجمالي الكمية</th><th class="p-3">عدد الأصناف</th><th class="p-3">الحالة</th></tr></thead><tbody id="pk-completed-table"><tr><td colspan="6" class="text-center py-6">جاري تحميل السجل...</td></tr></tbody></table>
+            </div>
         </div>`);
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
 if (!companyId) {
     showToast('سياق الشركة غير محدد', 'error');
     return;
 }
+await _refreshParentOperationHistory(companyId, 'complete_runsheet_picking', '_parentPickingHistory', 'pk-completed-table', 'pk-f-id', 'picked_qty', 'picked_total');
+_subscribeParentOperationHistory(companyId, 'complete_runsheet_picking', '_parentPickingHistory', 'pk-completed-table', 'pk-f-id', 'picked_qty', 'picked_total', 'picking');
 
 try {
     var res = await supabase
@@ -15783,6 +15885,7 @@ if (pickerIds.length) {
 }
     }
     function _applyPicking() {
+    _applyParentOperationHistory(window._parentPickingHistory || [], window._parentPickingHistoryError || '', 'pk-completed-table', 'pk-f-id', 'picked_qty', 'picked_total');
     var d = window._pickingData || [];
     var id = (byId('pk-f-id')?.value || '').toLowerCase();
     var st = byId('pk-f-st')?.value;
@@ -15911,6 +16014,10 @@ var items = itemsRes.data || [];
                     <tbody id="ld-table"><tr><td colspan="9" class="text-center py-8">جاري التحميل...</td></tr></tbody>
                 </table>
             </div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto mt-4" style="max-height:40vh">
+                <div class="p-4 border-b"><div class="font-bold text-slate-800">سجل عمليات التحميل المكتملة</div><div class="text-xs text-slate-500 mt-1">سجل مركزي يحتفظ بكل دورة تحميل وربطها بدورة التحميل الفعلية</div></div>
+                <table class="w-full"><thead class="bg-slate-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">وقت الإتمام</th><th class="p-3">منفذ التحميل</th><th class="p-3">إجمالي الكمية</th><th class="p-3">عدد الأصناف</th><th class="p-3">الحالة</th></tr></thead><tbody id="ld-completed-table"><tr><td colspan="6" class="text-center py-6">جاري تحميل السجل...</td></tr></tbody></table>
+            </div>
         </div>`);
 
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
@@ -15921,6 +16028,8 @@ var items = itemsRes.data || [];
             _applyLoading();
             return;
         }
+        await _refreshParentOperationHistory(companyId, 'complete_runsheet_loading', '_parentLoadingHistory', 'ld-completed-table', 'ld-f-id', 'loaded_qty', 'loaded_total');
+        _subscribeParentOperationHistory(companyId, 'complete_runsheet_loading', '_parentLoadingHistory', 'ld-completed-table', 'ld-f-id', 'loaded_qty', 'loaded_total', 'loading');
 
         try {
             var res = await supabase.from('runsheets')
@@ -15957,6 +16066,7 @@ var items = itemsRes.data || [];
     }
 
     function _applyLoading() {
+        _applyParentOperationHistory(window._parentLoadingHistory || [], window._parentLoadingHistoryError || '', 'ld-completed-table', 'ld-f-id', 'loaded_qty', 'loaded_total');
         var d = (window._loadingData || []).slice();
         var id = (byId('ld-f-id')?.value || '').trim().toLowerCase();
         var st = byId('ld-f-st')?.value || '';
@@ -16293,9 +16403,10 @@ var rsRes = await supabase.from('runsheets')
 
     async function _refreshUnloadingData(companyId) {
         var queueRes = await supabase.from('runsheets')
-            .select('id,runsheet_code,run_date,driver_id,vehicle_id,status')
+            .select('id,runsheet_code,run_date,driver_id,vehicle_id,status,loading_cycle_id')
             .eq('company_id', companyId)
             .eq('status', 'Loaded')
+            .not('loading_cycle_id', 'is', null)
             .order('run_date', { ascending: false });
         if (queueRes.error) throw queueRes.error;
         window._unloadingData = queueRes.data || [];
