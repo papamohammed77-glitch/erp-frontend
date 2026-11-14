@@ -166,9 +166,10 @@ var App = {
         RW_Auth.init(function(user, err) {
             if (err || !user) { if (err !== 'NO_SESSION') RW_UI.showError('فشل استعادة الجلسة'); return; }
             var isOwner = user.isOwner, perms = user.permissions;
-            if (!isOwner && (!perms || perms.indexOf('warehouse') === -1)) { RW_UI.showError('غير مصرح'); RW_Auth.doLogout(); return; }
+            var hasReturnPermission = Array.isArray(perms) && perms.indexOf('return') !== -1;
+            if (!isOwner && (!perms || (perms.indexOf('warehouse') === -1 && !hasReturnPermission))) { RW_UI.showError('غير مصرح'); RW_Auth.doLogout(); return; }
             self.currentUser = user;
-            if (!isOwner && user.activeWarehouseRole !== 'مرتجعات' && user.activeWarehouseRole !== 'مخزن شامل') {
+            if (!isOwner && user.activeWarehouseRole !== 'مرتجعات' && !hasReturnPermission) {
                 RW_UI.showError('دورك النشط هو "' + (user.activeWarehouseRole || 'غير محدد') + '"', function() { RW_Auth.doLogout(); });
                 return;
             }
