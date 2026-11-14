@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dexie@3/dist/dexie.min.js"></script>
+    <script src="../core.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Cairo',sans-serif;background:#f8fafc;-webkit-tap-highlight-color:transparent}
@@ -90,9 +91,11 @@
 </div>
 
 <script>
-var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
-var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
-var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+if (!window.supabase || typeof window.supabase.from !== 'function' || !window.supabase.auth) {
+    throw new Error('RAWAEA_CORE_SHARED_SUPABASE_CLIENT_UNAVAILABLE');
+}
+window.RW_SHARED_SUPABASE = window.supabase;
+var supabase = window.RW_SHARED_SUPABASE;
 var db = new Dexie('RW_Picker');
 db.version(1).stores({ runsheets: 'runsheet_code', details: '++id,runsheet_code', session: 'runsheet_code' });
 
@@ -128,110 +131,169 @@ var App = {
             byId('loginMsg').classList.remove('hidden');
             return;
         }
+        if(!window.RW_Auth || typeof window.RW_Auth.doLogin !== 'function'){
+            byId('loginMsg').innerText = 'تعذر تحميل خدمة المصادقة المركزية';
+            byId('loginMsg').classList.remove('hidden');
+            return;
+        }
         byId('loginMsg').classList.add('hidden');
         var self = this;
         Swal.showLoading();
-        supabase.auth.signInWithPassword({ email: email, password: pass }).then(function(res){
+        window.RW_Auth.doLogin(email, pass, function(user, error){
             Swal.close();
-            if(res.error){
-                byId('loginMsg').innerText = res.error.message;
+            if(error || !user){
+                byId('loginMsg').innerText = error || 'تعذر التحقق من صلاحيات الحساب';
                 byId('loginMsg').classList.remove('hidden');
-            } else {
-                self.init();
+                return;
             }
-        }).catch(function(){
-            Swal.close();
-            byId('loginMsg').innerText = 'فشل الاتصال بالخادم';
-            byId('loginMsg').classList.remove('hidden');
+            self.init(user);
         });
     },
 
-    init: function(){
+    init: function(authenticatedUser){
         var self = this;
-        supabase.auth.getSession().then(function(res){
-            if(res.data && res.data.session){
-                self.currentUser = res.data.session.user;
-                var meta = self.currentUser.user_metadata || {};
-                var isOwner = (meta.isOwner === true || meta.isOwner === 'true' || meta.role === 'owner' || meta.role === 'مالك');
-                var perms = meta.permissions || [];
-                var hasAccess = isOwner || (Array.isArray(perms) && perms.indexOf('warehouse') !== -1);
-                if(!hasAccess){
-                    Swal.fire({ title: 'غير مصرح', text: 'ليس لديك صلاحية الوصول للمخازن', icon: 'error', customClass: { popup: '!rounded-3xl' } });
-                    supabase.auth.signOut();
+        function enterWithCoreProfile(coreUser, error){
+            if(error || !coreUser || !coreUser.id || !coreUser.company_id){
+                if(error && error !== 'NO_SESSION'){
+                    byId('loginMsg').innerText = error;
+                    byId('loginMsg').classList.remove('hidden');
+                }
+                return;
+            }
+
+            var activeRole = coreUser.activeWarehouseRole || coreUser.active_warehouse_role || '';
+            var isOwner = coreUser.isOwner === true;
+            var hasPickingPermission = !!(
+                window.RW_Auth &&
+                typeof window.RW_Auth.checkPermission === 'function' &&
+                window.RW_Auth.checkPermission('picking')
+            );
+
+            // Parent app entitlement is authoritative. The dedicated Picking assignment
+            // remains valid; the general unified-warehouse role alone is not a Picker grant.
+            if(!isOwner && activeRole !== 'تحضير' && !hasPickingPermission){
+                Swal.fire({
+                    title: 'غير مصرح',
+                    text: 'لا يملك حسابك صلاحية تطبيق التحضير. اطلب من مسؤول النظام الأم تفعيل صلاحية التحضير لهذا الحساب.',
+                    icon: 'error',
+                    customClass: { popup: '!rounded-3xl' }
+                });
+                window.RW_Auth.doLogout();
+                return;
+            }
+
+            var sessionUser = coreUser.session && coreUser.session.user
+                ? coreUser.session.user
+                : {
+                    id: coreUser.auth_id || coreUser.id,
+                    email: coreUser.email || '',
+                    user_metadata: {}
+                };
+            var metadata = Object.assign({}, sessionUser.user_metadata || {}, {
+                name: coreUser.name || (sessionUser.user_metadata || {}).name || coreUser.email || '',
+                role: coreUser.role || (sessionUser.user_metadata || {}).role || '',
+                active_warehouse_role: activeRole
+            });
+
+            self.currentUser = Object.assign({}, sessionUser, {
+                email: coreUser.email || sessionUser.email || '',
+                name: coreUser.name || sessionUser.email || '',
+                company_id: coreUser.company_id,
+                user_metadata: metadata
+            });
+            self.pubUserId = coreUser.id;
+            self.companyId = coreUser.company_id;
+
+            safeText(byId('headerUserName'), self.currentUser.name || self.currentUser.email);
+            self.enterApp();
+            self.refreshItemImageCache();
+            self.startRealtime();
+        }
+
+        if(authenticatedUser){
+            enterWithCoreProfile(authenticatedUser, null);
+            return;
+        }
+        if(!window.RW_Auth || typeof window.RW_Auth.init !== 'function'){
+            console.error('Picker could not find the shared RW_Auth service.');
+            return;
+        }
+        window.RW_Auth.init(enterWithCoreProfile);
+    },
+
+    refreshItemImageCache: function(){
+        var self = this;
+        if(!this.companyId) return Promise.resolve(false);
+        return supabase.from('items')
+            .select('item_code, image_url')
+            .eq('company_id', this.companyId)
+            .then(function(imgRes){
+                if(imgRes.error) throw imgRes.error;
+                var nextCache = {};
+                (imgRes.data || []).forEach(function(item){
+                    if(item.item_code && item.image_url) nextCache[item.item_code] = item.image_url;
+                });
+                ITEMS_IMAGE_CACHE = nextCache;
+                self.refreshVisibleImages();
+                return true;
+            })
+            .catch(function(err){
+                console.error('Picker image cache reconciliation failed:', err);
+                return false;
+            });
+    },
+
+    startRealtime: function(){
+        var self = this;
+        if(!this.companyId || !window.RW_Realtime || typeof window.RW_Realtime.start !== 'function') return false;
+        this.stopRealtime();
+        var key = window.RW_Realtime.start({
+            appId: 'warehouse-picker',
+            companyId: this.companyId,
+            tables: [
+                'runsheets',
+                { name: 'run_sheet_details', companyColumn: false },
+                'erp_operation_registry',
+                'items'
+            ],
+            debounceMs: 350,
+            reconcileMs: 30000,
+            onEvent: function(event){
+                if(event && event.table === 'items'){
+                    self.refreshItemImageCache();
                     return;
                 }
-                supabase.from('users')
-    .select('id, name, company_id, active_warehouse_role')
-    .eq('auth_id', self.currentUser.id)
-    .maybeSingle()
-    .then(function(uRes){
-        if(uRes.error){
-            throw uRes.error;
-        }
-
-        var userData = uRes.data || {};
-
-        if(!userData.id || !userData.company_id){
-            throw new Error('تعذر تحديد المستخدم أو سياق الشركة');
-        }
-
-        self.pubUserId = userData.id;
-        self.companyId = userData.company_id;
-
-        supabase
-    .from('items')
-    .select('item_code, image_url')
-    .eq('company_id', self.companyId)
-    .then(function(imgRes){
-        if(imgRes.error){
-            console.error('Picker items/company context error:', imgRes.error);
-            return;
-        }
-
-        var items = imgRes.data || [];
-
-        for(var i = 0; i < items.length; i++){
-            if(items[i].item_code && items[i].image_url){
-                ITEMS_IMAGE_CACHE[items[i].item_code] = items[i].image_url;
-            }
-        }
-        self.refreshVisibleImages();
-    })
-    .catch(function(err){
-        console.error('Picker items cache error:', err);
-    });
-        var userName = userData.name || meta.name || self.currentUser.email;
-        var activeRole = userData.active_warehouse_role || meta.active_warehouse_role || '';
-
-        if(!isOwner && activeRole !== 'تحضير' && activeRole !== 'مخزن شامل'){
-            Swal.fire({
-                title: 'تنبيه',
-                text: 'دورك النشط حالياً هو "' + (activeRole || 'غير محدد') + '". الرجاء التواصل مع مشرف المخازن.',
-                icon: 'warning',
-                customClass: { popup: '!rounded-3xl' }
-            });
-            supabase.auth.signOut();
-            return;
-        }
-
-        safeText(byId('headerUserName'), userName);
-        self.enterApp();
-
-    })
-    .catch(function(err){
-        console.error('Picker user/company context error:', err);
-
-        Swal.fire({
-            title: 'تعذر الدخول',
-            text: 'تعذر تحديد المستخدم أو الشركة المرتبطة بحسابك.',
-            icon: 'error',
-            customClass: { popup: '!rounded-3xl' }
-        });
-
-        supabase.auth.signOut();
-    });
+                if(self.session){
+                    self.realtimeNeedsRefresh = true;
+                    return;
+                }
+                if(self.currentTab === 'pending') self.renderPendingTab();
+                else if(self.currentTab === 'completed') self.renderCompletedTab();
+            },
+            onReconcile: function(){
+                if(self.session){
+                    self.realtimeNeedsRefresh = true;
+                    return;
+                }
+                if(self.currentTab === 'pending') self.renderPendingTab();
+                else if(self.currentTab === 'completed') self.renderCompletedTab();
+            },
+            onStatus: function(status){
+                if(status && status.status === 'CHANNEL_ERROR'){
+                    console.warn('Picker realtime channel is temporarily unavailable; reconciliation remains enabled.');
+                }
             }
         });
+        this.realtimeKey = key || null;
+        return !!key;
+    },
+
+    stopRealtime: function(){
+        if(this.realtimeKey && window.RW_Realtime && typeof window.RW_Realtime.stop === 'function'){
+            window.RW_Realtime.stop(this.realtimeKey);
+        }
+        this.realtimeKey = null;
+        return true;
     },
 
     enterApp: function(){
@@ -1064,8 +1126,19 @@ renderCompletedTab: function(){
     },
 
     doLogout: function(){
-        var self = this; if(this.timerInterval) clearInterval(this.timerInterval);
-        supabase.auth.signOut().then(function(){ self.currentUser = null; byId('mainApp').classList.add('hidden'); byId('loginScreen').classList.remove('hidden'); byId('loginEmail').value = ''; byId('loginPass').value = ''; });
+        var self = this;
+        if(this.timerInterval) clearInterval(this.timerInterval);
+        this.stopRealtime();
+        window.RW_Auth.doLogout(function(){
+            self.currentUser = null;
+            self.pubUserId = null;
+            self.companyId = null;
+            self.session = null;
+            byId('mainApp').classList.add('hidden');
+            byId('loginScreen').classList.remove('hidden');
+            byId('loginEmail').value = '';
+            byId('loginPass').value = '';
+        });
     }
 };
 
