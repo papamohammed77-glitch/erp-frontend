@@ -1196,7 +1196,14 @@ jobs:
             await restricted.goto(target,{waitUntil:'domcontentloaded'});
             await restricted.waitForFunction(()=>document.querySelector('#loginMsg')?.textContent.includes('الدور المخزني النشط'));
             if(await restricted.locator('#mainApp').isVisible())throw new Error('NON_UNIFIED_ROLE_WAS_ALLOWED');
-            console.log('WAREHOUSE_ACTIVE_ROLE_GATE=PASS');
+            if(!(await restricted.locator('#switchAccountBtn').isVisible()))throw new Error('ROLE_MISMATCH_ACCOUNT_SWITCH_NOT_OFFERED');
+            const mismatchMessage=await restricted.locator('#loginMsg').innerText();
+            if(!mismatchMessage.includes('qa@rawaea.invalid')||!mismatchMessage.includes('تحميل'))throw new Error('ROLE_MISMATCH_IDENTITY_NOT_EXPLAINED:'+mismatchMessage);
+            await restricted.locator('#switchAccountBtn').click();
+            await restricted.waitForFunction(()=>document.querySelector('#loginMsg')?.textContent.includes('تم تسجيل الخروج من الحساب السابق'));
+            if(await restricted.locator('#switchAccountBtn').isVisible())throw new Error('ACCOUNT_SWITCH_BUTTON_NOT_RESET');
+            if(await restricted.locator('#mainApp').isVisible())throw new Error('ROLE_MISMATCH_RECOVERY_OPENED_APP');
+            console.log('WAREHOUSE_ACTIVE_ROLE_GATE_AND_SAFE_ACCOUNT_SWITCH=PASS');
 
             for(const jobRole of ['أمين مخزن','امين مخزن','مخزني']){
               const aliasPage=await context.newPage();
