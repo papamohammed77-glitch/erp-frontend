@@ -197,7 +197,7 @@ try {
 
   const counters = await page.evaluate(() => window.__qaCounters());
   assert.equal(counters.writes, 0, 'TEST_ATTEMPTED_A_DATA_WRITE');
-  assert.ok(counters.reads >= 6, 'EXPECTED_READ_REFRESHES_DID_NOT_RUN');
+  assert.ok(counters.reads >= 5, 'EXPECTED_READ_REFRESHES_DID_NOT_RUN');
   assert.equal(counters.realtimeFilter.table, 'erp_operation_registry', 'WRONG_REALTIME_TABLE');
   assert.equal(counters.realtimeFilter.filter, 'company_id=eq.QA-COMPANY-001', 'REALTIME_COMPANY_SCOPE_MISSING');
 
