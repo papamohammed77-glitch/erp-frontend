@@ -89,9 +89,10 @@ var App = {
         RW_Auth.init(function(user, err) {
             if (err || !user) { if (err !== 'NO_SESSION') RW_UI.showError('فشل استعادة الجلسة'); return; }
             var isOwner = user.isOwner, perms = user.permissions;
-            if (!isOwner && (!perms || perms.indexOf('warehouse') === -1)) { RW_UI.showError('غير مصرح'); RW_Auth.doLogout(); return; }
+            var hasLoadingPermission = Array.isArray(perms) && perms.indexOf('loading') !== -1;
+            if (!isOwner && (!perms || (perms.indexOf('warehouse') === -1 && !hasLoadingPermission))) { RW_UI.showError('غير مصرح'); RW_Auth.doLogout(); return; }
             self.currentUser = user;
-            if (!isOwner && user.activeWarehouseRole !== 'تحميل' && user.activeWarehouseRole !== 'مخزن شامل') { RW_UI.showError('دورك النشط هو "' + (user.activeWarehouseRole || 'غير محدد') + '"', function() { RW_Auth.doLogout(); }); return; }
+            if (!isOwner && user.activeWarehouseRole !== 'تحميل' && !hasLoadingPermission) { RW_UI.showError('دورك النشط هو "' + (user.activeWarehouseRole || 'غير محدد') + '"', function() { RW_Auth.doLogout(); }); return; }
             RW_UI.safeText(RW_UI.byId('headerUserName'), user.name);
             RW_UI.byId('loginScreen').classList.add('hidden'); RW_UI.byId('mainApp').classList.remove('hidden');
             RW_ImageCache.loadAll(); self.switchTab('pending'); self.startRealtime();
