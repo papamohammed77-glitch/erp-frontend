@@ -30360,8 +30360,14 @@ var RW_OwnerLicense = (function () {
         safeHTML(host, html);
 
         var emailBtn = byId('btn-owner-change-email');
+        var emailRequestPending = false;
+        var emailRateLimitBlocked = false;
         if (emailBtn) {
             emailBtn.onclick = function () {
+                if (emailRequestPending) return;
+                if (emailRateLimitBlocked) {
+                    return showToast('تم إيقاف إعادة المحاولة بعد تجاوز حد إرسال البريد. انتظر تجدد الحصة أو إعداد SMTP مخصص قبل المحاولة مجددًا.', 'error');
+                }
                 if (!isOwner()) return showToast('غير مصرح', 'error');
                 var input = byId('owner-new-email');
                 var next = String(input && input.value || '').trim().toLowerCase();
@@ -30369,15 +30375,56 @@ var RW_OwnerLicense = (function () {
                     return showToast('أدخل بريدًا إلكترونيًا صالحًا', 'error');
                 }
 
+                emailRequestPending = true;
+                var idleLabel = emailBtn.textContent || 'تغيير البريد';
+                emailBtn.disabled = true;
+                emailBtn.setAttribute('aria-busy', 'true');
+                emailBtn.textContent = 'جارٍ إرسال طلب التغيير...';
+                if (input) input.disabled = true;
+
                 showLoader('جاري تحديث البريد الإلكتروني...');
-                supabase.auth.updateUser({ email: next }).then(function (res) {
-                    hideLoader();
-                    if (res.error) throw res.error;
+                Promise.resolve().then(function () {
+                    return supabase.auth.updateUser({ email: next });
+                }).then(function (res) {
+                    if (!res || res.error) {
+                        throw (res && res.error) || new Error('لم تصل استجابة صالحة من خدمة المصادقة');
+                    }
                     if (input) input.value = '';
                     showToast('تم إرسال رسالة تأكيد إلى البريد الجديد.', 'success');
                 }).catch(function (e) {
+                    var errorMessage = String(e && e.message || '');
+                    var errorCode = String(e && e.code || '').toLowerCase();
+                    var isEmailRateLimited = errorCode === 'over_email_send_rate_limit' ||
+                        /email rate limit exceeded|over_email_send_rate_limit/i.test(errorMessage);
+
+                    if (isEmailRateLimited) {
+                        emailRateLimitBlocked = true;
+                        showToast('رفضت خدمة المصادقة إرسال رسالة التأكيد بسبب استنفاد حصة البريد للمشروع (429). لم تُقبل هذه المحاولة ولم يثبت تغيير البريد. أوقفنا إعادة المحاولة من هذه الشاشة لتجنب طلبات مرفوضة إضافية؛ يلزم SMTP مخصص أو تجدد الحصة قبل المحاولة لاحقًا.', 'error');
+                        return;
+                    }
+
+                    showToast(errorMessage || 'فشل تغيير البريد الإلكتروني', 'error');
+                }).then(function () {
                     hideLoader();
-                    showToast(e.message || 'فشل تغيير البريد الإلكتروني', 'error');
+                    emailRequestPending = false;
+                    emailBtn.disabled = emailRateLimitBlocked;
+                    emailBtn.removeAttribute('aria-busy');
+                    if (input) input.disabled = false;
+                    if (emailRateLimitBlocked) {
+                        emailBtn.textContent = 'حصة البريد مستنفدة';
+                        emailBtn.title = 'لا تعاود الإرسال حتى تتجدد الحصة أو يُضبط SMTP مخصص';
+                    } else {
+                        emailBtn.textContent = idleLabel;
+                        emailBtn.removeAttribute('title');
+                    }
+                }, function (cleanupError) {
+                    hideLoader();
+                    emailRequestPending = false;
+                    emailBtn.disabled = emailRateLimitBlocked;
+                    emailBtn.removeAttribute('aria-busy');
+                    if (input) input.disabled = false;
+                    emailBtn.textContent = emailRateLimitBlocked ? 'حصة البريد مستنفدة' : idleLabel;
+                    console.error('Owner email update cleanup failed:', cleanupError);
                 });
             };
         }
