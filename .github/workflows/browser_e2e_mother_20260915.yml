@@ -163,14 +163,15 @@ jobs:
                 verifiedCompany:verified.user&&verified.user.company_id,
                 authError:verified.error,
                 channelKey:channelKey,
-                channelCount:window.__qaSupabaseChannels.length,
-                companyFilter:window.__qaSupabaseChannels[0]&&window.__qaSupabaseChannels[0].filters[0]&&window.__qaSupabaseChannels[0].filters[0].filter
+                channelNames:window.__qaSupabaseChannels.map(x=>x.name),
+                coreChannels:window.__qaSupabaseChannels.filter(x=>String(x.name||'').includes('parent-core-bridge-e2e')),
+                companyFilter:window.__qaSupabaseChannels.filter(x=>String(x.name||'').includes('parent-core-bridge-e2e')).map(x=>x.filters[0]&&x.filters[0].filter)
               };
             });
             console.log('PARENT_CORE_BRIDGE='+JSON.stringify(coreBridge));
             if(coreBridge.clientCount!==1||!coreBridge.sameClient||!coreBridge.coreAuth||!coreBridge.coreRealtime||
               coreBridge.verifiedCompany!=='qa-parent-company'||coreBridge.authError||!coreBridge.channelKey||
-              coreBridge.channelCount!==1||coreBridge.companyFilter!=='company_id=eq.qa-parent-company')
+              coreBridge.coreChannels.length!==1||coreBridge.companyFilter[0]!=='company_id=eq.qa-parent-company')
               throw new Error('PARENT_CORE_SINGLE_CLIENT_AUTH_REALTIME_BRIDGE_FAILED');
             console.log('TARGET_URL='+target);
             console.log('HTTP_STATUS='+(response ? response.status() : 'NO_RESPONSE'));
