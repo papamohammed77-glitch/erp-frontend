@@ -191,7 +191,7 @@ try {
     }];
     await window.RW_Warehouse.loadReturn();
   });
-  const returnHeader = await page.locator('#rt-table thead').innerText();
+  const returnHeader = await page.locator('#rt-table').evaluate(el => el.closest('table')?.querySelector('thead')?.innerText || '');
   assert.match(returnHeader, /مسؤول المرتجع/, 'PARENT_RETURN_HANDLER_HEADER_MISSING');
   const returnRows = await page.locator('#rt-table').innerText();
   assert.match(returnRows, /QA-RETURN-001/, 'PARENT_RETURN_ROW_MISSING');
