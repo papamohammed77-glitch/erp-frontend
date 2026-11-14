@@ -15938,18 +15938,13 @@ var items = itemsRes.data || [];
             }).filter(Boolean)));
 
             if (loaderIds.length) {
-                var usersRes = await supabase.from('users')
-                    .select('id,company_id,name,email')
-                    .eq('company_id', companyId)
-                    .in('id', loaderIds);
-
-                if (usersRes.error) {
-                    console.error('Loading users lookup failed:', usersRes.error);
-                } else {
-                    (usersRes.data || []).forEach(function(u) {
-                        window._loadingUsersById[u.id] = u.name || u.email || '';
-                    });
-                }
+                var usersRes = await supabase.rpc('get_picking_display_users', {
+                    p_picker_ids: loaderIds
+                });
+                if (usersRes.error) throw usersRes.error;
+                (usersRes.data || []).forEach(function(u) {
+                    window._loadingUsersById[u.id] = u.name || u.email || '';
+                });
             }
             _applyLoading();
         } catch (err) {
@@ -16147,7 +16142,7 @@ if (!companyId) { hideLoader(); showToast('سياق الشركة غير محدد
                 <input type="text" id="rt-f-id" placeholder="رقم الرانشيت..." class="p-2 bg-slate-50 rounded text-sm" oninput="RW_Warehouse._applyReturn()">
                 <button onclick="RW_Warehouse._applyReturn()" class="bg-gray-600 text-white px-3 rounded text-sm">تطبيق</button>
             </div></div>
-            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="rt-table"><tr><td colspan="6" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
+            <div class="bg-white rounded-2xl shadow-sm border overflow-auto" style="max-height:65vh"><table class="w-full"><thead class="bg-gray-50 sticky top-0"><tr><th class="p-3">الرانشيت</th><th class="p-3">التاريخ</th><th class="p-3">السائق</th><th class="p-3">مسؤول المرتجع</th><th class="p-3">الحالة</th><th class="p-3 text-center">عرض</th></tr></thead><tbody id="rt-table"><tr><td colspan="6" class="text-center py-8">جاري التحميل...</td></tr></tbody></table></div>
         </div>`);
         var companyId = (RW_STATE && RW_STATE.app && RW_STATE.app.companyId) || null;
 if (!companyId) { showToast('سياق الشركة غير محدد', 'error'); return; }

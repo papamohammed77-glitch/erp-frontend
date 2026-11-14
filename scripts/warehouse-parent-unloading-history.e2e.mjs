@@ -191,9 +191,36 @@ try {
     }];
     await window.RW_Warehouse.loadReturn();
   });
+  const returnHeader = await page.locator('#rt-table thead').innerText();
+  assert.match(returnHeader, /مسؤول المرتجع/, 'PARENT_RETURN_HANDLER_HEADER_MISSING');
   const returnRows = await page.locator('#rt-table').innerText();
   assert.match(returnRows, /QA-RETURN-001/, 'PARENT_RETURN_ROW_MISSING');
   assert.match(returnRows, /QA Return Operator/, 'PARENT_RETURN_ACTOR_NOT_RENDERED');
+
+  await page.evaluate(async () => {
+    window.__qaFixtures.runsheets = [{
+      id: 'QA-RUNSHEET-LOADED',
+      runsheet_code: 'QA-LOAD-001',
+      run_date: '2026-11-14',
+      driver_id: 'QA-DRIVER-003',
+      loader_id: 'QA-USER-LOADER',
+      loader_start: '2026-11-14T09:00:00.000Z',
+      loader_end: '2026-11-14T09:10:00.000Z',
+      status: 'Loaded',
+      notes: 'QA loading note',
+      company_id: 'QA-COMPANY-001'
+    }];
+    window.__qaFixtures.users = [{
+      id: 'QA-USER-LOADER',
+      company_id: 'QA-COMPANY-001',
+      name: 'QA Loading Operator',
+      email: 'qa.loader@rawaea.invalid'
+    }];
+    await window.RW_Warehouse.loadLoading();
+  });
+  const loadingRows = await page.locator('#ld-table').innerText();
+  assert.match(loadingRows, /QA-LOAD-001/, 'PARENT_LOADING_ROW_MISSING');
+  assert.match(loadingRows, /QA Loading Operator/, 'PARENT_LOADING_ACTOR_NOT_RENDERED');
 
   const counters = await page.evaluate(() => window.__qaCounters());
   assert.equal(counters.writes, 0, 'TEST_ATTEMPTED_A_DATA_WRITE');
