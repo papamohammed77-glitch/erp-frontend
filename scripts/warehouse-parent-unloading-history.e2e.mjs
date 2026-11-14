@@ -73,7 +73,59 @@ try {
       }],
       users: [],
       orders: [],
-      run_sheet_details: []
+      run_sheet_details: [],
+      receiving: [{
+        id: 'QA-RECEIVING-001',
+        company_id: 'QA-COMPANY-001',
+        operation_id: 'QA-RECEIVE-OP-001',
+        po_number: 'QA-PO-RECEIVE-001',
+        date: '2026-11-14',
+        responsible: 'QA Receiving Operator',
+        start_time: '2026-11-14T10:00:00.000Z',
+        end_time: '2026-11-14T10:08:00.000Z',
+        status: 'Completed'
+      }],
+      receiving_details: [{
+        id: 'QA-RECEIVING-LINE-001',
+        operation_id: 'QA-RECEIVE-OP-001',
+        item_code: 'QA-ITEM-RECEIVE',
+        item_name: 'QA Receiving Item',
+        qty_expected: 4,
+        qty_received: 4,
+        difference: 0,
+        reason: 'QA receiving note'
+      }],
+      stock_vouchers: [{
+        id: 'QA-VOUCHER-001',
+        company_id: 'QA-COMPANY-001',
+        voucher_code: 'QA-VOUCHER-001',
+        type: 'Transfer',
+        voucher_date: '2026-11-14',
+        created_by: 'QA Voucher Creator',
+        status: 'Draft',
+        source: 'Manual',
+        reference: 'QA-VOUCHER-REF',
+        from_id: 'QA-BRANCH-001',
+        to_id: 'QA-BRANCH-002'
+      }],
+      inventory_counts: [{
+        id: 'QA-COUNT-001',
+        company_id: 'QA-COMPANY-001',
+        count_date: '2026-11-14',
+        type: 'branch',
+        status: 'Completed',
+        reference: 'QA-COUNT-REF',
+        created_by: 'QA Count Creator',
+        operation_id: 'QA-COUNT-OP-001',
+        created_at: '2026-11-14T11:00:00.000Z'
+      }],
+      branches: [{
+        id: 'QA-BRANCH-001',
+        company_id: 'QA-COMPANY-001',
+        branch_code: 'QA-BR-01',
+        name: 'QA Branch',
+        is_active: true
+      }]
     };
 
     let realtimeHandler = null;
@@ -86,6 +138,8 @@ try {
     window.safeHTML = (element, value) => { if (element) element.innerHTML = value; };
     window.safeText = (element, value) => { if (element) element.textContent = value; };
     window.showToast = message => { throw new Error('UNEXPECTED_TOAST: ' + message); };
+    window.showLoader = () => {};
+    window.hideLoader = () => {};
     window.RW_Table = {
       paginate(id, rows, page, pageSize, renderRow) {
         const target = document.getElementById(id);
@@ -139,6 +193,9 @@ try {
     window.supabase = {
       from: table => makeQuery(table),
       rpc: async (name, args) => {
+        if (name === 'inventory_control') {
+          return { data: { success: true, rows: [], count: 0 }, error: null };
+        }
         if (name !== 'get_picking_display_users') throw new Error('UNEXPECTED_RPC: ' + name);
         const allowed = new Set((args?.p_picker_ids || []).map(String));
         const rows = (fixtures.users || []).filter(u => allowed.has(String(u.id)));
@@ -298,6 +355,36 @@ try {
   console.log('PARENT_VOUCHER_AND_COUNT_CREATOR_COLUMNS=PASS');
   console.log('PARENT_UNLOADING_COMPANY_FILTER=PASS');
   console.log('PARENT_NO_DATA_WRITES=PASS');
+
+  await page.evaluate(async () => {
+    await window.RW_Warehouse.loadReceiving();
+  });
+  const receivingRows = await page.locator('#rec-table').innerText();
+  assert.match(receivingRows, /QA-PO-RECEIVE-001/, 'PARENT_RECEIVING_DOCUMENT_NOT_RENDERED');
+  assert.match(receivingRows, /QA Receiving Operator/, 'PARENT_RECEIVING_ACTOR_NOT_RENDERED');
+  assert.match(receivingRows, /QA receiving note/, 'PARENT_RECEIVING_REASON_NOT_RENDERED');
+
+  await page.evaluate(async () => {
+    await window.RW_Warehouse.loadVouchers();
+  });
+  const voucherRows = await page.locator('#vouchers-tbody').innerText();
+  assert.match(voucherRows, /QA-VOUCHER-001/, 'PARENT_VOUCHER_ROW_NOT_RENDERED');
+  assert.match(voucherRows, /QA Voucher Creator/, 'PARENT_VOUCHER_CREATOR_NOT_RENDERED');
+
+  await page.evaluate(async () => {
+    await window.RW_Warehouse.loadInventoryControl();
+  });
+  await page.locator('[data-ic-tab="counts"]').click();
+  const countRows = await page.locator('#ic-content').innerText();
+  assert.match(countRows, /QA-COUNT-REF/, 'PARENT_INVENTORY_COUNT_ROW_NOT_RENDERED');
+  assert.match(countRows, /QA Count Creator/, 'PARENT_INVENTORY_COUNT_CREATOR_NOT_RENDERED');
+
+  const finalCounters = await page.evaluate(() => window.__qaCounters());
+  assert.equal(finalCounters.writes, 0, 'PARENT_TAB_TEST_ATTEMPTED_A_DATA_WRITE');
+  console.log('PARENT_RECEIVING_DOCUMENT_ACTOR_AND_DETAILS=PASS');
+  console.log('PARENT_VOUCHER_CREATOR_RENDER=PASS');
+  console.log('PARENT_INVENTORY_COUNT_CREATOR_RENDER=PASS');
+  console.log('PARENT_ALL_ADDED_PARENT_TAB_TESTS_NO_DATA_WRITES=PASS');
 } finally {
   await browser.close();
 }
