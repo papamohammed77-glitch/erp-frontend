@@ -30353,6 +30353,7 @@ var RW_OwnerLicense = (function () {
                     '<input id="owner-new-password" type="password" autocomplete="new-password" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px" placeholder="كلمة المرور الجديدة">' +
                     '<input id="owner-confirm-password" type="password" autocomplete="new-password" class="rw-input" style="height:48px;padding:0 14px;border-radius:14px" placeholder="تأكيد كلمة المرور">' +
                     '<button type="button" id="btn-owner-change-password" class="rw-btn-primary" style="background:#dc2626">تغيير كلمة المرور</button>' +
+                    '<p style="grid-column:1/-1;color:#64748b;font-size:12px;font-weight:700;margin:0">لأسباب أمنية، يجب أن تختلف كلمة المرور الجديدة عن كلمة المرور الحالية.</p>' +
                 '</div>' +
             '</section>';
 
@@ -30382,24 +30383,63 @@ var RW_OwnerLicense = (function () {
         }
 
         var passwordBtn = byId('btn-owner-change-password');
+        var passwordRequestPending = false;
         if (passwordBtn) {
             passwordBtn.onclick = function () {
+                if (passwordRequestPending) return;
                 if (!isOwner()) return showToast('غير مصرح', 'error');
-                var pass = String((byId('owner-new-password') || {}).value || '');
-                var confirm = String((byId('owner-confirm-password') || {}).value || '');
+
+                var passInput = byId('owner-new-password');
+                var confirmInput = byId('owner-confirm-password');
+                var pass = String((passInput || {}).value || '');
+                var confirm = String((confirmInput || {}).value || '');
                 if (pass.length < 6) return showToast('كلمة المرور يجب ألا تقل عن 6 أحرف.', 'error');
                 if (pass !== confirm) return showToast('تأكيد كلمة المرور غير مطابق.', 'error');
 
+                passwordRequestPending = true;
+                var idleLabel = passwordBtn.textContent || 'تغيير كلمة المرور';
+                passwordBtn.disabled = true;
+                passwordBtn.setAttribute('aria-busy', 'true');
+                passwordBtn.textContent = 'جارٍ تغيير كلمة المرور...';
                 showLoader('جاري تغيير كلمة المرور...');
-                supabase.auth.updateUser({ password: pass }).then(function (res) {
-                    hideLoader();
-                    if (res.error) throw res.error;
-                    byId('owner-new-password').value = '';
-                    byId('owner-confirm-password').value = '';
+
+                Promise.resolve().then(function () {
+                    return supabase.auth.updateUser({ password: pass });
+                }).then(function (res) {
+                    if (res && res.error) throw res.error;
+                    if (passInput) passInput.value = '';
+                    if (confirmInput) confirmInput.value = '';
                     showToast('تم تغيير كلمة المرور بنجاح.', 'success');
                 }).catch(function (e) {
+                    var errorMessage = String(e && e.message || '');
+                    var errorCode = String(e && e.code || '').toLowerCase();
+                    var samePassword = errorCode === 'same_password' ||
+                        /new password should be different from the old password|same as (the )?(old|current) password/i.test(errorMessage);
+
+                    if (samePassword) {
+                        if (passInput) {
+                            passInput.value = '';
+                            if (typeof passInput.focus === 'function') passInput.focus();
+                        }
+                        if (confirmInput) confirmInput.value = '';
+                        showToast('كلمة المرور الجديدة مطابقة لكلمة المرور الحالية. أدخل كلمة مرور مختلفة تمامًا.', 'error');
+                        return;
+                    }
+
+                    showToast(errorMessage || 'فشل تغيير كلمة المرور', 'error');
+                }).then(function () {
                     hideLoader();
-                    showToast(e.message || 'فشل تغيير كلمة المرور', 'error');
+                    passwordRequestPending = false;
+                    passwordBtn.disabled = false;
+                    passwordBtn.removeAttribute('aria-busy');
+                    passwordBtn.textContent = idleLabel;
+                }, function (cleanupError) {
+                    hideLoader();
+                    passwordRequestPending = false;
+                    passwordBtn.disabled = false;
+                    passwordBtn.removeAttribute('aria-busy');
+                    passwordBtn.textContent = idleLabel;
+                    console.error('Owner password update cleanup failed:', cleanupError);
                 });
             };
         }
