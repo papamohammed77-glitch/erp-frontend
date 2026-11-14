@@ -105,6 +105,12 @@ try {
 
     window.supabase = {
       from: table => makeQuery(table),
+      rpc: async (name, args) => {
+        if (name !== 'get_picking_display_users') throw new Error('UNEXPECTED_RPC: ' + name);
+        const allowed = new Set((args?.p_picker_ids || []).map(String));
+        const rows = (fixtures.users || []).filter(u => allowed.has(String(u.id)));
+        return { data: rows.map(u => ({ id: u.id, name: u.name, email: u.email })), error: null };
+      },
       channel() {
         return {
           on(eventName, filter, handler) {
@@ -133,7 +139,7 @@ try {
   const initialHistory = await page.locator('#ul-completed-table').innerText();
   assert.match(initialHistory, /QA-UNLOAD-DONE-001/, 'COMPLETED_UNLOADING_EVENT_NOT_RENDERED');
   assert.match(initialHistory, /qa\.unloader@rawaea\.invalid/, 'UNLOADING_ACTOR_NOT_RENDERED');
-  assert.match(initialHistory, /12/, 'UNLOADED_QUANTITY_NOT_RENDERED');
+  assert.match(initialHistory, /١٢|12/, 'UNLOADED_QUANTITY_NOT_RENDERED');
 
   await page.locator('#ul-f-id').fill('QA-UNLOAD-DONE-001');
   assert.doesNotMatch(await page.locator('#ul-table').innerText(), /QA-UNLOAD-READY-001/, 'QUEUE_FILTER_NOT_APPLIED');
