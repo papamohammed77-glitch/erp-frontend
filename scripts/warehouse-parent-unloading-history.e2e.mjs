@@ -229,7 +229,7 @@ try {
   const pickingHistory = await page.locator('#pk-completed-table').innerText();
   assert.match(pickingHistory, /QA-PICK-001/, 'PARENT_PICKING_HISTORY_ROW_MISSING');
   assert.match(pickingHistory, /qa\.picker@rawaea\.invalid/, 'PARENT_PICKING_HISTORY_ACTOR_MISSING');
-  assert.match(pickingHistory, /5/, 'PARENT_PICKING_HISTORY_TOTAL_MISSING');
+  assert.match(pickingHistory, /٥|5/, 'PARENT_PICKING_HISTORY_TOTAL_MISSING');
 
   await page.evaluate(async () => {
     window.__qaFixtures.runsheets = [{
@@ -282,7 +282,7 @@ try {
   const loadingHistory = await page.locator('#ld-completed-table').innerText();
   assert.match(loadingHistory, /QA-LOAD-001/, 'PARENT_LOADING_HISTORY_ROW_MISSING');
   assert.match(loadingHistory, /qa\.loader@rawaea\.invalid/, 'PARENT_LOADING_HISTORY_ACTOR_MISSING');
-  assert.match(loadingHistory, /7/, 'PARENT_LOADING_HISTORY_TOTAL_MISSING');
+  assert.match(loadingHistory, /٧|7/, 'PARENT_LOADING_HISTORY_TOTAL_MISSING');
 
   const counters = await page.evaluate(() => window.__qaCounters());
   assert.equal(counters.writes, 0, 'TEST_ATTEMPTED_A_DATA_WRITE');
