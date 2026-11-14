@@ -8,9 +8,12 @@ var SUPABASE_URL = 'https://fiilmooggumokxanwiyx.supabase.co';
 var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpaWxtb29nZ3Vtb2t4YW53aXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg3MDkwOTIsImV4cCI6MjA5NDI4NTA5Mn0.LZScCxnCiRrTSCCBmTryszQpY1AwBgR2dkTBbC5kOc4';
 
 // ✅ إنشاء عميل Supabase الموحد (إصلاح الخطأ القاتل)
-var supabase = (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function')
-    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
-    : null;
+var supabase = (window.RW_SUPABASE_CLIENT && typeof window.RW_SUPABASE_CLIENT.from === 'function' && window.RW_SUPABASE_CLIENT.auth)
+    ? window.RW_SUPABASE_CLIENT
+    : ((typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function')
+        ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+        : null);
+if (supabase) window.RW_SHARED_SUPABASE = supabase;
 
 if (!supabase) {
     console.error('❌ فشل إنشاء عميل Supabase. تأكد من تحميل مكتبة supabase أولاً.');
