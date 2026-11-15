@@ -1105,9 +1105,13 @@ var App = {
             '<label class="text-sm font-black">أمر الشراء<select id="bpi-po" class="w-full border rounded-xl p-3 mt-1"><option value="">بدون أمر شراء</option></select></label></div>'+
             '<div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-black">تاريخ الاستحقاق<input id="bpi-due" type="date" value="'+buyerEsc(current&&current.due_date||'')+'" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-black">رقم فاتورة المورد<input id="bpi-no" value="'+buyerEsc(current&&current.supplier_invoice_no||'')+'" class="w-full border rounded-xl p-3 mt-1" placeholder="رقم المستند لدى المورد"></label>'+
             '<label class="text-sm font-black md:col-span-2">ملاحظات الفاتورة<textarea id="bpi-notes" rows="2" class="w-full border rounded-xl p-3 mt-1">'+buyerEsc(current&&current.notes||'')+'</textarea></label></div>'+
-            '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود الفاتورة · العملة المعتمدة '+buyerEsc(currency)+'</div><div class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_155px_105px_135px_auto] gap-3 items-end">'+
-            '<div class="relative"><label class="text-sm font-bold"><span class="block mb-1">بحث الصنف</span><div class="flex gap-2"><input id="bpi-item" class="w-full min-w-0 border rounded-xl p-3" placeholder="الكود أو الاسم أو الباركود"><button id="bpi-scan" type="button" title="مسح بالكاميرا" class="shrink-0 px-4 rounded-xl border border-blue-300 bg-white text-blue-700"><i class="fa-solid fa-camera"></i></button></div></label><div id="bpi-ibox" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-72 overflow-auto rounded-xl border bg-white shadow-2xl"></div><label class="block text-sm font-bold mt-3">وحدة الشراء<select id="bpi-unit" disabled class="w-full border rounded-xl p-3 mt-1"><option value="">اختر الصنف أولاً</option></select><small id="bpi-unit-note" class="block text-[11px] text-slate-500 mt-1">اختر الوحدة المسجلة في بطاقة الصنف.</small></label></div>'+
-            '<label class="text-sm font-bold">الكمية<input id="bpi-qty" type="number" min="0.01" step="0.01" value="1" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-bold">السعر<input id="bpi-price" type="number" min="0" step="0.01" class="w-full border rounded-xl p-3 mt-1"></label><button id="bpi-add" type="button" class="px-5 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bpi-lines" class="mt-4"></div></div>'+
+            '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود الفاتورة · العملة المعتمدة '+buyerEsc(currency)+'</div><div class="grid grid-cols-1 md:grid-cols-7 gap-3 items-end">'+
+            '<div class="relative md:col-span-2"><label class="text-sm font-bold"><span class="block mb-1">الصنف</span><div class="flex gap-2"><input id="bpi-item" class="w-full min-w-0 border rounded-xl p-3" placeholder="الكود أو الاسم أو الباركود"><button id="bpi-scan" type="button" title="مسح بالكاميرا" class="shrink-0 px-4 rounded-xl border border-blue-300 bg-white text-blue-700"><i class="fa-solid fa-camera"></i></button></div></label><div id="bpi-ibox" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-72 overflow-auto rounded-xl border bg-white shadow-2xl"></div></div>'+
+            '<label class="text-sm font-bold">الوحدة<select id="bpi-unit" disabled class="w-full border rounded-xl p-3 mt-1"><option value="">اختر الصنف أولاً</option></select><small id="bpi-unit-note" class="block text-[11px] text-slate-500 mt-1">تظهر الوحدات المعرفة للصنف.</small></label>'+
+            '<label class="text-sm font-bold">الكمية<input id="bpi-qty" type="number" min="0.01" step="0.01" value="1" class="w-full border rounded-xl p-3 mt-1"></label>'+
+            '<label class="text-sm font-bold">سعر الوحدة<input id="bpi-price" type="number" min="0" step="0.01" class="w-full border rounded-xl p-3 mt-1"></label>'+
+            '<div class="rounded-xl border bg-white p-3"><span class="block text-xs text-slate-500">الإجمالي</span><b id="bpi-line-total" class="block mt-1 font-black">0.00</b></div>'+
+            '<button id="bpi-add" type="button" class="px-4 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bpi-lines" class="mt-4"></div></div>'+
             '<p class="text-xs text-amber-700">ستُحفظ الفاتورة كمسودة Draft دون أثر على المخزون أو الحسابات حتى الترحيل وفق دورة الاستلام والاعتماد.</p></div>';
             function poOptions(){var box=RW_UI.byId('bpi-po');var valid=pos.filter(function(x){return !selectedSupplier||x.supplier_id===selectedSupplier.id;});box.innerHTML='<option value="">بدون أمر شراء</option>'+valid.map(function(x){return '<option value="'+buyerEsc(x.id)+'">'+buyerEsc(x.po_code+' — '+(x.supplier_name||''))+'</option>';}).join('');if(current&&current.purchase_order_id)box.value=current.purchase_order_id;}
             function poDetailFor(item,poId){
@@ -1131,20 +1135,56 @@ var App = {
                     '1 '+alt+' = '+factor+' '+base+' · '+(orderLine?'وحدة أمر الشراء: '+orderLine.unit:'اختر الوحدة التي ستسجل بها الفاتورة') :
                     'لا توجد وحدة بديلة صالحة لهذا الصنف؛ الوحدة المتاحة '+base+'.';
             }
+            function updateInvoiceLineTotal(){
+                var qty=Number((RW_UI.byId('bpi-qty')||{}).value||0),
+                    price=Number((RW_UI.byId('bpi-price')||{}).value||0),
+                    total=Number.isFinite(qty)&&Number.isFinite(price)?qty*price:0,
+                    target=RW_UI.byId('bpi-line-total');
+                if(target)target.textContent=buyerMoney(total,currency);
+            }
             function render(){
 var host=RW_UI.byId('bpi-lines');if(!host)return;if(!lines.length){host.innerHTML='<div class="rounded-xl border border-dashed p-6 text-center text-slate-400">لا توجد بنود.</div>';return;}
-                var total=0,h='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">وحدة الشراء</th><th class="p-2">الكمية</th><th class="p-2">سعر الوحدة</th><th class="p-2">مكافئ سعر الأساسية</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
-                lines.forEach(function(x,i){var v=x.qty*x.unit_price*(1-x.discount_percent/100)*(1+x.tax_rate/100),factor=Number(x.unit_conversion_factor||1),basePrice=factor>0?Number(x.unit_price||0)/factor:0;total+=v;h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td>'+
-                '<td class="p-2"><b>'+buyerEsc(x.unit||x.base_unit||'—')+'</b><small class="block text-slate-500">'+(factor>1?'1 '+buyerEsc(x.unit)+' = '+buyerEsc(factor)+' '+buyerEsc(x.base_unit||''):'الوحدة الأساسية')+'</small></td>'+
-                '<td class="p-2"><input data-bif="qty" data-bii="'+i+'" type="number" min="0.01" step="0.01" value="'+x.qty+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bif="unit_price" data-bii="'+i+'" type="number" min="0" step="0.01" value="'+(x.unit_price==null?'':x.unit_price)+'" class="w-24 border rounded p-2"></td><td class="p-2 text-xs">'+buyerMoney(basePrice,currency)+' / '+buyerEsc(x.base_unit||x.unit||'')+'</td>'+
-                '<td class="p-2"><input data-bif="discount_percent" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.discount_percent+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bif="tax_rate" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.tax_rate+'" class="w-20 border rounded p-2"></td>'+
-                '<td class="p-2 font-black">'+buyerMoney(v,currency)+'</td><td><button type="button" data-bir="'+i+'" class="text-red-600">حذف</button></td></tr>';});
+                var total=0,h='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">الكمية</th><th class="p-2">سعر الوحدة</th><th class="p-2">الإجمالي</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th></th></tr></thead><tbody>';
+                lines.forEach(function(x,i){
+                    var v=x.qty*x.unit_price*(1-x.discount_percent/100)*(1+x.tax_rate/100),
+                        master=items.find(function(it){return it.item_code===x.item_code;}),
+                        base=String(x.base_unit||(master&&master.unit)||x.unit||'حبة'),
+                        alt=String(master&&master.alt_unit||'').trim(),
+                        altFactor=Number(master&&master.alt_unit_qty||0),
+                        selected=String(x.unit||base),
+                        unitOptions='<option value="'+buyerEsc(base)+'" '+(selected===base?'selected':'')+'>'+buyerEsc(base)+'</option>';
+                    total+=v;
+                    if(alt&&alt!==base&&Number.isFinite(altFactor)&&altFactor>0)
+                        unitOptions+='<option value="'+buyerEsc(alt)+'" '+(selected===alt?'selected':'')+'>'+buyerEsc(alt)+'</option>';
+                    h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td>'+
+                    '<td class="p-2"><select data-bif="unit" data-bii="'+i+'" class="min-w-[110px] border rounded p-2">'+unitOptions+'</select><small class="block text-[11px] text-slate-500">'+(alt&&altFactor>0?'1 '+buyerEsc(alt)+' = '+buyerEsc(altFactor)+' '+buyerEsc(base):'الوحدة الأساسية')+'</small></td>'+
+                    '<td class="p-2"><input data-bif="qty" data-bii="'+i+'" type="number" min="0.01" step="0.01" value="'+x.qty+'" class="w-20 border rounded p-2"></td>'+
+                    '<td class="p-2"><input data-bif="unit_price" data-bii="'+i+'" type="number" min="0" step="0.01" value="'+(x.unit_price==null?'':x.unit_price)+'" class="w-24 border rounded p-2"></td>'+
+                    '<td class="p-2 font-black">'+buyerMoney(v,currency)+'</td>'+
+                    '<td class="p-2"><input data-bif="discount_percent" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.discount_percent+'" class="w-20 border rounded p-2"></td><td class="p-2"><input data-bif="tax_rate" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+x.tax_rate+'" class="w-20 border rounded p-2"></td>'+
+                    '<td><button type="button" data-bir="'+i+'" class="text-red-600">حذف</button></td></tr>';
+                });
                 host.innerHTML=h+'</tbody></table><div class="p-3 text-left font-black">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div></div>';
-                Array.from(host.querySelectorAll('[data-bif]')).forEach(function(el){el.addEventListener('change',function(){lines[Number(el.dataset.bii)][el.dataset.bif]=el.value===''?null:Number(el.value);render();});});
+                Array.from(host.querySelectorAll('[data-bif]')).forEach(function(el){el.addEventListener('change',function(){
+                    var index=Number(el.dataset.bii),field=el.dataset.bif,line=lines[index];
+                    if(!line)return;
+                    if(field==='unit'){
+                        var master=items.find(function(it){return it.item_code===line.item_code;});
+                        if(!master)return;
+                        var base=String(master.unit||line.base_unit||line.unit),
+                            alt=String(master.alt_unit||'').trim(),next=String(el.value),
+                            nextFactor=next===alt?Number(master.alt_unit_qty||0):1;
+                        if(next!==base&&(!alt||next!==alt||!Number.isFinite(nextFactor)||nextFactor<=0))return;
+                        line.unit=next;line.base_unit=base;line.unit_conversion_factor=nextFactor;
+                    }else line[field]=el.value===''?null:Number(el.value);
+                    render();
+                });});
                 Array.from(host.querySelectorAll('[data-bir]')).forEach(function(el){el.addEventListener('click',function(){lines.splice(Number(el.dataset.bir),1);render();});});
             }
             var modal=await Swal.fire({title:current?'تعديل مسودة فاتورة شراء':'فاتورة شراء جديدة',width:1100,html:html,showCloseButton:true,allowEscapeKey:true,showCancelButton:true,confirmButtonText:current?'حفظ التعديلات':'حفظ الفاتورة',cancelButtonText:'إلغاء',didOpen:function(){
                 var ss=RW_UI.byId('bpi-s'),sb=RW_UI.byId('bpi-sbox'),is=RW_UI.byId('bpi-item'),ib=RW_UI.byId('bpi-ibox');
+                ['bpi-qty','bpi-price'].forEach(function(id){var el=RW_UI.byId(id);if(el)el.addEventListener('input',updateInvoiceLineTotal);});
+                updateInvoiceLineTotal();
                 RW_UI.byId('bpi-scan').addEventListener('click',function(){
                     buyerScanBarcode(items,function(item){
                         selectedItem=item;is.value=item.item_code+' — '+item.name;
@@ -1190,7 +1230,7 @@ var host=RW_UI.byId('bpi-lines');if(!host)return;if(!lines.length){host.innerHTM
                     if(!unit||!Number.isFinite(factor)||factor<=0){Swal.showValidationMessage('اختر وحدة شراء صحيحة من بطاقة الصنف');return;}
                     if(!qtyRaw||!priceRaw||qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('أدخل الكمية وسعر الوحدة صراحةً؛ الصفر مسموح إذا كان سعرًا متفقًا عليه');return;}
                     lines.push({item_code:selectedItem.item_code,name:selectedItem.name,unit:unit,base_unit:base,unit_conversion_factor:factor,qty:qty,unit_price:price,discount_percent:0,tax_rate:0});
-                    selectedItem=null;is.value='';RW_UI.byId('bpi-qty').value='1';RW_UI.byId('bpi-price').value='';setInvoiceUnitOptions(null);render();});
+                    selectedItem=null;is.value='';RW_UI.byId('bpi-qty').value='1';RW_UI.byId('bpi-price').value='';setInvoiceUnitOptions(null);updateInvoiceLineTotal();render();});
                 RW_UI.byId('bpi-po').addEventListener('change',function(){var po=pos.find(function(x){return x.id===this.value;},this);if(po&&!selectedSupplier){selectedSupplier=suppliers.find(function(x){return x.id===po.supplier_id;})||null;if(selectedSupplier){ss.value=selectedSupplier.name;RW_UI.byId('bpi-sid').value=selectedSupplier.id;}}if(selectedItem)setInvoiceUnitOptions(selectedItem);});
                 render();poOptions();
             },preConfirm:async function(){var supplierId=RW_UI.byId('bpi-sid').value,poId=RW_UI.byId('bpi-po').value||null;if(!supplierId){Swal.showValidationMessage('اختر المورد');return false;}if(!lines.length){Swal.showValidationMessage('أضف بندًا واحدًا على الأقل');return false;}for(var i=0;i<lines.length;i++){var line=lines[i];if(!Number.isFinite(Number(line.qty))||Number(line.qty)<=0||line.unit_price===null||line.unit_price===undefined||!Number.isFinite(Number(line.unit_price))||Number(line.unit_price)<0){Swal.showValidationMessage('يجب إدخال سعر صريح لكل بند؛ الصفر مسموح إذا كان مقصودًا');return false;}}
@@ -1286,11 +1326,13 @@ var host=RW_UI.byId('bpi-lines');if(!host)return;if(!lines.length){host.innerHTM
                 '<label class="text-sm font-black">مصدر التسوية<select id="bqm-source" class="w-full border rounded-xl p-3 mt-1"><option value="EMPLOYEE_CUSTODY" '+(!current||current.settlement_source==='EMPLOYEE_CUSTODY'?'selected':'')+'>من عهدتي النقدية</option><option value="SUPPLIER_CREDIT" '+(current&&current.settlement_source==='SUPPLIER_CREDIT'?'selected':'')+'>ائتمان على المورد</option></select></label>'+
                 '<label id="bqm-custody-wrap" class="text-sm font-black md:col-span-2">العهدة النقدية<select id="bqm-custody" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر عهدة مؤكدة الاستلام</option>'+custodyOptions.join('')+'</select></label><div id="bqm-custody-breakdown" class="md:col-span-2 rounded-xl border bg-white p-3 text-xs text-slate-600">اختر العهدة لعرض النقد المستلم والالتزامات والحجوزات والمتاح.</div></div>'+
                 '<div class="rounded-xl border border-dashed bg-white p-4"><label class="block text-sm font-bold">صورة أو PDF فاتورة المورد<input id="bqm-invoice-file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" class="w-full border rounded-xl p-3 mt-2"></label><p class="text-xs text-slate-500 mt-2">'+(hasInvoiceAttachment?'يوجد مرفق سابق؛ يمكنك إضافة نسخة أحدث.':'إرفاق صورة أو PDF إلزامي لحفظ مسودة السوق السريع.')+' الحد الأقصى 10 ميجابايت.</p></div>'+
-                '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود الفاتورة · العملة المعتمدة '+buyerEsc(currency)+'</div><div class="grid grid-cols-1 md:grid-cols-[1fr_120px_140px_auto] gap-3 items-end">'+
-                '<div class="relative"><label class="text-sm font-bold"><span class="block mb-1">بحث الصنف</span><div class="flex gap-2"><input id="bqm-search" class="w-full min-w-0 border rounded-xl p-3" placeholder="الكود أو الاسم أو الباركود"><button id="bqm-scan" type="button" title="مسح بالكاميرا" class="shrink-0 px-4 rounded-xl border border-blue-300 bg-white text-blue-700"><i class="fa-solid fa-camera"></i></button></div></label><div id="bq-results" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-72 overflow-auto rounded-xl border bg-white shadow-2xl"></div><label class="text-sm font-bold block mt-3">وحدة الشراء<select id="bqm-unit" disabled class="w-full border rounded-xl p-3 mt-1"><option value="">اختر الصنف أولاً</option></select><small id="bqm-unit-note" class="block text-[11px] text-slate-500 mt-1">تظهر وحدات الصنف المعرفة في بطاقة الصنف.</small></label></div>'+
+                '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود الفاتورة · العملة المعتمدة '+buyerEsc(currency)+'</div><div class="grid grid-cols-1 md:grid-cols-7 gap-3 items-end">'+
+                '<div class="relative md:col-span-2"><label class="text-sm font-bold"><span class="block mb-1">الصنف</span><div class="flex gap-2"><input id="bqm-search" class="w-full min-w-0 border rounded-xl p-3" placeholder="الكود أو الاسم أو الباركود"><button id="bqm-scan" type="button" title="مسح بالكاميرا" class="shrink-0 px-4 rounded-xl border border-blue-300 bg-white text-blue-700"><i class="fa-solid fa-camera"></i></button></div></label><div id="bq-results" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-72 overflow-auto rounded-xl border bg-white shadow-2xl"></div></div>'+
+                '<label class="text-sm font-bold">الوحدة<select id="bqm-unit" disabled class="w-full border rounded-xl p-3 mt-1"><option value="">اختر الصنف أولاً</option></select><small id="bqm-unit-note" class="block text-[11px] text-slate-500 mt-1">تظهر وحدات الصنف المعرفة في بطاقة الصنف.</small></label>'+
                 '<label class="text-sm font-bold">الكمية<input id="bqm-qty" type="number" min="0.01" step="0.01" value="1" class="w-full border rounded-xl p-3 mt-1"></label>'+
-                '<label class="text-sm font-bold"><span id="bqm-price-label">سعر شراء الوحدة</span><input id="bqm-price" type="number" min="0.01" step="0.01" placeholder="السعر الفعلي" class="w-full border rounded-xl p-3 mt-1"></label>'+
-                '<button id="bqm-add" type="button" class="px-5 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bq-cart" class="mt-4"></div></div>'+
+                '<label class="text-sm font-bold"><span id="bqm-price-label">سعر الوحدة</span><input id="bqm-price" type="number" min="0.01" step="0.01" placeholder="السعر الفعلي" class="w-full border rounded-xl p-3 mt-1"></label>'+
+                '<div class="rounded-xl border bg-white p-3"><span class="block text-xs text-slate-500">الإجمالي</span><b id="bqm-line-total" class="block mt-1 font-black">0.00</b></div>'+
+                '<button id="bqm-add" type="button" class="px-4 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bq-cart" class="mt-4"></div></div>'+
                 '<label class="block text-sm font-bold">ملاحظات الفاتورة<textarea id="bqm-notes" rows="2" class="w-full border rounded-xl p-3 mt-1">'+buyerEsc(current&&current.notes||'')+'</textarea></label>'+
                 '<p class="text-xs text-amber-700">السعر الفعلي يُدخل يدويًا لكل صنف. الخصم والضريبة يطبقان على مستوى البند. هذه المسودة لا تزيد المخزون ولا تسدد المورد أو الخزينة؛ إثبات الاستلام والدفع يظل عبر المسارات المركزية المعتمدة.</p></div>';
             var result=await Swal.fire({title:current?'تعديل مسودة فاتورة سوق سريع':'فاتورة شراء سوق سريع',html:html,width:1100,showCloseButton:true,showCancelButton:true,confirmButtonText:current?'حفظ التعديلات':'حفظ المسودة',cancelButtonText:'إلغاء',didOpen:function(){
@@ -1312,6 +1354,15 @@ var host=RW_UI.byId('bpi-lines');if(!host)return;if(!lines.length){host.innerHTM
                     });
                 });
                 var search=RW_UI.byId('bqm-search'),resultsBox=RW_UI.byId('bq-results');
+                var updateQuickLineTotal=function(){
+                    var qty=Number((RW_UI.byId('bqm-qty')||{}).value||0),
+                        price=Number((RW_UI.byId('bqm-price')||{}).value||0),
+                        total=Number.isFinite(qty)&&Number.isFinite(price)?qty*price:0,
+                        target=RW_UI.byId('bqm-line-total');
+                    if(target)target.textContent=buyerMoney(total,currency);
+                };
+                ['bqm-qty','bqm-price'].forEach(function(id){var el=RW_UI.byId(id);if(el)el.addEventListener('input',updateQuickLineTotal);});
+                updateQuickLineTotal();
                 RW_UI.byId('bqm-scan').addEventListener('click',function(){
                     buyerScanBarcode(items,function(item){self.quickSelectItem(item);});
                 });
@@ -1638,8 +1689,19 @@ var host=RW_UI.byId('bpi-lines');if(!host)return;if(!lines.length){host.innerHTM
         this.renderQuickCart();
     },
     quickUpdate:function(index,key,value){
-        if(!this.quickCart[index])return;
-        this.quickCart[index][key]=value===''?null:Number(value);
+        var line=this.quickCart[index];
+        if(!line)return;
+        if(key==='unit'){
+            var master=(this.cache.items||[]).find(function(it){return it.item_code===line.item_code;});
+            if(!master)return;
+            var base=String(master.unit||line.base_unit||line.unit),
+                alt=String(master.alt_unit||'').trim(),factor=Number(master.alt_unit_qty||0),
+                next=String(value);
+            if(next!==base&&(!alt||next!==alt||!Number.isFinite(factor)||factor<=0)){
+                RW_UI.toast('وحدة الشراء غير معرفة في بطاقة الصنف','error');return;
+            }
+            line.unit=next;line.base_unit=base;line.unit_conversion_factor=next===alt?factor:1;
+        }else line[key]=value===''?null:Number(value);
         this.renderQuickCart();
     },
     quickRemove:function(index){
@@ -1650,20 +1712,27 @@ var host=RW_UI.byId('bpi-lines');if(!host)return;if(!lines.length){host.innerHTM
         var box=RW_UI.byId('bq-cart');if(!box)return;
         if(!this.quickCart.length){RW_UI.safeHTML(box,'<div class="rounded-xl border border-dashed p-6 text-center text-slate-400">لا توجد بنود.</div>');return;}
         var self=this,total=0,currency=this.currency||'EGP',
-            html='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">الكمية</th><th class="p-2">سعر الوحدة المختارة</th><th class="p-2">مكافئ سعر الوحدة الأساسية</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
+            html='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">الكمية</th><th class="p-2">سعر الوحدة</th><th class="p-2">الإجمالي</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th></th></tr></thead><tbody>';
         this.quickCart.forEach(function(x,i){
             var raw=Number(x.qty||0)*Number(x.unit_price||0)*(1-Number(x.discount_percent||0)/100)*(1+Number(x.tax_rate||0)/100),
-                lineTotal=Math.round(raw*100)/100,unitFactor=Number(x.unit_conversion_factor||1),
-                baseUnitPrice=unitFactor>0?Number(x.unit_price||0)/unitFactor:0;
+                lineTotal=Math.round(raw*100)/100,
+                master=(self.cache.items||[]).find(function(it){return it.item_code===x.item_code;}),
+                base=String(x.base_unit||(master&&master.unit)||x.unit||'حبة'),
+                alt=String(master&&master.alt_unit||'').trim(),
+                altFactor=Number(master&&master.alt_unit_qty||0),
+                selected=String(x.unit||base),
+                unitOptions='<option value="'+buyerEsc(base)+'" '+(selected===base?'selected':'')+'>'+buyerEsc(base)+'</option>';
             total+=lineTotal;
+            if(alt&&alt!==base&&Number.isFinite(altFactor)&&altFactor>0)
+                unitOptions+='<option value="'+buyerEsc(alt)+'" '+(selected===alt?'selected':'')+'>'+buyerEsc(alt)+'</option>';
             html+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td>'+
-                '<td class="p-2"><b>'+buyerEsc(x.unit||x.base_unit||'—')+'</b><small class="block text-slate-500">'+(unitFactor>1?'1 '+buyerEsc(x.unit)+' = '+buyerEsc(unitFactor)+' '+buyerEsc(x.base_unit||''):'وحدة أساسية')+'</small></td>'+
+                '<td class="p-2"><select data-bqf="unit" data-bqi="'+i+'" class="min-w-[110px] border rounded p-2">'+unitOptions+'</select><small class="block text-[11px] text-slate-500">'+(alt&&altFactor>0?'1 '+buyerEsc(alt)+' = '+buyerEsc(altFactor)+' '+buyerEsc(base):'الوحدة الأساسية')+'</small></td>'+
                 '<td class="p-2"><input data-bqf="qty" data-bqi="'+i+'" type="number" min="0.01" step="0.01" value="'+buyerEsc(x.qty)+'" class="w-20 border rounded p-2"></td>'+
                 '<td class="p-2"><input data-bqf="unit_price" data-bqi="'+i+'" type="number" min="0.01" step="0.01" value="'+(x.unit_price==null?'':buyerEsc(x.unit_price))+'" class="w-24 border rounded p-2"></td>'+
-                '<td class="p-2 text-xs">'+buyerMoney(baseUnitPrice,currency)+' / '+buyerEsc(x.base_unit||x.unit||'')+'</td>'+
+                '<td class="p-2 font-black">'+buyerMoney(lineTotal,currency)+'</td>'+
                 '<td class="p-2"><input data-bqf="discount_percent" data-bqi="'+i+'" type="number" min="0" max="100" step="0.01" value="'+buyerEsc(x.discount_percent||0)+'" class="w-20 border rounded p-2"></td>'+
                 '<td class="p-2"><input data-bqf="tax_rate" data-bqi="'+i+'" type="number" min="0" max="100" step="0.01" value="'+buyerEsc(x.tax_rate||0)+'" class="w-20 border rounded p-2"></td>'+
-                '<td class="p-2 font-black">'+buyerMoney(lineTotal,currency)+'</td><td><button type="button" data-bqr="'+i+'" class="text-red-600 font-black">حذف</button></td></tr>';
+                '<td><button type="button" data-bqr="'+i+'" class="text-red-600 font-black">حذف</button></td></tr>';
         });
         html+='</tbody></table><div class="p-3 text-left font-black">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div></div>';
         RW_UI.safeHTML(box,html);
