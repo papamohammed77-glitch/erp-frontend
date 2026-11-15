@@ -1192,7 +1192,8 @@ var App = {
                 items=loaded[1],branches=loaded[2].filter(function(x){return x.is_active!==false;}),settings=loaded[3][0]||{},
                 invoices=loaded[4],details=loaded[5],currency=String(loaded[6]&&loaded[6].currency||'EGP').trim().toUpperCase(),
                 custodyData=loaded[7]||{},attachments=loaded[8]||[],expenses=custodyData.expenses||[],
-                custodies=(custodyData.custodies||[]).filter(function(c){return c.employee_id===(this.currentUser||{}).id&&c.status!=='Settled'&&c.status!=='Closed';},this),
+                custodyReturns=custodyData.returns||[],settlements=custodyData.settlements||[],
+                custodies=(custodyData.custodies||[]).filter(function(c){return c.employee_id===(this.currentUser||{}).id&&c.status!=='Settled'&&c.status!=='Closed'&&String(c.currency||'').trim().toUpperCase()===currency;},this),
                 current=invoiceId?invoices.find(function(x){return x.id===invoiceId;}):null,lines=[],self=this;
             if(!/^[A-Z]{3}$/.test(currency))throw new Error('عملة النظام غير صالحة');
             if(invoiceId&&(!current||current.purchase_source!=='QUICK_MARKET'||current.status!=='Draft'||current.purchaser_user_id!==(this.currentUser||{}).id))throw new Error('فاتورة السوق السريع غير موجودة أو ليست مسودة مملوكة لك');
@@ -1203,19 +1204,26 @@ var App = {
                 var progress=await this.api('GET_QUICK_MARKET_HANDOVER_PROGRESS',{invoice_id:invoiceId});
                 if((progress.events||[]).length||expenses.some(function(e){return e.purchase_invoice_id===invoiceId;}))throw new Error('لا يمكن تعديل فاتورة سوق سريع بعد إثبات حيازة أو تقديم مصروف تابع');
                 lines=details.filter(function(x){return x.invoice_id===invoiceId;}).map(function(x){
-                    return {item_code:x.item_code,name:x.item_name,unit:x.unit,qty:Number(x.qty||0),unit_price:Number(x.unit_price||0),
+                    var masterItem=items.find(function(it){return it.item_code===x.item_code;});
+                    return {item_code:x.item_code,name:x.item_name,unit:x.unit,base_unit:x.base_unit||(masterItem&&masterItem.unit)||x.unit,
+                        unit_conversion_factor:Number(x.unit_conversion_factor||1),qty:Number(x.qty||0),unit_price:Number(x.unit_price||0),
                         discount_percent:Number(x.discount_percent||0),tax_rate:Number(x.tax_rate||0)};
                 });
             }
             this.currency=currency;this.cache.items=items;this.quickCart=lines;this.quickSelectedItem=null;
-            var operationId=buyerOperationId(),custodyOptions=[],availableByCustody={};
+            var operationId=buyerOperationId(),custodyOptions=[],availableByCustody={},custodyBreakdownByCustody={};
             custodies.forEach(function(c){
                 var advances=(custodyData.advances||[]).filter(function(a){return a.custody_id===c.id&&!!a.acknowledged_at&&!!a.cash_box_id&&!!a.journal_entry_id;});
                 var acknowledged=advances.reduce(function(n,a){return n+Number(a.amount||0);},0);
                 var committed=expenses.filter(function(e){return e.custody_id===c.id&&['Submitted','Approved'].indexOf(e.status)!==-1;}).reduce(function(n,e){return n+Number(e.amount||0);},0);
-                var reserved=self.quickMarketCashReservation(invoices,expenses,c.id,current&&current.id);
-                var available=Math.max(0,acknowledged-committed-reserved-Number(c.returned_amount||0));
+                var reserved=self.quickMarketCashReservation(invoices,expenses,c.id,current&&current.id),
+                    returnRows=custodyReturns.filter(function(x){return x.custody_id===c.id;}),
+                    settlement=settlements.find(function(x){return x.custody_id===c.id;}),
+                    returned=returnRows.length?returnRows.reduce(function(n,x){return n+Number(x.amount||0);},0):Number(c.returned_amount||0);
+                if(!returnRows.length&&settlement)returned=Math.max(returned,Number(settlement.cash_returned||0));
+                var available=Math.max(0,acknowledged-committed-reserved-returned);
                 availableByCustody[c.id]=available;
+                custodyBreakdownByCustody[c.id]={acknowledged:acknowledged,committed:committed,reserved:reserved,returned:returned,available:available};
                 if(available>0||(current&&current.cash_custody_id===c.id)){
                     custodyOptions.push('<option value="'+buyerEsc(c.id)+'" '+(current&&current.cash_custody_id===c.id?'selected':'')+'>'+buyerEsc(c.custody_code)+' · متاح '+buyerMoney(available,currency)+'</option>');
                 }
@@ -1226,12 +1234,13 @@ var App = {
                 '<label class="text-sm font-black">تاريخ الاستحقاق<input id="bqm-due" type="date" value="'+buyerEsc(current&&current.due_date||'')+'" class="w-full border rounded-xl p-3 mt-1"></label></div>'+
                 '<div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-black">رقم فاتورة المورد<input id="bqm-no" value="'+buyerEsc(current&&current.supplier_invoice_no||'')+'" class="w-full border rounded-xl p-3 mt-1" placeholder="رقم المستند الأصلي لدى المورد"></label>'+
                 '<label class="text-sm font-black">مصدر التسوية<select id="bqm-source" class="w-full border rounded-xl p-3 mt-1"><option value="EMPLOYEE_CUSTODY" '+(!current||current.settlement_source==='EMPLOYEE_CUSTODY'?'selected':'')+'>من عهدتي النقدية</option><option value="SUPPLIER_CREDIT" '+(current&&current.settlement_source==='SUPPLIER_CREDIT'?'selected':'')+'>ائتمان على المورد</option></select></label>'+
-                '<label id="bqm-custody-wrap" class="text-sm font-black md:col-span-2">العهدة النقدية<select id="bqm-custody" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر عهدة مؤكدة الاستلام</option>'+custodyOptions.join('')+'</select></label></div>'+
+                '<label id="bqm-custody-wrap" class="text-sm font-black md:col-span-2">العهدة النقدية<select id="bqm-custody" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر عهدة مؤكدة الاستلام</option>'+custodyOptions.join('')+'</select></label><div id="bqm-custody-breakdown" class="md:col-span-2 rounded-xl border bg-white p-3 text-xs text-slate-600">اختر العهدة لعرض النقد المستلم والالتزامات والحجوزات والمتاح.</div></div>'+
                 '<div class="rounded-xl border border-dashed bg-white p-4"><label class="block text-sm font-bold">صورة أو PDF فاتورة المورد<input id="bqm-invoice-file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" class="w-full border rounded-xl p-3 mt-2"></label><p class="text-xs text-slate-500 mt-2">'+(hasInvoiceAttachment?'يوجد مرفق سابق؛ يمكنك إضافة نسخة أحدث.':'إرفاق صورة أو PDF إلزامي لحفظ مسودة السوق السريع.')+' الحد الأقصى 10 ميجابايت.</p></div>'+
-                '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود الفاتورة · العملة المعتمدة '+buyerEsc(currency)+'</div><div class="grid grid-cols-1 md:grid-cols-[1fr_120px_140px_auto] gap-3 items-end">'+
+                '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود الفاتورة · العملة المعتمدة '+buyerEsc(currency)+'</div><div class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_150px_110px_140px_auto] gap-3 items-end">'+
                 '<div class="relative"><label class="text-sm font-bold"><span class="block mb-1">بحث الصنف</span><div class="flex gap-2"><input id="bqm-search" class="w-full min-w-0 border rounded-xl p-3" placeholder="الكود أو الاسم أو الباركود"><button id="bqm-scan" type="button" title="مسح بالكاميرا" class="shrink-0 px-4 rounded-xl border border-blue-300 bg-white text-blue-700"><i class="fa-solid fa-camera"></i></button></div></label><div id="bq-results" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-72 overflow-auto rounded-xl border bg-white shadow-2xl"></div></div>'+
+                '<label class="text-sm font-bold">وحدة الشراء<select id="bqm-unit" disabled class="w-full border rounded-xl p-3 mt-1"><option value="">اختر الصنف أولاً</option></select><small id="bqm-unit-note" class="block text-[11px] text-slate-500 mt-1">تظهر وحدات الصنف المعرفة في بطاقة الصنف.</small></label>'+
                 '<label class="text-sm font-bold">الكمية<input id="bqm-qty" type="number" min="0.01" step="0.01" value="1" class="w-full border rounded-xl p-3 mt-1"></label>'+
-                '<label class="text-sm font-bold">سعر الوحدة<input id="bqm-price" type="number" min="0.01" step="0.01" placeholder="السعر الفعلي" class="w-full border rounded-xl p-3 mt-1"></label>'+
+                '<label class="text-sm font-bold"><span id="bqm-price-label">سعر شراء الوحدة</span><input id="bqm-price" type="number" min="0.01" step="0.01" placeholder="السعر الفعلي" class="w-full border rounded-xl p-3 mt-1"></label>'+
                 '<button id="bqm-add" type="button" class="px-5 py-3 rounded-xl bg-blue-600 text-white font-black">إضافة بند</button></div><div id="bq-cart" class="mt-4"></div></div>'+
                 '<label class="block text-sm font-bold">ملاحظات الفاتورة<textarea id="bqm-notes" rows="2" class="w-full border rounded-xl p-3 mt-1">'+buyerEsc(current&&current.notes||'')+'</textarea></label>'+
                 '<p class="text-xs text-amber-700">السعر الفعلي يُدخل يدويًا لكل صنف. الخصم والضريبة يطبقان على مستوى البند. هذه المسودة لا تزيد المخزون ولا تسدد المورد أو الخزينة؛ إثبات الاستلام والدفع يظل عبر المسارات المركزية المعتمدة.</p></div>';
@@ -1259,6 +1268,10 @@ var App = {
                 });
                 search.addEventListener('input',function(){
                     self.quickSelectedItem=null;
+                    var unitSelect=RW_UI.byId('bqm-unit'),unitNote=RW_UI.byId('bqm-unit-note'),priceLabel=RW_UI.byId('bqm-price-label');
+                    if(unitSelect){unitSelect.innerHTML='<option value="">اختر الصنف أولاً</option>';unitSelect.disabled=true;}
+                    if(unitNote)unitNote.textContent='تظهر وحدات الصنف المعرفة في بطاقة الصنف.';
+                    if(priceLabel)priceLabel.textContent='سعر شراء الوحدة';
                     self.renderQuickSearch(items,search.value);
                 });
                 RW_UI.byId('bqm-add').addEventListener('click',function(){self.quickAddItem();});
@@ -1266,6 +1279,43 @@ var App = {
                     RW_UI.byId('bqm-custody-wrap').classList.toggle('hidden',this.value!=='EMPLOYEE_CUSTODY');
                 });
                 RW_UI.byId('bqm-source').dispatchEvent(new Event('change'));
+                var custodySelect=RW_UI.byId('bqm-custody'),cashBreakdown=RW_UI.byId('bqm-custody-breakdown');
+                var renderCashBreakdown=function(){
+                    var snapshot=custodyBreakdownByCustody[custodySelect&&custodySelect.value];
+                    if(!cashBreakdown)return;
+                    if(!snapshot){cashBreakdown.textContent='اختر عهدة مؤكدة الاستلام لعرض الرصيد بعد المصروفات والحجوزات.';return;}
+                    cashBreakdown.innerHTML='<div class="font-bold mb-2">تفصيل الرصيد المتاح في '+buyerEsc(currency)+'</div>'+
+                        '<div class="grid grid-cols-2 md:grid-cols-3 gap-2">'+
+                        '<span>النقد المستلم: <b>'+buyerMoney(snapshot.acknowledged,currency)+'</b></span>'+
+                        '<span>المصروفات المقدمة/المعتمدة: <b>'+buyerMoney(snapshot.committed,currency)+'</b></span>'+
+                        '<span>فواتير السوق المحجوزة: <b>'+buyerMoney(snapshot.reserved,currency)+'</b></span>'+
+                        '<span>النقد المرتجع: <b>'+buyerMoney(snapshot.returned,currency)+'</b></span>'+
+                        '<span class="col-span-2 md:col-span-3 text-emerald-700">المتاح الفعلي: <b>'+buyerMoney(snapshot.available,currency)+'</b></span></div>'+
+                        '<p class="mt-2 text-slate-500">المتاح = المستلم نقدًا − المصروفات المقدمة/المعتمدة − حجوزات فواتير السوق − النقد المرتجع.</p>';
+                };
+                if(custodySelect)custodySelect.addEventListener('change',renderCashBreakdown);
+                renderCashBreakdown();
+                var unitSelect=RW_UI.byId('bqm-unit'),unitNote=RW_UI.byId('bqm-unit-note'),
+                    priceInput=RW_UI.byId('bqm-price'),priceLabel=RW_UI.byId('bqm-price-label');
+                var renderUnitPricingNote=function(){
+                    var selected=self.quickSelectedItem,chosen=unitSelect&&unitSelect.value;
+                    if(!selected||!chosen){if(unitNote)unitNote.textContent='تظهر وحدات الصنف المعرفة في بطاقة الصنف.';return;}
+                    var factor=chosen===selected.alt_unit?Number(selected.alt_unit_qty||0):1,
+                        price=Number(priceInput&&priceInput.value||0);
+                    if(priceLabel)priceLabel.textContent='سعر شراء الوحدة ('+chosen+')';
+                    var note='1 '+chosen+' = '+factor+' '+selected.base_unit+'. السعر المدخل يخص '+chosen+'.';
+                    if(price>0&&factor>0)note+=' ما يعادل '+buyerMoney(price/factor,currency)+' لكل '+selected.base_unit+'.';
+                    if(unitNote)unitNote.textContent=note;
+                };
+                if(unitSelect)unitSelect.addEventListener('change',function(){
+                    if(self.quickSelectedItem){
+                        self.quickSelectedItem.unit=unitSelect.value;
+                        self.quickSelectedItem.unit_conversion_factor=unitSelect.value===self.quickSelectedItem.alt_unit?
+                            Number(self.quickSelectedItem.alt_unit_qty||0):1;
+                    }
+                    renderUnitPricingNote();
+                });
+                if(priceInput)priceInput.addEventListener('input',renderUnitPricingNote);
                 self.renderQuickCart();
             },preConfirm:async function(){
                 var supplierId=RW_UI.byId('bqm-sid').value,branchId=RW_UI.byId('bqm-branch').value,
@@ -1288,12 +1338,19 @@ var App = {
                 },0);
                 if(total<=0){Swal.showValidationMessage('إجمالي الفاتورة يجب أن يكون أكبر من صفر');return false;}
                 if(source==='EMPLOYEE_CUSTODY'&&(!custodyId||total>Number(availableByCustody[custodyId]||0)+0.005)){
-                    Swal.showValidationMessage('العهدة المختارة لا تغطي قيمة الفاتورة بعد الخصم والضريبة والحجوزات الحالية');return false;
+                    var cashState=custodyBreakdownByCustody[custodyId];
+                    var cashMessage='العهدة المختارة لا تغطي إجمالي الفاتورة '+buyerMoney(total,currency)+'.';
+                    if(cashState)cashMessage+=' المتاح بعد الالتزامات '+buyerMoney(cashState.available,currency)+
+                        ' (المستلم '+buyerMoney(cashState.acknowledged,currency)+
+                        ' − المصروفات '+buyerMoney(cashState.committed,currency)+
+                        ' − حجوزات السوق '+buyerMoney(cashState.reserved,currency)+
+                        ' − المرتجع '+buyerMoney(cashState.returned,currency)+').';
+                    Swal.showValidationMessage(cashMessage);return false;
                 }
                 var payload={supplier_id:supplierId,branch_id:branchId,due_date:RW_UI.byId('bqm-due').value||null,
                     supplier_invoice_no:supplierNo,notes:RW_UI.byId('bqm-notes').value.trim()||null,
                     items:self.quickCart.map(function(x){
-                        return {item_code:x.item_code,qty:x.qty,unit_price:x.unit_price,
+                        return {item_code:x.item_code,unit:x.unit,qty:x.qty,unit_price:x.unit_price,
                             discount_percent:Number(x.discount_percent||0),tax_rate:Number(x.tax_rate||0)};
                     }),
                     settlement_source:source,cash_custody_id:custodyId,operation_id:operationId};
@@ -1464,8 +1521,9 @@ var App = {
             return tokens.every(function(token){return fields.indexOf(token)!==-1;});
         }).slice(0,25);
         RW_UI.safeHTML(box,matches.map(function(it){
-            var idx=items.indexOf(it);
-            return '<button type="button" data-bqm-item="'+idx+'" class="w-full text-right p-3 border-b hover:bg-blue-50"><b>'+buyerEsc(it.name)+'</b><small class="block text-slate-500 mt-1">'+buyerEsc(it.item_code)+' · '+buyerEsc(it.barcode||'—')+' · '+buyerEsc(it.unit||'')+'</small></button>';
+            var idx=items.indexOf(it),unitText=it.unit||'—';
+            if(it.alt_unit&&Number(it.alt_unit_qty)>0)unitText+=' · '+it.alt_unit+' ('+Number(it.alt_unit_qty)+' '+(it.unit||'')+')';
+            return '<button type="button" data-bqm-item="'+idx+'" class="w-full text-right p-3 border-b hover:bg-blue-50"><b>'+buyerEsc(it.name)+'</b><small class="block text-slate-500 mt-1">'+buyerEsc(it.item_code)+' · '+buyerEsc(it.barcode||'—')+' · '+buyerEsc(unitText)+'</small></button>';
         }).join('')||'<div class="p-3 text-xs text-slate-400">لا توجد نتائج مطابقة في دليل الأصناف</div>');
         box.classList.remove('hidden');
         Array.from(box.querySelectorAll('[data-bqm-item]')).forEach(function(button){
@@ -1478,9 +1536,23 @@ var App = {
     },
     quickSelectItem:function(item){
         if(!item||!item.item_code)return;
-        this.quickSelectedItem={item_code:item.item_code,name:item.name,unit:item.unit};
-        var search=RW_UI.byId('bqm-search'),box=RW_UI.byId('bq-results');
+        var baseUnit=String(item.unit||'حبة'),altUnit=String(item.alt_unit||'').trim(),
+            altFactor=Number(item.alt_unit_qty||0);
+        this.quickSelectedItem={item_code:item.item_code,name:item.name,unit:baseUnit,base_unit:baseUnit,
+            alt_unit:altUnit,alt_unit_qty:altFactor,unit_conversion_factor:1};
+        var search=RW_UI.byId('bqm-search'),box=RW_UI.byId('bq-results'),
+            unitSelect=RW_UI.byId('bqm-unit'),unitNote=RW_UI.byId('bqm-unit-note'),priceLabel=RW_UI.byId('bqm-price-label');
         if(search)search.value=item.item_code+' — '+item.name;
+        if(unitSelect){
+            var options='<option value="'+buyerEsc(baseUnit)+'">'+buyerEsc(baseUnit)+' · الوحدة الأساسية</option>';
+            if(altUnit&&altUnit!==baseUnit&&Number.isFinite(altFactor)&&altFactor>0)
+                options+='<option value="'+buyerEsc(altUnit)+'">'+buyerEsc(altUnit)+' · 1 '+buyerEsc(altUnit)+' = '+buyerEsc(altFactor)+' '+buyerEsc(baseUnit)+'</option>';
+            unitSelect.innerHTML=options;unitSelect.value=baseUnit;unitSelect.disabled=false;
+        }
+        if(priceLabel)priceLabel.textContent='سعر شراء الوحدة ('+baseUnit+')';
+        if(unitNote)unitNote.textContent=altUnit&&altUnit!==baseUnit&&Number.isFinite(altFactor)&&altFactor>0?
+            'الوحدة الأساسية: '+baseUnit+' · الوحدة البديلة: 1 '+altUnit+' = '+altFactor+' '+baseUnit+'.':
+            'لا توجد وحدة بديلة صالحة معرفة لهذا الصنف؛ سيُستخدم '+baseUnit+'.';
         if(box)box.classList.add('hidden');
     },
     quickAddItem:function(){
@@ -1488,19 +1560,29 @@ var App = {
         if(!item||!item.item_code){RW_UI.toast('اختر صنفًا من دليل الأصناف أولًا','error');return;}
         var qtyRaw=String((RW_UI.byId('bqm-qty')||{}).value||'').trim(),
             priceRaw=String((RW_UI.byId('bqm-price')||{}).value||'').trim(),
+            unitSelect=RW_UI.byId('bqm-unit'),selectedUnit=String(unitSelect&&unitSelect.value||item.unit||item.base_unit),
+            unitFactor=selectedUnit===item.alt_unit?Number(item.alt_unit_qty||0):1,
             qty=Number(qtyRaw),price=Number(priceRaw);
+        if(!selectedUnit||!Number.isFinite(unitFactor)||unitFactor<=0){
+            RW_UI.toast('وحدة الشراء أو معامل التحويل غير صالحين في بطاقة الصنف','error');return;
+        }
         if(!qtyRaw||!priceRaw||!Number.isFinite(qty)||qty<=0||!Number.isFinite(price)||price<=0){
             RW_UI.toast('أدخل كمية موجبة وسعر الشراء الفعلي قبل إضافة البند','error');return;
         }
         if(this.quickCart.some(function(x){return x.item_code===item.item_code;})){
             RW_UI.toast('الصنف مضاف بالفعل؛ عدّل كميته وسعره من سطره','info');return;
         }
-        this.quickCart.push({item_code:item.item_code,name:item.name,unit:item.unit,qty:qty,unit_price:price,discount_percent:0,tax_rate:0});
+        this.quickCart.push({item_code:item.item_code,name:item.name,unit:selectedUnit,base_unit:item.base_unit||item.unit,
+            unit_conversion_factor:unitFactor,qty:qty,unit_price:price,discount_percent:0,tax_rate:0});
         this.quickSelectedItem=null;
-        var search=RW_UI.byId('bqm-search'),qtyInput=RW_UI.byId('bqm-qty'),priceInput=RW_UI.byId('bqm-price');
+        var search=RW_UI.byId('bqm-search'),qtyInput=RW_UI.byId('bqm-qty'),priceInput=RW_UI.byId('bqm-price'),
+            unitSelect=RW_UI.byId('bqm-unit'),unitNote=RW_UI.byId('bqm-unit-note'),priceLabel=RW_UI.byId('bqm-price-label');
         if(search)search.value='';
         if(qtyInput)qtyInput.value='1';
         if(priceInput)priceInput.value='';
+        if(unitSelect){unitSelect.innerHTML='<option value="">اختر الصنف أولاً</option>';unitSelect.disabled=true;}
+        if(unitNote)unitNote.textContent='تظهر وحدات الصنف المعرفة في بطاقة الصنف.';
+        if(priceLabel)priceLabel.textContent='سعر شراء الوحدة';
         this.renderQuickCart();
     },
     quickUpdate:function(index,key,value){
@@ -1516,14 +1598,17 @@ var App = {
         var box=RW_UI.byId('bq-cart');if(!box)return;
         if(!this.quickCart.length){RW_UI.safeHTML(box,'<div class="rounded-xl border border-dashed p-6 text-center text-slate-400">لا توجد بنود.</div>');return;}
         var self=this,total=0,currency=this.currency||'EGP',
-            html='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الكمية</th><th class="p-2">السعر</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
+            html='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr><th class="p-2 text-right">الصنف</th><th class="p-2">الوحدة</th><th class="p-2">الكمية</th><th class="p-2">سعر الوحدة المختارة</th><th class="p-2">مكافئ سعر الوحدة الأساسية</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th class="p-2">الإجمالي</th><th></th></tr></thead><tbody>';
         this.quickCart.forEach(function(x,i){
             var raw=Number(x.qty||0)*Number(x.unit_price||0)*(1-Number(x.discount_percent||0)/100)*(1+Number(x.tax_rate||0)/100),
-                lineTotal=Math.round(raw*100)/100;
+                lineTotal=Math.round(raw*100)/100,unitFactor=Number(x.unit_conversion_factor||1),
+                baseUnitPrice=unitFactor>0?Number(x.unit_price||0)/unitFactor:0;
             total+=lineTotal;
             html+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td>'+
+                '<td class="p-2"><b>'+buyerEsc(x.unit||x.base_unit||'—')+'</b><small class="block text-slate-500">'+(unitFactor>1?'1 '+buyerEsc(x.unit)+' = '+buyerEsc(unitFactor)+' '+buyerEsc(x.base_unit||''):'وحدة أساسية')+'</small></td>'+
                 '<td class="p-2"><input data-bqf="qty" data-bqi="'+i+'" type="number" min="0.01" step="0.01" value="'+buyerEsc(x.qty)+'" class="w-20 border rounded p-2"></td>'+
                 '<td class="p-2"><input data-bqf="unit_price" data-bqi="'+i+'" type="number" min="0.01" step="0.01" value="'+(x.unit_price==null?'':buyerEsc(x.unit_price))+'" class="w-24 border rounded p-2"></td>'+
+                '<td class="p-2 text-xs">'+buyerMoney(baseUnitPrice,currency)+' / '+buyerEsc(x.base_unit||x.unit||'')+'</td>'+
                 '<td class="p-2"><input data-bqf="discount_percent" data-bqi="'+i+'" type="number" min="0" max="100" step="0.01" value="'+buyerEsc(x.discount_percent||0)+'" class="w-20 border rounded p-2"></td>'+
                 '<td class="p-2"><input data-bqf="tax_rate" data-bqi="'+i+'" type="number" min="0" max="100" step="0.01" value="'+buyerEsc(x.tax_rate||0)+'" class="w-20 border rounded p-2"></td>'+
                 '<td class="p-2 font-black">'+buyerMoney(lineTotal,currency)+'</td><td><button type="button" data-bqr="'+i+'" class="text-red-600 font-black">حذف</button></td></tr>';
