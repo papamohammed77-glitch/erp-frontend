@@ -1190,6 +1190,10 @@ var App = {
                 if(selectedSupplier&&selectedSupplier.id!==order.supplier_id)throw new Error('أمر الشراء المحدد لا يتبع المورد المختار.');
                 var orderLines=poDetails.filter(function(x){return x.po_id===poId;});
                 if(!orderLines.length)throw new Error('لا توجد بنود مسجلة لأمر الشراء المحدد.');
+                if(preserveCurrent){
+                    var missingLines=oldLines.filter(function(old){return !orderLines.some(function(poLine){return poLine.item_code===old.item_code;});});
+                    if(missingLines.length)throw new Error('تحتوي المسودة على صنف لم يعد موجودًا في أمر الشراء: '+missingLines.map(function(x){return x.item_code;}).join('، '));
+                }
                 lines=orderLines.map(function(poLine){
                     var existing=oldLines.find(function(x){return x.item_code===poLine.item_code;})||null;
                     return makePOInvoiceLine(poLine,existing,poId);
@@ -1202,10 +1206,7 @@ var App = {
                 if(branchSelect&&order.branch_id)branchSelect.value=order.branch_id;
                 if(select)select.value=poId;
                 if(manualWrap)manualWrap.classList.add('hidden');
-                var ordered=orderLines.reduce(function(n,x){return n+Number(x.qty_ordered||0);},0);
-                var received=orderLines.reduce(function(n,x){return n+Number(x.qty_received||0);},0);
-                var previous=lines.reduce(function(n,x){return n+Number(x.po_qty_previously_invoiced_base||0);},0);
-                if(summary)summary.textContent='أمر '+order.po_code+' · '+orderLines.length+' صنف · مطلوب '+ordered+' · استلم المخزن '+received+' · سبق فوترته '+Number(previous.toFixed(4))+' · يتم إدراج المتبقي تلقائيًا';
+                if(summary)summary.textContent='أمر '+order.po_code+' · '+orderLines.length+' صنف · المورد والفرع مربوطان بالأمر · الكميات المعروضة بكل وحدة على حدة · سبق الفوترة محسوب لكل صنف';
                 selectedItem=null;
                 render();
             }
