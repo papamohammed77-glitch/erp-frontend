@@ -88,6 +88,8 @@ serve(async (req) => {
       requireAny(["purchases", "finance", "finance_manager"]);
     } else if (op === "GET_SETTINGS") {
       requireAny(["purchases", "finance", "finance_manager"]);
+    } else if (op === "GET_PO_INVOICE_PROGRESS") {
+      requireAny(["purchases"]);
     } else if (op === "GET_DATA") {
       const table = String(p.table || "");
       if (table === "treasury") requireAny(["finance", "finance_manager"]);
@@ -867,6 +869,58 @@ serve(async (req) => {
       };
     } else if (op === "GET_SETTINGS") {
       data = { success: true, currency: await getSystemCurrency() };
+    } else if (op === "GET_PO_INVOICE_PROGRESS") {
+      const poId = String(p.purchase_order_id || "").trim();
+      if (!poId) throw new Error("PURCHASE_ORDER_REQUIRED_FOR_INVOICE_PROGRESS");
+      const { data: visiblePO, error: poError } = await sb.from("purchase_orders")
+        .select("id").eq("company_id", companyId).eq("id", poId).maybeSingle();
+      if (poError) throw poError;
+      if (!visiblePO) throw new Error("PURCHASE_ORDER_NOT_FOUND");
+
+      const invoiceIds: string[] = [];
+      for (let offset = 0; offset < 10000; offset += 500) {
+        const page = await sb.from("purchase_invoices").select("id")
+          .eq("company_id", companyId).eq("purchase_order_id", poId)
+          .neq("status", "Cancelled").order("id", { ascending: true })
+          .range(offset, offset + 499);
+        if (page.error) throw page.error;
+        const rows = page.data || [];
+        invoiceIds.push(...rows.map((row: any) => String(row.id)).filter(Boolean));
+        if (rows.length < 500) break;
+        if (offset >= 9500) throw new Error("PURCHASE_ORDER_INVOICE_PROGRESS_LIMIT_EXCEEDED");
+      }
+
+      const baseQtyByItem = new Map<string, number>();
+      let processedDetails = 0;
+      for (let i = 0; i < invoiceIds.length; i += 100) {
+        const ids = invoiceIds.slice(i, i + 100);
+        for (let offset = 0; offset < 25000; offset += 500) {
+          const page = await sb.from("purchase_invoice_details")
+            .select("id,item_code,qty,unit_conversion_factor")
+            .in("invoice_id", ids).order("id", { ascending: true })
+            .range(offset, offset + 499);
+          if (page.error) throw page.error;
+          const rows = page.data || [];
+          for (const row of rows) {
+            const itemCode = String(row.item_code || "").trim();
+            const qty = Number(row.qty || 0);
+            const factor = Number(row.unit_conversion_factor || 1);
+            if (!itemCode || !Number.isFinite(qty) || qty < 0 || !Number.isFinite(factor) || factor <= 0) {
+              throw new Error("PURCHASE_ORDER_INVOICE_PROGRESS_DATA_INVALID");
+            }
+            baseQtyByItem.set(itemCode, (baseQtyByItem.get(itemCode) || 0) + qty * factor);
+            processedDetails++;
+            if (processedDetails > 25000) throw new Error("PURCHASE_ORDER_INVOICE_PROGRESS_LIMIT_EXCEEDED");
+          }
+          if (rows.length < 500) break;
+          if (offset >= 24500) throw new Error("PURCHASE_ORDER_INVOICE_PROGRESS_LIMIT_EXCEEDED");
+        }
+      }
+      data = {
+        success: true,
+        purchase_order_id: poId,
+        items: Array.from(baseQtyByItem.entries()).map(([item_code, qty_base]) => ({ item_code, qty_base }))
+      };
     } else if (op === "GET_DATA") {
       const table = String(p.table || "");
       if (table === "treasury") requireAny(["finance", "finance_manager"]);
