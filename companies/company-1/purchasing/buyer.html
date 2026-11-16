@@ -1139,18 +1139,9 @@ var App = {
                 if(alt&&unit===alt&&Number.isFinite(factor)&&factor>0)return factor;
                 return 0;
             }
-            function previouslyInvoicedBaseQty(poId,itemCode,excludeInvoiceId){
+            function previouslyInvoicedBaseQty(poId,itemCode){
                 var aggregate=poInvoiceProgress.find(function(x){return x.item_code===itemCode;});
-                var total=Number(aggregate&&aggregate.qty_base||0);
-                if(excludeInvoiceId){
-                    total-=d[7].filter(function(detail){
-                        return detail.invoice_id===excludeInvoiceId&&detail.item_code===itemCode;
-                    }).reduce(function(sum,detail){
-                        var qty=Number(detail.qty||0),factor=Number(detail.unit_conversion_factor||1);
-                        return sum+(Number.isFinite(qty)&&Number.isFinite(factor)&&factor>0?qty*factor:0);
-                    },0);
-                }
-                return Math.max(0,total);
+                return Math.max(0,Number(aggregate&&aggregate.qty_base||0));
             }
             function makePOInvoiceLine(poLine,existingLine,poId){
                 var master=items.find(function(it){return it.item_code===poLine.item_code&&it.id===poLine.item_id;})||
@@ -1160,7 +1151,7 @@ var App = {
                 if(!poFactor)throw new Error('وحدة الصنف '+poLine.item_code+' في أمر الشراء لا تطابق بطاقة الصنف أو معامل تحويلها غير صالح.');
                 var orderedBase=Number(poLine.qty_ordered||0)*poFactor;
                 if(!Number.isFinite(orderedBase)||orderedBase<=0)throw new Error('كمية أمر الشراء غير صالحة للصنف '+poLine.item_code);
-                var previousBase=previouslyInvoicedBaseQty(poId,poLine.item_code,invoiceId||null);
+                var previousBase=previouslyInvoicedBaseQty(poId,poLine.item_code);
                 var remainingBase=Math.max(0,orderedBase-previousBase);
                 var chosenUnit=existingLine&&existingLine.unit?String(existingLine.unit):poUnit;
                 var chosenFactor=invoiceUnitFactor(master,chosenUnit);
@@ -1200,7 +1191,7 @@ var App = {
                 }
                 if(summary)summary.textContent='جارٍ مطابقة الفواتير السابقة لأمر الشراء '+order.po_code+'...';
                 if(select)select.disabled=true;
-                var progress=await self.api('GET_PO_INVOICE_PROGRESS',{purchase_order_id:poId});
+                var progress=await self.api('GET_PO_INVOICE_PROGRESS',{purchase_order_id:poId,invoice_id:invoiceId||null});
                 if(sequence!==poSelectionSequence||(select&&select.value!==poId))return;
                 if(!progress||progress.success!==true||!Array.isArray(progress.items))throw new Error('تعذر التحقق من الكميات المفوترة سابقًا لهذا الأمر؛ لم يتم تحميل البنود');
                 poInvoiceProgress=progress.items;
