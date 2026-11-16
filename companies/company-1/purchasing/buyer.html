@@ -1093,7 +1093,7 @@ var App = {
         var self=this;
         try{
             var d=await Promise.all([this.data('suppliers'),this.loadInvoiceItems(),this.data('branches'),this.data('purchase_orders'),this.data('purchase_settings'),this.api('GET_SETTINGS',{}),this.data('purchase_invoices'),this.data('purchase_invoice_details'),this.data('purchase_order_details')]);
-            var suppliers=d[0].filter(function(x){return x.is_active===true;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=String(d[5]&&d[5].currency||'').trim().toUpperCase(),current=invoiceId?d[6].find(function(x){return x.id===invoiceId;}):null,selectedSupplier=null,selectedItem=null,lines=[],poDetails=d[8]||[],invoiceOperationId=buyerOperationId();
+            var suppliers=d[0].filter(function(x){return x.is_active===true;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=String(d[5]&&d[5].currency||'').trim().toUpperCase(),current=invoiceId?d[6].find(function(x){return x.id===invoiceId;}):null,selectedSupplier=null,selectedItem=null,lines=[],poDetails=d[8]||[],poInvoiceProgress=[],poSelectionSequence=0,invoiceOperationId=buyerOperationId();
             if(!/^[A-Z]{3}$/.test(currency))throw new Error('تعذر قراءة العملة المعتمدة من إعدادات النظام الأم');
             if(invoiceId&&!current)throw new Error('مسودة الفاتورة غير موجودة');
             if(current&&(current.status!=='Draft'||current.is_received||current.received_date||Number(current.paid_amount||0)>0))throw new Error('لا يمكن تعديل فاتورة مستلمة أو مرحلة أو مسددة');
@@ -1140,14 +1140,17 @@ var App = {
                 return 0;
             }
             function previouslyInvoicedBaseQty(poId,itemCode,excludeInvoiceId){
-                var invoiceIds=d[6].filter(function(inv){
-                    return inv.purchase_order_id===poId&&inv.id!==excludeInvoiceId&&inv.status!=='Cancelled';
-                }).map(function(inv){return inv.id;});
-                return d[7].filter(function(detail){return invoiceIds.indexOf(detail.invoice_id)!==-1&&detail.item_code===itemCode;})
-                    .reduce(function(total,detail){
+                var aggregate=poInvoiceProgress.find(function(x){return x.item_code===itemCode;});
+                var total=Number(aggregate&&aggregate.qty_base||0);
+                if(excludeInvoiceId){
+                    total-=d[7].filter(function(detail){
+                        return detail.invoice_id===excludeInvoiceId&&detail.item_code===itemCode;
+                    }).reduce(function(sum,detail){
                         var qty=Number(detail.qty||0),factor=Number(detail.unit_conversion_factor||1);
-                        return total+(Number.isFinite(qty)&&Number.isFinite(factor)&&factor>0?qty*factor:0);
+                        return sum+(Number.isFinite(qty)&&Number.isFinite(factor)&&factor>0?qty*factor:0);
                     },0);
+                }
+                return Math.max(0,total);
             }
             function makePOInvoiceLine(poLine,existingLine,poId){
                 var master=items.find(function(it){return it.item_code===poLine.item_code&&it.id===poLine.item_id;})||
@@ -1172,13 +1175,14 @@ var App = {
                     po_unit:poUnit,po_unit_factor:poFactor,po_unit_price:Number(poLine.unit_price||0),po_base_unit_price:priceBase
                 };
             }
-            function updatePOSelection(poId,preserveCurrent){
-                var select=RW_UI.byId('bpi-po'),supplierInput=RW_UI.byId('bpi-s'),supplierId=RW_UI.byId('bpi-sid'),
+            async function updatePOSelection(poId,preserveCurrent){
+                var sequence=++poSelectionSequence,
+                    select=RW_UI.byId('bpi-po'),supplierInput=RW_UI.byId('bpi-s'),supplierId=RW_UI.byId('bpi-sid'),
                     branchSelect=RW_UI.byId('bpi-branch'),manualWrap=RW_UI.byId('bpi-manual-item-wrap'),
                     summary=RW_UI.byId('bpi-po-summary'),oldLines=preserveCurrent?lines.slice():[];
                 if(!poId){
                     if(current&&current.purchase_source==='PURCHASE_ORDER')return;
-                    lines=[];selectedItem=null;
+                    poInvoiceProgress=[];lines=[];selectedItem=null;
                     if(manualWrap)manualWrap.classList.remove('hidden');
                     if(supplierInput)supplierInput.disabled=false;
                     if(summary)summary.textContent='اختر أمر شراء لتحميل الأصناف والكميات تلقائيًا.';
@@ -1194,6 +1198,12 @@ var App = {
                     var missingLines=oldLines.filter(function(old){return !orderLines.some(function(poLine){return poLine.item_code===old.item_code;});});
                     if(missingLines.length)throw new Error('تحتوي المسودة على صنف لم يعد موجودًا في أمر الشراء: '+missingLines.map(function(x){return x.item_code;}).join('، '));
                 }
+                if(summary)summary.textContent='جارٍ مطابقة الفواتير السابقة لأمر الشراء '+order.po_code+'...';
+                if(select)select.disabled=true;
+                var progress=await self.api('GET_PO_INVOICE_PROGRESS',{purchase_order_id:poId});
+                if(sequence!==poSelectionSequence||(select&&select.value!==poId))return;
+                if(!progress||progress.success!==true||!Array.isArray(progress.items))throw new Error('تعذر التحقق من الكميات المفوترة سابقًا لهذا الأمر؛ لم يتم تحميل البنود');
+                poInvoiceProgress=progress.items;
                 lines=orderLines.map(function(poLine){
                     var existing=oldLines.find(function(x){return x.item_code===poLine.item_code;})||null;
                     return makePOInvoiceLine(poLine,existing,poId);
@@ -1204,9 +1214,9 @@ var App = {
                 if(supplierInput){supplierInput.value=supplier.name;supplierInput.disabled=true;}
                 if(supplierId)supplierId.value=supplier.id;
                 if(branchSelect&&order.branch_id)branchSelect.value=order.branch_id;
-                if(select)select.value=poId;
+                if(select){select.value=poId;select.disabled=!!(current&&current.purchase_source==='PURCHASE_ORDER');}
                 if(manualWrap)manualWrap.classList.add('hidden');
-                if(summary)summary.textContent='أمر '+order.po_code+' · '+orderLines.length+' صنف · المورد والفرع مربوطان بالأمر · الكميات المعروضة بكل وحدة على حدة · سبق الفوترة محسوب لكل صنف';
+                if(summary)summary.textContent='أمر '+order.po_code+' · '+orderLines.length+' صنف · تمت مطابقة كل الفواتير غير الملغاة على مستوى الشركة · الكميات معروضة بوحداتها الأصلية';
                 selectedItem=null;
                 render();
             }
@@ -1304,7 +1314,7 @@ var App = {
                 });});
                 Array.from(host.querySelectorAll('[data-bir]')).forEach(function(el){el.addEventListener('click',function(){lines.splice(Number(el.dataset.bir),1);render();});});
             }
-            var modal=await Swal.fire({title:current?'تعديل مسودة فاتورة شراء':'فاتورة شراء جديدة',width:1100,html:html,showCloseButton:true,allowEscapeKey:true,showCancelButton:true,confirmButtonText:current?'حفظ التعديلات':'حفظ الفاتورة',cancelButtonText:'إلغاء',didOpen:function(){
+            var modal=await Swal.fire({title:current?'تعديل مسودة فاتورة شراء':'فاتورة شراء جديدة',width:1100,html:html,showCloseButton:true,allowEscapeKey:true,showCancelButton:true,confirmButtonText:current?'حفظ التعديلات':'حفظ الفاتورة',cancelButtonText:'إلغاء',didOpen:async function(){
                 var ss=RW_UI.byId('bpi-s'),sb=RW_UI.byId('bpi-sbox'),is=RW_UI.byId('bpi-item'),ib=RW_UI.byId('bpi-ibox');
                 ['bpi-qty','bpi-price'].forEach(function(id){var el=RW_UI.byId(id);if(el)el.addEventListener('input',updateInvoiceLineTotal);});
                 updateInvoiceLineTotal();
@@ -1354,9 +1364,9 @@ var App = {
                     if(!qtyRaw||!priceRaw||qty<=0||price<0||!Number.isFinite(qty)||!Number.isFinite(price)){Swal.showValidationMessage('أدخل الكمية وسعر الوحدة صراحةً؛ الصفر مسموح إذا كان سعرًا متفقًا عليه');return;}
                     lines.push({item_code:selectedItem.item_code,name:selectedItem.name,unit:unit,base_unit:base,unit_conversion_factor:factor,qty:qty,unit_price:price,discount_percent:0,tax_rate:0});
                     selectedItem=null;is.value='';RW_UI.byId('bpi-qty').value='1';RW_UI.byId('bpi-price').value='';setInvoiceUnitOptions(null);updateInvoiceLineTotal();render();});
-                RW_UI.byId('bpi-po').addEventListener('change',function(){try{updatePOSelection(this.value,false);}catch(e){this.value='';RW_UI.toast(e.message||'تعذر تحميل بنود أمر الشراء','error');updatePOSelection('',false);}});
+                RW_UI.byId('bpi-po').addEventListener('change',async function(){var selectedPoId=this.value;try{await updatePOSelection(selectedPoId,false);}catch(e){if(this.value===selectedPoId){this.value='';await updatePOSelection('',false);}RW_UI.toast(e.message||'تعذر تحميل بنود أمر الشراء','error');}});
                 render();poOptions();
-                if(current&&current.purchase_order_id)updatePOSelection(current.purchase_order_id,true);
+                if(current&&current.purchase_order_id)await updatePOSelection(current.purchase_order_id,true);
                 var existingPO=!!(current&&current.purchase_source==='PURCHASE_ORDER');
                 if(existingPO){var supplierField=RW_UI.byId('bpi-s');if(supplierField)supplierField.disabled=true;}
             },preConfirm:async function(){
