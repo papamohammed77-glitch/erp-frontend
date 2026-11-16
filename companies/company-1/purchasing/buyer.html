@@ -1092,7 +1092,7 @@ var App = {
     createPurchaseInvoice:async function(invoiceId){
         var self=this;
         try{
-            var d=await Promise.all([this.data('suppliers'),this.loadInvoiceItems(),this.data('branches'),this.data('purchase_orders'),this.data('purchase_settings'),this.api('GET_SETTINGS',{}),this.data('purchase_invoices'),this.data('purchase_invoice_details'),this.data('purchase_order_details')]);
+            var d=await Promise.all([this.data('suppliers'),this.loadInvoiceItems(),this.data('branches'),this.data('purchase_orders'),this.data('purchase_settings'),this.api('GET_SETTINGS',{}),this.data('purchase_invoices',true),this.data('purchase_invoice_details',true),this.data('purchase_order_details',true)]);
             var suppliers=d[0].filter(function(x){return x.is_active===true;}),items=d[1],branches=d[2],pos=d[3],settings=d[4][0]||{},currency=String(d[5]&&d[5].currency||'').trim().toUpperCase(),current=invoiceId?d[6].find(function(x){return x.id===invoiceId;}):null,selectedSupplier=null,selectedItem=null,lines=[],poDetails=d[8]||[],poInvoiceProgress=[],poSelectionSequence=0,invoiceOperationId=buyerOperationId();
             if(!/^[A-Z]{3}$/.test(currency))throw new Error('تعذر قراءة العملة المعتمدة من إعدادات النظام الأم');
             if(invoiceId&&!current)throw new Error('مسودة الفاتورة غير موجودة');
@@ -1186,7 +1186,7 @@ var App = {
                     if(manualWrap)manualWrap.classList.remove('hidden');
                     if(supplierInput)supplierInput.disabled=false;
                     if(summary)summary.textContent='اختر أمر شراء لتحميل الأصناف والكميات تلقائيًا.';
-                    if(select)select.value='';
+                    if(select){select.value='';select.disabled=!!(current&&current.purchase_source==='PURCHASE_ORDER');}
                     render();return;
                 }
                 var order=pos.find(function(x){return x.id===poId;});
