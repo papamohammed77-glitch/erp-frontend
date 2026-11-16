@@ -1104,7 +1104,7 @@ var App = {
             var html='<div dir="rtl" class="text-right space-y-5"><div class="rounded-2xl bg-gradient-to-l from-amber-50 to-slate-50 border border-amber-100 p-5"><div class="flex items-center gap-3"><div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center"><i class="fas fa-file-invoice-dollar"></i></div><div><div class="text-lg font-black">'+(current?'تعديل مسودة فاتورة شراء':'إنشاء فاتورة شراء')+'</div><div class="text-sm text-slate-500">اربط الفاتورة بأمر شراء وحدد الفرع وبنود الفاتورة بدقة.</div></div></div></div>'+
             '<div class="grid grid-cols-1 md:grid-cols-3 gap-4"><div class="relative"><label class="text-sm font-black">المورد<input id="bpi-s" value="'+buyerEsc(currentSupplier&&currentSupplier.name||'')+'" class="w-full border rounded-xl p-3 mt-1" placeholder="ابحث باسم المورد أو الكود"></label><input id="bpi-sid" type="hidden" value="'+buyerEsc(current&&current.supplier_id||'')+'"><div id="bpi-sbox" class="hidden absolute z-[90] top-full right-0 left-0 mt-1 max-h-64 overflow-auto rounded-xl border bg-white shadow-2xl"></div></div>'+
             '<label class="text-sm font-black">الفرع<select id="bpi-branch" class="w-full border rounded-xl p-3 mt-1"><option value="">الفرع الرئيسي</option>'+branches.map(function(x){return '<option value="'+buyerEsc(x.id)+'" '+((current?current.branch_id===x.id:settings.default_branch_id===x.id)?'selected':'')+'>'+buyerEsc(x.name)+'</option>';}).join('')+'</select></label>'+
-            '<label class="text-sm font-black">أمر الشراء<select id="bpi-po" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر أمر شراء معتمدًا</option></select><small id="bpi-po-summary" class="block text-[11px] font-normal text-slate-500 mt-1">اختر أمر شراء لتحميل الأصناف والكميات تلقائيًا.</small></label></div>'+
+            '<label class="text-sm font-black">أمر الشراء<select id="bpi-po" class="w-full border rounded-xl p-3 mt-1"><option value="">اختر أمر شراء معتمدًا لم يبدأ استلامه</option></select><small id="bpi-po-summary" class="block text-[11px] font-normal text-slate-500 mt-1">اختر أمر شراء معتمدًا لم يبدأ استلامه لتحميل الأصناف والكميات تلقائيًا.</small></label></div>'+
             '<div class="grid grid-cols-1 md:grid-cols-2 gap-4"><label class="text-sm font-black">تاريخ الاستحقاق<input id="bpi-due" type="date" value="'+buyerEsc(current&&current.due_date||'')+'" class="w-full border rounded-xl p-3 mt-1"></label><label class="text-sm font-black">رقم فاتورة المورد<input id="bpi-no" value="'+buyerEsc(current&&current.supplier_invoice_no||'')+'" class="w-full border rounded-xl p-3 mt-1" placeholder="رقم المستند لدى المورد"></label>'+
             '<label class="text-sm font-black md:col-span-2">ملاحظات الفاتورة<textarea id="bpi-notes" rows="2" class="w-full border rounded-xl p-3 mt-1">'+buyerEsc(current&&current.notes||'')+'</textarea></label></div>'+
             '<div class="rounded-2xl border bg-slate-50 p-4"><div class="font-black mb-3">بنود الفاتورة · العملة المعتمدة '+buyerEsc(currency)+'</div><div id="bpi-manual-entry-wrap" class="grid grid-cols-1 md:grid-cols-7 gap-3 items-end">'+
@@ -1117,8 +1117,14 @@ var App = {
             '<p class="text-xs text-amber-700">ستُحفظ الفاتورة كمسودة Draft دون أثر على المخزون أو الحسابات حتى الترحيل وفق دورة الاستلام والاعتماد.</p></div>';
             function poEligible(order){
                 var status=String(order&&order.status||'');
-                return ['Approved','Partially Received','PartiallyReceived','Received'].indexOf(status)!==-1||
-                    !!(current&&current.purchase_order_id===order.id&&status!=='Cancelled');
+                if(!order||status==='Cancelled')return false;
+                // Keep an existing draft's original PO as a locked reference, even if it has since been received.
+                if(current&&current.purchase_source==='PURCHASE_ORDER'&&current.purchase_order_id===order.id)return true;
+                // New invoices may only start from approved orders with no warehouse receipt at all.
+                if(status!=='Approved')return false;
+                var orderLines=poDetails.filter(function(line){return line.po_id===order.id;});
+                if(!orderLines.length)return false;
+                return !orderLines.some(function(line){return Number(line.qty_received||0)>0.00005;});
             }
             function poOptions(){
                 var box=RW_UI.byId('bpi-po');
@@ -1181,7 +1187,7 @@ var App = {
                     render();return;
                 }
                 var order=pos.find(function(x){return x.id===poId;});
-                if(!order||order.status==='Cancelled'||!poEligible(order))throw new Error('أمر الشراء غير متاح للفوترة أو لم يتم اعتماده بعد.');
+                if(!order||order.status==='Cancelled'||!poEligible(order))throw new Error('يجب أن يكون أمر الشراء معتمدًا ولم يبدأ استلامه بعد.');
                 if(selectedSupplier&&selectedSupplier.id!==order.supplier_id)throw new Error('أمر الشراء المحدد لا يتبع المورد المختار.');
                 var orderLines=poDetails.filter(function(x){return x.po_id===poId;});
                 if(!orderLines.length)throw new Error('لا توجد بنود مسجلة لأمر الشراء المحدد.');
