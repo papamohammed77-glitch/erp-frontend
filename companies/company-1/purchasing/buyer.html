@@ -1244,12 +1244,12 @@ var App = {
                     '<th class="p-2">استلمها المخزن</th><th class="p-2">سبق فوترته</th><th class="p-2">الكمية المطلوب توريدها الآن</th>'+
                     '<th class="p-2">سعر الوحدة</th><th class="p-2">الإجمالي</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th></th></tr></thead><tbody>';
                 lines.forEach(function(x,i){
-                    var factor=Number(x.unit_conversion_factor||1),
+                    var factor=Number(x.unit_conversion_factor||1),poFactor=Number(x.po_unit_factor||1),
                         isPOLine=Number.isFinite(Number(x.po_qty_ordered_base)),
                         maxQty=isPOLine&&factor>0?Math.max(0,Number(x.po_qty_remaining_base||0)/factor):null,
-                        orderedQty=isPOLine&&factor>0?Number(x.po_qty_ordered_base||0)/factor:null,
-                        receivedQty=isPOLine&&factor>0?Number(x.po_qty_received_base||0)/factor:null,
-                        previouslyQty=isPOLine&&factor>0?Number(x.po_qty_previously_invoiced_base||0)/factor:null,
+                        orderedQty=isPOLine&&poFactor>0?Number(x.po_qty_ordered_base||0)/poFactor:null,
+                        receivedQty=isPOLine&&poFactor>0?Number(x.po_qty_received_base||0)/poFactor:null,
+                        previouslyQty=isPOLine&&poFactor>0?Number(x.po_qty_previously_invoiced_base||0)/poFactor:null,
                         v=Number(x.qty||0)*Number(x.unit_price||0)*(1-Number(x.discount_percent||0)/100)*(1+Number(x.tax_rate||0)/100),
                         master=items.find(function(it){return it.item_code===x.item_code;}),
                         base=String(x.base_unit||(master&&master.unit)||x.unit||'حبة'),
@@ -1263,9 +1263,9 @@ var App = {
                     h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td>'+
                     '<td class="p-2"><select data-bif="unit" data-bii="'+i+'" class="min-w-[100px] border rounded p-2">'+unitOptions+'</select>'+
                     '<small class="block text-[11px] text-slate-500">'+(isPOLine?'وحدة أمر الشراء: '+buyerEsc(x.po_unit):'الوحدة الأساسية: '+buyerEsc(base))+'</small></td>'+
-                    '<td class="p-2 text-center"><b>'+(isPOLine?buyerEsc(orderedQty.toFixed(4).replace(/0+$/,'').replace(/\.$/,''))+' '+buyerEsc(selected):'—')+'</b></td>'+
-                    '<td class="p-2 text-center">'+(isPOLine?buyerEsc(receivedQty.toFixed(4).replace(/0+$/,'').replace(/\.$/,'')):'—')+'</td>'+
-                    '<td class="p-2 text-center">'+(isPOLine?buyerEsc(previouslyQty.toFixed(4).replace(/0+$/,'').replace(/\.$/,'')):'—')+'</td>'+
+                    '<td class="p-2 text-center"><b>'+(isPOLine?buyerEsc(orderedQty.toFixed(4).replace(/0+$/,'').replace(/\.$/,''))+' '+buyerEsc(x.po_unit):'—')+'</b></td>'+
+                    '<td class="p-2 text-center">'+(isPOLine?buyerEsc(receivedQty.toFixed(4).replace(/0+$/,'').replace(/\.$/,''))+' '+buyerEsc(x.po_unit):'—')+'</td>'+
+                    '<td class="p-2 text-center">'+(isPOLine?buyerEsc(previouslyQty.toFixed(4).replace(/0+$/,'').replace(/\.$/,''))+' '+buyerEsc(x.po_unit):'—')+'</td>'+
                     '<td class="p-2"><input data-bif="qty" data-bii="'+i+'" type="number" min="0" '+(isPOLine?'max="'+maxQty.toFixed(4)+'"':'')+' step="0.0001" value="'+Number(x.qty||0)+'" class="w-24 border rounded p-2">'+
                     (isPOLine?'<small class="block text-[10px] text-slate-500">المتبقي للفوترة: '+buyerEsc(maxQty.toFixed(4))+'</small>':'')+'</td>'+
                     '<td class="p-2"><input data-bif="unit_price" data-bii="'+i+'" type="number" min="0" step="0.01" value="'+(x.unit_price==null?'':x.unit_price)+'" '+(isPOLine?'readonly title="السعر مأخوذ من أمر الشراء"':'')+' class="w-24 border rounded p-2 '+(isPOLine?'bg-slate-100':'')+'"></td>'+
