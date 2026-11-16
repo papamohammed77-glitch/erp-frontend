@@ -1239,11 +1239,17 @@ var App = {
             function render(){
                 var host=RW_UI.byId('bpi-lines');
                 if(!host)return;
-                if(!lines.length){host.innerHTML='<div class="rounded-xl border border-dashed p-6 text-center text-slate-400">اختر أمر الشراء لعرض الأصناف والكميات المطلوبة.</div>';return;}
-                var total=0,h='<div class="overflow-auto rounded-xl border bg-white"><table class="w-full text-sm"><thead class="bg-slate-100"><tr>'+
-                    '<th class="p-2 text-right">الصنف</th><th class="p-2">وحدة القياس</th><th class="p-2">الكمية المطلوبة في PO</th>'+
-                    '<th class="p-2">استلمها المخزن</th><th class="p-2">سبق فوترته</th><th class="p-2">الكمية المطلوب توريدها الآن</th>'+
-                    '<th class="p-2">سعر الوحدة</th><th class="p-2">الإجمالي</th><th class="p-2">خصم %</th><th class="p-2">ضريبة %</th><th></th></tr></thead><tbody>';
+                if(!lines.length){
+                    host.innerHTML='<div class="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center"><div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600"><i class="fa-solid fa-box-open text-xl"></i></div><b class="block text-sm text-slate-700">لا توجد بنود معروضة</b><span class="mt-1 block text-xs text-slate-500">اختر أمر الشراء لتحميل أصنافه وكمياته تلقائيًا.</span></div>';
+                    return;
+                }
+                function fmtQty(value){
+                    var n=Number(value||0);
+                    if(!Number.isFinite(n))return '—';
+                    return n.toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
+                }
+                var total=0,openLines=0,hasPOLines=false,hasLegacyLines=false,
+                    desktopRows='',mobileCards='';
                 lines.forEach(function(x,i){
                     var factor=Number(x.unit_conversion_factor||1),poFactor=Number(x.po_unit_factor||1),
                         isPOLine=Number.isFinite(Number(x.po_qty_ordered_base)),
@@ -1251,32 +1257,87 @@ var App = {
                         orderedQty=isPOLine&&poFactor>0?Number(x.po_qty_ordered_base||0)/poFactor:null,
                         receivedQty=isPOLine&&poFactor>0?Number(x.po_qty_received_base||0)/poFactor:null,
                         previouslyQty=isPOLine&&poFactor>0?Number(x.po_qty_previously_invoiced_base||0)/poFactor:null,
-                        v=Number(x.qty||0)*Number(x.unit_price||0)*(1-Number(x.discount_percent||0)/100)*(1+Number(x.tax_rate||0)/100),
+                        qty=Number(x.qty||0),
+                        lineValue=qty*Number(x.unit_price||0)*(1-Number(x.discount_percent||0)/100)*(1+Number(x.tax_rate||0)/100),
                         master=items.find(function(it){return it.item_code===x.item_code;}),
                         base=String(x.base_unit||(master&&master.unit)||x.unit||'حبة'),
                         alt=String(master&&master.alt_unit||'').trim(),
                         altFactor=Number(master&&master.alt_unit_qty||0),
                         selected=String(x.unit||base),
-                        unitOptions='<option value="'+buyerEsc(base)+'" '+(selected===base?'selected':'')+'>'+buyerEsc(base)+'</option>';
-                    total+=v;
+                        unitOptions='<option value="'+buyerEsc(base)+'" '+(selected===base?'selected':'')+'>'+buyerEsc(base)+' · أساسية</option>',
+                        lineOpen=isPOLine&&maxQty>0.00005,
+                        safeCode=buyerEsc(x.item_code||''),
+                        safeName=buyerEsc(x.name||''),
+                        safeUnit=buyerEsc(x.unit||base),
+                        statusChip=isPOLine?(lineOpen?'<span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700"><i class="fa-solid fa-circle-check"></i> متاح للتوريد</span>':'<span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-500"><i class="fa-solid fa-check-double"></i> اكتملت الفوترة</span>'):'<span class="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700">بند مستند</span>';
+                    total+=lineValue;
+                    if(isPOLine){hasPOLines=true;if(lineOpen)openLines++;}
+                    else hasLegacyLines=true;
                     if(alt&&alt!==base&&Number.isFinite(altFactor)&&altFactor>0)
-                        unitOptions+='<option value="'+buyerEsc(alt)+'" '+(selected===alt?'selected':'')+'>'+buyerEsc(alt)+'</option>';
-                    h+='<tr class="border-t"><td class="p-2"><b>'+buyerEsc(x.item_code)+'</b><small class="block">'+buyerEsc(x.name)+'</small></td>'+
-                    '<td class="p-2"><select data-bif="unit" data-bii="'+i+'" class="min-w-[100px] border rounded p-2">'+unitOptions+'</select>'+
-                    '<small class="block text-[11px] text-slate-500">'+(isPOLine?'وحدة أمر الشراء: '+buyerEsc(x.po_unit):'الوحدة الأساسية: '+buyerEsc(base))+'</small></td>'+
-                    '<td class="p-2 text-center"><b>'+(isPOLine?buyerEsc(orderedQty.toFixed(4).replace(/0+$/,'').replace(/\.$/,''))+' '+buyerEsc(x.po_unit):'—')+'</b></td>'+
-                    '<td class="p-2 text-center">'+(isPOLine?buyerEsc(receivedQty.toFixed(4).replace(/0+$/,'').replace(/\.$/,''))+' '+buyerEsc(x.po_unit):'—')+'</td>'+
-                    '<td class="p-2 text-center">'+(isPOLine?buyerEsc(previouslyQty.toFixed(4).replace(/0+$/,'').replace(/\.$/,''))+' '+buyerEsc(x.po_unit):'—')+'</td>'+
-                    '<td class="p-2"><input data-bif="qty" data-bii="'+i+'" type="number" min="0" '+(isPOLine?'max="'+maxQty.toFixed(4)+'"':'')+' step="0.0001" value="'+Number(x.qty||0)+'" class="w-24 border rounded p-2">'+
-                    (isPOLine?'<small class="block text-[10px] text-slate-500">المتبقي للفوترة: '+buyerEsc(maxQty.toFixed(4))+'</small>':'')+'</td>'+
-                    '<td class="p-2"><input data-bif="unit_price" data-bii="'+i+'" type="number" min="0" step="0.01" value="'+(x.unit_price==null?'':x.unit_price)+'" '+(isPOLine?'readonly title="السعر مأخوذ من أمر الشراء"':'')+' class="w-24 border rounded p-2 '+(isPOLine?'bg-slate-100':'')+'"></td>'+
-                    '<td class="p-2 font-black">'+buyerMoney(v,currency)+'</td>'+
-                    '<td class="p-2"><input data-bif="discount_percent" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+Number(x.discount_percent||0)+'" '+(isPOLine?'readonly':'')+' class="w-16 border rounded p-2 '+(isPOLine?'bg-slate-100':'')+'"></td>'+
-                    '<td class="p-2"><input data-bif="tax_rate" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+Number(x.tax_rate||0)+'" '+(isPOLine?'readonly':'')+' class="w-16 border rounded p-2 '+(isPOLine?'bg-slate-100':'')+'"></td>'+
-                    '<td>'+(isPOLine?'': '<button type="button" data-bir="'+i+'" class="text-red-600">حذف</button>')+'</td></tr>';
+                        unitOptions+='<option value="'+buyerEsc(alt)+'" '+(selected===alt?'selected':'')+'>'+buyerEsc(alt)+' · '+buyerEsc(altFactor)+' '+buyerEsc(base)+'</option>';
+                    var qtyInputClass='w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-center text-sm font-black text-violet-900 outline-none transition focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-100';
+                    var unitSelectClass='w-full min-w-[118px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-bold text-slate-700 outline-none transition focus:border-violet-500 focus:ring-4 focus:ring-violet-100';
+                    var priceInputClass='w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-xs font-bold text-slate-700 outline-none '+(isPOLine?'bg-slate-100 text-slate-500':'bg-white focus:border-violet-500');
+                    var qtyAttrs=' data-bif="qty" data-bii="'+i+'" type="number" min="0" step="0.0001" inputmode="decimal" value="'+qty+'" '+(isPOLine?'max="'+maxQty.toFixed(4)+'"':'')+' aria-label="الكمية الحالية للصنف '+safeCode+'"';
+                    var unitAttrs=' data-bif="unit" data-bii="'+i+'" aria-label="وحدة التوريد للصنف '+safeCode+'"';
+                    var priceAttrs=' data-bif="unit_price" data-bii="'+i+'" type="number" min="0" step="0.01" inputmode="decimal" value="'+(x.unit_price==null?'':x.unit_price)+'" '+(isPOLine?'readonly title="السعر مثبت وفق أمر الشراء"':'')+' aria-label="سعر الوحدة للصنف '+safeCode+'"';
+                    var qtyField='<input'+qtyAttrs+' class="'+qtyInputClass+'">';
+                    var unitField='<select'+unitAttrs+' class="'+unitSelectClass+'">'+unitOptions+'</select>';
+                    var priceField='<input'+priceAttrs+' class="'+priceInputClass+'">';
+                    var orderedText=isPOLine?fmtQty(orderedQty)+' '+buyerEsc(x.po_unit):'—',
+                        receivedText=isPOLine?fmtQty(receivedQty)+' '+buyerEsc(x.po_unit):'—',
+                        previousText=isPOLine?fmtQty(previouslyQty)+' '+buyerEsc(x.po_unit):'—',
+                        remainingText=isPOLine?fmtQty(maxQty)+' '+safeUnit:'—',
+                        remainingHint=isPOLine?(lineOpen?'الرصيد غير المفوتر':'لا يوجد رصيد غير مفوتر'):'—';
+                    var discountCell=hasLegacyLines?'<td class="px-3 py-3 text-center"><input data-bif="discount_percent" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+Number(x.discount_percent||0)+'" '+(isPOLine?'readonly':'')+' class="w-16 rounded-lg border border-slate-200 px-2 py-2 text-center text-xs '+(isPOLine?'bg-slate-100 text-slate-400':'bg-white')+'"></td>':'';
+                    var taxCell=hasLegacyLines?'<td class="px-3 py-3 text-center"><input data-bif="tax_rate" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+Number(x.tax_rate||0)+'" '+(isPOLine?'readonly':'')+' class="w-16 rounded-lg border border-slate-200 px-2 py-2 text-center text-xs '+(isPOLine?'bg-slate-100 text-slate-400':'bg-white')+'"></td>':'';
+                    var removeCell=hasLegacyLines?'<td class="px-2 py-3 text-center">'+(isPOLine?'<span class="text-slate-300">—</span>':'<button type="button" data-bir="'+i+'" title="حذف البند" aria-label="حذف الصنف '+safeCode+'" class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50 hover:text-rose-700"><i class="fa-solid fa-trash-can"></i></button>')+'</td>':'';
+                    desktopRows+='<tr class="group border-b border-slate-100 transition-colors last:border-0 hover:bg-violet-50/50">'+
+                        '<td class="sticky right-0 z-10 min-w-[205px] border-l border-slate-100 bg-white px-4 py-3 align-middle group-hover:bg-violet-50/70"><div class="flex items-start gap-2.5"><div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><i class="fa-solid fa-cube"></i></div><div class="min-w-0"><b class="block text-xs font-black text-slate-800">'+safeName+'</b><span class="mt-1 block font-mono text-[10px] text-slate-400">'+safeCode+'</span><div class="mt-2">'+statusChip+'</div></div></div></td>'+
+                        '<td class="min-w-[145px] px-3 py-3 align-middle">'+unitField+(isPOLine?'<small class="mt-1 block text-[10px] text-slate-400">وحدة الأمر: '+buyerEsc(x.po_unit)+'</small>':'')+'</td>'+
+                        '<td class="whitespace-nowrap px-3 py-3 text-center align-middle"><b class="text-xs text-slate-700">'+orderedText+'</b></td>'+
+                        '<td class="whitespace-nowrap px-3 py-3 text-center align-middle"><span class="text-xs font-bold text-sky-700">'+receivedText+'</span></td>'+
+                        '<td class="whitespace-nowrap px-3 py-3 text-center align-middle"><span class="text-xs font-bold text-amber-700">'+previousText+'</span></td>'+
+                        '<td class="whitespace-nowrap px-3 py-3 text-center align-middle"><div class="inline-flex flex-col items-center gap-1"><b class="text-xs '+(lineOpen?'text-emerald-700':'text-slate-400')+'">'+remainingText+'</b><small class="text-[10px] text-slate-400">'+remainingHint+'</small></div></td>'+
+                        '<td class="min-w-[132px] px-3 py-3 align-middle">'+qtyField+'<small class="mt-1 block text-center text-[10px] text-slate-400">الكمية في هذه الفاتورة</small></td>'+
+                        '<td class="min-w-[135px] px-3 py-3 align-middle">'+priceField+(isPOLine?'<small class="mt-1 block text-center text-[10px] text-slate-400">سعر أمر الشراء</small>':'')+'</td>'+
+                        '<td class="whitespace-nowrap px-3 py-3 text-center align-middle"><b class="text-xs font-black text-slate-800">'+buyerMoney(lineValue,currency)+'</b></td>'+
+                        discountCell+taxCell+removeCell+'</tr>';
+                    mobileCards+='<article class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">'+
+                        '<div class="flex items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-l from-violet-50 via-white to-white px-4 py-3"><div class="flex min-w-0 items-start gap-3"><div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><i class="fa-solid fa-cube"></i></div><div class="min-w-0"><b class="block break-words text-sm font-black text-slate-800">'+safeName+'</b><span class="mt-1 block font-mono text-[10px] text-slate-400">'+safeCode+'</span></div></div>'+statusChip+'</div>'+
+                        (isPOLine?'<div class="grid grid-cols-3 gap-2 border-b border-slate-100 bg-slate-50/80 p-3">'+
+                            '<div class="min-w-0 rounded-xl bg-white p-2 text-center"><small class="block text-[10px] font-bold text-slate-400">كمية الأمر</small><b class="mt-1 block break-words text-xs text-slate-700">'+orderedText+'</b></div>'+
+                            '<div class="min-w-0 rounded-xl bg-white p-2 text-center"><small class="block text-[10px] font-bold text-slate-400">استلمه المخزن</small><b class="mt-1 block break-words text-xs text-sky-700">'+receivedText+'</b></div>'+
+                            '<div class="min-w-0 rounded-xl bg-white p-2 text-center"><small class="block text-[10px] font-bold text-slate-400">فُوتر سابقًا</small><b class="mt-1 block break-words text-xs text-amber-700">'+previousText+'</b></div></div>':'')+
+                        '<div class="space-y-3 p-3.5"><div class="grid grid-cols-2 gap-3"><label class="block min-w-0"><span class="mb-1.5 block text-[11px] font-black text-slate-600">وحدة التوريد</span>'+unitField+'</label><label class="block min-w-0"><span class="mb-1.5 block text-[11px] font-black text-violet-700">الكمية المطلوب توريدها</span>'+qtyField+'</label></div>'+
+                        (isPOLine?'<div class="flex items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5"><span class="text-[11px] font-bold text-emerald-800">المتبقي غير المفوتر</span><b class="text-xs font-black text-emerald-800">'+remainingText+'</b></div>':'')+
+                        '<div class="grid grid-cols-2 gap-3"><div class="rounded-xl bg-slate-50 p-3"><small class="block text-[10px] font-bold text-slate-400">سعر الوحدة</small><div class="mt-1">'+priceField+'</div></div><div class="rounded-xl bg-violet-50 p-3"><small class="block text-[10px] font-bold text-violet-500">إجمالي البند</small><b class="mt-1 block break-words text-sm font-black text-violet-800">'+buyerMoney(lineValue,currency)+'</b></div></div>'+
+                        (hasLegacyLines?'<div class="grid grid-cols-2 gap-3"><label class="block"><span class="mb-1 block text-[10px] font-bold text-slate-500">خصم %</span><input data-bif="discount_percent" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+Number(x.discount_percent||0)+'" '+(isPOLine?'readonly':'')+' class="w-full rounded-xl border border-slate-200 px-3 py-2 text-center text-xs '+(isPOLine?'bg-slate-100 text-slate-400':'bg-white')+'"></label><label class="block"><span class="mb-1 block text-[10px] font-bold text-slate-500">ضريبة %</span><input data-bif="tax_rate" data-bii="'+i+'" type="number" min="0" max="100" step="0.01" value="'+Number(x.tax_rate||0)+'" '+(isPOLine?'readonly':'')+' class="w-full rounded-xl border border-slate-200 px-3 py-2 text-center text-xs '+(isPOLine?'bg-slate-100 text-slate-400':'bg-white')+'"></label></div>':'')+
+                        (isPOLine?'<p class="text-[10px] leading-5 text-slate-500">السعر مثبت من أمر الشراء. الكمية لا تتجاوز الرصيد غير المفوتر، ويظل الترحيل مشروطًا بمطابقة الاستلام الفعلي.</p>':'<div class="flex justify-end"><button type="button" data-bir="'+i+'" class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50"><i class="fa-solid fa-trash-can"></i> حذف البند</button></div>')+
+                        '</div></article>';
                 });
-                host.innerHTML=h+'</tbody></table><div class="p-3 text-left font-black">الإجمالي التقديري: '+buyerMoney(total,currency)+'</div>'+
-                    '<p class="px-3 pb-3 text-[11px] text-slate-500">الكمية المطلوبة هي كمية أمر الشراء الأصلية؛ ويمكن تعديل كمية الفاتورة/التوريد الحالي ضمن المتبقي. الترحيل لا يتم إلا بعد الاستلام الفعلي ومطابقة الكمية.</p></div>';
+                var headers='<th class="sticky right-0 z-20 min-w-[205px] border-l border-slate-200 bg-slate-100 px-4 py-3 text-right text-[11px] font-black text-slate-600">الصنف</th>'+
+                    '<th class="min-w-[145px] px-3 py-3 text-right text-[11px] font-black text-slate-600">وحدة التوريد</th>'+
+                    '<th class="whitespace-nowrap px-3 py-3 text-center text-[11px] font-black text-slate-600">كمية أمر الشراء</th>'+
+                    '<th class="whitespace-nowrap px-3 py-3 text-center text-[11px] font-black text-sky-700">استلام المخزن</th>'+
+                    '<th class="whitespace-nowrap px-3 py-3 text-center text-[11px] font-black text-amber-700">فُوتر سابقًا</th>'+
+                    '<th class="whitespace-nowrap px-3 py-3 text-center text-[11px] font-black text-emerald-700">المتبقي غير المفوتر</th>'+
+                    '<th class="min-w-[132px] px-3 py-3 text-center text-[11px] font-black text-violet-700">كمية هذه الفاتورة</th>'+
+                    '<th class="min-w-[135px] px-3 py-3 text-center text-[11px] font-black text-slate-600">سعر الوحدة</th>'+
+                    '<th class="whitespace-nowrap px-3 py-3 text-center text-[11px] font-black text-slate-600">إجمالي البند</th>'+
+                    (hasLegacyLines?'<th class="px-3 py-3 text-center text-[11px] font-black text-slate-500">خصم %</th><th class="px-3 py-3 text-center text-[11px] font-black text-slate-500">ضريبة %</th><th class="px-2 py-3 text-center text-[11px] font-black text-slate-500">إجراء</th>':'');
+                var summary='<div class="mb-3 grid grid-cols-3 gap-2">'+
+                    '<div class="rounded-xl border border-slate-200 bg-white p-3"><small class="block text-[10px] font-bold text-slate-400">عدد الأصناف</small><b class="mt-1 block text-lg font-black text-slate-800">'+lines.length+'</b></div>'+
+                    '<div class="rounded-xl border border-emerald-100 bg-emerald-50/70 p-3"><small class="block text-[10px] font-bold text-emerald-700">أصناف لها رصيد</small><b class="mt-1 block text-lg font-black text-emerald-800">'+(hasPOLines?openLines:'—')+'</b></div>'+
+                    '<div class="rounded-xl border border-violet-100 bg-violet-50/80 p-3"><small class="block text-[10px] font-bold text-violet-600">إجمالي الفاتورة</small><b class="mt-1 block break-words text-sm font-black text-violet-800">'+buyerMoney(total,currency)+'</b></div></div>';
+                var footerNote=hasPOLines?
+                    '<div class="flex items-start gap-2 border-t border-slate-100 bg-slate-50 px-4 py-3 text-[11px] leading-6 text-slate-600"><i class="fa-solid fa-shield-halved mt-1 text-emerald-600"></i><span>الكميات المعروضة بوحدة أمر الشراء الأصلية للمقارنة، ويمكن تغيير وحدة التوريد. أدخل الكمية الحالية فقط؛ السعر ثابت من الأمر، ولا يسمح بتجاوز الرصيد غير المفوتر. يظل ترحيل الفاتورة خاضعًا للاستلام الفعلي والتحقق المركزي.</span></div>':
+                    '<div class="border-t border-slate-100 bg-slate-50 px-4 py-3 text-[11px] leading-6 text-slate-500">هذه مسودة مستند قديم؛ راجع بيانات البنود قبل الحفظ. الحفظ لا ينفذ حركة مخزون أو خزينة أو قيدًا محاسبيًا.</div>';
+                host.innerHTML='<section class="space-y-3">'+
+                    '<div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-100 bg-gradient-to-l from-violet-50 via-white to-white px-4 py-3"><div class="flex items-center gap-3"><div class="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm"><i class="fa-solid fa-list-check"></i></div><div><b class="block text-sm font-black text-slate-800">تفاصيل بنود التوريد</b><span class="mt-1 block text-[10px] text-slate-500">راجع الكميات والمقارنة مع أمر الشراء قبل حفظ المسودة</span></div></div><span class="rounded-full border border-violet-100 bg-white px-3 py-1.5 text-[10px] font-bold text-violet-700">'+(hasPOLines?'فاتورة مرتبطة بأمر شراء':'مراجعة بنود المستند')+'</span></div>'+
+                    summary+
+                    '<div class="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:block"><div class="max-h-[52vh] overflow-auto"><table class="w-full min-w-[1160px] border-separate border-spacing-0 text-sm"><thead class="sticky top-0 z-20"><tr>'+headers+'</tr></thead><tbody>'+desktopRows+'</tbody></table></div><div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-white px-4 py-3"><span class="text-[11px] text-slate-500">عدد البنود: <b class="text-slate-700">'+lines.length+'</b></span><span class="text-sm font-black text-slate-800">الإجمالي التقديري: <b class="text-violet-700">'+buyerMoney(total,currency)+'</b></span></div>'+footerNote+'</div>'+
+                    '<div class="space-y-3 lg:hidden">'+mobileCards+'<div class="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-left"><small class="block text-[10px] font-bold text-violet-600">الإجمالي التقديري للفاتورة</small><b class="mt-1 block text-xl font-black text-violet-800">'+buyerMoney(total,currency)+'</b></div>'+footerNote+'</div></section>';
                 Array.from(host.querySelectorAll('[data-bif]')).forEach(function(el){el.addEventListener('change',function(){
                     var index=Number(el.dataset.bii),field=el.dataset.bif,line=lines[index];
                     if(!line)return;
@@ -1297,7 +1358,7 @@ var App = {
                         if(!Number.isFinite(nextQty)||nextQty<0){RW_UI.toast('أدخل كمية صحيحة غير سالبة','error');el.value=line.qty;return;}
                         if(line.po_qty_ordered_base!=null){
                             var maxQty=Number(line.po_qty_remaining_base||0)/Number(line.unit_conversion_factor||1);
-                            if(nextQty>maxQty+0.00005){RW_UI.toast('الكمية تتجاوز المتبقي من أمر الشراء بعد خصم ما سبق فوترته','error');el.value=line.qty;return;}
+                            if(nextQty>maxQty+0.00005){RW_UI.toast('الكمية تتجاوز المتبقي من أمر الشراء بعد خصم الفواتير السابقة','error');el.value=line.qty;return;}
                         }
                         line.qty=nextQty;
                     }else line[field]=el.value===''?null:Number(el.value);
