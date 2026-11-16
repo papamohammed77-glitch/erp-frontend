@@ -13590,7 +13590,7 @@ var RW_PurchaseGold = (function () {
       '<button onclick="RW_PurchaseGold.createInvoice()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black">فاتورة جديدة</button>' +
       '</div>' +
       '<div class="bg-white border rounded-2xl overflow-auto"><table class="w-full text-sm">' +
-      '<thead class="bg-slate-50"><tr><th class="p-3">الكود</th><th class="p-3">التاريخ</th><th class="p-3">المورد</th><th class="p-3">PO</th><th class="p-3">الفرع</th><th class="p-3">المنشئ</th><th class="p-3">الاستحقاق</th><th class="p-3">القيمة</th><th class="p-3">العملة</th><th class="p-3">المدفوع</th><th class="p-3">المتبقي</th><th class="p-3">الحالة</th><th class="p-3">إجراء</th></tr></thead><tbody>';
+      '<thead class="bg-slate-50"><tr><th class="p-3">الكود</th><th class="p-3">التاريخ</th><th class="p-3">المورد</th><th class="p-3">PO</th><th class="p-3">الفرع</th><th class="p-3">المنشئ</th><th class="p-3">الاستحقاق</th><th class="p-3">القيمة</th><th class="p-3">العملة</th><th class="p-3">المدفوع</th><th class="p-3">المتبقي</th><th class="p-3">حالة المستند</th><th class="p-3">الاستلام المخزني</th><th class="p-3">التسوية المالية</th><th class="p-3">إجراء</th></tr></thead><tbody>';
 
     for (var i = 0; i < rows.length; i++) {
       var x = rows[i];
@@ -13599,6 +13599,40 @@ var RW_PurchaseGold = (function () {
       var po = poIndex[x.purchase_order_id] || {};
       var currency = String(x.currency || 'EGP').toUpperCase();
       var total = Number(x.total_amount || 0), paid = Number(x.paid_amount || 0);
+      var purchaseSource = String(x.purchase_source || '').toUpperCase();
+      var isQuickMarket = purchaseSource === 'QUICK_MARKET';
+      var settlementSource = String(x.settlement_source || '').toUpperCase();
+      var receiptStatus = String(x.receipt_status || '').toUpperCase();
+      var settlementStatus = String(x.settlement_status || '').toUpperCase();
+      var invoiceStatusLabels = {Draft:'مسودة',Posted:'مرحل',PartiallyPaid:'مدفوع جزئياً',Paid:'مدفوع',Cancelled:'ملغي'};
+      var receiptLabel = isQuickMarket
+        ? (receiptStatus === 'RECEIVED' || x.is_received === true || !!x.received_date
+            ? 'مستلم بالكامل'
+            : (receiptStatus.indexOf('PARTIAL') !== -1 ? 'استلام جزئي' : 'بانتظار Receiver'))
+        : (receiptStatus === 'RECEIVED' || x.is_received === true || !!x.received_date
+            ? 'مستلم'
+            : (receiptStatus.indexOf('PARTIAL') !== -1 ? 'استلام جزئي' : '—'));
+      var settlementLabels = {
+        UNSETTLED:'غير مسوّاة',
+        PENDING_FINANCE:'بانتظار المالية',
+        AP_OPEN:'ذمة مورد مفتوحة',
+        PARTIALLY_SETTLED:'مسوّاة جزئياً',
+        SETTLED:'تمت التسوية',
+        PAID:'مدفوعة'
+      };
+      var settlementLabel = settlementLabels[settlementStatus] ||
+        (paid >= total && total > 0 ? 'مدفوعة' : (paid > 0 ? 'مدفوعة جزئياً' : '—'));
+      var documentLabel = invoiceStatusLabels[x.status] || x.status || '—';
+      var documentNote = isQuickMarket
+        ? (settlementSource === 'EMPLOYEE_CUSTODY'
+            ? 'شراء سوق سريع — لا يُرحّل إلى ذمم المورد'
+            : 'شراء سوق سريع — له مسار تسوية مستقل')
+        : '';
+      var actionHtml = isQuickMarket
+        ? '<span class="text-xs text-slate-500">لا يحتاج إلى ترحيل مورد</span>'
+        : (x.status === 'Draft'
+            ? '<button type="button" data-purchase-post="' + esc(x.id) + '" class="px-3 py-1 rounded-lg bg-blue-600 text-white">ترحيل</button>'
+            : '');
       h += '<tr class="border-t">' +
         '<td class="p-3 font-black">' + esc(x.invoice_code) + '</td>' +
         '<td class="p-3">' + esc(x.invoice_date || x.created_at || '—') + '</td>' +
@@ -13611,15 +13645,20 @@ var RW_PurchaseGold = (function () {
         '<td class="p-3 font-black">' + esc(currency) + '</td>' +
         '<td class="p-3">' + paid.toLocaleString() + '</td>' +
         '<td class="p-3 font-bold">' + Math.max(0,total-paid).toLocaleString() + '</td>' +
-        '<td class="p-3">' + esc(x.status) + '</td>' +
-        '<td class="p-3">' +
-        (x.status === 'Draft'
-          ? '<button type="button" onclick="RW_PurchaseGold.postInvoice(\'' + esc(x.id) + '\')" class="px-3 py-1 rounded-lg bg-blue-600 text-white">ترحيل</button>'
-          : '') +
-        '</td></tr>';
+        '<td class="p-3"><div class="font-bold">' + esc(documentLabel) + '</div>' +
+          (documentNote ? '<div class="text-[11px] text-slate-500 mt-1">' + esc(documentNote) + '</div>' : '') + '</td>' +
+        '<td class="p-3">' + esc(receiptLabel) + '</td>' +
+        '<td class="p-3">' + esc(settlementLabel) + '</td>' +
+        '<td class="p-3">' + actionHtml + '</td></tr>';
     }
 
     safeHTML(host, h + '</tbody></table></div>');
+    Array.from(host.querySelectorAll('[data-purchase-post]')).forEach(function(button){
+      button.addEventListener('click', function(){
+        var invoiceId = button.getAttribute('data-purchase-post');
+        if (invoiceId) postInvoice(invoiceId);
+      });
+    });
   }
 
   async function createInvoice() {
@@ -14114,7 +14153,7 @@ var RW_PurchaseGold = (function () {
     try {
       await api('POST_INVOICE', { id: id });
       hideLoader();
-      showToast('تم ترحيل الفاتورة وتسجيل المخزون والقيد المالي', 'success');
+      showToast('تم ترحيل الفاتورة وفق مسارها المعتمد', 'success');
       await refresh();
     } catch (e) {
       hideLoader();
