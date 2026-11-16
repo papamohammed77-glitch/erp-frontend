@@ -876,12 +876,22 @@ serve(async (req) => {
         .select("id").eq("company_id", companyId).eq("id", poId).maybeSingle();
       if (poError) throw poError;
       if (!visiblePO) throw new Error("PURCHASE_ORDER_NOT_FOUND");
+      const excludeInvoiceId = String(p.invoice_id || "").trim();
+      if (excludeInvoiceId) {
+        const { data: currentInvoice, error: currentInvoiceError } = await sb.from("purchase_invoices")
+          .select("id").eq("company_id", companyId).eq("purchase_order_id", poId)
+          .eq("id", excludeInvoiceId).maybeSingle();
+        if (currentInvoiceError) throw currentInvoiceError;
+        if (!currentInvoice) throw new Error("PURCHASE_CURRENT_INVOICE_NOT_FOUND");
+      }
 
       const invoiceIds: string[] = [];
       for (let offset = 0; offset < 10000; offset += 500) {
-        const page = await sb.from("purchase_invoices").select("id")
+        let invoiceQuery = sb.from("purchase_invoices").select("id")
           .eq("company_id", companyId).eq("purchase_order_id", poId)
-          .neq("status", "Cancelled").order("id", { ascending: true })
+          .neq("status", "Cancelled");
+        if (excludeInvoiceId) invoiceQuery = invoiceQuery.neq("id", excludeInvoiceId);
+        const page = await invoiceQuery.order("id", { ascending: true })
           .range(offset, offset + 499);
         if (page.error) throw page.error;
         const rows = page.data || [];
