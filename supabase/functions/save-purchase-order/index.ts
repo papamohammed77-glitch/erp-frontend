@@ -935,26 +935,28 @@ serve(async (req) => {
           .map((x: any) => x.id).filter(Boolean)));
       };
       const getVisibleReceivingRows = async () => {
-        const invoiceIds = await getVisibleInvoiceIds();
-        if (!invoiceIds.length) return [];
-        const invoiceRows = await sb.from("purchase_invoices").select("purchase_order_id")
-          .eq("company_id", companyId).in("id", invoiceIds).limit(500);
-        if (invoiceRows.error) throw invoiceRows.error;
-        const poIds = Array.from(new Set((invoiceRows.data || []).map((x: any) => x.purchase_order_id).filter(Boolean)));
-        let poCodes: string[] = [];
-        if (poIds.length) {
-          const poRows = await sb.from("purchase_orders").select("po_code")
-            .eq("company_id", companyId).in("id", poIds).limit(500);
-          if (poRows.error) throw poRows.error;
-          poCodes = Array.from(new Set((poRows.data || []).map((x: any) => x.po_code).filter(Boolean)));
+        // The Buyer data gateway already exposes company-scoped purchase orders to
+        // users authorized for purchases. Include their PO receipts even when no
+        // invoice has been created yet; keep Quick Market receipts limited to the
+        // invoices visible to the current purchaser.
+        const [invoiceIds, poRows] = await Promise.all([
+          getVisibleInvoiceIds(),
+          sb.from("purchase_orders").select("po_code")
+            .eq("company_id", companyId).order("po_code", { ascending: true }).limit(500)
+        ]);
+        if (poRows.error) throw poRows.error;
+        const poCodes = Array.from(new Set((poRows.data || [])
+          .map((x: any) => x.po_code).filter(Boolean)));
+        let byInvoice: any = { data: [], error: null };
+        if (invoiceIds.length) {
+          byInvoice = await sb.from("receiving").select("*")
+            .eq("company_id", companyId).in("purchase_invoice_id", invoiceIds).limit(500);
+          if (byInvoice.error) throw byInvoice.error;
         }
-        const byInvoice = await sb.from("receiving").select("*")
-          .eq("company_id", companyId).in("purchase_invoice_id", invoiceIds).limit(500);
-        if (byInvoice.error) throw byInvoice.error;
         let byPo: any = { data: [], error: null };
         if (poCodes.length) {
           byPo = await sb.from("receiving").select("*")
-            .eq("company_id", companyId).in("po_number", poCodes).limit(500);
+            .eq("company_id", companyId).in("po_number", poCodes).is("purchase_invoice_id", null).limit(500);
           if (byPo.error) throw byPo.error;
         }
         const merged = new Map<string, any>();
