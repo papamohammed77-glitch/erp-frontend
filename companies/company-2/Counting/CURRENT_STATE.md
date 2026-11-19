@@ -11,14 +11,18 @@
 
 | Artifact | Current Git blob SHA |
 |---|---|
-| `countflow-admin.html` | `4b0b8727b5cdcd1d979cc40db046e175c9133cad` |
-| `countflow.html` | `93ad77a682585b8ec04cdcf224e2ac81b28cb180` |
-| `Countflow-supervisor.html` | `d6911066bdddd59e9a1b364463bcc82c30d2010e` |
-| `README.md` | `0e088a1f75ffde9964184d5502004c50717760ec` |
-| `ARCHITECTURE.md` | `c1ec5b9cfa35d1f5f905f961a52acad88dd726c7` |
+| `countflow-admin.html` | `2cb2e6c8a24520a3c9b1e0d4856a6bb4fbd5594d` |
+| `countflow.html` | `83969d45a0f446e5f9e74f8de2d943635484d3cd` |
+| `Countflow-supervisor.html` | `42b65e9aa71d594cdae9800f15739d5222d91918` |
+| `README.md` | `3553a5a7bf04a73f65b9de2ddccf7fb86fdb9e40` |
+| `ARCHITECTURE.md` | `5df149b7544a9b55f808d52f0dd9d8ee42d4c5fb` |
 | `DEPLOYMENT.md` | `917d08a24f47890b51a09a2f54bdcb815e8e1dce` |
-| `scripts/build-pages.sh` | `f3e068e3bdb12b35cbfe49d78053722ba056ceca` |
-| `index.html` | `35636aa074e00d6557353d376ffc681bc32f3093` |
+| `scripts/build-pages.sh` | `865629e8f1061f403f426f9c712d0ec00fdd9793` |
+| `index.html` | `707a5a0f18674a93cab811be23ea9a13abb4a91b` |
+| `countflow-core.js` | `43395393093ba9bba94959dc1cc71457327a4e5e` |
+| `countflow-sw.js` | `7d8df96c832360817adcfa34f892bbf5a92f4b2a` |
+| `manifest.webmanifest` | `dc5fa4e24234586c398da958e5a0463d7316d7fb` |
+| `countflow-icon.svg` | `7540be49299b57849a8cb25a163981730571d6a5` |
 | `_headers` | `799b5b51882d12ed2503fb41ad04633145d24468` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
 | `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
@@ -270,4 +274,45 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 4. Continue the P1 offline queue close-handshake work; add a CountFlow-only Service Worker/manifest and offline shell boot without caching business data.
 5. Verify cross-device Postgres Changes delivery and keep periodic reconciliation as a fallback.
 6. Complete the remaining direct-DML/state-machine and Broadcast audit items before operational readiness is claimed.
+
+
+
+---
+
+## LVE-2026-11-20-741 — Independent CountFlow Core and offline PWA shell
+
+### Implemented repository changes
+- Added CountFlow-only runtime core: countflow-core.js.
+  - Own Supabase URL and publishable key are pinned to rawaea-staging (hfzznsiprnwkpayskzhu); no SMART ERP URL/ref or core.js dependency.
+  - Shared client factory used by admin, field and supervisor pages.
+  - Reusable Postgres Changes invalidation helper with debounced authoritative refresh, visibility refresh and periodic reconciliation.
+  - Connectivity binding helper.
+  - Automatic registration of CountFlow-only Service Worker.
+- Added countflow-sw.js and manifest.webmanifest plus countflow-icon.svg.
+  - Precaches CountFlow app shells and approved runtime libraries (Supabase JS, PapaParse, SheetJS).
+  - Network-first navigation with cached shell fallback; cache-first approved static assets.
+  - Supabase Auth/REST/Storage/Edge Function requests remain network-only; no business rows, signed URLs or auth responses are cached.
+  - Service Worker updates do not force-reload open tabs, avoiding an automatic navigation during field work.
+- Integrated CountFlow Core, manifest and Service Worker registration into all three apps.
+- Owner dashboard now uses the shared Core Postgres Changes helper for count_sessions/count_members; the 30-second reconciliation fallback remains.
+- Updated Pages allowlist to publish the three pages, Core, Service Worker, manifest, icon, index and headers only.
+- Updated README, ARCHITECTURE and DEPLOYMENT documentation.
+
+### Verification
+- JavaScript syntax compilation: **PASS** for all three inline application scripts, countflow-core.js and countflow-sw.js.
+- Pages build fixture: **PASS** — exactly 9 allowlisted browser artifacts; zero SQL/Markdown/TypeScript/private test files in output.
+- CountFlow tables count_members and count_sessions are in supabase_realtime publication: **CONFIRMED**.
+- Supabase project row check: count_projects=0, count_members=0, count_sessions=0, count_entries=0. No test or owner data created.
+- Real browser offline boot, cached CDN availability, PWA installation, offline write/restart/reconnect, and cross-device Postgres Changes delivery: **UNKNOWN / not run**.
+- Queue close-handshake and per-device server acknowledgement barrier: **OPEN**. The Service Worker makes the shell available; it does not solve the known post-close queue replay gap.
+- No Supabase schema, DML, ACL/RLS, Auth identity, Edge Function, Storage or Realtime-internal change.
+- No Cloudflare Pages deployment, DNS or custom domain change.
+
+### Remaining gates
+1. Confirm the owner's email; sign up or sign in through the master page. Password is entered only in the app, never in chat.
+2. Create each customer project using the same owner identity so the existing bootstrap trigger adds its supervisor membership to each project.
+3. Run browser E2E for offline first boot, offline navigation/reload, cached Supabase JS/CDN libraries, queue durability, browser restart and reconnect.
+4. Implement the server-authoritative session close barrier before relying on offline counts at session finalization.
+5. Verify two-client concurrent operations and user isolation in authenticated browser sessions.
+6. Continue direct-DML/state-transition remediation and cross-device Realtime validation before operational readiness.
 
