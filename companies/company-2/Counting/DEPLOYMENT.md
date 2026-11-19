@@ -19,7 +19,15 @@
 6. اختبر صفحات الإدارة والمشرف والمندوب على عنوان Pages المؤقت قبل ربط دومين مخصص.
 7. أضف دومين CountFlow المخصص بعد أن يحدده مالك المشروع؛ لا توجد قيمة دومين مؤكدة في هذا المستند، ولا يجوز تخمينها.
 
-يُنشئ السكربت `dist` من قائمة سماح تضم صفحات HTML الأربعة وملف `_headers` فقط. لا ينسخ `database/` أو `functions/` أو `tests/` أو ملفات Markdown أو SQL أو TypeScript إلى المخرجات العامة.
+يُنشئ السكربت `dist` من قائمة سماح تضم صفحات HTML الأربعة، و`countflow-core.js`، و`countflow-sw.js`، و`manifest.webmanifest`، و`countflow-icon.svg`، وملف `_headers`. لا ينسخ `database/` أو `functions/` أو `tests/` أو ملفات Markdown أو SQL أو TypeScript إلى المخرجات العامة.
+
+## أصول PWA وOffline
+
+- `countflow-core.js` هو النواة المستقلة للتطبيقات الثلاثة، ويثبت عميل Supabase على مشروع CountFlow فقط.
+- `countflow-sw.js` يخزن أغلفة التطبيقات والملفات الثابتة ومكتبات CDN المعتمدة لتوفير إمكانية فتح الواجهة بعد تحميلها أول مرة.
+- طلبات Supabase Auth وREST وStorage وEdge Functions تظل Network-only ولا تدخل Cache Storage.
+- Service Worker لا يفرض إعادة تحميل قسرية على تبويبات العمل المفتوحة عند تحديثه.
+- وجود ملفات PWA لا يثبت وحده نجاح Offline؛ يجب تنفيذ اختبار متصفح فعلي بعد أول فتح متصل، ثم قطع الشبكة وإعادة فتح تطبيق المندوب والتحقق من IndexedDB queue والمزامنة بعد عودة الاتصال.
 
 ## حدود النشر الحالية
 
