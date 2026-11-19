@@ -11,7 +11,7 @@
 
 | Artifact | Current Git blob SHA |
 |---|---|
-| `countflow-admin.html` | `2cb2e6c8a24520a3c9b1e0d4856a6bb4fbd5594d` |
+| `countflow-admin.html` | `13ca11377cf3f05aad23c438c2869aeba3922ccc` |
 | `countflow.html` | `83969d45a0f446e5f9e74f8de2d943635484d3cd` |
 | `Countflow-supervisor.html` | `42b65e9aa71d594cdae9800f15739d5222d91918` |
 | `README.md` | `3553a5a7bf04a73f65b9de2ddccf7fb86fdb9e40` |
@@ -26,6 +26,8 @@
 | `_headers` | `799b5b51882d12ed2503fb41ad04633145d24468` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
 | `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
+| `database/migrations/20261120170000_countflow_platform_owner_verified_email.sql` | source committed | 
+| `database/migrations/20261120171000_countflow_license_settings_unbounded_emails.sql` | source committed |
 
 ## 2. Verified Supabase structure
 
