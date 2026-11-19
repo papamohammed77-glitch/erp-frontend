@@ -1,7 +1,7 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-19-734-CountFlow-Workflow-Audit`  
-**Date:** 2026-11-19  
+**Last Verified Event:** `LVE-2026-11-20-736-CountFlow-Independent-Master-and-Rename`  
+**Date:** 2026-11-20  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
 **Supabase project:** `rawaea-staging`  
@@ -13,7 +13,7 @@
 |---|---|
 | `countflow.html` | `93ad77a682585b8ec04cdcf224e2ac81b28cb180` |
 | `Countflow-supervisor.html` | `11101374a8f27d78d042f750b162dba9303174b6` |
-| `README.md` | `7b85173708c907b772a58717cbbb82659f4c7346` |
+| `README.md` | `2f999fe12059612bbddc79fd5c7dcb5f34dfcbfc` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
 | `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
 
@@ -157,3 +157,38 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 
 
 **Documentation-only follow-up after LVE735:** Report735 and the LVE735 state/memory addenda were saved. The operational repo then received commit 2676526ee4214ae98aa89742b48cf40172cd1976 updating only companies/company-2/Counting/CURRENT_STATE.md; no app code, SQL migration, schema, ACL, or business data changed. The source-code baseline used for the audit remains 4f7fba271d35d463364a5659f8e181dabad41215.
+
+
+---
+
+## LVE-2026-11-20-736 — Independent CountFlow master and canonical app names
+
+**Date:** 2026-11-20  
+**Scope:** CountFlow only — `companies/company-2/Counting/` and Supabase project `rawaea-staging` (`hfzznsiprnwkpayskzhu`).
+
+### Confirmed repository changes
+- Renamed `Counter.html` to `countflow.html`; file contents were preserved byte-for-byte at rename time (blob `93ad77a682585b8ec04cdcf224e2ac81b28cb180`).
+- Renamed `Counter-supervisor.html` to `Countflow-supervisor.html`; file contents were preserved byte-for-byte at rename time (blob `11101374a8f27d78d042f750b162dba9303174b6`).
+- Removed the superseded filenames only after the canonical copies were committed. Directory listing confirms only the canonical names remain.
+- Created `countflow-admin.html`, an independent Arabic RTL master UI for CountFlow. It authenticates with Supabase Auth and uses only the existing `count_*` contracts: project bootstrap, product catalog CRUD/activation, member provisioning through the existing JWT-protected `counting-provision-member` Edge Function, location hierarchy, planned session creation, and audit viewing.
+- First-owner bootstrap is supported: an authenticated identity with no CountFlow memberships can create its own project; the existing `count_bootstrap_project_owner` trigger creates its active supervisor membership. Existing non-supervisor memberships are denied.
+- Added the master UI to README and updated canonical app links. No link to RAWAEA `main.html`, `core.js`, or `rawaea-erp.pages.dev` was added.
+
+### Verification
+- JavaScript syntax compilation of the master page script: **PASS** (one inline script block).
+- `tests/rollback-smoke.sql` on `rawaea-staging`: **PASS**. Owner bootstrap, entry idempotency, assignment boundary, recount creation/entry/review, reconciliation approval/freeze, anonymous RPC denial, and append-only ledger checks passed. Entire transaction rolled back.
+- `tests/countflow_core_integration_rollback.sql` on `rawaea-staging`: **PASS**. Import preview/commit (2 accepted, 1 rejected), assignment boundary, entry idempotency, recount override and reconciliation KPI assertions passed. Entire transaction rolled back.
+- Post-test row counts: `count_projects=0`, `count_members=0`, `count_products=0`, `count_sessions=0`, `count_entries=0`, `count_audit_log=0`; `auth.users=1868` unchanged.
+- No persistent QA identities or operational fixtures were created.
+
+### Not yet verified / remaining gates
+- **UNKNOWN:** real browser E2E for sign-in, first-owner sign-up, master forms, field app and supervisor app; static JS syntax compilation is not a browser test.
+- **UNKNOWN:** whether public Auth sign-up is enabled and whether email confirmation is required in the current Supabase Auth settings.
+- **NOT DEPLOYED:** no Cloudflare Pages project, custom domain, DNS, or deployment configuration was changed. The final CountFlow domain remains to be selected and configured independently.
+- **NOT CHANGED:** no Supabase schema, ACL, RLS, Auth account, Edge Function deployment, Storage bucket, or persistent business row was modified.
+- **OUT OF SCOPE:** the 65 legacy non-CountFlow tables and their broad exposure in `rawaea-staging` remain untouched; no connection or operation was made against SMART ERP (`fiilmooggumokxanwiyx`).
+
+### Current readiness
+- Repository rename and initial master UI: **CONFIRMED**.
+- Existing CountFlow transactional core rollback suites: **PASS**.
+- Full operational readiness and production publication: **BLOCKED pending browser E2E, first-owner/Auth configuration verification, remediation of the CountFlow-specific P1 workflow gaps already recorded above, and independent domain setup**.
