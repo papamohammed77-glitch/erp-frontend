@@ -14,6 +14,8 @@ The live project is Supabase `rawaea-staging` (`hfzznsiprnwkpayskzhu`). The foll
 8. `20261119192958_countflow_live_kpi_and_alert_index_tuning_v1.sql` — materializes effective-count aggregation once for live KPIs and adds targeted repeat-alert lookup indexes.
 9. `20261119193513_countflow_assignments_nulls_not_distinct_unique_scope_v1.sql` — replaces the partial/global assignment indexes with one `NULLS NOT DISTINCT` unique index so global and location-specific assignments can be upserted atomically.
 10. `20261119193620_countflow_expected_balance_snapshot_guard_v1.sql` — requires expected balances to use the product base unit and freezes them after the first count or reconciliation.
+11. `20261119194632_countflow_admin_audit_triggers_v1.sql` — adds row-level administrative audit events for project/member/session/assignment/recount/rule/device/evidence changes, while suppressing heartbeat-only updates.
+12. `20261119194738_countflow_audit_skip_service_member_provision_v1.sql` — prevents duplicate null-actor audit rows when the service-role provisioning function creates a member; the provisioning function records the authenticated supervisor explicitly.
 
 ## Operational rules
 
