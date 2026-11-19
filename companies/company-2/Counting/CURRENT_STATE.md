@@ -11,8 +11,8 @@
 
 | Artifact | Current Git blob SHA |
 |---|---|
-| `Counter.html` | `93ad77a682585b8ec04cdcf224e2ac81b28cb180` |
-| `Counter-supervisor.html` | `11101374a8f27d78d042f750b162dba9303174b6` |
+| `countflow.html` | `93ad77a682585b8ec04cdcf224e2ac81b28cb180` |
+| `Countflow-supervisor.html` | `11101374a8f27d78d042f750b162dba9303174b6` |
 | `README.md` | `7b85173708c907b772a58717cbbb82659f4c7346` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
 | `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
