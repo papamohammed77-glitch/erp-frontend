@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-20-738-CountFlow-Pages-Publish-Allowlist`  
+**Last Verified Event:** `LVE-2026-11-20-739-CountFlow-Pages-Build-Root-Fix`  
 **Date:** 2026-11-20  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -16,7 +16,7 @@
 | `Countflow-supervisor.html` | `d6911066bdddd59e9a1b364463bcc82c30d2010e` |
 | `README.md` | `0f747264c664fd9612c7bf810da23e3cd336ba6c` |
 | `DEPLOYMENT.md` | `917d08a24f47890b51a09a2f54bdcb815e8e1dce` |
-| `scripts/build-pages.sh` | `1790a52abdd3a14c3bcc18276cc2ca6813ac9c40` |
+| `scripts/build-pages.sh` | `0fab09edfe25cb1fe9c4f08cad81aa25a3d9219e` |
 | `index.html` | `35636aa074e00d6557353d376ffc681bc32f3093` |
 | `_headers` | `799b5b51882d12ed2503fb41ad04633145d24468` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
@@ -219,3 +219,5 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 - Updated `DEPLOYMENT.md`: Cloudflare Pages build command is `bash companies/company-2/Counting/scripts/build-pages.sh`; output directory is `companies/company-2/Counting/dist`.
 - Local `bash -n` syntax check of the build script body: **PASS**. The remote Pages build itself has not been run.
 - No Cloudflare Pages project, domain, DNS, or deployment was created or modified.
+
+- Follow-up validation caught and corrected the build script's project-root resolution (`scripts/build-pages.sh` now resolves its parent directory rather than the scripts directory). A local fixture run of the corrected allowlist build: **PASS** — exactly five public files published, zero SQL/Markdown/TypeScript source artifacts copied.
