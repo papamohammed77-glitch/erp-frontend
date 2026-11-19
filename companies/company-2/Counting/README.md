@@ -117,6 +117,21 @@
 
 يدعم الهيكل الهرمي عبر `parent_code`.
 
+## المرجعية التنافسية وتجربة الاستخدام
+
+اعتمدت مراجعة التجربة على توثيق الشركات نفسها، لا على الانطباعات التسويقية:
+
+- **Odoo Barcode:** إسناد العد للمستخدم والموقع، مسح باركود الموقع ثم الصنف، تكرار مسح الصنف لزيادة الكمية، وإخفاء الكمية المتوقعة افتراضياً لتجنب تحيز العادّ. انعكس ذلك في تدفق المسح المستمر، اختيار الموقع بالباركود، وزيادة كمية الصنف عند تكرار مسحه.
+  - https://www.odoo.com/documentation/19.0/applications/inventory_and_mrp/barcode/operations/adjustments.html
+- **Microsoft Dynamics 365:** أولوية مهام العد، قوائم أجهزة محمولة للعد الموجّه من المستخدم أو النظام والعد الموضعي، وحالة Pending review للفروقات. انعكس ذلك في إسناد المهام، إعادة العد، وحاجز اعتماد التسوية.
+  - https://learn.microsoft.com/en-us/dynamics365/supply-chain/warehousing/cycle-counting
+  - https://learn.microsoft.com/en-us/dynamics365/supply-chain/warehousing/tasks/define-cycle-counting
+- **SAP EWM:** تصنيف ABC وتكرار العد بحسب أهمية الصنف، ومراقبة تقدم الجرد على مستوى الصنف والموقع. هذه مرجعية للمرحلة التالية الخاصة بجدولة Cycle Count وخريطة تغطية المستودع.
+  - https://help.sap.com/docs/SAP_EXTENDED_WAREHOUSE_MANAGEMENT/25cf88dfa94c49e4a440f3f1d752b8a1/4cb4e7e04c1f1921e10000000a15822b.html
+  - https://help.sap.com/docs/SAP_SUPPLY_CHAIN_MANAGEMENT/ce32eae1b3db423fb4625f3d692cae6f/4cb4ea364c1f1921e10000000a15822b.html
+- **ERPNext:** Stock Reconciliation أداة لمواءمة الفعلي والدفترية وقد تنفذ أثر المخزون. CountFlow مستقل عمداً: لا يرحّل فروقات إلى مخزون أو دفتر أستاذ أو خزينة، ويصدر نتائج قابلة للمراجعة فقط.
+  - https://docs.frappe.io/erpnext/stock-reconciliation
+
 ## الاختبارات والتحقق
 
 ### تم التحقق في قاعدة Supabase الحية
