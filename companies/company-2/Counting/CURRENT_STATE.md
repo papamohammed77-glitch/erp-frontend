@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-20-737-CountFlow-Export-Session-Capture`  
+**Last Verified Event:** `LVE-2026-11-20-738-CountFlow-Pages-Publish-Allowlist`  
 **Date:** 2026-11-20  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -14,7 +14,7 @@
 | `countflow-admin.html` | `0949a6cf92a7693ff3943ad0b67a312091a7746b` |
 | `countflow.html` | `93ad77a682585b8ec04cdcf224e2ac81b28cb180` |
 | `Countflow-supervisor.html` | `d6911066bdddd59e9a1b364463bcc82c30d2010e` |
-| `README.md` | `0f747264c664fd9612c7bf810da23e3cd336ba6c` |
+| `README.md` | `0f747264c664fd9612c7bf810da23e3cd336ba6c` |\n| `DEPLOYMENT.md` | `917d08a24f47890b51a09a2f54bdcb815e8e1dce` |\n| `scripts/build-pages.sh` | `1790a52abdd3a14c3bcc18276cc2ca6813ac9c40` |\n| `index.html` | `35636aa074e00d6557353d376ffc681bc32f3093` |\n| `_headers` | `799b5b51882d12ed2503fb41ad04633145d24468` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
 | `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
 
@@ -206,3 +206,12 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 - Static JavaScript compilation of the updated supervisor page: **PASS**.
 - Browser export flow and signed-file download: **UNKNOWN / not run**; no authenticated browser session or persistent CountFlow project exists.
 - No database schema/data/ACL/RLS change was required.
+
+
+## LVE-2026-11-20-738 — Public Pages artifact allowlist
+
+- Added `scripts/build-pages.sh` to construct `dist/` from an explicit allowlist: `index.html`, `countflow-admin.html`, `countflow.html`, `Countflow-supervisor.html`, and `_headers`.
+- Database migrations/archive, SQL rollback tests, Edge Function source, README, CURRENT_STATE, and other development artifacts are deliberately excluded from the public Pages output.
+- Updated `DEPLOYMENT.md`: Cloudflare Pages build command is `bash companies/company-2/Counting/scripts/build-pages.sh`; output directory is `companies/company-2/Counting/dist`.
+- Local `bash -n` syntax check of the build script body: **PASS**. The remote Pages build itself has not been run.
+- No Cloudflare Pages project, domain, DNS, or deployment was created or modified.
