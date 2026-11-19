@@ -56,10 +56,7 @@ $('commitLocations').onclick=async()=>{
  const failures=[],codeCounts={};
  for(const r of rows)codeCounts[r.code]=(codeCounts[r.code]||0)+1;
  const duplicateCodes=new Set(Object.keys(codeCounts).filter(code=>code&&codeCounts[code]>1));
- const {data:existing,error:existingError}=await sb.from('count_locations').select('id,code,location_type').eq('project_id',project.id).limit(10000);
- if(existingError){$('commitLocations').disabled=false;return toast('تعذر قراءة المواقع الحالية: '+existingError.message)}
- const idsByCode=new Map();
- for(const item of existing||[]){const key=String(item.code||'');if(!idsByCode.has(key))idsByCode.set(key,[]);idsByCode.get(key).push(item.id)}
+ let existing=[];try{existing=await fetchAllRows('count_locations','id,code,location_type',[{op:'eq',key:'project_id',value:project.id}])}catch(e){$('commitLocations').disabled=false;return toast('تعذر قراءة المواقع الحالية: '+e.message)}const idsByCode=new Map();for(const item of existing){const key=String(item.code||'');if(!idsByCode.has(key))idsByCode.set(key,[]);idsByCode.get(key).push(item.id)}
  let pending=rows.filter(r=>!r.code||!r.name||duplicateCodes.has(r.code));
  for(const r of pending)failures.push({row:r,reason:!r.code?'كود الموقع مطلوب':!r.name?'اسم الموقع مطلوب':'الكود مكرر داخل ملف الاستيراد؛ parent_code لا يحدد نوع الموقع'});
  pending=rows.filter(r=>r.code&&r.name&&!duplicateCodes.has(r.code));
