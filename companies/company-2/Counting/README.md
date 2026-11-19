@@ -261,3 +261,18 @@ A recount task can therefore be created after approval without a supported path 
 ### Migration source archive
 
 The exact recorded SQL for all 60 `counting_*` and `countflow_*` migration-ledger rows is archived at [COUNTFLOW_APPLIED_MIGRATION_LEDGER_ARCHIVE_20261119.md](./database/COUNTFLOW_APPLIED_MIGRATION_LEDGER_ARCHIVE_20261119.md). It is an evidence archive only and must not be applied or replayed.
+
+
+## إدارة عدة عملاء وعمليات جرد متزامنة
+
+- تم اعتماد count_projects كحدّ بيانات مستقل لكل جهة عميلة (مثل كارفور أو بنده أو مجمع تجاري أو مصنع ملابس).
+- تم اعتماد count_sessions كعملية جرد فعلية داخل جهة العميل. يمكن أن تعمل جلسات متعددة في جهات مختلفة بالتوازي، ولكل جلسة فريقها وتعييناتها.
+- لوحة النظام الأم تعرض المستخدمين عبر جميع الجهات التي يملك الحساب صلاحية مشرف عليها، وتعرض العمليات المفتوحة والمنتهية في شاشة موحدة.
+- إنشاء المستخدم من النموذج يظل مرتبطاً بجهة العميل المحددة فقط.
+- التحديثات اللحظية في شاشة المالك تعتمد Postgres Changes ثم إعادة جلب البيانات من RLS، مع مصالحة احتياطية كل 30 ثانية.
+- الحساب الأول يُنشأ عبر مسار التسجيل في النظام الأم أو يسجل الدخول إذا كان قد أُنشئ مسبقاً. أول مشروع ينشئه الحساب ينشئ له قاعدة البيانات عضوية مشرف تلقائياً. لا توجد حالياً هوية منصة مستقلة عن عضويات المشاريع؛ راجع ARCHITECTURE.md.
+
+## مرجع المعمارية
+
+راجع ARCHITECTURE.md لمعرفة نموذج العميل/عملية الجرد، فصل CountFlow عن SMART ERP، الدروس المعمارية المستفادة من RAWAEA، وخطة استكمال Offline وRealtime الآمنين.
+
