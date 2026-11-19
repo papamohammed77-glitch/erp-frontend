@@ -350,7 +350,9 @@ Deno.serve(async (req: Request) => {
       sha256,completed_at:new Date().toISOString(),expires_at:expiresAt,
       metadata:{engine:"counting-export-session-v1",format,entry_rows:entries.length,
         reconciliation_rows:lines.length,products:products.length,locations:locations.length,
-        alerts:alerts.length,recounts:recounts.length,imports:imports.length,sheets:format==="xlsx"?13:1},
+        alerts:alerts.length,recounts:recounts.length,imports:imports.length,import_error_rows:importErrors.length,
+        evidence_images:sessionImages.length,presence_rows:presence.length,audit_rows:auditRows.length,
+        sheets:format==="xlsx"?13:1},
     }).eq("id",exportId);
     if (updateError) throw new Error("EXPORT_RECORD_UPDATE_FAILED: "+updateError.message);
 
