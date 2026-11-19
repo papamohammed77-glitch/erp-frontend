@@ -101,6 +101,7 @@ $('addLocation').onclick=async()=>{const {error}=await sb.from('count_locations'
 $('createSession').onclick=async()=>{const name=$('sessionName').value.trim();if(!name)return toast('اكتب اسم الجلسة');const {data,error}=await sb.from('count_sessions').insert({project_id:project.id,name,created_by:user.id}).select().single();if(error)toast(error.message);else{session=data;toast('تم إنشاء الجلسة');await loadSessions()}};
 async function setSession(status){
  if(!session)return toast('لا توجد جلسة');
+ const targetSessionId=session.id;
  if(status==='completed'){
   const {count:expectedCount,error:expectedError}=await sb.from('count_expected_balances').select('id',{count:'exact',head:true}).eq('session_id',session.id);
   if(expectedError)return toast('تعذر التحقق من الأرصدة الدفترية: '+expectedError.message);
@@ -119,15 +120,14 @@ async function setSession(status){
  const patch={status};
  if(status==='active'&&!session.started_at)patch.started_at=new Date().toISOString();
  if(status==='completed')patch.closed_at=new Date().toISOString();
- const {error}=await sb.from('count_sessions').update(patch).eq('id',session.id);
+ const {error}=await sb.from('count_sessions').update(patch).eq('id',targetSessionId);
  if(error)return toast(error.message);
  toast('تم تحديث حالة الجلسة');
  await loadSessions();await loadLive();
  if(status==='completed'){
-  const {count:entryCount,error:entryError}=await sb.from('count_entries').select('id',{count:'exact',head:true}).eq('session_id',session.id);
+  const {count:entryCount,error:entryError}=await sb.from('count_entries').select('id',{count:'exact',head:true}).eq('session_id',targetSessionId);
   if(entryError)toast('أُغلقت الجلسة لكن تعذر تحديد حجم التصدير: '+entryError.message);
-  else if((entryCount||0)<=50000)$('exportXlsx').click();
-  else await downloadServerExport('xlsx').catch(e=>toast('أُغلقت الجلسة لكن تعذر التصدير الخادمي: '+e.message));
+  else await downloadServerExport('xlsx',targetSessionId).catch(e=>toast('أُغلقت الجلسة لكن تعذر التصدير الخادمي: '+e.message));
  }
 }
 $('startSession').onclick=()=>setSession('active');$('pauseSession').onclick=()=>setSession('paused');$('closeSession').onclick=()=>{if(confirm('إنهاء جلسة الجرد؟ لا يمكن للمندوبين تسجيل عمليات جديدة بعد الإنهاء.'))setSession('completed')};
@@ -138,24 +138,24 @@ $('runReconciliation').onclick=async()=>{if(!session)return toast('أنشئ جل
 $('approveReconciliation').onclick=async()=>{if(!reconciliationRunId)return toast('احتسب التسوية أولاً');if(!confirm('اعتماد نتيجة التسوية بعد مراجعة جميع مهام إعادة العد والتنبيهات الحرجة؟ لن يتم ترحيل أي حركة مخزنية.'))return;const {data,error}=await sb.rpc('count_approve_reconciliation',{p_run_id:reconciliationRunId});if(error)return toast('تعذر الاعتماد: '+error.message);toast('تم اعتماد التسوية دون ترحيل مخزون');await report()};
 $('generateRecounts').onclick=async()=>{if(!reconciliationRunId)return toast('احتسب التسوية أولاً');const {data,error}=await sb.rpc('count_generate_recount_tasks',{p_run_id:reconciliationRunId,p_assigned_member_id:$('recountAssignee').value||null,p_min_variance_percent:0});if(error)return toast('تعذر إنشاء مهام إعادة العد: '+error.message);toast('تم إنشاء '+(data.created_tasks||0)+' مهمة إعادة عد');await loadRecountQueue()};
 async function fetchAllRows(table,columns,filters=[]){const maxRows=200000,pageSize=1000;let all=[],offset=0;while(offset<maxRows){let q=sb.from(table).select(columns);for(const f of filters){if(f.op==='eq')q=q.eq(f.key,f.value);else if(f.op==='in')q=q.in(f.key,f.value)}const {data,error}=await q.order('id',{ascending:true}).range(offset,offset+pageSize-1);if(error)throw error;const rows=data||[];all=all.concat(rows);if(rows.length<pageSize)return all;offset+=pageSize}let countQuery=sb.from(table).select('id',{count:'exact',head:true});for(const f of filters){if(f.op==='eq')countQuery=countQuery.eq(f.key,f.value);else if(f.op==='in')countQuery=countQuery.in(f.key,f.value)}const {count,error}=await countQuery;if(error)throw error;if((count||0)>maxRows)throw new Error('FETCH_LIMIT_EXCEEDED:'+table+':'+maxRows);return all}
-async function downloadServerExport(format){
- if(!session)throw new Error('لا توجد جلسة محددة للتصدير');
+async function downloadServerExport(format,sessionId=session?.id){
+ if(!sessionId)throw new Error('لا توجد جلسة محددة للتصدير');
  const btn=$(format==='xlsx'?'exportXlsx':'exportCsv');
  const oldLabel=btn?.textContent;
  if(btn){btn.disabled=true;btn.textContent='جارٍ تجهيز الملف…'}
  try{
-  const {data,error}=await sb.functions.invoke('counting-export-session',{body:{session_id:session.id,format}});
+  const {data,error}=await sb.functions.invoke('counting-export-session',{body:{session_id:sessionId,format}});
   if(error)throw error;
   if(!data?.signed_url)throw new Error(data?.error||'تعذر إنشاء ملف التصدير الخادمي');
   const a=document.createElement('a');a.href=data.signed_url;a.download=data.file_name||('CountFlow.'+format);a.rel='noopener';
   document.body.appendChild(a);a.click();a.remove();
-  await loadExportHistory();
+  await loadExportHistory(sessionId);
   toast('اكتمل التصدير الخادمي وحُفظ في أرشيف الجلسة');
   return data;
  }finally{if(btn){btn.disabled=false;btn.textContent=oldLabel}}
 }
 $('exportXlsx').onclick=()=>downloadServerExport('xlsx').catch(e=>toast('تعذر تصدير Excel: '+(e.message||String(e))));
-async function loadExportHistory(){if(!session){$('exportHistory').textContent='لا توجد جلسة محددة.';return}const {data,error}=await sb.from('count_exports').select('id,export_format,export_scope,status,storage_path,row_count,file_size_bytes,sha256,created_at,expires_at').eq('session_id',session.id).eq('status','ready').order('created_at',{ascending:false}).limit(30);if(error){$('exportHistory').textContent='تعذر تحميل الأرشيف: '+error.message;return}const paths=(data||[]).map(v=>v.storage_path).filter(Boolean);let signed={};if(paths.length){const {data:urls}=await sb.storage.from('counting-exports').createSignedUrls(paths,600);for(const u of urls||[])signed[u.path]=u.signedUrl}$('exportHistory').innerHTML=(data||[]).map(v=>'<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>'+esc(v.export_format.toUpperCase())+' · '+esc(v.export_scope)+'</b><br><small class="muted">'+new Date(v.created_at).toLocaleString('ar-EG')+' · '+v.row_count+' سجل · '+Math.round((v.file_size_bytes||0)/1024)+' KB</small><br><small class="muted">SHA-256: '+esc((v.sha256||'').slice(0,20))+'…</small></div>'+(signed[v.storage_path]?'<a href="'+esc(signed[v.storage_path])+'" target="_blank" rel="noopener">تنزيل</a>':'<span class="pill">الرابط غير متاح</span>')+'</div>').join('')||'لا توجد ملفات محفوظة بعد.'}
+async function loadExportHistory(sessionId=session?.id){if(!sessionId){$('exportHistory').textContent='لا توجد جلسة محددة.';return}const {data,error}=await sb.from('count_exports').select('id,export_format,export_scope,status,storage_path,row_count,file_size_bytes,sha256,created_at,expires_at').eq('session_id',sessionId).eq('status','ready').order('created_at',{ascending:false}).limit(30);if(error){$('exportHistory').textContent='تعذر تحميل الأرشيف: '+error.message;return}const paths=(data||[]).map(v=>v.storage_path).filter(Boolean);let signed={};if(paths.length){const {data:urls}=await sb.storage.from('counting-exports').createSignedUrls(paths,600);for(const u of urls||[])signed[u.path]=u.signedUrl}$('exportHistory').innerHTML=(data||[]).map(v=>'<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>'+esc(v.export_format.toUpperCase())+' · '+esc(v.export_scope)+'</b><br><small class="muted">'+new Date(v.created_at).toLocaleString('ar-EG')+' · '+v.row_count+' سجل · '+Math.round((v.file_size_bytes||0)/1024)+' KB</small><br><small class="muted">SHA-256: '+esc((v.sha256||'').slice(0,20))+'…</small></div>'+(signed[v.storage_path]?'<a href="'+esc(signed[v.storage_path])+'" target="_blank" rel="noopener">تنزيل</a>':'<span class="pill">الرابط غير متاح</span>')+'</div>').join('')||'لا توجد ملفات محفوظة بعد.'}
 $('exportCsv').onclick=()=>downloadServerExport('csv').catch(e=>toast('تعذر تصدير CSV: '+(e.message||String(e))));
 
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('active',x===b));['live','team','import','structure','sessions','reports'].forEach(x=>$('tab-'+x).classList.toggle('hidden',x!==b.dataset.tab));if(b.dataset.tab==='reports'){report();loadExportHistory();loadRecountQueue()}if(b.dataset.tab==='import')loadImportHistory();if(b.dataset.tab==='live'){loadPresence();loadAlerts()}});
