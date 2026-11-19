@@ -14,6 +14,7 @@
 - [Countflow-supervisor.html — لوحة مراقب الجرد](./Countflow-supervisor.html)
 - [counting-provision-member — Edge Function لإنشاء الأعضاء وإعادة تعيين كلمات المرور](./functions/counting-provision-member/index.ts)
 - [counting-export-session — Edge Function للتصدير الخادمي الكبير](./functions/counting-export-session/index.ts)
+- [DEPLOYMENT.md — نشر CountFlow على Cloudflare Pages مستقلاً](./DEPLOYMENT.md)
 
 ## ما يقدمه النظام حالياً
 
