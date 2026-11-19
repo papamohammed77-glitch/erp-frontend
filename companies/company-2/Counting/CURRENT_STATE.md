@@ -223,3 +223,50 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 - Follow-up validation caught and corrected the build script's project-root resolution (`scripts/build-pages.sh` now resolves its parent directory rather than the scripts directory). A local fixture run of the corrected allowlist build: **PASS** — exactly five public files published, zero SQL/Markdown/TypeScript source artifacts copied.
 
 - Final portable-listing revision of the Pages script passed the same isolated fixture test: exactly five allowlisted public files; no SQL/Markdown/TypeScript artifacts leaked into `dist/`.
+
+
+---
+
+## LVE-2026-11-20-740 — Owner-wide customer and concurrent count operations dashboard
+
+**Scope:** CountFlow UI and documentation only. No Supabase schema/data/ACL/Auth/Edge Function change.
+
+### Repository changes
+- Updated countflow-admin.html:
+  - Reframed count_projects as customer/client organizations and count_sessions as individual count operations.
+  - Added the global **عمليات الجرد القائمة** view, aggregating planned/active/paused/review sessions across all projects visible to the signed-in supervisor identity; completed/closed sessions appear separately.
+  - Updated the users view to aggregate membership rows across all projects visible to the signed-in identity and display each user's customer/project.
+  - The add-member form still provisions only into the currently selected project; no cross-client membership is granted implicitly.
+  - Project reads now use pagination rather than the former 200-project limit. Global member/session reads are batched and paginated.
+  - Added Postgres Changes subscriptions for count_sessions and count_members; event messages trigger authoritative re-fetch through RLS. A 30-second foreground reconciliation remains as a fallback.
+  - Fixed a project-creation context issue: after creating a new project, the master now selects and loads that exact new project instead of leaving the previous project selected.
+- Added ARCHITECTURE.md documenting tenant boundaries, owner model, RAWAEA reference patterns, offline contract, Realtime contract and verification gates.
+- Updated README with the customer/operation model and global dashboard behavior.
+
+### Source hashes
+- countflow-admin.html: cc7df74be5e9190aac2980c86956e131f87f264e
+- ARCHITECTURE.md: committed in 83303f8d8e1f23b1a505eeed39d6c776ede83010
+- Admin follow-up project-selection fix commit: f9fbb0af0c4e6e86fa42379db3318a1f99f2854f
+
+### Verification
+- Inline admin JavaScript compilation: **PASS** after the global dashboard changes and project-selection fix.
+- CountFlow count_members and count_sessions are present in the supabase_realtime publication: **CONFIRMED**.
+- Authenticated browser login, multi-project visibility, cross-project member aggregation and actual WebSocket delivery: **UNKNOWN / not run**; no confirmed owner identity or deployed CountFlow origin is available.
+- No persistent owner account was created; no pre-existing legacy Auth identity was assigned.
+- No Supabase DDL, DML, grants, RLS policies, Auth identities, Edge Functions, Storage objects or Realtime internals were changed.
+- No Cloudflare Pages project, DNS or custom domain was created.
+
+### Owner model clarification
+- The current database trigger count_bootstrap_project_owner grants supervisor membership to the Auth identity that creates a project.
+- The master dashboard can aggregate all projects for which the signed-in identity has active supervisor membership. To administer all customer projects under one owner account, create each customer project using that same identity.
+- This is **not yet a separate platform-wide super-admin role** capable of seeing projects created by unrelated supervisors. Such a role needs an explicit server-side identity binding and RLS design; it must not be granted through browser metadata or an email-only condition.
+- The CountFlow Auth account is still **NOT CREATED / NOT BOUND**. The owner's email must be confirmed before identity provisioning or assignment.
+
+### Remaining gates
+1. Confirm the owner email and complete the first-owner Auth sign-in/sign-up flow; do not share the password in chat.
+2. Run browser E2E against the actual CountFlow Pages origin with that account and at least two synthetic customer projects.
+3. Verify user isolation by logging in as one customer supervisor and confirming that the other customer is invisible.
+4. Continue the P1 offline queue close-handshake work; add a CountFlow-only Service Worker/manifest and offline shell boot without caching business data.
+5. Verify cross-device Postgres Changes delivery and keep periodic reconciliation as a fallback.
+6. Complete the remaining direct-DML/state-machine and Broadcast audit items before operational readiness is claimed.
+
