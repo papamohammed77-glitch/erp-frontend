@@ -1,13 +1,15 @@
 # CountFlow — نظام الجرد المستقل
 
-> **النطاق:** تطبيقان مستقلان عن RAWAEA ERP وعن قاعدة SMART ERP:
-> 1. تطبيق مندوب الجرد.
-> 2. تطبيق مراقب/مشرف الجرد.
+> **النطاق:** منظومة CountFlow مستقلة عن RAWAEA ERP وعن قاعدة SMART ERP، وتتكون من:
+> 1. النظام الأم لإدارة المنظومة والبيانات المرجعية والمستخدمين.
+> 2. تطبيق مندوب الجرد الميداني.
+> 3. لوحة مراقب/مشرف الجرد ومتابعة التنفيذ.
 >
 > قاعدة البيانات المستخدمة هي مشروع Supabase المستقل `rawaea-staging` (`hfzznsiprnwkpayskzhu`). جميع بيانات التشغيل الجديدة محصورة في جداول `count_*` ومخازن `counting-*`. لا تنفذ التطبيقات أي ترحيل للمخزون أو النقدية أو الحسابات أو قيود ERP.
 
 ## التطبيقات
 
+- [countflow-admin.html — النظام الأم وإدارة CountFlow](./countflow-admin.html)
 - [countflow.html — تطبيق مندوب الجرد](./countflow.html)
 - [Countflow-supervisor.html — لوحة مراقب الجرد](./Countflow-supervisor.html)
 - [counting-provision-member — Edge Function لإنشاء الأعضاء وإعادة تعيين كلمات المرور](./functions/counting-provision-member/index.ts)
