@@ -28,6 +28,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Validate Buyer inline JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          import subprocess
+          from pathlib import Path
+          source = Path('companies/company-1/purchasing/buyer.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script\\b([^>]*)>([\\s\\S]*?)</script>', source, flags=re.I)
+          inline = [body for attrs, body in scripts if 'src=' not in attrs.lower() and body.strip()]
+          if not inline:
+              raise SystemExit('BUYER_INLINE_SCRIPT_NOT_FOUND')
+          Path('/tmp/buyer-inline.js').write_text('\\n'.join(inline), encoding='utf-8')
+          result = subprocess.run(['node', '--check', '/tmp/buyer-inline.js'], capture_output=True, text=True)
+          if result.returncode:
+              print(result.stdout)
+              print(result.stderr)
+              raise SystemExit(result.returncode)
+          print('BUYER_INLINE_JS_SYNTAX=PASS')
+          PY
+
       - name: Compile production CSS
         run: >-
           npm exec --yes --package=tailwindcss@3.4.17 -- tailwindcss
