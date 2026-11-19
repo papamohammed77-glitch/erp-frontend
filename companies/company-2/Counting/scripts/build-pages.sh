@@ -13,10 +13,14 @@ cp "$SCRIPT_DIR/index.html" \
    "$SCRIPT_DIR/countflow-admin.html" \
    "$SCRIPT_DIR/countflow.html" \
    "$SCRIPT_DIR/Countflow-supervisor.html" \
+   "$SCRIPT_DIR/countflow-core.js" \
+   "$SCRIPT_DIR/countflow-sw.js" \
+   "$SCRIPT_DIR/manifest.webmanifest" \
+   "$SCRIPT_DIR/countflow-icon.svg" \
    "$SCRIPT_DIR/_headers" \
    "$OUT_DIR/"
 
-for file in index.html countflow-admin.html countflow.html Countflow-supervisor.html _headers; do
+for file in index.html countflow-admin.html countflow.html Countflow-supervisor.html countflow-core.js countflow-sw.js manifest.webmanifest countflow-icon.svg _headers; do
   test -s "$OUT_DIR/$file"
 done
 
