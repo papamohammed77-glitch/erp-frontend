@@ -64,7 +64,7 @@ function isAllowedCdn(url) {
   return CF_CDN.indexOf(url.href) !== -1;
 }
 function isStaticPath(path) {
-  return /\.(?:js|mjs|css|svg|png|jpg|jpeg|webp|ico|woff2?)$/i.test(path);
+  return /\.(?:js|mjs|css|svg|png|jpg|jpeg|webp|ico|woff2?|webmanifest)$/i.test(path);
 }
 function cacheResponse(cache, request, response) {
   if (response && (response.ok || response.type === 'opaque')) {
@@ -98,6 +98,7 @@ self.addEventListener('fetch', function (event) {
     event.respondWith((async function () {
       var cache = await caches.open(CF_STATIC_CACHE);
       var cached = await cache.match(request);
+      if (!cached) { var shellCache = await caches.open(CF_SHELL_CACHE); cached = await shellCache.match(request); }
       if (cached) return cached;
       try {
         var response = await fetch(request);
