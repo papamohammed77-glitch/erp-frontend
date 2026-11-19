@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-19-CountFlow-Approval-Freeze-Export`  
+**Last Verified Event:** `LVE-2026-11-19-CountFlow-Production-Safety-and-Export-Hardening`  
 **Date:** 2026-11-19  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -11,11 +11,11 @@
 
 | Artifact | Current Git blob SHA |
 |---|---|
-| `Counter.html` | `d12302bf6abb22a064c6d82c2f39f12a95b72405` |
+| `Counter.html` | `d0367e9581173811cfb884acb31800fbecc1d261` |
 | `Counter-supervisor.html` | `4ff32104691d01cb6fff40d96939a2c737e97818` |
-| `README.md` | `eb2b31f5805a09960f7af251e4285a1b23733605` |
+| `README.md` | `c22cce332c4180fd2b240c3ea4a7714e48511744` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
-| `functions/counting-export-session/index.ts` | `13a95e81ff1ea094cf8971d34748c4a13b5f1bc0` |
+| `functions/counting-export-session/index.ts` | `4146648a53f61c893ccbfcdc39a56d63a60199b0` |
 
 ## 2. Verified Supabase structure
 
@@ -34,18 +34,20 @@
 | Function | Version | JWT | State |
 |---|---:|---|---|
 | `counting-provision-member` | 3 | Required | ACTIVE |
-| `counting-export-session` | 2 | Required | ACTIVE |
+| `counting-export-session` | 3 | Required | ACTIVE |
 
 The export function verifies the authenticated supervisor membership, creates multi-sheet XLSX or detailed CSV, stores the artifact in the private `counting-exports` bucket, and records SHA-256, size, row count, and a signed URL. The UI routes exports above 50,000 count events through this function.
 
 ## 4. Completed behavior and regression tests
 
-- Continuous camera scanning, location barcode selection, repeated same-product scan quantity increment, and a save-before-switch safeguard.
+Latest applied migration: `20261119193620_countflow_expected_balance_snapshot_guard_v1`.
+
+- Continuous camera scanning (detection throttled to 200 ms), location barcode selection, repeated same-product scan quantity increment, and a save-before-switch safeguard.
 - Import pipeline uses 1,000-row staging chunks and detailed row outcomes; location reads/import mapping are paginated.
 - Base-unit conversion snapshots on count entries; reconciliation and exports use normalized quantities.
 - Automatic quantity/repeat-scan alerts and automatic variance alerts after reconciliation.
 - Recount tasks, review/approval, and finality/immutability gates.
-- Server-side export for large sessions; browser export is capped at 50,000 entries to avoid UI freezes.
+- Server-side export for large sessions; browser export is capped at 50,000 entries to avoid UI freezes. Failed export completion removes any orphaned Storage object.
 - Supervisor logout control; assignment upsert is atomic and duplicate-safe.
 
 Executed SQL regression suites (all rollback-only; no persistent test data):
