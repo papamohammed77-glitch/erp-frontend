@@ -26,4 +26,4 @@ if find "$OUT_DIR" -type f | grep -E '/(database|functions|tests)/|\.sql$|\.md$|
 fi
 
 echo "CountFlow Pages output prepared: $OUT_DIR"
-find "$OUT_DIR" -maxdepth 1 -type f -printf '%f\n' | sort
+find "$OUT_DIR" -maxdepth 1 -type f -print | sed 's#.*/##' | sort
