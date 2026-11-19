@@ -352,3 +352,35 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 - CountFlow-only migration and CountFlow master HTML changed.
 - No SMART ERP project, `company-1/main.html`, `core.js`, legacy ERP table/function, inventory, treasury, or accounting data was modified.
 - No persistent CountFlow business data or Auth user was created.
+
+
+## LVE-2026-11-20-743 — Owner license email settings and engagement terminology completion
+
+### Implemented
+- Added owner-only `public.count_platform_settings` with `license_emails text[]`; there is no application-level maximum count for email addresses.
+- RLS enabled; three owner-only policies for SELECT/INSERT/UPDATE; no anon grants and no authenticated DELETE/TRUNCATE/TRIGGER/REFERENCES grants.
+- Seeded one settings row containing `owner@rawaea.com` as the initial license-contact email. This is not an Auth user and does not confer login or authorization.
+- Added **إدارة التراخيص** to `countflow-admin.html`: displays the fixed security owner identity, allows multiple license/contact emails (one per line), validates addresses, de-duplicates them, and saves/reloads the list. The email list does not grant access to CountFlow.
+- Completed visible UI wording so the workspaces are called **تكليفات الجرد** and the contracting party name can repeat across separate engagements. No permanent customer master was created.
+- The owner Auth identity remains email-confirmation-bound to `owner@rawaea.com`; public first-user signup remains removed.
+
+### Verification
+- Database: owner Auth users=0; engagement workspaces=0; memberships=0; count sessions=0.
+- `count_platform_settings`: RLS=true, 3 policies, anon grants=0, unsafe authenticated grants=0, one initial settings row.
+- Admin inline JavaScript syntax compilation: PASS.
+- Security advisor still reports 65 legacy public tables without RLS and several legacy public SECURITY DEFINER warnings in `rawaea-staging`; these are outside CountFlow and intentionally untouched. No CountFlow finding was returned for `count_platform_settings` or `counting_private.is_platform_owner`.
+- Performance advisor continues to show legacy findings including the duplicate index on `public.erp_operation_registry`; no legacy objects were changed.
+
+### Source snapshots
+- `countflow-admin.html`: `13ca11377cf3f05aad23c438c2869aeba3922ccc`.
+- `20261120170000_countflow_platform_owner_verified_email.sql`: source file in `database/migrations/`.
+- `20261120171000_countflow_license_settings_unbounded_emails.sql`: source file in `database/migrations/`.
+
+### Still not complete / hard gates
+- Owner Auth user creation and email confirmation have not occurred. The available connected Supabase actions do not expose Auth Admin invite/create-user; do not fake it or create credentials in SQL.
+- The RAWAEA `main.html` license implementation could not be fully inspected through the available large-file reader; the CountFlow license screen therefore implements only an owner-controlled unbounded email contact list, not an invented subscription/expiry/seat licensing engine.
+- Previously recorded P1s remain open: offline queue close/replay handshake, retry scoping, direct-DML state-transition bypasses, import staging revalidation, Broadcast delivery, and browser E2E.
+- No authenticated browser E2E, real owner login, Cloudflare publication, or domain setup has been performed.
+
+### Isolation
+Only CountFlow master UI and CountFlow-specific migrations/settings were changed. SMART ERP, `company-1/main.html`, `core.js`, all legacy ERP tables/functions, and business balances were not touched.
