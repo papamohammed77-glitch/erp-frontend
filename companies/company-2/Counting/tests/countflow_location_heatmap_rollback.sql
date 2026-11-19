@@ -33,7 +33,7 @@ BEGIN
    RAISE EXCEPTION 'HEATMAP_TOTALS_INVALID:%',a;
  END IF;
  SELECT value INTO row FROM jsonb_array_elements(a->'locations') WHERE value->>'code'='A-01';
- IF row IS NULL OR row->>'path'<>'WH / A-01' OR row->>'counted_quantity'<>'10' OR row->>'variance_quantity'<>'0' OR row->>'count_events'<>'2' THEN
+ IF row IS NULL OR row->>'path'<>'WH / A-01' OR (row->>'counted_quantity')::numeric<>10 OR (row->>'variance_quantity')::numeric<>0 OR row->>'count_events'<>'2' THEN
    RAISE EXCEPTION 'HEATMAP_LOCATION_INVALID:%',row;
  END IF;
  IF (a-'generated_at') IS DISTINCT FROM (b-'generated_at') THEN
