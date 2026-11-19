@@ -204,7 +204,8 @@
   const {data:members,error}=await db.from('count_members').select('project_id,role,status').eq('user_id',state.user.id);
   if(error)throw error;
   const allowed=(members||[]).some(m=>m.role==='supervisor'&&m.status==='active');
-  if(!allowed){await db.auth.signOut();state.user=null;showLogin('هذا الحساب ليس عضواً نشطاً بدور مشرف في أي مشروع CountFlow.');return;}
+  if(!allowed&&(members||[]).length>0){await db.auth.signOut();state.user=null;showLogin('هذا الحساب عضو في CountFlow لكنه لا يحمل دور مشرف نشط.');return;}
+  // A newly registered identity with no CountFlow memberships may bootstrap only its own project.
   showApp();await loadProjects();
  }
  $('signupBtn').addEventListener('click',async()=>{const email=$('email').value.trim(),password=$('password').value;if(!email||password.length<10){$('loginError').textContent='أدخل بريداً صحيحاً وكلمة مرور لا تقل عن 10 أحرف.';return;}const b=$('signupBtn');b.disabled=true;b.textContent='جار إنشاء الحساب…';try{const {data,error}=await db.auth.signUp({email,password,options:{data:{countflow_owner_signup:true}}});if(error)throw error;if(data.session){state.user=data.user;await bootstrap();notify('تم إنشاء الحساب. أنشئ أول مشروع لتصبح مشرفه.');}else{$('loginError').textContent='تم إرسال طلب إنشاء الحساب. أكمل تأكيد البريد الإلكتروني ثم سجّل الدخول. إذا كان التسجيل العام معطلاً، استخدم إجراء دعوة المالك المعتمد في المشروع.';}}catch(err){$('loginError').textContent=err.message||'تعذر إنشاء الحساب';}finally{b.disabled=false;b.textContent='إنشاء حساب مالك CountFlow جديد';}});
