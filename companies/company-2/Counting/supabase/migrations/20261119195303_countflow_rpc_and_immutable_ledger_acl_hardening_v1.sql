@@ -8,7 +8,7 @@ BEGIN
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
-      AND (p.proname LIKE 'count\_%' ESCAPE '\\' OR p.proname = 'countflow_broadcast_changes')
+      AND (left(p.proname,6) = 'count_' OR p.proname = 'countflow_broadcast_changes')
   LOOP
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', r.oid::regprocedure);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM anon', r.oid::regprocedure);
