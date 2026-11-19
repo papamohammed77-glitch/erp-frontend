@@ -276,3 +276,12 @@ The exact recorded SQL for all 60 `counting_*` and `countflow_*` migration-ledge
 
 راجع ARCHITECTURE.md لمعرفة نموذج العميل/عملية الجرد، فصل CountFlow عن SMART ERP، الدروس المعمارية المستفادة من RAWAEA، وخطة استكمال Offline وRealtime الآمنين.
 
+
+
+### CountFlow runtime / PWA
+
+- [countflow-core.js](./countflow-core.js) — isolated Supabase client factory, connectivity hooks, Postgres Changes invalidation/reconciliation helper, and CountFlow Service Worker registration.
+- [countflow-sw.js](./countflow-sw.js) — CountFlow-only offline app-shell/static-asset worker. Supabase Auth/API/Storage/Edge Function requests remain network-only and are never cached.
+- [manifest.webmanifest](./manifest.webmanifest) and [countflow-icon.svg](./countflow-icon.svg) — independent CountFlow PWA identity.
+- The Pages build allowlist includes these four runtime assets. The offline shell is implemented, but real offline boot/restart/reconnect has not yet been verified in a browser. The existing IndexedDB queue close-barrier gap remains open; see ARCHITECTURE.md.
+
