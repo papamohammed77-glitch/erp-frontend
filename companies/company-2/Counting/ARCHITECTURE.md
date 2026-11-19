@@ -61,7 +61,7 @@ Patterns that must **not** be copied verbatim:
 - RAWAEA's employee/company profile and role model is not the CountFlow tenant/membership model.
 - The RAWAEA Service Worker is not a data-sync engine. It keeps HTML/API/runtime network-backed, caches only approved static presentation assets, and does not cache authentication or business records.
 
-CountFlow should eventually have its own `countflow-core.js` and `countflow-sw.js`, configured only for the CountFlow Supabase project and CountFlow app paths.
+CountFlow now has its own `countflow-core.js` and `countflow-sw.js`, configured only for the CountFlow Supabase project and CountFlow app paths. The core creates the CountFlow client, exposes a reusable Postgres Changes + reconciliation helper, reports connectivity, and registers the CountFlow Service Worker. All three CountFlow pages load this core; the master dashboard uses its Postgres Changes helper. The field and supervisor pages retain their existing domain-specific channel handlers for now.
 
 ## 5. Offline-first contract — current state and required completion
 
@@ -69,7 +69,7 @@ CountFlow should eventually have its own `countflow-core.js` and `countflow-sw.j
 
 **Known gaps that remain open:**
 
-- No CountFlow Service Worker/manifest currently guarantees offline shell boot after a fresh navigation or browser restart.
+- A CountFlow-only Service Worker and manifest have now been added. The worker precaches the three app shells, the core, manifest, icon and the three approved CDN runtime libraries; it uses network-first HTML with cached fallback, caches static assets, and never caches Supabase Auth/REST/Storage/Edge Function responses. This is **implemented but not browser-verified**; first-install offline boot and CDN cache success remain UNKNOWN.
 - Queue replay requires the currently loaded session to be active/paused. Once the server moves the session to review/completed, pending local operations can become hidden and non-syncable.
 - The retry control currently clears sync errors across all local queue records rather than only the active project/session/member/device.
 - There is no per-device server acknowledgement barrier preventing a supervisor from closing a session while an offline device still has unacknowledged local entries.
@@ -77,7 +77,7 @@ CountFlow should eventually have its own `countflow-core.js` and `countflow-sw.j
 
 **Required safe implementation sequence:**
 
-1. Add a CountFlow-only Service Worker and manifest. Cache only the approved app shell/static dependencies; never cache Auth responses, Supabase API payloads, signed URLs or business records.
+1. **DONE — implementation:** Add a CountFlow-only Service Worker and manifest. Cache only the approved app shell/static dependencies; never cache Auth responses, Supabase API payloads, signed URLs or business records. Browser verification is still required.
 2. Preserve IndexedDB operations with project/session/member/device identity, immutable event ID and payload hash.
 3. Implement a server-authoritative close barrier: a session cannot be finalized while a registered device has unacknowledged operations, unless the supervisor explicitly revokes/records that device through an audited recovery path.
 4. Replay acknowledged queue items through idempotent RPCs without allowing a closed-session write to bypass the state machine.
@@ -103,6 +103,7 @@ CountFlow field/supervisor apps still use their existing private Broadcast contr
 
 - Admin JavaScript syntax: **PASS**.
 - Master UI global member/session aggregation: **implemented; browser behavior UNKNOWN**.
+- CountFlow Core and Service Worker syntax: **PASS**; build fixture publishes all nine allowlisted files and excludes private artifacts. Real offline boot remains **UNKNOWN**.
 - Realtime table publication: **CONFIRMED** for `count_members` and `count_sessions`; live event delivery: **UNKNOWN**.
 - Supabase schema/data: **unchanged by this UI update**.
 - Owner Auth account: **NOT CREATED / email not yet confirmed**.
