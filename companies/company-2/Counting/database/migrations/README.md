@@ -17,5 +17,5 @@ The live project is Supabase `rawaea-staging` (`hfzznsiprnwkpayskzhu`). The foll
 
 - Do not rerun these migrations blindly against a database with existing objects. Compare the Supabase migration ledger and live definitions first.
 - These migrations only alter CountFlow objects and do not post or modify ERP stock, treasury, or accounting balances.
-- Test fixtures in `../tests/*_rollback.sql` create temporary Auth and CountFlow rows inside a transaction and finish with `ROLLBACK`.
+- Test fixtures in `../../tests/*_rollback.sql` create temporary Auth and CountFlow rows inside a transaction and finish with `ROLLBACK`.
 - Keep Supabase migration history and this repository's SQL artifacts aligned when making future changes.
