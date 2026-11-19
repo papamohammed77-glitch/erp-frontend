@@ -316,3 +316,39 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 5. Verify two-client concurrent operations and user isolation in authenticated browser sessions.
 6. Continue direct-DML/state-transition remediation and cross-device Realtime validation before operational readiness.
 
+
+
+## LVE-2026-11-20-742 — Corrected CountFlow engagement model and platform owner binding
+
+**Scope:** CountFlow only; Supabase project `rawaea-staging` (`hfzznsiprnwkpayskzhu`).
+
+### Confirmed business-model correction
+- External organizations (e.g. Carrefour, Panda, warehouses, factories) are variable contracting parties, not a permanent customer master owned by CountFlow.
+- Existing `count_projects` records are now presented as **independent count-engagement workspaces / تكليفات جرد**. The same contracting party can have multiple separate workspaces and sessions over time. No permanent customer registry or client deduplication was introduced.
+- The database's unique `count_projects.code` constraint remains: each engagement receives its own unique engagement code. The engagement name may repeat.
+
+### Owner authorization change — applied and verified
+- Added `counting_private.is_platform_owner()`, which recognizes only the authenticated Supabase Auth identity whose email is exactly `owner@rawaea.com` and whose email is confirmed.
+- Updated `counting_private.is_member(uuid)` and `counting_private.is_supervisor(uuid)` so this verified platform owner can administer all CountFlow workspaces through the existing RLS policy contracts.
+- Authorization does not trust `user_metadata`, browser state, or a client-supplied email.
+- Migration source: `database/migrations/20261120170000_countflow_platform_owner_verified_email.sql`.
+- Database verification: helper function exists; both helper definitions contain the owner gate; projects/members/sessions remain 0.
+- **Owner Auth account is NOT created yet:** read-only check found 0 Auth users with `owner@rawaea.com`. No password was generated or stored. Owner login screen now pre-fills this email and public self-signup was removed to prevent arbitrary first-user takeover.
+
+### Master UI correction
+- Updated `countflow-admin.html` terminology from permanent customer/project framing to independent count engagements.
+- The owner login screen defaults to `owner@rawaea.com`; the unsafe public first-owner signup button/handler was removed.
+- Commit: `098bf74d6a0a9e8a6971a5e591294f8e0cd44c0d`; blob: `2009a98015608d84eda96dab8b57a4499f3f18b1`.
+- Migration commit: `52e358015b8151e11687bd87d43837bd4d698265`.
+
+### Remaining explicit blockers / UNKNOWN
+- The owner Auth identity still needs to be created/invited and its email confirmed through Supabase Auth; this connector does not expose an Auth Admin create/invite-user action. Do not create a fake account or disclose a password.
+- The requested editable **إدارة التراخيص** screen and unlimited email-list behavior are not implemented yet. The exact RAWAEA license-screen contract could not be reliably extracted from the very large `company-1/main.html` source through the available GitHub file reader. Do not invent a licensing model or persist an arbitrary email list until its actual field semantics and authorization are verified. This does not authorize modifying SMART ERP.
+- The independent engagement model is currently a UI/domain interpretation over the existing `count_projects` workspace table; no permanent client master table was created. Existing data is zero, so no conversion was required.
+- Previously recorded P1s remain open: offline queue close/replay barrier, scoped retry reset, direct-DML state-transition bypasses, Realtime Broadcast delivery, import staging revalidation, and browser E2E.
+- No browser E2E, Auth login, Cloudflare deployment, or live owner-access test has been performed.
+
+### Safety and isolation
+- CountFlow-only migration and CountFlow master HTML changed.
+- No SMART ERP project, `company-1/main.html`, `core.js`, legacy ERP table/function, inventory, treasury, or accounting data was modified.
+- No persistent CountFlow business data or Auth user was created.
