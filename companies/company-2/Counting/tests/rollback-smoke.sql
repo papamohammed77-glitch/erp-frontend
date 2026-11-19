@@ -106,7 +106,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    WHERE n.nspname='public' AND (p.proname LIKE 'count\_%' ESCAPE '\\' OR p.proname='countflow_broadcast_changes')
+    WHERE n.nspname='public' AND (left(p.proname,6) = 'count_' OR p.proname='countflow_broadcast_changes')
       AND has_function_privilege('anon',p.oid,'EXECUTE')
   ) THEN RAISE EXCEPTION 'QA_FAIL_ANON_FUNCTION_EXECUTE'; END IF;
 
