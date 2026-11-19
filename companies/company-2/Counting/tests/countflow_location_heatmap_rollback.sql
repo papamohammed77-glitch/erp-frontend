@@ -22,7 +22,7 @@ SELECT set_config('request.jwt.claim.sub','b6c6e6a1-8c22-4df0-9a01-222222222222'
 SELECT set_config('request.jwt.claims','{"sub":"b6c6e6a1-8c22-4df0-9a01-222222222222","role":"authenticated"}',true);
 SELECT count_touch_presence('b6c6e6a1-8c22-4df0-9a01-777777777777','heat-device','Heat Device','desktop','test','online','b6c6e6a1-8c22-4df0-9a01-666666666666');
 SELECT count_record_entry('b6c6e6a1-8c22-4df0-9a01-777777777777','b6c6e6a1-8c22-4df0-9a01-888888888888','b6c6e6a1-8c22-4df0-9a01-666666666666',4,'each','b6c6e6a1-8c22-4df0-9a01-999999999991','barcode','heat-device','first');
-SELECT count_record_entry('b6c6e6a1-8c22-4df0-9a01-777777777777','b6c6e6a1-8c22-4df0-9a01-666666666666',6,'each','b6c6e6a1-8c22-4df0-9a01-999999999992','barcode','heat-device','second');
+SELECT count_record_entry('b6c6e6a1-8c22-4df0-9a01-777777777777','b6c6e6a1-8c22-4df0-9a01-888888888888','b6c6e6a1-8c22-4df0-9a01-666666666666',6,'each','b6c6e6a1-8c22-4df0-9a01-999999999992','barcode','heat-device','second');
 SELECT set_config('request.jwt.claim.sub','b6c6e6a1-8c22-4df0-9a01-111111111111',true);
 SELECT set_config('request.jwt.claims','{"sub":"b6c6e6a1-8c22-4df0-9a01-111111111111","role":"authenticated"}',true);
 DO $$ DECLARE a jsonb; b jsonb; row jsonb;
