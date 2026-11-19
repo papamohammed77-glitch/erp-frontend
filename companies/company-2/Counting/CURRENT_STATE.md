@@ -12,10 +12,10 @@
 | Artifact | Current Git blob SHA |
 |---|---|
 | `Counter.html` | `d0367e9581173811cfb884acb31800fbecc1d261` |
-| `Counter-supervisor.html` | `4ff32104691d01cb6fff40d96939a2c737e97818` |
-| `README.md` | `1c356023cfa49b5b3e9637a0cb4023a7948fb268` |
+| `Counter-supervisor.html` | `e060cf2dfd6e35d80286ad9872d6001a3ed3b080` |
+| `README.md` | `3cc8410ba283c9b8b62bcf491559962adc6a2689` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
-| `functions/counting-export-session/index.ts` | `4146648a53f61c893ccbfcdc39a56d63a60199b0` |
+| `functions/counting-export-session/index.ts` | `170336d3bcff9ee23ee97097d56737d60a4ac003` |
 
 ## 2. Verified Supabase structure
 
@@ -34,9 +34,9 @@
 | Function | Version | JWT | State |
 |---|---:|---|---|
 | `counting-provision-member` | 3 | Required | ACTIVE |
-| `counting-export-session` | 3 | Required | ACTIVE |
+| `counting-export-session` | 4 | Required | ACTIVE |
 
-The export function verifies the authenticated supervisor membership, creates multi-sheet XLSX or detailed CSV, stores the artifact in the private `counting-exports` bucket, and records SHA-256, size, row count, and a signed URL. The UI routes exports above 50,000 count events through this function.
+The export function verifies the authenticated supervisor membership, creates a 13-sheet XLSX or detailed CSV, stores the artifact in the private `counting-exports` bucket, and records SHA-256, size, row count, and a signed URL. All UI exports now use this server pipeline; it also includes import rejection details, evidence image links, device/presence, and session audit history. Failed completion removes orphaned Storage objects.
 
 ## 4. Completed behavior and regression tests
 
@@ -47,7 +47,7 @@ Latest applied migration: `20261119193620_countflow_expected_balance_snapshot_gu
 - Base-unit conversion snapshots on count entries; reconciliation and exports use normalized quantities.
 - Automatic quantity/repeat-scan alerts and automatic variance alerts after reconciliation.
 - Recount tasks, review/approval, and finality/immutability gates.
-- Server-side export for large sessions; browser export is capped at 50,000 entries to avoid UI freezes. Failed export completion removes any orphaned Storage object.
+- All XLSX/CSV exports use the server-side pipeline; the browser no longer builds large workbooks. The function has configured row limits (150k per major dataset, 250k combined) that have not yet been load-tested.
 - Supervisor logout control; assignment upsert is atomic and duplicate-safe.
 
 Executed SQL regression suites (all rollback-only; no persistent test data):
