@@ -46,7 +46,12 @@ async function fetchAll(
     if (page.length < PAGE_SIZE) return rows;
   }
   if (rows.length >= maxRows) {
-    const { count, error } = await admin.from(table).select("id", { count: "exact", head: true });
+    let countQuery = admin.from(table).select("id", { count: "exact", head: true });
+    for (const [column, operator, value] of filters) {
+      if (operator === "eq") countQuery = countQuery.eq(column, value);
+      else if (operator === "in") countQuery = countQuery.in(column, value);
+    }
+    const { count, error } = await countQuery;
     if (!error && count > maxRows) throw new Error(`EXPORT_LIMIT_${table}:${maxRows}`);
   }
   return rows;
