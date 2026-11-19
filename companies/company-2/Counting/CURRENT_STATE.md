@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-20-736-CountFlow-Independent-Master-and-Rename`  
+**Last Verified Event:** `LVE-2026-11-20-737-CountFlow-Export-Session-Capture`  
 **Date:** 2026-11-20  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -13,7 +13,7 @@
 |---|---|
 | `countflow-admin.html` | `0949a6cf92a7693ff3943ad0b67a312091a7746b` |
 | `countflow.html` | `93ad77a682585b8ec04cdcf224e2ac81b28cb180` |
-| `Countflow-supervisor.html` | `11101374a8f27d78d042f750b162dba9303174b6` |
+| `Countflow-supervisor.html` | `d6911066bdddd59e9a1b364463bcc82c30d2010e` |
 | `README.md` | `0f747264c664fd9612c7bf810da23e3cd336ba6c` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
 | `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
@@ -196,3 +196,13 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 
 - Added `index.html` as the CountFlow domain root entry (redirects to the master dashboard), `_headers` with baseline browser security headers, and `DEPLOYMENT.md` with the separate Cloudflare Pages configuration. README links the deployment guide.
 - Current Pages output directory is documented as `companies/company-2/Counting`; no Cloudflare project or DNS was changed.
+
+
+## LVE-2026-11-20-737 — Closed-session export target integrity
+
+- Fixed the confirmed mutable-global bug in `Countflow-supervisor.html`: closing a session previously called `loadSessions()`, which could replace the global `session` before the post-close entry-count/export calls. The export could therefore target another session or fail when no eligible session remained.
+- `setSession` now captures the exact `targetSessionId` before asynchronous work and uses it for the close update, post-close entry count, and server export.
+- `downloadServerExport` and `loadExportHistory` now accept an explicit session ID while retaining their existing current-session default for normal user-initiated exports.
+- Static JavaScript compilation of the updated supervisor page: **PASS**.
+- Browser export flow and signed-file download: **UNKNOWN / not run**; no authenticated browser session or persistent CountFlow project exists.
+- No database schema/data/ACL/RLS change was required.
