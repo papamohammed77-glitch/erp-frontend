@@ -13,7 +13,7 @@
 |---|---|
 | `Counter.html` | `d0367e9581173811cfb884acb31800fbecc1d261` |
 | `Counter-supervisor.html` | `4ff32104691d01cb6fff40d96939a2c737e97818` |
-| `README.md` | `c22cce332c4180fd2b240c3ea4a7714e48511744` |
+| `README.md` | `37d32c146cde8faf881965abc46f681e262d05b0` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
 | `functions/counting-export-session/index.ts` | `4146648a53f61c893ccbfcdc39a56d63a60199b0` |
 
