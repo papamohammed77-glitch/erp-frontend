@@ -23,17 +23,37 @@ Deno.serve(async (req) => {
     const admin = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
     const body = await req.json();
     const projectId = String(body.project_id || "");
+    const action = String(body.action || "create");
+    if (!projectId) return reply({ error: "INVALID_INPUT" }, 400);
+    const { data: membership, error: membershipError } = await admin.from("count_members")
+      .select("role,status").eq("project_id", projectId).eq("user_id", authData.user.id).maybeSingle();
+    if (membershipError || membership?.role !== "supervisor" || membership?.status !== "active")
+      return reply({ error: "SUPERVISOR_REQUIRED" }, 403);
+
+    if (action === "reset_password") {
+      const memberId = String(body.member_id || "");
+      const newPassword = String(body.new_password || "");
+      if (!memberId || newPassword.length < 10) return reply({ error: "INVALID_INPUT" }, 400);
+      const { data: target, error: targetError } = await admin.from("count_members")
+        .select("id,user_id,role,display_name").eq("project_id", projectId).eq("id", memberId).maybeSingle();
+      if (targetError || !target) return reply({ error: "MEMBER_NOT_FOUND" }, 404);
+      const { error: updateError } = await admin.auth.admin.updateUserById(target.user_id, { password: newPassword });
+      if (updateError) return reply({ error: updateError.message }, 400);
+      const { error: auditError } = await admin.from("count_audit_log").insert({
+        project_id: projectId, actor_id: authData.user.id, action: "member.password_reset",
+        entity_type: "member", entity_id: target.id, details: { role: target.role }
+      });
+      return reply({ ok: true, action, member_id: target.id, audit_warning: auditError?.message || null });
+    }
+
+    if (action !== "create") return reply({ error: "UNSUPPORTED_ACTION" }, 400);
     const email = String(body.email || "").trim().toLowerCase();
     const password = String(body.password || "");
     const displayName = String(body.display_name || "").trim();
     const username = String(body.username || email).trim();
     const role = String(body.role || "counter");
-    if (!projectId || !email || password.length < 10 || !displayName || !username || !["counter", "auditor", "supervisor"].includes(role))
+    if (!email || password.length < 10 || !displayName || !username || !["counter", "auditor", "supervisor"].includes(role))
       return reply({ error: "INVALID_INPUT" }, 400);
-    const { data: membership, error: membershipError } = await admin.from("count_members")
-      .select("role,status").eq("project_id", projectId).eq("user_id", authData.user.id).maybeSingle();
-    if (membershipError || membership?.role !== "supervisor" || membership?.status !== "active")
-      return reply({ error: "SUPERVISOR_REQUIRED" }, 403);
     const { data: created, error: createError } = await admin.auth.admin.createUser({
       email, password, email_confirm: true, user_metadata: { counting_display_name: displayName }
     });
@@ -45,11 +65,11 @@ Deno.serve(async (req) => {
       await admin.auth.admin.deleteUser(created.user.id);
       return reply({ error: insertError.message }, 409);
     }
-    await admin.from("count_audit_log").insert({
+    const { error: auditError } = await admin.from("count_audit_log").insert({
       project_id: projectId, actor_id: authData.user.id, action: "member.created",
-      entity_type: "member", details: { email, username, role }
+      entity_type: "member", entity_id: created.user.id, details: { email, username, role }
     });
-    return reply({ ok: true, user_id: created.user.id, username });
+    return reply({ ok: true, user_id: created.user.id, username, audit_warning: auditError?.message || null });
   } catch (error) {
     return reply({ error: error instanceof Error ? error.message : "INTERNAL_ERROR" }, 500);
   }
