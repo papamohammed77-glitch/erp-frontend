@@ -18,7 +18,7 @@
   <form id="loginForm">
    <div class="field"><label for="email">البريد الإلكتروني</label><input id="email" type="email" autocomplete="username" required></div>
    <div class="field"><label for="password">كلمة المرور</label><input id="password" type="password" autocomplete="current-password" required></div>
-   <button class="primary" id="loginBtn" type="submit">دخول آمن</button>
+   <button class="primary" id="loginBtn" type="submit">دخول آمن</button>\n   <button class="soft" id="signupBtn" type="button">إنشاء حساب مالك CountFlow جديد</button>
   </form>
   <div id="loginError" class="hint" style="color:var(--red);margin-top:10px"></div>
   <p class="hint">إن كانت هذه أول مرة، أنشئ حساب Auth من خلال إجراء التأسيس المعتمد ثم أنشئ مشروعك؛ سيُسجل مالك المشروع كمشرف تلقائياً عبر trigger قاعدة CountFlow.</p>
@@ -207,6 +207,7 @@
   if(!allowed){await db.auth.signOut();state.user=null;showLogin('هذا الحساب ليس عضواً نشطاً بدور مشرف في أي مشروع CountFlow.');return;}
   showApp();await loadProjects();
  }
+ $('signupBtn').addEventListener('click',async()=>{const email=$('email').value.trim(),password=$('password').value;if(!email||password.length<10){$('loginError').textContent='أدخل بريداً صحيحاً وكلمة مرور لا تقل عن 10 أحرف.';return;}const b=$('signupBtn');b.disabled=true;b.textContent='جار إنشاء الحساب…';try{const {data,error}=await db.auth.signUp({email,password,options:{data:{countflow_owner_signup:true}}});if(error)throw error;if(data.session){state.user=data.user;await bootstrap();notify('تم إنشاء الحساب. أنشئ أول مشروع لتصبح مشرفه.');}else{$('loginError').textContent='تم إرسال طلب إنشاء الحساب. أكمل تأكيد البريد الإلكتروني ثم سجّل الدخول. إذا كان التسجيل العام معطلاً، استخدم إجراء دعوة المالك المعتمد في المشروع.';}}catch(err){$('loginError').textContent=err.message||'تعذر إنشاء الحساب';}finally{b.disabled=false;b.textContent='إنشاء حساب مالك CountFlow جديد';}});
  $('projectForm').addEventListener('submit',async e=>{e.preventDefault();const f=e.currentTarget;setBusy(f,true);try{const name=$('projectName').value.trim(),code=$('projectCode').value.trim().toUpperCase();const {data,error}=await db.from('count_projects').insert({name,code,status:'draft',created_by:state.user.id}).select('id').single();if(error)throw error;notify('تم إنشاء المشروع وإسناد دور المشرف لحسابك.');f.reset();state.project=null;await loadProjects();$('projectPicker').value=data.id;}catch(err){fail('تعذر إنشاء المشروع',err);}finally{setBusy(f,false);}});
  $('projectPicker').addEventListener('change',async()=>{state.project=state.projects.find(p=>p.id===$('projectPicker').value)||null;try{await loadProjectData();}catch(e){fail('تعذر تحميل المشروع',e);}});
  $('productForm').addEventListener('submit',async e=>{e.preventDefault();if(!state.project)return notify('أنشئ مشروعاً أولاً',true);const f=e.currentTarget;setBusy(f,true);try{
