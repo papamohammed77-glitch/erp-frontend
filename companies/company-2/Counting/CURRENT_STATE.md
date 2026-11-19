@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-19-CountFlow-13Sheet-Export-Audit-v6`  
+**Last Verified Event:** `LVE-2026-11-19-734-CountFlow-Workflow-Audit`  
 **Date:** 2026-11-19  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -11,9 +11,9 @@
 
 | Artifact | Current Git blob SHA |
 |---|---|
-| `Counter.html` | `d0367e9581173811cfb884acb31800fbecc1d261` |
-| `Counter-supervisor.html` | `e060cf2dfd6e35d80286ad9872d6001a3ed3b080` |
-| `README.md` | `a39cec5aa57727c8c61f3d8991dfbc2402cee273` |
+| `Counter.html` | `93ad77a682585b8ec04cdcf224e2ac81b28cb180` |
+| `Counter-supervisor.html` | `11101374a8f27d78d042f750b162dba9303174b6` |
+| `README.md` | `7b85173708c907b772a58717cbbb82659f4c7346` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
 | `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
 
@@ -41,7 +41,7 @@ The export function verifies the authenticated supervisor membership, creates a 
 
 ## 4. Completed behavior and regression tests
 
-Latest applied migration: `20261119194738_countflow_audit_skip_service_member_provision_v1`.
+Latest applied migration ledger entry: `20261119195750_countflow_import_batch_sku_lookup_index_v1`. The matching Git source filename is `20261119195630_countflow_import_batch_sku_lookup_index_v1.sql`; timestamp mapping is documented as drift, not an instruction to reapply.
 
 - Continuous camera scanning (detection throttled to 200 ms), location barcode selection, repeated same-product scan quantity increment, and a save-before-switch safeguard.
 - Import pipeline uses 1,000-row staging chunks and detailed row outcomes; location reads/import mapping are paginated.
@@ -72,7 +72,7 @@ There are currently zero CountFlow members and zero CountFlow projects. No exist
 
 - Playwright non-destructive smoke tests are prepared under `tests/e2e/` but were not run: no permanent supervisor/counter credentials or confirmed deployed app origin were available.
 - The large export Edge Function is deployed and source-matched, but a real authenticated XLSX/CSV export has not yet been exercised end-to-end.
-- 90,000-row import/export, camera-device compatibility matrix, offline queue recovery after browser termination, WebSocket Broadcast delivery under real concurrent clients, and 30–300 user load tests remain unverified.
+- The 90,000-row import rollback test was independently re-run on 2026-11-19 and passed; the 90,000-row export, camera-device compatibility matrix, offline queue recovery after browser termination, WebSocket Broadcast delivery under real concurrent clients, and 30–300 user load tests remain unverified.
 - Global Supabase security advisor still reports 65 ERROR and 15 WARN on legacy objects; none are CountFlow findings. Performance advisor's single WARN concerns duplicate indexes on `public.erp_operation_registry`, outside CountFlow.
 - Do not modify or delete legacy ERP tables/functions as part of CountFlow work. Do not create persistent accounts without a confirmed roster. Do not run any test that writes to ERP inventory, treasury, or accounting.
 
@@ -84,3 +84,37 @@ There are currently zero CountFlow members and zero CountFlow projects. No exist
 4. Run a dedicated, reversible CountFlow-only import test with representative CSV/XLSX and then a 90k-row load test in an isolated dataset.
 5. Exercise one real authenticated server export and verify workbook sheets, signed URL, SHA-256, and export history.
 6. Run concurrent Broadcast/load tests before making any scale-readiness claim.
+
+
+## 8. LVE-2026-11-19-734 — Current verified continuation
+
+**Operational source HEAD:** main / 3e963eaddb286d6e805e9c8028075df6b20387f5  
+**CountFlow path delta:** 24 commits after the previous local state pin; 8 CountFlow files changed.  
+**Live Supabase ledger:** 53 CountFlow migrations; 14 tracked SQL artifacts; 39 applied migrations have no standalone SQL source in the current Git folder. The two recent location/heatmap migrations 20261119195107 and 20261119195202 are absent from Git. The 19195630 source file maps to live ledger version 19195750. See Report734.
+
+### Reverified tests (rollback-only)
+- 90,000-row import: PASS; 90,000 submitted/staged/accepted/products, 90 chunks, one transaction ending in ROLLBACK.
+- Location hierarchy/heatmap: PASS; cycle guard passed, 2 count events, path WH / A-01, 1 counted position, 100% coverage, refresh stable; transaction ended in ROLLBACK.
+- Reconciliation after both runs: every one of the 21 count_* tables had exactly 0 rows; Auth remained 1,868; no QA identities remained.
+
+### Newly confirmed P1/P2 gaps — OPEN
+1. Critical state tables still allow authenticated supervisor direct DML that bypasses their stronger RPC contracts:
+   - count_reconciliation_runs UPDATE has a supervisor policy and no audit or state-guard trigger.
+   - count_sessions UPDATE/DELETE has a supervisor policy; no server-side state-transition guard.
+   - count_recount_tasks UPDATE/DELETE can bypass count_review_recount_task; audit exists but no transition guard.
+   - count_import_rows UPDATE/DELETE has no trigger; count_commit_import_batch trusts row_status='staged' and does not fully revalidate the staged row.
+   - count_alerts UPDATE is used directly by the supervisor UI and has no audit trigger or mandatory resolution reason.
+2. Offline queue entries are tied to the currently loaded active/paused session. After approval moves the session to review, Counter no longer loads it and the local queue becomes hidden/non-syncable. The supervisor close gate has no per-device sync acknowledgement.
+3. Supervisor setSession(status) reloads sessions before its automatic export, then reads the mutable global session.id. It can export the wrong session or throw after the close succeeds.
+4. retryQueueBtn clears sync_error on all IndexedDB queue records, not only the current project/session/member.
+5. counting-provision-member may return success with audit_warning after the Auth/password mutation if the audit insert fails.
+6. Counter location loading has a 20,000-row hard stop without an explicit overflow error.
+
+### Operational limits
+- No CountFlow project/member/supervisor account exists.
+- No real staff roster or confirmed app origin was supplied; do not assign any of the 1,868 legacy Auth users.
+- No authenticated Browser E2E, real server export, physical camera test, cross-device Realtime test, or load test was performed.
+- No DDL, persistent DML, ACL/RLS change, Edge deployment, or non-count_* write was performed.
+
+### Next gate
+Prepare and obtain approval for CS-CF-734-A/B: server-authoritative session/reconciliation/recount/import/alert state transitions plus offline queue close-handshake and stable export session ID. Do not apply until the exact change set, rollback, and acceptance tests are approved.
