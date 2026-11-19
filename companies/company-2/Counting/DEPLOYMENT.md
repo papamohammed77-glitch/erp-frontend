@@ -2,7 +2,7 @@
 
 ## نطاق النشر
 
-- مجلد مخرجات Cloudflare Pages: `companies/company-2/Counting`
+- مجلد مخرجات Cloudflare Pages: `companies/company-2/Counting/dist` (قائمة ملفات مسموح بها فقط)
 - صفحة الجذر: `index.html` وتحوّل إلى `countflow-admin.html`.
 - النظام الأم: `/countflow-admin.html`
 - تطبيق المندوب: `/countflow.html`
@@ -13,11 +13,13 @@
 
 1. أنشئ مشروع Pages جديداً باسم CountFlow في حساب Cloudflare، ولا تربطه بمشروع Pages الخاص بـRAWAEA.
 2. اربط مستودع `papamohammed77-glitch/erp-frontend` والفرع `main`.
-3. اختر إعداداً بلا build command (اتركه فارغاً) ما لم يضف المشروع لاحقاً build pipeline مستقلاً.
-4. عيّن Build output directory إلى `companies/company-2/Counting`.
+3. Build command: `bash companies/company-2/Counting/scripts/build-pages.sh`.
+4. عيّن Build output directory إلى `companies/company-2/Counting/dist`.
 5. لا تستخدم `companies/company-1` ولا `rawaea-erp.pages.dev` كجذر أو alias أو redirect.
 6. اختبر صفحات الإدارة والمشرف والمندوب على عنوان Pages المؤقت قبل ربط دومين مخصص.
 7. أضف دومين CountFlow المخصص بعد أن يحدده مالك المشروع؛ لا توجد قيمة دومين مؤكدة في هذا المستند، ولا يجوز تخمينها.
+
+يُنشئ السكربت `dist` من قائمة سماح تضم صفحات HTML الأربعة وملف `_headers` فقط. لا ينسخ `database/` أو `functions/` أو `tests/` أو ملفات Markdown أو SQL أو TypeScript إلى المخرجات العامة.
 
 ## حدود النشر الحالية
 
