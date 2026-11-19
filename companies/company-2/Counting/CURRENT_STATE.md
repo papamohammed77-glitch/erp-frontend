@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-19-CountFlow-13Sheet-Export-v4`  
+**Last Verified Event:** `LVE-2026-11-19-CountFlow-13Sheet-Export-v5`  
 **Date:** 2026-11-19  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -13,9 +13,9 @@
 |---|---|
 | `Counter.html` | `d0367e9581173811cfb884acb31800fbecc1d261` |
 | `Counter-supervisor.html` | `e060cf2dfd6e35d80286ad9872d6001a3ed3b080` |
-| `README.md` | `46ff61362eaf3fe10f978c19759f57267f35f3bd` |
+| `README.md` | `801f7e57ef7a2713d523eaf6857802280d20b3e5` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
-| `functions/counting-export-session/index.ts` | `170336d3bcff9ee23ee97097d56737d60a4ac003` |
+| `functions/counting-export-session/index.ts` | `63c3e641160164301e89027dcfb67d5d0dba8ea1` |
 
 ## 2. Verified Supabase structure
 
@@ -34,7 +34,7 @@
 | Function | Version | JWT | State |
 |---|---:|---|---|
 | `counting-provision-member` | 3 | Required | ACTIVE |
-| `counting-export-session` | 4 | Required | ACTIVE |
+| `counting-export-session` | 5 | Required | ACTIVE |
 
 The export function verifies the authenticated supervisor membership, creates a 13-sheet XLSX or detailed CSV, stores the artifact in the private `counting-exports` bucket, and records SHA-256, size, row count, and a signed URL. All UI exports now use this server pipeline; it also includes import rejection details, evidence image links, device/presence, and session audit history. Failed completion removes orphaned Storage objects.
 
