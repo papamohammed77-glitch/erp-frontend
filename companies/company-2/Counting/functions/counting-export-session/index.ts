@@ -30,6 +30,7 @@ async function fetchAll(
   columns: string,
   filters: Array<[string, string, unknown]>,
   maxRows: number,
+  orderColumn = "id",
 ) {
   const rows: any[] = [];
   for (let offset = 0; offset < maxRows; offset += PAGE_SIZE) {
@@ -37,8 +38,9 @@ async function fetchAll(
     for (const [column, operator, value] of filters) {
       if (operator === "eq") query = query.eq(column, value);
       else if (operator === "in") query = query.in(column, value);
+      else if (operator === "filter_eq") query = query.filter(column, "eq", value);
     }
-    query = query.order("id", { ascending: true }).range(offset, offset + PAGE_SIZE - 1);
+    query = query.order(orderColumn, { ascending: true }).range(offset, offset + PAGE_SIZE - 1);
     const { data, error } = await query;
     if (error) throw new Error(`FETCH_${table}: ${error.message}`);
     const page = data || [];
@@ -50,6 +52,7 @@ async function fetchAll(
     for (const [column, operator, value] of filters) {
       if (operator === "eq") countQuery = countQuery.eq(column, value);
       else if (operator === "in") countQuery = countQuery.in(column, value);
+      else if (operator === "filter_eq") countQuery = countQuery.filter(column, "eq", value);
     }
     const { count, error } = await countQuery;
     if (!error && count > maxRows) throw new Error(`EXPORT_LIMIT_${table}:${maxRows}`);
@@ -161,12 +164,57 @@ Deno.serve(async (req: Request) => {
           "id,run_id,product_id,location_id,product_sku,product_name,location_path,unit,expected_quantity,counted_quantity,variance_quantity,variance_percent,counted_events,counter_count,result_status,computed_at",
           [["run_id","eq",latestRun.id]], MAX_LINES)
       : [];
-    const combinedRows = entries.length + lines.length;
-    if (combinedRows > 200000) throw new Error("EXPORT_COMBINED_ROW_LIMIT:200000");
+
+    const importBatchIds = imports.map((b:any) => b.id);
+    const [importErrors, images, presence, devices, auditByDetails, auditBySession] = await Promise.all([
+      importBatchIds.length
+        ? fetchAll(admin, "count_import_rows",
+            "id,batch_id,row_number,raw_row,sku,barcode,product_name,location_code,row_status,error_codes,error_detail,processed_at",
+            [["batch_id","in",importBatchIds],["row_status","eq","rejected"]], 100000)
+        : Promise.resolve([]),
+      fetchAll(admin, "count_entry_images",
+        "id,project_id,entry_id,storage_path,mime_type,size_bytes,caption,uploaded_by,created_at",
+        [["project_id","eq",session.project_id]], 50000),
+      fetchAll(admin, "count_presence",
+        "project_id,session_id,member_id,device_id,presence_state,current_location_id,started_at,last_seen_at",
+        [["session_id","eq",sessionId]], 10000, "last_seen_at"),
+      fetchAll(admin, "count_devices",
+        "id,project_id,member_id,device_id,device_label,platform,app_version,status,first_seen_at,last_seen_at,revoked_at",
+        [["project_id","eq",session.project_id]], 10000),
+      fetchAll(admin, "count_audit_log",
+        "id,project_id,actor_id,action,entity_type,entity_id,details,created_at",
+        [["project_id","eq",session.project_id],["details->>session_id","filter_eq",sessionId]], 100000),
+      fetchAll(admin, "count_audit_log",
+        "id,project_id,actor_id,action,entity_type,entity_id,details,created_at",
+        [["project_id","eq",session.project_id],["entity_id","eq",sessionId]], 1000),
+    ]);
+    const auditMap = new Map();
+    for (const row of [...auditByDetails,...auditBySession]) auditMap.set(row.id,row);
+    const auditRows = [...auditMap.values()];
+    const entryIds = new Set(entries.map((e:any)=>e.id));
+    const sessionImages = images.filter((img:any)=>entryIds.has(img.entry_id));
+    const sessionDeviceIds = new Set([
+      ...presence.map((p:any)=>p.device_id),
+      ...entries.map((e:any)=>e.device_id).filter(Boolean),
+    ]);
+    const sessionDevices = devices.filter((d:any)=>sessionDeviceIds.has(d.device_id));
+    const combinedRows = entries.length + lines.length + importErrors.length + sessionImages.length;
+    if (combinedRows > 250000) throw new Error("EXPORT_COMBINED_ROW_LIMIT:250000");
 
     const productMap = new Map(products.map((p:any) => [p.id,p]));
     const locationMap = new Map(locations.map((l:any) => [l.id,l]));
     const memberMap = new Map(members.map((m:any) => [m.id,m]));
+    const memberByUserId = new Map(members.map((m:any) => [m.user_id,m]));
+    const importBatchMap = new Map(imports.map((b:any) => [b.id,b]));
+    const entryMap = new Map(entries.map((e:any) => [e.id,e]));
+    const deviceMap = new Map(sessionDevices.map((d:any) => [d.device_id,d]));
+    const evidenceSignedMap = new Map();
+    const evidencePaths = sessionImages.map((img:any)=>img.storage_path).filter(Boolean);
+    for(let i=0;i<evidencePaths.length;i+=500){
+      const chunk=evidencePaths.slice(i,i+500);
+      const {data:signedRows}=await admin.storage.from("counting-evidence").createSignedUrls(chunk,7*24*60*60);
+      for(const signed of (signedRows||[])) if(signed.path&&signed.signedUrl) evidenceSignedMap.set(signed.path,signed.signedUrl);
+    }
     const memberAgg = new Map();
     const locationAgg = new Map();
     const quantityByUnit: Record<string,number> = {};
@@ -223,13 +271,38 @@ Deno.serve(async (req: Request) => {
     const importRows = imports.map((b:any) => [
       b.created_at,b.completed_at,b.source_name,b.source_format,b.status,b.row_count,b.accepted_count,b.rejected_count,JSON.stringify(b.error_report||{}),
     ]);
+    const importErrorRows = importErrors.map((r:any) => {
+      const batch:any=importBatchMap.get(r.batch_id)||{};
+      return [batch.source_name||"",r.row_number,r.sku,r.barcode,r.product_name,r.location_code,
+        r.error_codes?.join("|")||"",JSON.stringify(r.error_detail||{}),JSON.stringify(r.raw_row||{})];
+    });
+    const evidenceRows = sessionImages.map((img:any) => {
+      const e:any=entryMap.get(img.entry_id)||{};
+      const p:any=productMap.get(e.product_id)||{};
+      const l:any=locationMap.get(e.location_id)||{};
+      const m:any=memberMap.get(e.member_id)||{};
+      return [img.created_at,p.sku||"",p.name||"",l.code||"",l.name||"",m.display_name||"",
+        img.caption||"",img.mime_type||"",img.size_bytes||0,img.storage_path,evidenceSignedMap.get(img.storage_path)||""];
+    });
+    const presenceRows = presence.map((p:any) => {
+      const m:any=memberMap.get(p.member_id)||{};
+      const l:any=locationMap.get(p.current_location_id)||{};
+      const d:any=deviceMap.get(p.device_id)||{};
+      return [p.last_seen_at,m.display_name||"",p.presence_state,d.device_label||"",d.platform||"",
+        d.app_version||"",d.status||"",l.code||"",l.name||"",p.device_id];
+    });
+    const auditExportRows = auditRows.map((a:any) => {
+      const actor:any=memberByUserId.get(a.actor_id)||{};
+      return [a.created_at,actor.display_name||actor.username||a.actor_id,a.action,a.entity_type,a.entity_id,JSON.stringify(a.details||{})];
+    });
 
     const summaryRows = [
       ["اسم الجلسة",session.name],["حالة الجلسة",session.status],["تاريخ البدء",session.started_at||""],
       ["تاريخ الإغلاق",session.closed_at||""],["عدد الأصناف في المشروع",products.length],
       ["عدد المواقع",locations.length],["عدد المندوبين",members.length],["عمليات العد",entries.length],
       ["عدد أسطر التسوية الأخيرة",lines.length],["التنبيه المفتوح",alerts.filter((a:any)=>a.status==="open").length],
-      ["مهام إعادة العد",recounts.length],["آخر رقم تسوية",latestRun?.run_number||""],
+      ["مهام إعادة العد",recounts.length],["أخطاء الاستيراد",importErrors.length],["أدلة الصور",sessionImages.length],
+      ["الأجهزة والحضور",presence.length],["سجلات التدقيق",auditRows.length],["آخر رقم تسوية",latestRun?.run_number||""],
       ["حالة آخر تسوية",latestRun?.status||""],["الكميات بوحدات الأساس",JSON.stringify(quantityByUnit)],
     ];
 
@@ -253,6 +326,10 @@ Deno.serve(async (req: Request) => {
       addSheet(workbook,"التنبيهات",["التاريخ","النوع","الخطورة","الحالة","العنوان","التفاصيل","الإقرار","المعالجة"],alertRows);
       addSheet(workbook,"إعادة العد",["الإنشاء","الحالة","السبب","SKU","الصنف","كود الموقع","الموقع","المندوب","العد الأول","إعادة العد","فرق %","الإسناد","البدء","الإكمال","المراجعة","ملاحظات"],recountRows);
       addSheet(workbook,"دفعات الاستيراد",["الإنشاء","الإكمال","الملف","الصيغة","الحالة","صفوف","مقبول","مرفوض","تقرير الأخطاء"],importRows);
+      addSheet(workbook,"أخطاء الاستيراد",["الملف","رقم الصف","SKU","الباركود","الصنف","كود الموقع","رموز الرفض","تفاصيل الخطأ","الصف الأصلي"],importErrorRows);
+      addSheet(workbook,"أدلة الصور",["التاريخ","SKU","الصنف","كود الموقع","الموقع","المندوب","الوصف","نوع الملف","الحجم بالبايت","مسار التخزين","رابط مؤقت"],evidenceRows);
+      addSheet(workbook,"الأجهزة والحضور",["آخر ظهور","المندوب","حالة الحضور","الجهاز","المنصة","إصدار التطبيق","حالة الجهاز","كود الموقع","الموقع","معرف الجهاز"],presenceRows);
+      addSheet(workbook,"سجل التدقيق",["التاريخ","الفاعل","الإجراء","نوع الكيان","معرف الكيان","التفاصيل"],auditExportRows);
       const out = XLSX.write(workbook,{bookType:"xlsx",type:"array",compression:true});
       bytes = out instanceof Uint8Array ? out : new Uint8Array(out);
       contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -273,7 +350,7 @@ Deno.serve(async (req: Request) => {
       sha256,completed_at:new Date().toISOString(),expires_at:expiresAt,
       metadata:{engine:"counting-export-session-v1",format,entry_rows:entries.length,
         reconciliation_rows:lines.length,products:products.length,locations:locations.length,
-        alerts:alerts.length,recounts:recounts.length,imports:imports.length,sheets:format==="xlsx"?9:1},
+        alerts:alerts.length,recounts:recounts.length,imports:imports.length,sheets:format==="xlsx"?13:1},
     }).eq("id",exportId);
     if (updateError) throw new Error("EXPORT_RECORD_UPDATE_FAILED: "+updateError.message);
 
