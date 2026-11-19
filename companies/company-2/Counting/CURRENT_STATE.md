@@ -118,3 +118,39 @@ There are currently zero CountFlow members and zero CountFlow projects. No exist
 
 ### Next gate
 Prepare and obtain approval for CS-CF-734-A/B: server-authoritative session/reconciliation/recount/import/alert state transitions plus offline queue close-handshake and stable export session ID. Do not apply until the exact change set, rollback, and acceptance tests are approved.
+
+
+---
+
+# LVE-2026-11-19-735 — CountFlow security containment checkpoint
+**Report:** https://github.com/papamohammed77-glitch/rawaie-erp-New/blob/main/doc/Draft/Reprots/Report735_DAILY_CTO_SECURITY_BUYER_COUNTFLOW_20261119.md
+
+## Current live state
+- Project rawaea-staging ref hfzznsiprnwkpayskzhu, ACTIVE_HEALTHY.
+- CountFlow: 21 count_* tables, 70 policies, 72 validated FKs; all 21 RLS enabled; no anon grants; all CountFlow tables empty; count_projects=0; count_members=0.
+- Auth users 1,868; no CountFlow memberships or supervisor bootstrap identity confirmed.
+- Two CountFlow Edge Functions remain JWT-required and source-matched.
+- 2,027 Realtime warning attempts; realtime.messages partitioned parent has no child partitions.
+
+## New P0 security blocker
+The same Supabase project contains legacy ERP objects:
+- 65 public tables outside CountFlow have RLS disabled.
+- 56 legacy tables have anon DML grants.
+- public.users has 1,871 rows, includes password_hash/permissions/role/auth_id columns, RLS disabled, and anon SELECT/INSERT/UPDATE/DELETE/TRUNCATE.
+- role_permissions and categories also have anon CRUD.
+- post_inventory_adjustment_atomic, receive_purchase_atomic, save_sales_invoice_atomic are SECURITY DEFINER and executable by anon; their actor lookup trusts p_user_email rather than binding it to auth.uid().
+No values from password_hash or personal records were read; no RPC was called; no exploit was performed.
+
+**Decision:** CountFlow is separate from SMART ERP by project ref, but rawaea-staging is not cleanly isolated from legacy ERP. Do not deploy CountFlow, provision users, or run write tests until an owner-approved containment design is implemented. Do not modify legacy objects without explicit approval.
+
+## Other P1s retained from LVE734
+- Direct authenticated DML on count_sessions, count_reconciliation_runs, count_recount_tasks, count_import_rows, count_alerts, count_import_batches bypasses stronger RPC/state guards.
+- count_generate_recount_tasks accepts approved runs although count_reconcile_session rejects a new run when an approved run exists.
+- Counter queue becomes hidden after session enters review/completed; retryQueueBtn clears sync_error globally.
+- Supervisor setSession reloads sessions before exporting, so global session can point elsewhere/null.
+- Broadcast sends are failing at realtime.messages partition layer; no child partitions; heatmap polling alone does not refresh all dashboard panels.
+- No Service Worker/manifest in Counter or Supervisor; IndexedDB queue does not prove offline boot/recovery.
+- 46 of 60 CountFlow/Counting migration ledger entries do not have independent SQL artifacts in the migration directory/archive is not replayable.
+
+## No execution
+No code, schema, ACL, RLS, account, deployment, or business-data changes were made. No new tests were run. Readiness remains BLOCKED for operation; read-only audit/documentation only.
