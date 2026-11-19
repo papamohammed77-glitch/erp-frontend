@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-19-CountFlow-13Sheet-Export-v5`  
+**Last Verified Event:** `LVE-2026-11-19-CountFlow-13Sheet-Export-Audit-v6`  
 **Date:** 2026-11-19  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -13,9 +13,9 @@
 |---|---|
 | `Counter.html` | `d0367e9581173811cfb884acb31800fbecc1d261` |
 | `Counter-supervisor.html` | `e060cf2dfd6e35d80286ad9872d6001a3ed3b080` |
-| `README.md` | `801f7e57ef7a2713d523eaf6857802280d20b3e5` |
+| `README.md` | `7bece136af6555d9173927b6368cf37127f95a2a` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
-| `functions/counting-export-session/index.ts` | `63c3e641160164301e89027dcfb67d5d0dba8ea1` |
+| `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
 
 ## 2. Verified Supabase structure
 
@@ -25,6 +25,7 @@
 - Zero grants to `anon`; zero authenticated TRUNCATE/TRIGGER/REFERENCES grants.
 - `count_entries` client grants are SELECT and INSERT only (append-only).
 - `count_assignments` has one `NULLS NOT DISTINCT` unique scope index, enabling atomic upsert for both global and location-specific assignments.
+- Administrative audit triggers capture project/member/session/assignment/recount/rule/device/evidence changes; heartbeat-only device/member updates are suppressed. Export completion is explicitly logged with the authenticated supervisor and file integrity metadata.
 - Expected balances must use the product's base unit and are locked after the first count or reconciliation.
 - Reconciliation runs store `entry_count_snapshot`; approval checks the latest run, unchanged entry count, zero uncounted positions, no open recount tasks, and no unresolved critical alerts. Approval moves the session to `review` and freezes further count inserts.
 - CountFlow private Broadcast authorization is scoped by project/session/member topic; live broadcast triggers are attached to operational tables.
@@ -34,13 +35,13 @@
 | Function | Version | JWT | State |
 |---|---:|---|---|
 | `counting-provision-member` | 3 | Required | ACTIVE |
-| `counting-export-session` | 5 | Required | ACTIVE |
+| `counting-export-session` | 6 | Required | ACTIVE |
 
-The export function verifies the authenticated supervisor membership, creates a 13-sheet XLSX or detailed CSV, stores the artifact in the private `counting-exports` bucket, and records SHA-256, size, row count, and a signed URL. All UI exports now use this server pipeline; it also includes import rejection details, evidence image links, device/presence, and session audit history. Failed completion removes orphaned Storage objects.
+The export function verifies the authenticated supervisor membership, creates a 13-sheet XLSX or detailed CSV, stores the artifact in the private `counting-exports` bucket, and records SHA-256, size, row count, and a signed URL. All UI exports now use this server pipeline; it also includes import rejection details, evidence image links, device/presence, and session audit history. Successful export is itself written to the audit log; failed completion removes orphaned Storage objects.
 
 ## 4. Completed behavior and regression tests
 
-Latest applied migration: `20261119193620_countflow_expected_balance_snapshot_guard_v1`.
+Latest applied migration: `20261119194738_countflow_audit_skip_service_member_provision_v1`.
 
 - Continuous camera scanning (detection throttled to 200 ms), location barcode selection, repeated same-product scan quantity increment, and a save-before-switch safeguard.
 - Import pipeline uses 1,000-row staging chunks and detailed row outcomes; location reads/import mapping are paginated.
@@ -50,13 +51,14 @@ Latest applied migration: `20261119193620_countflow_expected_balance_snapshot_gu
 - All XLSX/CSV exports use the server-side pipeline; the browser no longer builds large workbooks. The function has configured row limits (150k per major dataset, 250k combined) that have not yet been load-tested.
 - Supervisor logout control; assignment upsert is atomic and duplicate-safe.
 
-Executed SQL regression suites (all rollback-only; no persistent test data):
+Executed seven SQL regression suites (all rollback-only; no persistent test data):
 1. `tests/countflow_core_integration_rollback.sql`
 2. `tests/countflow_unit_recount_rollback.sql`
 3. `tests/countflow_anomaly_rollback.sql`
 4. `tests/countflow_approval_finality_rollback.sql`
 5. `tests/countflow_assignment_upsert_rollback.sql`
 6. `tests/countflow_expected_balance_snapshot_rollback.sql`
+7. `tests/countflow_admin_audit_rollback.sql`
 
 Final residue check: zero CountFlow projects, members, sessions, products, entries, exports, and zero temporary test users.
 
