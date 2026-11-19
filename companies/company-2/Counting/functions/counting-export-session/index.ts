@@ -358,6 +358,12 @@ Deno.serve(async (req: Request) => {
 
     const { data: signed, error: signedError } = await admin.storage.from("counting-exports").createSignedUrl(storagePath,7*24*60*60);
     if (signedError || !signed?.signedUrl) throw new Error("EXPORT_SIGNED_URL_FAILED: "+(signedError?.message||"no url"));
+    const { error: auditError } = await admin.from("count_audit_log").insert({
+      project_id:session.project_id,actor_id:user.id,action:"export.ready",entity_type:"count_export",entity_id:exportId,
+      details:{session_id:session.id,format,row_count:entries.length,file_size_bytes:bytes.byteLength,sha256,
+        import_error_rows:importErrors.length,evidence_images:sessionImages.length,presence_rows:presence.length,audit_rows:auditRows.length}
+    });
+    if (auditError) throw new Error("EXPORT_AUDIT_WRITE_FAILED: "+auditError.message);
 
     return json({export_id:exportId,status:"ready",file_name:fileName,signed_url:signed.signedUrl,
       row_count:entries.length,file_size_bytes:bytes.byteLength,sha256,expires_at:expiresAt});
