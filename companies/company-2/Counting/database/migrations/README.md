@@ -87,3 +87,16 @@ The missing entries are preserved below exactly as reported by the live ledger; 
 - Rollback tests must begin with BEGIN and finish with ROLLBACK; prove no residual CountFlow rows or Auth identities.
 - CountFlow SQL must not write to ERP inventory, sales, treasury, customer/supplier ledgers, or accounting tables.
 - No legacy ERP table/function/policy in rawaea-staging may be changed under this CountFlow scope.
+
+
+## 2026-11-19 — live migration-ledger recovery
+
+A read-only reconciliation against `supabase_migrations.schema_migrations` in `rawaea-staging` recovered the exact recorded SQL for all **60** migrations belonging to the CountFlow/Counting system: 7 earlier `counting_*` foundation rows plus 53 `countflow_*` rows.
+
+- The current folder still contains 14 standalone SQL files. There are 46 applied ledger rows without a one-to-one standalone file (39 within the `countflow_*` set plus the 7 foundation rows).
+- The exact applied statements are preserved in [COUNTFLOW_APPLIED_MIGRATION_LEDGER_ARCHIVE_20261119.md](../COUNTFLOW_APPLIED_MIGRATION_LEDGER_ARCHIVE_20261119.md).
+- **The archive is evidence only. Do not apply or replay it.** The ledger has no rollback SQL recorded for these 60 rows.
+- A whitespace/comment-insensitive SQL-token comparison found 4 of the 14 tracked files equivalent to their matching ledger statement; the other 10 require semantic reconciliation before anyone treats the tracked file as the exact applied source.
+- `20261119195630_countflow_import_batch_sku_lookup_index_v1.sql` maps to live ledger version `20261119195750`; this is timestamp drift. `20261119192509_countflow_approval_requires_all_positions_counted.sql` is a consolidated source for incremental finality changes, not a one-to-one copy of a single ledger row.
+
+Do not replay, rename, or rewrite any migration based only on its filename. Use the live schema and the archived applied statements as separate evidence sources.
