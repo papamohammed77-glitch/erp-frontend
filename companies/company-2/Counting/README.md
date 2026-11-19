@@ -207,3 +207,54 @@
 - طابور Offline يحتاج handshake قبل اعتماد/إغلاق الجلسة؛ بعد انتقال الجلسة إلى review/completed قد تختفي العمليات المحلية من الواجهة ولا يمكن إرسالها إلى الخادم.
 - التصدير التلقائي بعد إغلاق الجلسة يعتمد على متغير session عام يُعاد تعيينه قبل الاستعلام والتصدير؛ يلزم التقاط session_id قبل إعادة التحميل.
 - لم يُنفذ أي تعديل DDL/ACL/RLS أو تعديل على التطبيقات التشغيلية في هذا التدقيق. جميع الفجوات أعلاه OPEN حتى اعتماد Change Set واختباره.
+
+
+## 2026-11-19 — live CTO re-verification addendum
+
+The following findings supersede any earlier wording that could be read as proof of live Broadcast delivery or complete workflow DML isolation.
+
+### Realtime delivery is currently failing at the database send layer
+
+- The live `realtime.messages` partitioned parent had **zero child partitions** at the time of inspection.
+- PostgreSQL logs contained **1,992** `WarnSendingBroadcastMessage` warnings between `2026-11-19 19:01` and `20:26 UTC`; the logged context included `public.countflow_broadcast_changes`.
+- The Supabase `realtime.send` function catches send exceptions and emits a warning, so the originating business transaction can succeed while its Broadcast message is not persisted for delivery.
+- The 12 CountFlow Broadcast trigger tables are therefore not proof of event delivery. A WebSocket channel reaching `SUBSCRIBED` is also not proof that a database event arrived.
+- The only periodic supervisor refresh found in the current UI is the 10-second heatmap refresh. Counter's 12-second queue sync and 30-second presence heartbeat do not refresh all supervisor views. Alerts, sessions, assignments, device changes, and evidence views have no equivalent broad polling fallback.
+- Cross-user/cross-device delivery, reconnect, duplicate/out-of-order handling, and latency remain **UNVERIFIED**; the observed database send path is **FAILED** for the logged window. Do not describe CountFlow as live-synchronized until the platform partition issue is resolved and an authenticated event-delivery test passes.
+
+### Workflow-table direct-DML boundary is broader than the previous update/delete finding
+
+The live `authenticated` role has table-level `INSERT, UPDATE, DELETE` grants on the six workflow tables below, and the RLS policies generally check supervisor/project scope rather than enforcing a legal state transition:
+
+- `count_sessions`: direct INSERT/UPDATE/DELETE.
+- `count_reconciliation_runs`: direct INSERT/UPDATE.
+- `count_recount_tasks`: direct INSERT/UPDATE/DELETE.
+- `count_import_batches`: direct INSERT/UPDATE/DELETE.
+- `count_import_rows`: direct INSERT/UPDATE/DELETE; no audit or state-guard trigger was present.
+- `count_alerts`: direct INSERT/UPDATE; no audit or state-guard trigger was present.
+
+This permits a supervisor-scoped client to bypass the corresponding validated RPC paths. Examples include inserting an already-approved reconciliation run, marking a recount task reviewed without the review RPC, inserting a staged import row without the staging validator, and dismissing a critical alert without a server-enforced reason. The import commit routine trusts staged row state, so the import-row boundary is especially sensitive. These are **OPEN P1** findings; no exploit or persistent DML was executed.
+
+### Approval finality and post-approval recount are inconsistent
+
+- `count_generate_recount_tasks` accepts a reconciliation run in either `computed` or `approved` status.
+- The supervisor UI's generate-recount action does not block an approved run.
+- `count_reconcile_session` rejects a new reconciliation when an approved run already exists.
+
+A recount task can therefore be created after approval without a supported path to incorporate it into a new approved reconciliation. Treat approval as final until the owner explicitly chooses a superseding-approval model. This is **OPEN P1**.
+
+### Offline close and export correctness
+
+- Counter's IndexedDB queue view and sync routine are scoped to the current session. Once the supervisor changes the session to `review` or `completed`, the Counter session selector may stop selecting that session; queued events can become invisible and unsyncable.
+- No server-side per-device close barrier or durable queue acknowledgement exists in the current schema. A session can be marked complete without proving that every registered device has flushed its local queue. **OPEN P1**.
+- The supervisor's `setSession` path reloads sessions before exporting, while the export helper reads a mutable global `session.id`. The export can target a different session or fail after the selected session changes. **OPEN P2**.
+
+### Provisioning audit and test status
+
+- `counting-provision-member` remains deployed and source-matched, but its current behavior can return success with `audit_warning` after the Auth/member mutation when the audit insert fails. **OPEN P2**; do not treat a successful response as proof of a complete audit record.
+- `tests/rollback-smoke.sql` was executed in this review and passed. It ended with `ROLLBACK`; all 21 CountFlow tables remained at zero rows and Auth user count remained 1,868. No committed QA data was left.
+- No human CountFlow supervisor, member roster, authenticated browser E2E, real device offline journey, or deployed app origin has been verified. Do not assign roles to the 1,868 legacy Auth users.
+
+### Migration source archive
+
+The exact recorded SQL for all 60 `counting_*` and `countflow_*` migration-ledger rows is archived at [COUNTFLOW_APPLIED_MIGRATION_LEDGER_ARCHIVE_20261119.md](./database/COUNTFLOW_APPLIED_MIGRATION_LEDGER_ARCHIVE_20261119.md). It is an evidence archive only and must not be applied or replayed.
