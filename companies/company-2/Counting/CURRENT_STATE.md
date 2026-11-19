@@ -14,7 +14,7 @@
 | `countflow-admin.html` | `0949a6cf92a7693ff3943ad0b67a312091a7746b` |
 | `countflow.html` | `93ad77a682585b8ec04cdcf224e2ac81b28cb180` |
 | `Countflow-supervisor.html` | `11101374a8f27d78d042f750b162dba9303174b6` |
-| `README.md` | `2f999fe12059612bbddc79fd5c7dcb5f34dfcbfc` |
+| `README.md` | `0f747264c664fd9612c7bf810da23e3cd336ba6c` |
 | `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
 | `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
 
@@ -193,3 +193,6 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 - Repository rename and initial master UI: **CONFIRMED**.
 - Existing CountFlow transactional core rollback suites: **PASS**.
 - Full operational readiness and production publication: **BLOCKED pending browser E2E, first-owner/Auth configuration verification, remediation of the CountFlow-specific P1 workflow gaps already recorded above, and independent domain setup**.
+
+- Added `index.html` as the CountFlow domain root entry (redirects to the master dashboard), `_headers` with baseline browser security headers, and `DEPLOYMENT.md` with the separate Cloudflare Pages configuration. README links the deployment guide.
+- Current Pages output directory is documented as `companies/company-2/Counting`; no Cloudflare project or DNS was changed.
