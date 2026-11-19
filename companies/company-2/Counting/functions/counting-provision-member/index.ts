@@ -58,18 +58,18 @@ Deno.serve(async (req) => {
       email, password, email_confirm: true, user_metadata: { counting_display_name: displayName }
     });
     if (createError || !created.user) return reply({ error: createError?.message || "USER_CREATE_FAILED" }, 400);
-    const { error: insertError } = await admin.from("count_members").insert({
+    const { data: memberRecord, error: insertError } = await admin.from("count_members").insert({
       project_id: projectId, user_id: created.user.id, display_name: displayName, username, role, status: "active"
-    });
-    if (insertError) {
+    }).select("id").single();
+    if (insertError || !memberRecord) {
       await admin.auth.admin.deleteUser(created.user.id);
-      return reply({ error: insertError.message }, 409);
+      return reply({ error: insertError?.message || "MEMBERSHIP_CREATE_FAILED" }, 409);
     }
     const { error: auditError } = await admin.from("count_audit_log").insert({
       project_id: projectId, actor_id: authData.user.id, action: "member.created",
-      entity_type: "member", entity_id: created.user.id, details: { email, username, role }
+      entity_type: "member", entity_id: memberRecord.id, details: { email, username, role }
     });
-    return reply({ ok: true, user_id: created.user.id, username, audit_warning: auditError?.message || null });
+    return reply({ ok: true, user_id: created.user.id, member_id: memberRecord.id, username, audit_warning: auditError?.message || null });
   } catch (error) {
     return reply({ error: error instanceof Error ? error.message : "INTERNAL_ERROR" }, 500);
   }
