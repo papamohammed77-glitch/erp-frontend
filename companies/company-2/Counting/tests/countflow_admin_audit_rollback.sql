@@ -21,7 +21,7 @@ SELECT count_touch_presence('a5c6e6a1-8c22-4df0-9a01-777777777777','audit-device
 SELECT set_config('request.jwt.claim.sub','a5c6e6a1-8c22-4df0-9a01-111111111111',true);
 SELECT set_config('request.jwt.claims','{"sub":"a5c6e6a1-8c22-4df0-9a01-111111111111","role":"authenticated"}',true);
 UPDATE count_sessions SET status='paused' WHERE id='a5c6e6a1-8c22-4df0-9a01-777777777777';
-UPDATE count_members SET status='suspended' WHERE id='a5c6e6a1-8c22-4df0-9a01-444444444444';
+UPDATE count_members SET status='paused' WHERE id='a5c6e6a1-8c22-4df0-9a01-444444444444';
 DO $$ DECLARE
  v_projects integer; v_members integer; v_sessions integer; v_assignments integer; v_rules integer; v_devices integer;
 BEGIN
