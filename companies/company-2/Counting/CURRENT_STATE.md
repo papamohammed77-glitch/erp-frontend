@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-20-739-CountFlow-Pages-Build-Root-Fix`  
+**Last Verified Event:** `LVE-2026-11-20-741-CountFlow-Core-Offline-PWA-Shell`  
 **Date:** 2026-11-20  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -16,7 +16,7 @@
 | `Countflow-supervisor.html` | `42b65e9aa71d594cdae9800f15739d5222d91918` |
 | `README.md` | `3553a5a7bf04a73f65b9de2ddccf7fb86fdb9e40` |
 | `ARCHITECTURE.md` | `5df149b7544a9b55f808d52f0dd9d8ee42d4c5fb` |
-| `DEPLOYMENT.md` | `917d08a24f47890b51a09a2f54bdcb815e8e1dce` |
+| `DEPLOYMENT.md` | `478fafbf6671e7d0d8b781baf9dc0414c9449bec` |
 | `scripts/build-pages.sh` | `865629e8f1061f403f426f9c712d0ec00fdd9793` |
 | `index.html` | `707a5a0f18674a93cab811be23ea9a13abb4a91b` |
 | `countflow-core.js` | `43395393093ba9bba94959dc1cc71457327a4e5e` |
