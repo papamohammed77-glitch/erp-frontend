@@ -93,7 +93,37 @@ $('commitLocations').onclick=async()=>{
 };
 $('addLocation').onclick=async()=>{const {error}=await sb.from('count_locations').insert({project_id:project.id,location_type:$('locType').value,code:$('locCode').value.trim(),name:$('locName').value.trim(),parent_id:$('locParent').value||null});if(error)toast(error.message);else{toast('تمت إضافة الموقع');$('locCode').value='';$('locName').value='';await loadLocations()}};
 $('createSession').onclick=async()=>{const name=$('sessionName').value.trim();if(!name)return toast('اكتب اسم الجلسة');const {data,error}=await sb.from('count_sessions').insert({project_id:project.id,name,created_by:user.id}).select().single();if(error)toast(error.message);else{session=data;toast('تم إنشاء الجلسة');await loadSessions()}};
-async function setSession(status){if(!session)return toast('لا توجد جلسة');const patch={status};if(status==='active'&&!session.started_at)patch.started_at=new Date().toISOString();if(status==='completed')patch.closed_at=new Date().toISOString();const {error}=await sb.from('count_sessions').update(patch).eq('id',session.id);if(error)toast(error.message);else{toast('تم تحديث حالة الجلسة');await loadSessions();await loadLive()}}
+async function setSession(status){
+ if(!session)return toast('لا توجد جلسة');
+ if(status==='completed'){
+  const {count:expectedCount,error:expectedError}=await sb.from('count_expected_balances').select('id',{count:'exact',head:true}).eq('session_id',session.id);
+  if(expectedError)return toast('تعذر التحقق من الأرصدة الدفترية: '+expectedError.message);
+  if((expectedCount||0)>0){
+   const {data:runs,error:runError}=await sb.from('count_reconciliation_runs').select('id,status').eq('session_id',session.id).order('run_number',{ascending:false}).limit(1);
+   if(runError)return toast('تعذر التحقق من اعتماد التسوية: '+runError.message);
+   if(runs?.[0]?.status!=='approved')return toast('لا يمكن إغلاق الجلسة قبل احتساب التسوية الأخيرة واعتمادها بعد مراجعة الفروقات والتنبيهات وإعادة العد.');
+  }
+  const {count:criticalCount,error:alertError}=await sb.from('count_alerts').select('id',{count:'exact',head:true}).eq('session_id',session.id).eq('severity','critical').in('status',['open','acknowledged']);
+  if(alertError)return toast('تعذر التحقق من التنبيهات الحرجة: '+alertError.message);
+  if((criticalCount||0)>0)return toast('لا يمكن إغلاق الجلسة مع وجود تنبيهات حرجة غير معالجة.');
+  const {data:tasks,error:taskError}=await sb.from('count_recount_tasks').select('status').eq('session_id',session.id);
+  if(taskError)return toast('تعذر التحقق من مهام إعادة العد: '+taskError.message);
+  if((tasks||[]).some(t=>!['reviewed','cancelled'].includes(t.status)))return toast('لا يمكن إغلاق الجلسة قبل مراجعة جميع مهام إعادة العد أو إلغائها.');
+ }
+ const patch={status};
+ if(status==='active'&&!session.started_at)patch.started_at=new Date().toISOString();
+ if(status==='completed')patch.closed_at=new Date().toISOString();
+ const {error}=await sb.from('count_sessions').update(patch).eq('id',session.id);
+ if(error)return toast(error.message);
+ toast('تم تحديث حالة الجلسة');
+ await loadSessions();await loadLive();
+ if(status==='completed'){
+  const {count:entryCount,error:entryError}=await sb.from('count_entries').select('id',{count:'exact',head:true}).eq('session_id',session.id);
+  if(entryError)toast('أُغلقت الجلسة لكن تعذر تحديد حجم التصدير: '+entryError.message);
+  else if((entryCount||0)<=50000)$('exportXlsx').click();
+  else toast('أُغلقت الجلسة. تجاوزت العمليات 50 ألف سجل؛ لا تبدأ تصديراً ضخماً داخل المتصفح حتى يُفعّل التصدير الخادمي.');
+ }
+}
 $('startSession').onclick=()=>setSession('active');$('pauseSession').onclick=()=>setSession('paused');$('closeSession').onclick=()=>{if(confirm('إنهاء جلسة الجرد؟ لا يمكن للمندوبين تسجيل عمليات جديدة بعد الإنهاء.'))setSession('completed')};
 $('refreshLive').onclick=loadLive;
 $('saveRules').onclick=async()=>{const values=[{name:'حد كمية العد',rule_type:'quantity_above',threshold:Number($('ruleQuantity').value),severity:'warning',config:{},is_active:$('ruleQuantityActive').checked},{name:'فرق الجرد النسبي',rule_type:'variance_percent_above',threshold:Number($('ruleVariance').value),severity:'critical',config:{},is_active:$('ruleVarianceActive').checked},{name:'تكرار المسح',rule_type:'repeat_scan_window',threshold:Number($('ruleRepeat').value),severity:'warning',config:{window_minutes:Number($('ruleWindow').value)},is_active:$('ruleRepeatActive').checked}];if(values.some(v=>!Number.isFinite(v.threshold)||v.threshold<=0)||!Number.isInteger(values[2].config.window_minutes)||values[2].config.window_minutes<1||values[2].config.window_minutes>120)return toast('تحقق من حدود التنبيه ونافذة التكرار');const {error}=await sb.from('count_anomaly_rules').upsert(values.map(v=>({...v,project_id:project.id,created_by:user.id})),{onConflict:'project_id,name'});if(error)return toast('تعذر حفظ القواعد: '+error.message);toast('تم حفظ قواعد التنبيه');await loadRules()};
