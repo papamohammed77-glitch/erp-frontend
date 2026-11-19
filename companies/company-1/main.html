@@ -12193,15 +12193,65 @@ var RW_Purchases = (function() {
     var supplier = null, suppliers = RW_STATE.data.suppliers || [];
     for (var i = 0; i < suppliers.length; i++) if (suppliers[i].id === supplierId) { supplier = suppliers[i]; break; }
     if (!supplier) { showToast('المورد غير موجود', 'error'); return; }
-    showLoader('جاري الحفظ...');
+
+    var items = cart.map(function (item) {
+      return {
+        item_code: String(item.code || '').trim(),
+        qty: Number(item.qty),
+        unit_price: Number(item.price),
+        notes: null
+      };
+    });
+    if (!items.length || items.some(function (item) {
+      return !item.item_code || !Number.isFinite(item.qty) || item.qty <= 0 ||
+        !Number.isFinite(item.unit_price) || item.unit_price < 0;
+    })) {
+      showToast('راجع كود الصنف والكمية وسعر الوحدة قبل الحفظ', 'warning');
+      return;
+    }
+
+    var operationId = window.crypto && typeof window.crypto.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : 'parent-po-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    showLoader('جاري حفظ أمر الشراء كمسودة...');
     try {
-      var ses = await supabase.auth.getSession(), token = ses && ses.data && ses.data.session ? ses.data.session.access_token : null;
+      var ses = await supabase.auth.getSession();
+      var token = ses && ses.data && ses.data.session ? ses.data.session.access_token : null;
       if (!token) throw new Error('انتهت الجلسة. يرجى إعادة تسجيل الدخول.');
-      var res = await fetch(SUPABASE_URL + '/functions/v1/save-purchase-order', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ orderHeader: { supplierId: supplier.id, supplierName: supplier.name || supplier.supplier_code || '' }, itemsList: cart }) });
-      var json = await res.json();
-      if (!res.ok || !json || !json.success) throw new Error((json && json.msg) || 'فشل حفظ أمر الشراء');
-      hideLoader(); showToast('تم الحفظ: ' + (json.poID || ''), 'success'); cart = []; renderPOCart();
-    } catch (e) { hideLoader(); showToast(e.message || 'فشل الاتصال', 'error'); }
+
+      var res = await fetch(SUPABASE_URL + '/functions/v1/save-purchase-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+          'Idempotency-Key': operationId
+        },
+        body: JSON.stringify({
+          operation: 'CREATE_PO',
+          operation_id: operationId,
+          payload: {
+            supplier_id: supplier.id,
+            branch_id: null,
+            expected_delivery_date: null,
+            payment_terms: null,
+            notes: null,
+            items: items
+          }
+        })
+      });
+      var json = await res.json().catch(function () { return {}; });
+      if (!res.ok || !json || json.success === false || !json.id) {
+        throw new Error((json && json.msg) || 'فشل حفظ أمر الشراء');
+      }
+
+      hideLoader();
+      showToast('تم إنشاء أمر الشراء كمسودة: ' + (json.code || json.po_code || ''), 'success');
+      cart = [];
+      renderPOCart();
+    } catch (e) {
+      hideLoader();
+      showToast(e.message || 'فشل الاتصال', 'error');
+    }
   }
 
   return { renderOrders: renderOrders, renderPOS: renderPOS, _filterOrders: filterOrders, _openPO: openPO, _openReceive: openReceive, _searchItem: searchItem, _addToCart: addToCart, _updateQty: updateQty, _updatePrice: updatePrice, _removeItem: removeItem, _clearCart: clearCart, _savePO: savePO };
