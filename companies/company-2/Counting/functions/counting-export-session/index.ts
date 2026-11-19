@@ -82,6 +82,7 @@ Deno.serve(async (req: Request) => {
   }
 
   let exportId: string | null = null;
+  let storagePath: string | null = null;
   let admin: any = null;
   try {
     const authorization = req.headers.get("Authorization") || "";
@@ -260,7 +261,7 @@ Deno.serve(async (req: Request) => {
     const digest = await crypto.subtle.digest("SHA-256",bytes);
     const sha256 = toHex(digest);
     const fileName = `CountFlow_${session.id}_${new Date().toISOString().slice(0,10)}.${extension}`;
-    const storagePath = `${session.project_id}/${session.id}/${exportId}-${fileName}`;
+    storagePath = `${session.project_id}/${session.id}/${exportId}-${fileName}`;
     const { error: uploadError } = await admin.storage.from("counting-exports").upload(storagePath,bytes,{
       contentType,upsert:false,cacheControl:"3600",
     });
@@ -283,6 +284,9 @@ Deno.serve(async (req: Request) => {
       row_count:entries.length,file_size_bytes:bytes.byteLength,sha256,expires_at:expiresAt});
   } catch (error) {
     const message = String(error?.message || error);
+    if (storagePath && admin) {
+      await admin.storage.from("counting-exports").remove([storagePath]);
+    }
     if (exportId && admin) {
       await admin.from("count_exports").update({status:"failed",error_message:message,completed_at:new Date().toISOString()}).eq("id",exportId);
     }
