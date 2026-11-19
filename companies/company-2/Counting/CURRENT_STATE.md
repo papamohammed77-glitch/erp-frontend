@@ -11,10 +11,11 @@
 
 | Artifact | Current Git blob SHA |
 |---|---|
-| `countflow-admin.html` | `0949a6cf92a7693ff3943ad0b67a312091a7746b` |
+| `countflow-admin.html` | `4b0b8727b5cdcd1d979cc40db046e175c9133cad` |
 | `countflow.html` | `93ad77a682585b8ec04cdcf224e2ac81b28cb180` |
 | `Countflow-supervisor.html` | `d6911066bdddd59e9a1b364463bcc82c30d2010e` |
-| `README.md` | `0f747264c664fd9612c7bf810da23e3cd336ba6c` |
+| `README.md` | `0e088a1f75ffde9964184d5502004c50717760ec` |
+| `ARCHITECTURE.md` | `c1ec5b9cfa35d1f5f905f961a52acad88dd726c7` |
 | `DEPLOYMENT.md` | `917d08a24f47890b51a09a2f54bdcb815e8e1dce` |
 | `scripts/build-pages.sh` | `f3e068e3bdb12b35cbfe49d78053722ba056ceca` |
 | `index.html` | `35636aa074e00d6557353d376ffc681bc32f3093` |
@@ -241,11 +242,11 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
   - Added Postgres Changes subscriptions for count_sessions and count_members; event messages trigger authoritative re-fetch through RLS. A 30-second foreground reconciliation remains as a fallback.
   - Fixed a project-creation context issue: after creating a new project, the master now selects and loads that exact new project instead of leaving the previous project selected.
 - Added ARCHITECTURE.md documenting tenant boundaries, owner model, RAWAEA reference patterns, offline contract, Realtime contract and verification gates.
-- Updated README with the customer/operation model and global dashboard behavior.
+- Updated README with the customer/operation model and global dashboard behavior (blob 0e088a1f75ffde9964184d5502004c50717760ec).
 
 ### Source hashes
-- countflow-admin.html: cc7df74be5e9190aac2980c86956e131f87f264e
-- ARCHITECTURE.md: committed in 83303f8d8e1f23b1a505eeed39d6c776ede83010
+- countflow-admin.html: 4b0b8727b5cdcd1d979cc40db046e175c9133cad
+- ARCHITECTURE.md: c1ec5b9cfa35d1f5f905f961a52acad88dd726c7
 - Admin follow-up project-selection fix commit: f9fbb0af0c4e6e86fa42379db3318a1f99f2854f
 
 ### Verification
