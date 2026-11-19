@@ -39,6 +39,7 @@
     <button class="nav" data-tab="operations">عمليات الجرد القائمة</button>
     <button class="nav" data-tab="locations">المواقع</button>
     <button class="nav" data-tab="sessions">جلسات الجرد</button>
+    <button class="nav" data-tab="license">إدارة التراخيص</button>
     <button class="nav" data-tab="audit">سجل التدقيق</button>
     <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:12px">
      <div class="field"><label for="projectPicker">جهة الجرد الحالية</label><select id="projectPicker"></select></div>
@@ -114,6 +115,21 @@
      <div class="grid"><div class="stat"><small>عمليات نشطة</small><strong id="kActiveOperations">0</strong></div><div class="stat"><small>عمليات مخططة / متوقفة</small><strong id="kPendingOperations">0</strong></div><div class="stat"><small>عمليات قيد المراجعة</small><strong id="kReviewOperations">0</strong></div><div class="stat"><small>إجمالي العمليات</small><strong id="kAllOperations">0</strong></div></div>
      <div class="panel"><h3>العمليات المفتوحة</h3><p class="hint">كل صف يمثل عملية جرد مستقلة داخل التكليف. يمكن تشغيل تكليفات كارفور وبنده والمستودعات والمصانع بالتوازي، مع فرق وصلاحيات وبيانات منفصلة.</p><div id="globalActiveSessions" class="tablewrap"><div class="empty">جار تحميل العمليات…</div></div></div>
      <div class="panel"><h3>سجل العمليات المنتهية</h3><div id="globalClosedSessions" class="tablewrap"><div class="empty">لا توجد عمليات منتهية.</div></div></div>
+    </section>
+    <section id="tab-license" class="section">
+     <div class="headrow"><h2>إدارة التراخيص والبريد</h2></div>
+     <div class="panel">
+      <h3>هوية مالك CountFlow</h3>
+      <div class="field"><label>بريد حساب المالك المعتمد (ثابت لأغراض التفويض)</label><input value="owner@rawaea.com" type="email" readonly></div>
+      <p class="hint">هذا البريد هو هوية المالك الأمنية بعد تأكيده في Supabase Auth. لا تغيّره من قائمة عناوين التواصل؛ تغيير هوية الدخول إجراء منفصل يتطلب تحققاً من البريد الجديد.</p>
+     </div>
+     <div class="panel">
+      <h3>عناوين البريد المرتبطة بالتراخيص والإشعارات</h3>
+      <p class="hint">أضف أي عدد من عناوين البريد، عنواناً في كل سطر. لا يوجد حد أقصى برمجي لعدد العناوين. تُحفظ هذه القائمة في إعدادات CountFlow ولا تُستخدم لمنح صلاحية دخول أو مالك.</p>
+      <div class="field"><label for="licenseEmails">قائمة عناوين البريد</label><textarea id="licenseEmails" rows="9" style="width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;resize:vertical" placeholder="owner@rawaea.com&#10;accounts@example.com"></textarea></div>
+      <div class="actions"><button id="saveLicenseEmails" class="primary" type="button">حفظ قائمة البريد</button><button id="reloadLicenseEmails" class="soft" type="button">إعادة تحميل</button></div>
+      <div id="licenseEmailStatus" class="hint" style="margin-top:10px"></div>
+     </div>
     </section>
     <section id="tab-audit" class="section">
      <div class="headrow"><h2>سجل التدقيق</h2></div><div class="panel"><div id="auditTable" class="tablewrap"><div class="empty">لا توجد أحداث تدقيق بعد.</div></div></div>
@@ -236,6 +252,32 @@
   if(!state.globalChannel)state.globalPollTimer=setInterval(()=>{if(!document.hidden)loadGlobalOperations().catch(e=>console.warn('[CountFlow Admin] polling refresh failed',e));},30000);
  }
  function renderRecent(){ $('recentSessions').innerHTML=state.sessions.slice(0,6).map(x=>'<div style="padding:9px 0;border-bottom:1px solid var(--line)"><b>'+esc(x.name)+'</b><span style="float:left">'+statusPill(x.status)+'</span><div class="sub muted">'+date(x.created_at)+'</div></div>').join('')||'<div class="empty">لا توجد جلسات بعد.</div>'; }
+ async function loadLicenseSettings(){
+  const status=$('licenseEmailStatus');status.textContent='جار تحميل الإعدادات…';
+  const {data,error}=await db.from('count_platform_settings').select('license_emails,updated_at').eq('id',1).maybeSingle();
+  if(error){status.textContent='تعذر تحميل إعدادات التراخيص: '+error.message;return;}
+  $('licenseEmails').value=(data?.license_emails||['owner@rawaea.com']).join('\\n');
+  status.textContent=data?.updated_at?'آخر تحديث: '+date(data.updated_at):'لم تُحفظ إعدادات بعد.';
+ }
+ async function saveLicenseSettings(){
+  const raw=$('licenseEmails').value.split(/[\\r\\n,;]+/).map(x=>x.trim().toLowerCase()).filter(Boolean);
+  const unique=[...new Set(raw)];
+  const invalid=unique.filter(x=>!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(x));
+  if(invalid.length){$('licenseEmailStatus').textContent='عناوين غير صحيحة: '+invalid.slice(0,8).join('، ');return;}
+  const b=$('saveLicenseEmails');b.disabled=true;
+  try{
+   const {data:existing,error:readError}=await db.from('count_platform_settings').select('id').eq('id',1).maybeSingle();
+   if(readError)throw readError;
+   const payload={id:1,license_emails:unique,updated_by:state.user.id,updated_at:new Date().toISOString()};
+   const result=existing?await db.from('count_platform_settings').update(payload).eq('id',1):await db.from('count_platform_settings').insert(payload);
+   if(result.error)throw result.error;
+   $('licenseEmailStatus').textContent='تم حفظ '+unique.length+' عنوان بريد دون حد أقصى محدد.';
+   notify('تم حفظ إعدادات البريد المرتبطة بالتراخيص.');
+  }catch(e){$('licenseEmailStatus').textContent='تعذر الحفظ: '+(e.message||String(e));}
+  finally{b.disabled=false;}
+ }
+ $('saveLicenseEmails').addEventListener('click',saveLicenseSettings);
+ $('reloadLicenseEmails').addEventListener('click',loadLicenseSettings);
  async function loadAudit(){
   const {data,error}=await db.from('count_audit_log').select('id,actor_id,action,entity_type,entity_id,details,created_at').eq('project_id',state.project.id).order('created_at',{ascending:false}).limit(100);
   if(error){$('auditTable').innerHTML='<div class="empty">تعذر تحميل سجل التدقيق: '+esc(error.message)+'</div>';return;}
@@ -287,7 +329,7 @@
  $('sessionForm').addEventListener('submit',async e=>{e.preventDefault();if(!state.project)return notify('أنشئ مشروعاً أولاً',true);const f=e.currentTarget;setBusy(f,true);try{
   const {error}=await db.from('count_sessions').insert({project_id:state.project.id,name:$('sessionName').value.trim(),status:'planned',created_by:state.user.id});if(error)throw error;notify('تم إنشاء جلسة الجرد بحالة مخططة');f.reset();await loadProjectData();
  }catch(err){fail('تعذر إنشاء الجلسة',err);}finally{setBusy(f,false);}});
- document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>activateTab(b.dataset.tab)));
+ document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>{activateTab(b.dataset.tab);if(b.dataset.tab==='license')loadLicenseSettings();}));
  $('refreshBtn').onclick=async()=>{try{await loadProjects();notify('تم تحديث البيانات من قاعدة CountFlow');}catch(e){fail('تعذر التحديث',e);}};
  $('logoutBtn').onclick=async()=>{stopGlobalRealtime();await db.auth.signOut();state.user=null;state.project=null;showLogin();};
  db.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){stopGlobalRealtime();state.user=null;state.project=null;showLogin();}});
