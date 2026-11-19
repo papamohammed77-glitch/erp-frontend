@@ -13,6 +13,7 @@ The live project is Supabase `rawaea-staging` (`hfzznsiprnwkpayskzhu`). The foll
 7. `20261119192509_countflow_approval_requires_all_positions_counted.sql` — consolidated final reconciliation/approval contract. It represents the final state of the incremental live patches recorded between migration versions 19192305 and 19192509: entry-count watermark, serialized session lock, latest-run check, uncounted-position guard, open-task/critical-alert gates, and session freeze after approval.
 8. `20261119192958_countflow_live_kpi_and_alert_index_tuning_v1.sql` — materializes effective-count aggregation once for live KPIs and adds targeted repeat-alert lookup indexes.
 9. `20261119193513_countflow_assignments_nulls_not_distinct_unique_scope_v1.sql` — replaces the partial/global assignment indexes with one `NULLS NOT DISTINCT` unique index so global and location-specific assignments can be upserted atomically.
+10. `20261119193620_countflow_expected_balance_snapshot_guard_v1.sql` — requires expected balances to use the product base unit and freezes them after the first count or reconciliation.
 
 ## Operational rules
 
