@@ -11,7 +11,8 @@ SET LOCAL ROLE authenticated;
 INSERT INTO count_projects(id,name,code,created_by,status) VALUES('d4c6e6a1-8c22-4df0-9a01-333333333333','FINALITY TEST','CF-FINAL-TEST','d4c6e6a1-8c22-4df0-9a01-111111111111','active');
 INSERT INTO count_members(id,project_id,user_id,display_name,username,role,status) VALUES('d4c6e6a1-8c22-4df0-9a01-444444444444','d4c6e6a1-8c22-4df0-9a01-333333333333','d4c6e6a1-8c22-4df0-9a01-222222222222','Counter','counter','counter','active');
 INSERT INTO count_locations(id,project_id,location_type,code,name) VALUES('d4c6e6a1-8c22-4df0-9a01-555555555555','d4c6e6a1-8c22-4df0-9a01-333333333333','shelf','F-A','Final Shelf');
-INSERT INTO count_sessions(id,project_id,name,status,created_by) VALUES('d4c6e6a1-8c22-4df0-9a01-777777777777','d4c6e6a1-8c22-4df0-9a01-333333333333','Final Session','active','d4c6e6a1-8c22-4df0-9a01-111111111111');
+INSERT INTO count_sessions(id,project_id,name,status,created_by) VALUES('d4c6e6a1-8c22-4df0-9a01-777777777777','d4c6e6a1-8c22-4df0-9a01-333333333333','Final Session','planned','d4c6e6a1-8c22-4df0-9a01-111111111111');
+SELECT count_transition_session('d4c6e6a1-8c22-4df0-9a01-777777777777','active');
 INSERT INTO count_assignments(session_id,member_id,location_id,status) VALUES('d4c6e6a1-8c22-4df0-9a01-777777777777','d4c6e6a1-8c22-4df0-9a01-444444444444','d4c6e6a1-8c22-4df0-9a01-555555555555','assigned');
 INSERT INTO count_products(id,project_id,sku,name,base_unit,units) VALUES('d4c6e6a1-8c22-4df0-9a01-888888888888','d4c6e6a1-8c22-4df0-9a01-333333333333','CF-FINAL-001','Final Product','each','["each"]');
 INSERT INTO count_expected_balances(project_id,session_id,product_id,location_id,expected_quantity,unit)
