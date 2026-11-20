@@ -258,7 +258,7 @@ Deno.serve(async (req: Request) => {
       const {data:engagement,error:engagementError}=await admin.from("count_projects")
         .select("id,name,code").eq("id",session.project_id).maybeSingle();
       if(engagementError||!engagement)throw new Error("CLIENT_BALANCE_ENGAGEMENT_NOT_FOUND");
-      const [lines, locations, importBatches, costs] = await Promise.all([
+      const [lines, locations, importBatches, costs, countEntries] = await Promise.all([
         fetchAll(admin,"count_reconciliation_lines",
           "id,run_id,product_id,location_id,product_sku,product_name,location_path,unit,expected_quantity,counted_quantity,variance_quantity,result_status,computed_at",
           [["run_id","eq",latestRun.id]],MAX_LINES),
@@ -271,6 +271,9 @@ Deno.serve(async (req: Request) => {
         fetchAll(admin,"count_session_product_costs",
           "id,product_id,purchase_unit_cost,currency_code,purchase_unit,unit_factor_to_base,source_type,source_reference,source_date,warning_codes,source_batch_id,updated_at",
           [["session_id","eq",sessionId]],MAX_PRODUCTS),
+        fetchAll(admin,"count_entries",
+          "id,product_id,location_id,quantity,unit,unit_factor_to_base,base_quantity,counted_at,count_round,revision,scan_code,recount_task_id,note",
+          [["session_id","eq",sessionId]],MAX_ENTRIES,"counted_at"),
       ]);
       const importBatchIds=importBatches.map((b:any)=>b.id);
       const committedImportRows:any[]=[];
@@ -285,6 +288,7 @@ Deno.serve(async (req: Request) => {
       for(const line of lines)productIds.add(line.product_id);
       for(const row of committedImportRows)if(row.product_id)productIds.add(row.product_id);
       for(const cost of costs)productIds.add(cost.product_id);
+      for(const entry of countEntries)productIds.add(entry.product_id);
       if(productIds.size>MAX_PRODUCTS)throw new Error("CLIENT_BALANCE_PRODUCT_LIMIT:"+MAX_PRODUCTS);
 
       const productIdArray=[...productIds];
@@ -304,6 +308,21 @@ Deno.serve(async (req: Request) => {
         while(node&&!seen.has(node.id)){seen.add(node.id);chain.unshift(node);node=node.parent_id?locationMap.get(node.parent_id):null;}
         return chain.map(x=>(x.code?x.code+" · ":"")+x.name).join(" / ")||"موقع غير معروف";
       };
+      const unitRows:any[][]=[[
+        "SKU","الباركود","الصنف","الفرع / المخزن / الموقع","الكمية التي أدخلها العداد",
+        "وحدة العد","معامل التحويل إلى الوحدة الأساسية","الكمية المحولة إلى الوحدة الأساسية",
+        "الوحدة الأساسية","جولة العد","رقم المراجعة","تاريخ/وقت التسجيل","كود المسح","مهمة إعادة العد","ملاحظات",
+      ]];
+      for(const entry of [...countEntries].sort((a:any,b:any)=>String(a.counted_at||"").localeCompare(String(b.counted_at||"")))){
+        const product:any=productMap.get(entry.product_id)||{};
+        unitRows.push([
+          product.sku||"",product.barcode||"",product.name||"",
+          locationPath(entry.location_id),Number(entry.quantity),entry.unit||"",
+          Number(entry.unit_factor_to_base),entry.base_quantity===null?null:Number(entry.base_quantity),
+          product.base_unit||"",entry.count_round,entry.revision,entry.counted_at||"",
+          entry.scan_code||"",entry.recount_task_id||"",entry.note||"",
+        ]);
+      }
       const linesByProduct=new Map<string,any[]>();
       for(const line of lines){if(!linesByProduct.has(line.product_id))linesByProduct.set(line.product_id,[]);linesByProduct.get(line.product_id)!.push(line);}
       const importsByProduct=new Map<string,any[]>();
@@ -341,7 +360,7 @@ Deno.serve(async (req: Request) => {
         "الوحدة الأساسية","حالة اكتمال الكمية","الكمية المعروفة من المواقع المعدودة فقط",
         "سعر الشراء","وحدة الشراء","العملة","معامل التحويل إلى الوحدة الأساسية",
         "تكلفة الوحدة الأساسية","قيمة الرصيد","نوع مصدر السعر","مرجع مصدر السعر",
-        "تاريخ السعر","حالة الصورة","المواقع المعدودة","المواقع غير المعدودة",
+        "تاريخ السعر","حالة الصورة","مرجع الصورة","المواقع المعدودة","المواقع غير المعدودة",
       ]];
       const locationRows:any[][]=[[
         "SKU","الباركود","الصنف","الفرع / المخزن / الموقع","الوحدة الأساسية",
@@ -416,7 +435,7 @@ Deno.serve(async (req: Request) => {
           isCostComplete?Number(cost.purchase_unit_cost):null,cost?.purchase_unit||"",
           cost?.currency_code||"",isCostComplete?Number(cost.unit_factor_to_base):null,
           baseUnitCost,lineValue,cost?.source_type||"",cost?.source_reference||"",
-          cost?.source_date||"",photo.status,
+          cost?.source_date||"",photo.status,photo.reference,
           countedLines.map((l:any)=>locationPath(l.location_id)).join(" | "),
           uncountedLines.map((l:any)=>locationPath(l.location_id)).join(" | "),
         ]);
@@ -452,6 +471,8 @@ Deno.serve(async (req: Request) => {
         ["أصناف لها تكلفة مكتملة المصدر",fullyPricedProducts,"",""],
         ["أصناف بلا/بتكلفة غير مكتملة",unpricedProducts,"",""],
         ["أصناف أمكن احتساب قيمة لها",valueEligibleProducts,"",""],
+        ["عدد أحداث العد المسجلة",countEntries.length,"",""],
+        ["تفاصيل الوحدات", "تتضمن جميع أحداث التسجيل وجولات العد؛ الرصيد النهائي المعتمد في ورقة الرصيد الفعلي","",""],
         ["صور مضمنة داخل المصنف",embeddedCount,"",""],
         ["صور غير مضمنة/مفقودة",notEmbeddedCount,"",""],
         ["صفوف استيراد تحمل تنبيهات",importWarningCount,"",""],
@@ -464,7 +485,8 @@ Deno.serve(async (req: Request) => {
       }
       const workbookBytes=buildClientBalanceXlsx([
         {name:"ملخص العميل",rows:summaryRows,widths:[38,58,14,24]},
-        {name:"الرصيد الفعلي",rows:clientRows,widths:[12,18,20,32,20,22,18,24,24,18,18,12,24,22,22,22,28,16,25,48,48]},
+        {name:"الرصيد الفعلي",rows:clientRows,widths:[12,18,20,32,20,22,18,24,24,18,18,12,24,22,22,22,28,16,25,24,48,48]},
+        {name:"تفاصيل وحدات العد",rows:unitRows,widths:[18,20,32,58,22,18,26,28,18,14,14,24,20,24,40]},
         {name:"تفصيل المواقع",rows:locationRows,widths:[18,20,32,58,18,22,22,18,22]},
         {name:"استكمالات البيانات",rows:gapRows,widths:[18,20,32,58,28,72,70]},
       ],embeddedImages);
@@ -484,8 +506,8 @@ Deno.serve(async (req: Request) => {
       const metadata={
         engine:"counting-client-balance-ooxml-v1",format:"xlsx",scope:"client_balance",
         reconciliation_run_id:latestRun.id,reconciliation_run_number:latestRun.run_number,
-        products:products.length,location_rows:locationRows.length-1,gap_rows:gapRows.length-1,
-        images_embedded:embeddedCount,images_not_embedded:notEmbeddedCount,embedded_image_bytes:embeddedBytes,
+        products:products.length,unit_count_rows:unitRows.length-1,location_rows:locationRows.length-1,gap_rows:gapRows.length-1,
+        count_events:countEntries.length,images_embedded:embeddedCount,images_not_embedded:notEmbeddedCount,embedded_image_bytes:embeddedBytes,
         complete_quantity_products:fullyCountedProducts,partial_quantity_products:partiallyCountedProducts,
         not_counted_products:notCountedProducts,fully_priced_products:fullyPricedProducts,
         unpriced_products:unpricedProducts,value_eligible_products:valueEligibleProducts,
@@ -503,7 +525,7 @@ Deno.serve(async (req: Request) => {
         project_id:session.project_id,actor_id:user.id,action:"export.client_balance.ready",
         entity_type:"count_export",entity_id:exportId,
         details:{session_id:session.id,scope:"client_balance",reconciliation_run_id:latestRun.id,
-          products:products.length,images_embedded:embeddedCount,images_not_embedded:notEmbeddedCount,
+          products:products.length,count_events:countEntries.length,images_embedded:embeddedCount,images_not_embedded:notEmbeddedCount,
           value_eligible_products:valueEligibleProducts,sha256}
       });
       if(auditError)throw new Error("CLIENT_BALANCE_AUDIT_WRITE_FAILED: "+auditError.message);
@@ -511,7 +533,7 @@ Deno.serve(async (req: Request) => {
         export_id:exportId,status:"ready",scope:"client_balance",file_name:fileName,
         signed_url:signed.signedUrl,row_count:products.length,file_size_bytes:bytes.byteLength,
         sha256,expires_at:expiresAt,images_embedded:embeddedCount,images_not_embedded:notEmbeddedCount,
-        products_fully_counted:fullyCountedProducts,products_with_incomplete_cost:unpricedProducts,
+        count_events:countEntries.length,products_fully_counted:fullyCountedProducts,products_with_incomplete_cost:unpricedProducts,
         pricing_policy:"UNKNOWN"
       });
     }
