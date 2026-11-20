@@ -367,14 +367,25 @@
   $('operationDetail').scrollIntoView({behavior:'smooth',block:'start'});
   await Promise.all([loadOperationTeam(),loadOperationMetrics(),loadOperationImportHistory(),loadOperationExportHistory(),loadOperationReconciliation()]);
  }
+ async function loadScopedOperationRows(table,columns,filterColumn,filterValue,orderColumn='id'){
+  const pageSize=1000,maxRows=200000;let all=[],offset=0;
+  while(offset<maxRows){
+   let q=db.from(table).select(columns).eq(filterColumn,filterValue).order(orderColumn,{ascending:true}).range(offset,offset+pageSize-1);
+   const {data,error}=await q;if(error)throw error;
+   const page=data||[];all.push(...page);if(page.length<pageSize)return all;offset+=pageSize;
+  }
+  const {count,error}=await db.from(table).select('id',{count:'exact',head:true}).eq(filterColumn,filterValue);
+  if(error)throw error;if((count||0)>maxRows)throw new Error('FETCH_LIMIT_EXCEEDED:'+table+':'+maxRows);
+  return all;
+ }
  async function loadOperationTeam(){
   const s=state.selectedSession;if(!s)return;
-  const [ar,mr]=await Promise.all([
-   db.from('count_assignments').select('id,member_id,location_id,status,assigned_at').eq('session_id',s.id).order('assigned_at',{ascending:false}),
-   db.from('count_members').select('id,display_name,username,role,status').eq('project_id',s.project_id).order('display_name')
+  const [assignments,members]=await Promise.all([
+   loadScopedOperationRows('count_assignments','id,member_id,location_id,status,assigned_at','session_id',s.id,'assigned_at'),
+   loadScopedOperationRows('count_members','id,display_name,username,role,status','project_id',s.project_id,'display_name')
   ]);
-  if(ar.error||mr.error)throw(ar.error||mr.error);
-  const assignments=ar.data||[],members=mr.data||[],map=Object.fromEntries(members.map(x=>[x.id,x])),used=new Set(assignments.map(x=>x.member_id));
+  assignments.sort((a,b)=>String(b.assigned_at||'').localeCompare(String(a.assigned_at||'')));
+  const map=Object.fromEntries(members.map(x=>[x.id,x])),used=new Set(assignments.map(x=>x.member_id));
   $('operationAddMember').innerHTML='<option value="">اختر مستخدماً متاحاً</option>'+members.filter(m=>m.status==='active'&&!used.has(m.id)).map(m=>'<option value="'+m.id+'">'+esc(m.display_name)+' · '+esc(m.username)+' · '+esc(m.role)+'</option>').join('');
   $('operationTeamCount').textContent=used.size;
   $('operationTeamList').innerHTML=assignments.length?'<table><thead><tr><th>المستخدم</th><th>الدور</th><th>نطاق الإسناد</th><th>الحالة</th><th>تاريخ الإسناد</th><th>إجراء</th></tr></thead><tbody>'+assignments.map(a=>{const m=map[a.member_id]||{},loc=state.locations.find(x=>x.id===a.location_id);return '<tr><td><b>'+esc(m.display_name||'عضو')+'</b><span class="sub">'+esc(m.username||'')+'</span></td><td>'+esc(m.role||'')+'</td><td>'+esc(loc?.name||'كل المواقع')+'</td><td>'+statusPill(a.status)+'</td><td>'+date(a.assigned_at)+'</td><td><button type="button" class="danger" data-remove-operation-member="'+a.member_id+'">إخراج من العملية</button></td></tr>';}).join('')+'</tbody></table>':'<div class="empty">لم يتم إسناد أعضاء لهذه العملية بعد.</div>';
