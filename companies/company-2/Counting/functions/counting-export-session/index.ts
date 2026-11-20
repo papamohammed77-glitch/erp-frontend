@@ -453,6 +453,21 @@ Deno.serve(async (req: Request) => {
           locationRows.push([product.sku||"",product.barcode||"",product.name||"","لم يسجل موقع/عد",product.base_unit||"",null,null,null,"لم يسجل عد"]);
         }
       }
+      for(const row of committedImportRows){
+        const warnings=Array.isArray(row.warning_codes)?row.warning_codes:[];
+        if(!warnings.length)continue;
+        const p:any=productMap.get(row.product_id)||{};
+        const batch:any=importBatches.find((x:any)=>x.id===row.batch_id)||{};
+        gapRows.push([
+          p.sku||row.sku||"",p.barcode||row.barcode||"",p.name||row.product_name||"",
+          row.location_id?locationPath(row.location_id):"",
+          "تنبيهات بيانات الاستيراد",
+          (batch.source_name||"ملف غير محدد")+" · الصف "+row.row_number+" · "+warnings.join("، "),
+          warnings.includes("CONFLICTING_COST_SNAPSHOT_IN_BATCH")
+            ?"تحديد مصدر تكلفة واحد لكل نطاق صنف/موقع أو توثيق التكلفة الصحيحة يدوياً قبل التقييم"
+            :"استكمال الحقول الناقصة أو تصحيحها ثم إعادة استيراد البيانات"
+        ]);
+      }
       for(const batch of importBatches){
         if((batch.rejected_count||0)>0)gapRows.push(["","","","", "صفوف مرفوضة في الاستيراد",batch.source_name+" · عدد الصفوف المرفوضة: "+batch.rejected_count,"مراجعة أخطاء الاستيراد وإعادة إدخال الصفوف الصحيحة"]);
       }
