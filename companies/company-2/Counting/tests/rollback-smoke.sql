@@ -56,7 +56,10 @@ BEGIN
   RETURNING id INTO v_product;
 
   INSERT INTO public.count_sessions(project_id,name,status,created_by)
-  VALUES(v_project,'QA Rollback Session','active',v_supervisor) RETURNING id INTO v_session;
+  VALUES(v_project,'QA Rollback Session','planned',v_supervisor) RETURNING id INTO v_session;
+  PERFORM public.count_transition_session(v_session,'active');
+  PERFORM public.count_transition_session(v_session,'paused');
+  PERFORM public.count_transition_session(v_session,'active');
 
   INSERT INTO public.count_expected_balances(project_id,session_id,product_id,location_id,expected_quantity,unit)
   VALUES(v_project,v_session,v_product,v_loc1,10,'قطعة');
@@ -103,6 +106,8 @@ BEGIN
   v_run := public.count_reconcile_session(v_session);
   v_result := public.count_approve_reconciliation(v_run);
   IF v_result->>'status'<>'approved' THEN RAISE EXCEPTION 'QA_FAIL_RECONCILIATION_APPROVAL'; END IF;
+  v_result := public.count_transition_session(v_session,'completed');
+  IF v_result->>'status'<>'completed' THEN RAISE EXCEPTION 'QA_FAIL_SESSION_CLOSE_AFTER_APPROVAL'; END IF;
 
   IF EXISTS (
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
