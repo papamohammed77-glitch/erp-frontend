@@ -113,11 +113,16 @@ Deno.serve(async (req: Request) => {
       .eq("id", sessionId).maybeSingle();
     if (sessionError || !session) return json({ error: "SESSION_NOT_FOUND" }, 404);
 
-    const { data: member, error: memberError } = await admin.from("count_members")
-      .select("id,role,status")
-      .eq("project_id", session.project_id).eq("user_id", user.id)
-      .eq("role", "supervisor").eq("status", "active").maybeSingle();
-    if (memberError || !member) return json({ error: "SUPERVISOR_ACCESS_REQUIRED" }, 403);
+    const isPlatformOwner =
+      String(user.email || "").trim().toLowerCase() === "owner@rawaea.com" &&
+      Boolean(user.email_confirmed_at);
+    if (!isPlatformOwner) {
+      const { data: member, error: memberError } = await admin.from("count_members")
+        .select("id,role,status")
+        .eq("project_id", session.project_id).eq("user_id", user.id)
+        .eq("role", "supervisor").eq("status", "active").maybeSingle();
+      if (memberError || !member) return json({ error: "SUPERVISOR_ACCESS_REQUIRED" }, 403);
+    }
 
     const { data: exportRow, error: createError } = await admin.from("count_exports").insert({
       project_id: session.project_id,
