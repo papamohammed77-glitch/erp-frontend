@@ -132,7 +132,7 @@
      <div class="panel"><div class="row"><h3 class="grow">سجل جميع العمليات</h3><span class="pill" id="operationResultCount">0 عملية</span></div><div id="operationsTable" class="tablewrap"><div class="empty">جار تحميل سجل العمليات…</div></div><div id="operationsPager" class="actions"></div></div>
      <div id="operationDetail" class="hidden">
       <div class="panel">
-       <div class="headrow"><div><h3 id="operationDetailTitle">تفاصيل العملية</h3><div class="hint" id="operationDetailMeta"></div></div><div class="actions"><button id="previewOperation" type="button" class="soft">معاينة / طباعة</button><button id="exportOperationXlsx" type="button" class="primary">تصدير Excel</button><button id="exportOperationCsv" type="button" class="soft">تصدير CSV</button></div></div>
+       <div class="headrow"><div><h3 id="operationDetailTitle">تفاصيل العملية</h3><div class="hint" id="operationDetailMeta"></div></div><div class="actions"><button id="previewOperation" type="button" class="soft">معاينة / طباعة</button><button id="exportOperationXlsx" type="button" class="soft">تصدير Excel التشغيلي</button><button id="exportClientBalance" type="button" class="primary">تسليم رصيد العميل (Excel + صور)</button><button id="exportOperationCsv" type="button" class="soft">تصدير CSV</button></div></div>
        <div class="grid"><div class="stat"><small>عمليات العد</small><strong id="operationEntryCount">0</strong></div><div class="stat"><small>أفراد العملية</small><strong id="operationTeamCount">0</strong></div><div class="stat"><small>الأصناف النشطة</small><strong id="operationProductCount">0</strong></div><div class="stat"><small>التغطية</small><strong id="operationCoverage">—</strong></div></div>
       </div>
       <div class="split">
@@ -504,15 +504,15 @@
   if(paths.length){const {data:urls}=await db.storage.from('counting-exports').createSignedUrls(paths,600);for(const u of urls||[])signed[u.path]=u.signedUrl;}
   $('operationExportHistory').innerHTML=(data||[]).length?(data||[]).map(x=>'<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)"><div class="grow"><b>'+esc(x.export_format.toUpperCase())+' · '+esc(x.export_scope)+'</b><span class="sub">'+date(x.created_at)+' · '+Number(x.row_count||0)+' صف · '+Math.round((x.file_size_bytes||0)/1024)+' KB · SHA-256 '+esc(String(x.sha256||'').slice(0,16))+'…</span></div>'+(signed[x.storage_path]?'<a class="link" href="'+esc(signed[x.storage_path])+'" target="_blank" rel="noopener">تنزيل</a>':'<span class="pill">الرابط غير متاح</span>')+'</div>').join(''):'<div class="empty">لا توجد ملفات تصدير محفوظة.</div>';
  }
- async function downloadOperationExport(format){
+ async function downloadOperationExport(format,scope='full'){
   const s=state.selectedSession;if(!s)return notify('اختر عملية جرد أولاً.',true);
-  const button=$(format==='xlsx'?'exportOperationXlsx':'exportOperationCsv');button.disabled=true;
+  const button=$(scope==='client_balance'?'exportClientBalance':format==='xlsx'?'exportOperationXlsx':'exportOperationCsv');button.disabled=true;
   try{
-   const {data,error}=await db.functions.invoke('counting-export-session',{body:{session_id:s.id,format}});
+   const {data,error}=await db.functions.invoke('counting-export-session',{body:{session_id:s.id,format,scope}});
    if(error)throw error;if(!data?.signed_url)throw new Error(data?.error||'تعذر تجهيز ملف التصدير');
    const a=document.createElement('a');a.href=data.signed_url;a.download=data.file_name||('CountFlow_'+s.id+'.'+format);a.rel='noopener';document.body.appendChild(a);a.click();a.remove();
-   notify('اكتمل تصدير ملف '+(format==='xlsx'?'Excel':'CSV')+'.');await loadOperationExportHistory();
-  }catch(e){fail('تعذر تصدير عملية الجرد',e);}
+   notify(scope==='client_balance'?'تم إنشاء ملف رصيد العميل؛ راجع ورقة استكمالات البيانات للتنبيهات':'اكتمل تصدير ملف '+(format==='xlsx'?'Excel':'CSV')+'.');await loadOperationExportHistory();
+  }catch(e){fail(scope==='client_balance'?'تعذر تسليم رصيد العميل':'تعذر تصدير عملية الجرد',e);}
   finally{button.disabled=false;}
  }
  async function loadOperationReconciliation(){
@@ -602,6 +602,7 @@
  $('operationCreateMember').onclick=operationCreateMember;
  $('previewOperation').onclick=previewOperation;
  $('exportOperationXlsx').onclick=()=>downloadOperationExport('xlsx');
+ $('exportClientBalance').onclick=()=>downloadOperationExport('xlsx','client_balance');
  $('exportOperationCsv').onclick=()=>downloadOperationExport('csv');
 
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.user)loadGlobalOperations().catch(e=>console.warn('[CountFlow Admin] visibility refresh failed',e));});
