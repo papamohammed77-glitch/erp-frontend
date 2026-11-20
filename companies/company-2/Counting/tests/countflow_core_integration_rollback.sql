@@ -26,7 +26,8 @@ VALUES
 ('f3c6e6a1-8c22-4df0-9a01-666666666666','f3c6e6a1-8c22-4df0-9a01-333333333333','shelf','TEST-LOC-B','Test Shelf B',2),
 ('f3c6e6a1-8c22-4df0-9a01-555555555556','f3c6e6a1-8c22-4df0-9a01-333333333333','shelf','TEST-LOC-C','Test Shelf C',3);
 INSERT INTO public.count_sessions(id,project_id,name,status,created_by)
-VALUES('f3c6e6a1-8c22-4df0-9a01-777777777777','f3c6e6a1-8c22-4df0-9a01-333333333333','Rollback Integration Session','active','f3c6e6a1-8c22-4df0-9a01-111111111111');
+VALUES('f3c6e6a1-8c22-4df0-9a01-777777777777','f3c6e6a1-8c22-4df0-9a01-333333333333','Rollback Integration Session','planned','f3c6e6a1-8c22-4df0-9a01-111111111111');
+SELECT public.count_transition_session('f3c6e1a1-8c22-4df0-9a01-777777777777','active');
 INSERT INTO public.count_assignments(session_id,member_id,location_id,status)
 VALUES('f3c6e6a1-8c22-4df0-9a01-777777777777','f3c6e6a1-8c22-4df0-9a01-444444444444','f3c6e6a1-8c22-4df0-9a01-555555555555','assigned');
 INSERT INTO public.count_assignments(session_id,member_id,location_id,status)
