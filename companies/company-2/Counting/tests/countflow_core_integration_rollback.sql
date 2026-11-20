@@ -47,7 +47,7 @@ BEGIN
   IF (v_commit->>'accepted_rows')::int<>2 OR (v_commit->>'rejected_rows')::int<>1
      OR (v_commit->>'expected_balance_rows')::int<>2
   THEN RAISE EXCEPTION 'ASSERT_IMPORT_COMMIT_FAILED: %',v_commit; END IF;
-END $;
+END $$;
 
 -- New minimum-data regression: barcode + base unit is enough to create and count an item.
 DO $
@@ -81,7 +81,7 @@ BEGIN
   IF NOT FOUND OR v_product.sku IS NOT NULL OR v_product.name IS NOT NULL
      OR v_product.base_unit<>'قطعة' OR v_product.image_url IS NOT NULL
   THEN RAISE EXCEPTION 'ASSERT_OPTIONAL_METADATA_NOT_PRESERVED_AS_NULL'; END IF;
-END $;
+END $$;
 
 SELECT set_config('request.jwt.claim.sub','f3c6e6a1-8c22-4df0-9a01-222222222222',true);
 SELECT set_config('request.jwt.claims','{"sub":"f3c6e6a1-8c22-4df0-9a01-222222222222","role":"authenticated"}',true);
@@ -175,5 +175,5 @@ BEGIN
      OR v_entry.quantity<>3 OR v_entry.unit<>'قطعة'
      OR v_entry.base_quantity<>3
   THEN RAISE EXCEPTION 'ASSERT_BARCODE_ONLY_COUNT_FAILED'; END IF;
-END $;
+END $$;
 ROLLBACK;
