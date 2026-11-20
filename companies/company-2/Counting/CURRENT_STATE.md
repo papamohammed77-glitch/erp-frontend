@@ -13,7 +13,7 @@
 |---|---|
 | `countflow-admin.html` | `79b33ded97a355a33a2eb1b6cd84441e9b78cebb` |
 | `countflow.html` | `83969d45a0f446e5f9e74f8de2d943635484d3cd` |
-| `Countflow-supervisor.html` | `51badad631219f1d2588135254aea2dc3b43c10b` |
+| `Countflow-supervisor.html` | `409fb71b9bd92bfe1ea7a9f19bc18b4acc3742f2` |
 | `README.md` | `fc98f54bb092ba68b9872c1c1d69524d4caf6241` |
 | `ARCHITECTURE.md` | `0183e7cd6fe15c32c1df07b7e3f88e56e0b8a999` |
 | `DEPLOYMENT.md` | `478fafbf6671e7d0d8b781baf9dc0414c9449bec` |
@@ -419,6 +419,7 @@ Only CountFlow master UI and CountFlow-specific migrations/settings were changed
 - Operation history is searchable by operation name, status and date range, with open/select behavior for completed historical operations.
 - Operation assignment list has a remove-from-this-operation action. Creating a new member provisions the identity/membership through the existing Edge Function, then assigns that member to the selected editable operation.
 - Completed/cancelled operations are historical in the supervisor UI: team/import/state-change controls are disabled; preview and export remain available.
+- Supervisor engagement and operation history loaders now use the existing paginated fetch helper rather than a single 500-row session cap; the helper has an explicit 200,000-row safety ceiling and throws if exceeded.
 - Added printable reconciliation preview. It reads up to 5,000 detail rows for print; use server XLSX for the complete result export.
 - Existing staged CSV/XLSX import and server export paths are reused; no parallel pipeline/table was introduced.
 
