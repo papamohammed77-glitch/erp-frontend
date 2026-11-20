@@ -63,17 +63,20 @@ BEGIN
     'barcode-only-fixture.csv','csv','barcode-only-fixture-checksum'
   );
   v_stage := public.count_stage_import_rows(v_batch,'[
-    {"sku":"","barcode":"990000000009","name":"","base_unit":"قطعة","units":[],"expected_qty":"","location_code":"TEST-LOC-A","purchase_unit_cost":"120","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-001","cost_source_date":"2026-11-20"},
+    {"sku":"","barcode":"990000000009","name":"","base_unit":"قطعة","units":[],"expected_qty":"5","location_code":"TEST-LOC-A","purchase_unit_cost":"120","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-001","cost_source_date":"2026-11-20"},
+    {"sku":"","barcode":"990000000009","name":"","base_unit":"قطعة","units":[],"expected_qty":"4","location_code":"TEST-LOC-B","purchase_unit_cost":"120","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-001","cost_source_date":"2026-11-20"},
     {"sku":"","barcode":"990000000011","name":"","base_unit":"قطعة","purchase_unit_cost":"15","purchase_unit":"كرتونة"},
+    {"sku":"","barcode":"990000000012","name":"","base_unit":"قطعة","location_code":"TEST-LOC-A","purchase_unit_cost":"10","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-A"},
+    {"sku":"","barcode":"990000000012","name":"","base_unit":"قطعة","location_code":"TEST-LOC-B","purchase_unit_cost":"12","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-B"},
     {"sku":"","barcode":"","name":"Missing Identity","base_unit":"قطعة"},
     {"sku":"","barcode":"990000000010","name":"","base_unit":""}
   ]'::jsonb,0);
 
-  IF (v_stage->>'accepted_rows')::int<>2 OR (v_stage->>'rejected_rows')::int<>2
+  IF (v_stage->>'accepted_rows')::int<>5 OR (v_stage->>'rejected_rows')::int<>2
   THEN RAISE EXCEPTION 'ASSERT_MINIMUM_DATA_STAGE_FAILED: %',v_stage; END IF;
 
   v_commit := public.count_commit_import_batch(v_batch);
-  IF (v_commit->>'accepted_rows')::int<>2 OR (v_commit->>'rejected_rows')::int<>2
+  IF (v_commit->>'accepted_rows')::int<>5 OR (v_commit->>'rejected_rows')::int<>2
   THEN RAISE EXCEPTION 'ASSERT_MINIMUM_DATA_COMMIT_FAILED: %',v_commit; END IF;
 
   SELECT * INTO v_product FROM public.count_products
@@ -91,6 +94,22 @@ BEGIN
       AND c.source_type='supplier_invoice' AND c.source_reference='SUP-INV-001'
       AND cardinality(c.warning_codes)=0
   ) THEN RAISE EXCEPTION 'ASSERT_COMPLETE_COST_SNAPSHOT_FAILED'; END IF;
+  IF (SELECT count(*) FROM public.count_expected_balances
+      WHERE session_id='f3c6e6a1-8c22-4df0-9a01-777777777777' AND product_id=v_product.id)<>2
+  THEN RAISE EXCEPTION 'ASSERT_MULTI_LOCATION_EXPECTED_BALANCE_FAILED'; END IF;
+  IF (SELECT count(*) FROM public.count_session_product_costs
+      WHERE session_id='f3c6e6a1-8c22-4df0-9a01-777777777777' AND product_id=v_product.id)<>1
+  THEN RAISE EXCEPTION 'ASSERT_COST_SNAPSHOT_DUPLICATED_BY_LOCATION'; END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.count_session_product_costs c
+    JOIN public.count_products p ON p.id=c.product_id
+    WHERE c.session_id='f3c6e6a1-8c22-4df0-9a01-777777777777'
+      AND p.barcode='990000000012'
+  ) THEN RAISE EXCEPTION 'ASSERT_CONFLICTING_COST_WAS_NOT_BLOCKED'; END IF;
+  IF (SELECT count(*) FROM public.count_import_rows
+      WHERE batch_id=v_batch AND row_status='committed'
+        AND 'CONFLICTING_COST_SNAPSHOT_IN_BATCH'=ANY(warning_codes))<>2
+  THEN RAISE EXCEPTION 'ASSERT_CONFLICTING_COST_WARNING_MISSING'; END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.count_session_product_costs c
     JOIN public.count_products p ON p.id=c.product_id
