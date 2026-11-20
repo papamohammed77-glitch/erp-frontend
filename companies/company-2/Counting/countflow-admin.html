@@ -239,7 +239,7 @@
  }
  function renderProducts(){
   const q=$('productSearch').value.trim().toLowerCase();const rows=state.products.filter(x=>[x.sku,x.barcode,x.name,x.category].some(v=>String(v||'').toLowerCase().includes(q)));
-  $('productTable').innerHTML=rows.length?'<table><thead><tr><th>الصنف</th><th>SKU / باركود</th><th>الوحدة</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.name||'اسم غير متوفر')+'<span class="sub">'+esc(x.category||'بدون تصنيف')+'</span></td><td>'+esc(x.sku||'—')+'<span class="sub">'+esc(x.barcode||'—')+'</span></td><td>'+esc(x.base_unit)+'</td><td>'+statusPill(x.is_active?'نشط':'موقوف')+'</td><td><button class="soft" data-edit-product="'+x.id+'">تعديل</button> <button class="'+(x.is_active?'danger':'soft')+'" data-toggle-product="'+x.id+'">'+(x.is_active?'إيقاف':'تفعيل')+'</button></td></tr>').join('')+'</tbody></table>':'<div class="empty">لا توجد نتائج مطابقة.</div>';
+  $('productTable').innerHTML=rows.length?'<table><thead><tr><th>الصنف</th><th>SKU / باركود</th><th>الوحدة</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.name||'اسم غير متوفر')+'<span class="sub">'+esc(x.category||'بدون تصنيف')+'</span></td><td>'+esc(x.sku||x.barcode||'—')+'<span class="sub">'+esc(x.sku&&x.barcode?x.barcode:'')+'</span></td><td>'+esc(x.base_unit)+'</td><td>'+statusPill(x.is_active?'نشط':'موقوف')+'</td><td><button class="soft" data-edit-product="'+x.id+'">تعديل</button> <button class="'+(x.is_active?'danger':'soft')+'" data-toggle-product="'+x.id+'">'+(x.is_active?'إيقاف':'تفعيل')+'</button></td></tr>').join('')+'</tbody></table>':'<div class="empty">لا توجد نتائج مطابقة.</div>';
   $('productTable').querySelectorAll('[data-edit-product]').forEach(b=>b.onclick=()=>editProduct(b.dataset.editProduct));
   $('productTable').querySelectorAll('[data-toggle-product]').forEach(b=>b.onclick=()=>toggleProduct(b.dataset.toggleProduct));
  }
@@ -587,7 +587,7 @@
   const id=$('productId').value,sku=$('sku').value.trim()||null,barcode=$('barcode').value.trim()||null,name=$('productName').value.trim()||null,baseUnit=$('baseUnit').value.trim();
   if(!sku&&!barcode)throw new Error('أدخل SKU أو الباركود على الأقل لتعريف الصنف');
   if(!baseUnit)throw new Error('وحدة القياس الأساسية مطلوبة قبل إتاحة الصنف للعد');
-  const row={project_id:state.project.id,sku,barcode,name,category:$('category').value.trim()||null,base_unit:baseUnit,expected_qty:$('expectedQty').value===''?null:Number($('expectedQty').value),image_url:$('imageUrl').value.trim()||null,search_text:[sku,barcode,name,$('category').value.trim()].filter(Boolean).join(' '),updated_at:new Date().toISOString()};
+  const row={project_id:state.project.id,sku,barcode,name,category:$('category').value.trim()||null,base_unit:baseUnit,expected_qty:$('expectedQty').value===''?null:Number($('expectedQty').value),image_url:$('imageUrl').value.trim()||null,updated_at:new Date().toISOString()};
   if(row.image_url&&!/^https:\/\//i.test(row.image_url))throw new Error('رابط الصورة يجب أن يبدأ بـ HTTPS');
   const result=id?await db.from('count_products').update(row).eq('id',id).eq('project_id',state.project.id):await db.from('count_products').insert({...row,units:[],is_active:true});
   if(result.error)throw result.error;notify(id?'تم تحديث الصنف':'تمت إضافة الصنف');resetProductForm();await loadProjectData();
