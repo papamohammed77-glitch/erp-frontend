@@ -63,16 +63,17 @@ BEGIN
     'barcode-only-fixture.csv','csv','barcode-only-fixture-checksum'
   );
   v_stage := public.count_stage_import_rows(v_batch,'[
-    {"sku":"","barcode":"990000000009","name":"","base_unit":"قطعة","units":[],"expected_qty":"","location_code":"TEST-LOC-A"},
+    {"sku":"","barcode":"990000000009","name":"","base_unit":"قطعة","units":[],"expected_qty":"","location_code":"TEST-LOC-A","purchase_unit_cost":"120","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-001","cost_source_date":"2026-11-20"},
+    {"sku":"","barcode":"990000000011","name":"","base_unit":"قطعة","purchase_unit_cost":"15","purchase_unit":"كرتونة"},
     {"sku":"","barcode":"","name":"Missing Identity","base_unit":"قطعة"},
     {"sku":"","barcode":"990000000010","name":"","base_unit":""}
   ]'::jsonb,0);
 
-  IF (v_stage->>'accepted_rows')::int<>1 OR (v_stage->>'rejected_rows')::int<>2
+  IF (v_stage->>'accepted_rows')::int<>2 OR (v_stage->>'rejected_rows')::int<>2
   THEN RAISE EXCEPTION 'ASSERT_MINIMUM_DATA_STAGE_FAILED: %',v_stage; END IF;
 
   v_commit := public.count_commit_import_batch(v_batch);
-  IF (v_commit->>'accepted_rows')::int<>1 OR (v_commit->>'rejected_rows')::int<>2
+  IF (v_commit->>'accepted_rows')::int<>2 OR (v_commit->>'rejected_rows')::int<>2
   THEN RAISE EXCEPTION 'ASSERT_MINIMUM_DATA_COMMIT_FAILED: %',v_commit; END IF;
 
   SELECT * INTO v_product FROM public.count_products
@@ -81,7 +82,56 @@ BEGIN
   IF NOT FOUND OR v_product.sku IS NOT NULL OR v_product.name IS NOT NULL
      OR v_product.base_unit<>'قطعة' OR v_product.image_url IS NOT NULL
   THEN RAISE EXCEPTION 'ASSERT_OPTIONAL_METADATA_NOT_PRESERVED_AS_NULL'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.count_session_product_costs c
+    WHERE c.session_id='f3c6e6a1-8c22-4df0-9a01-777777777777'
+      AND c.product_id=v_product.id
+      AND c.purchase_unit_cost=120 AND c.currency_code='EGP'
+      AND c.purchase_unit='كرتونة' AND c.unit_factor_to_base=12
+      AND c.source_type='supplier_invoice' AND c.source_reference='SUP-INV-001'
+      AND cardinality(c.warning_codes)=0
+  ) THEN RAISE EXCEPTION 'ASSERT_COMPLETE_COST_SNAPSHOT_FAILED'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.count_session_product_costs c
+    JOIN public.count_products p ON p.id=c.product_id
+    WHERE c.session_id='f3c6e6a1-8c22-4df0-9a01-777777777777'
+      AND p.barcode='990000000011'
+      AND c.purchase_unit_cost=15 AND c.currency_code IS NULL
+      AND c.unit_factor_to_base IS NULL
+      AND 'COST_DATA_INCOMPLETE'=ANY(c.warning_codes)
+  ) THEN RAISE EXCEPTION 'ASSERT_PARTIAL_COST_ACCEPTED_WITH_WARNING_FAILED'; END IF;
 END $barcode_import$;
+
+DO $cost_enrichment$
+DECLARE v_batch uuid; v_stage jsonb; v_commit jsonb;
+BEGIN
+  v_batch := public.count_create_import_batch(
+    'f3c6e6a1-8c22-4df0-9a01-333333333333',
+    'f3c6e6a1-8c22-4df0-9a01-777777777777',
+    'cost-enrichment-fixture.csv','csv','cost-enrichment-fixture-checksum'
+  );
+  v_stage := public.count_stage_import_rows(v_batch,'[
+    {"sku":"","barcode":"990000000009","name":"","base_unit":"","purchase_unit_cost":"36","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-002","cost_source_date":"2026-11-20"}
+  ]'::jsonb,0);
+  IF (v_stage->>'accepted_rows')::int<>1 OR (v_stage->>'rejected_rows')::int<>0
+  THEN RAISE EXCEPTION 'ASSERT_COST_ENRICHMENT_STAGE_FAILED: %',v_stage; END IF;
+  v_commit := public.count_commit_import_batch(v_batch);
+  IF (v_commit->>'accepted_rows')::int<>1 OR (v_commit->>'rejected_rows')::int<>0
+  THEN RAISE EXCEPTION 'ASSERT_COST_ENRICHMENT_COMMIT_FAILED: %',v_commit; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.count_session_product_costs c
+    JOIN public.count_products p ON p.id=c.product_id
+    WHERE c.session_id='f3c6e6a1-8c22-4df0-9a01-777777777777'
+      AND p.barcode='990000000009'
+      AND c.purchase_unit_cost=36 AND c.currency_code='EGP'
+      AND c.unit_factor_to_base=12 AND c.source_reference='SUP-INV-002'
+  ) THEN RAISE EXCEPTION 'ASSERT_COST_ENRICHMENT_UPDATE_FAILED'; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.count_products
+    WHERE project_id='f3c6e6a1-8c22-4df0-9a01-333333333333'
+      AND barcode='990000000009' AND base_unit='قطعة'
+  ) THEN RAISE EXCEPTION 'ASSERT_EXISTING_UNIT_REUSE_FAILED'; END IF;
+END $cost_enrichment$;
 
 SELECT set_config('request.jwt.claim.sub','f3c6e6a1-8c22-4df0-9a01-222222222222',true);
 SELECT set_config('request.jwt.claims','{"sub":"f3c6e6a1-8c22-4df0-9a01-222222222222","role":"authenticated"}',true);
@@ -178,4 +228,5 @@ BEGIN
      OR v_entry.base_quantity<>3
   THEN RAISE EXCEPTION 'ASSERT_BARCODE_ONLY_COUNT_FAILED'; END IF;
 END $barcode_count$;
+SELECT 'PASS: barcode-only counting, optional fields, complete/partial cost capture and unit reuse' AS regression_result;
 ROLLBACK;
