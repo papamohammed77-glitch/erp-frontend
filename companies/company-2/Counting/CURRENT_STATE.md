@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-20-744-CountFlow-Engagement-Operation-Workflow`  
+**Last Verified Event:** `LVE-2026-11-20-745-CountFlow-Minimum-Data-Cost-Control-Client-Balance-Export`  
 **Date:** 2026-11-20  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -11,21 +11,21 @@
 
 | Artifact | Current Git blob SHA |
 |---|---|
-| `countflow-admin.html` | `8e45921fb2a7a199e8569e8a5e17349ebe210cbe` |
-| `countflow.html` | `83969d45a0f446e5f9e74f8de2d943635484d3cd` |
-| `Countflow-supervisor.html` | `2e1823e81829569653788937a086a0c0e414b212` |
+| `countflow-admin.html` | `57127597826ff479b52ce392c4c560afaf3c9994` |
+| `countflow.html` | `6bbd9db32682e6e48429d85ebaf061d3ff965e25` |
+| `Countflow-supervisor.html` | `e30452120e2307472bcccfb8e3e06261d51b2734` |
 | `README.md` | `fc98f54bb092ba68b9872c1c1d69524d4caf6241` |
 | `ARCHITECTURE.md` | `0183e7cd6fe15c32c1df07b7e3f88e56e0b8a999` |
 | `DEPLOYMENT.md` | `478fafbf6671e7d0d8b781baf9dc0414c9449bec` |
 | `scripts/build-pages.sh` | `865629e8f1061f403f426f9c712d0ec00fdd9793` |
 | `index.html` | `707a5a0f18674a93cab811be23ea9a13abb4a91b` |
 | `countflow-core.js` | `43395393093ba9bba94959dc1cc71457327a4e5e` |
-| `countflow-sw.js` | `7d8df96c832360817adcfa34f892bbf5a92f4b2a` |
+| `countflow-sw.js` | `408fe0047d230535ae482230ea892e2edbb663f2` |
 | `manifest.webmanifest` | `dc5fa4e24234586c398da958e5a0463d7316d7fb` |
 | `countflow-icon.svg` | `7540be49299b57849a8cb25a163981730571d6a5` |
 | `_headers` | `799b5b51882d12ed2503fb41ad04633145d24468` |
-| `functions/counting-provision-member/index.ts` | `22851e4653563af347d562cb9ccf86e408fb34a1` |
-| `functions/counting-export-session/index.ts` | `511a28a4e4eeaa1e7e452db036ef374af4122acb` |
+| `functions/counting-provision-member/index.ts` | `77010c28969553757eaf268fd9950192453c878b` |
+| `functions/counting-export-session/index.ts` | `5eb45460267f794ad10cce2ef0ef27a9c52b4632` |
 | `database/migrations/20261120170000_countflow_platform_owner_verified_email.sql` | `b59d12d4047ed2ce8ab5b0528b93fde6cd3a8591` | 
 | `database/migrations/20261120171000_countflow_license_settings_unbounded_emails.sql` | `09dd07432dbec5a71cfeaa09198abb1d9ff640af` |
 | `database/migrations/20261120200000_countflow_atomic_engagement_and_operation_create.sql` | `725ce36cdd06fde99e45ca6d4c7ce6539e2cfde2` |
@@ -33,14 +33,14 @@
 
 ## 2. Verified Supabase structure
 
-- 21 `count_*` tables; all 21 have RLS enabled.
-- 70 CountFlow RLS policies.
-- 72 validated foreign-key constraints; no unvalidated CountFlow constraints and no CountFlow table without a primary key.
+- 23 `count_*` tables; all 23 have RLS enabled.
+- 76 CountFlow RLS policies.
+- 78 validated foreign-key constraints; all are validated and every CountFlow table has a primary key.
 - Zero grants to `anon`; zero authenticated TRUNCATE/TRIGGER/REFERENCES grants.
 - `count_entries` client grants are SELECT and INSERT only (append-only).
 - `count_assignments` has one `NULLS NOT DISTINCT` unique scope index, enabling atomic upsert for both global and location-specific assignments.
 - Administrative audit triggers capture project/member/session/assignment/recount/rule/device/evidence changes; heartbeat-only device/member updates are suppressed. Export completion is explicitly logged with the authenticated supervisor and file integrity metadata.
-- Expected balances must use the product's base unit and are locked after the first count or reconciliation.
+- Expected-balance rows use the product base unit. A scoped product/location may carry expected_quantity = NULL when the client has no book balance; that location remains mandatory for counting and is never treated as zero.
 - Reconciliation runs store `entry_count_snapshot`; approval checks the latest run, unchanged entry count, zero uncounted positions, no open recount tasks, and no unresolved critical alerts. Approval moves the session to `review` and freezes further count inserts.
 - CountFlow private Broadcast authorization is scoped by project/session/member topic; live broadcast triggers are attached to operational tables.
 
@@ -48,8 +48,8 @@
 
 | Function | Version | JWT | State |
 |---|---:|---|---|
-| `counting-provision-member` | 4 | Required | ACTIVE |
-| `counting-export-session` | 7 | Required | ACTIVE |
+| `counting-provision-member` | 6 | Required | ACTIVE |
+| `counting-export-session` | 12 | Required | ACTIVE |
 
 Both functions also authorize the platform owner only when the authenticated Auth email is owner@rawaea.com and is confirmed; ordinary supervisors still require active membership in the target engagement. The export function creates a 13-sheet XLSX or detailed CSV, stores the artifact in the private `counting-exports` bucket, and records SHA-256, size, row count, and a signed URL. All UI exports now use this server pipeline; it also includes import rejection details, evidence image links, device/presence, and session audit history. Successful export is itself written to the audit log; failed completion removes orphaned Storage objects.
 
@@ -445,3 +445,121 @@ Only CountFlow master UI and CountFlow-specific migrations/settings were changed
 
 ### Isolation
 No SMART ERP project, company-1/main.html, core.js, legacy ERP table/function, stock, treasury or accounting object was changed. No persistent CountFlow business or Auth test data was created.
+
+---
+
+## LVE-2026-11-20-745 — Minimum Data, Operation Cost Snapshots, Protected Imports, Session Lifecycle and Client Balance Export
+
+Scope: CountFlow only — companies/company-2/Counting/ and Supabase project rawaea-staging (hfzznsiprnwkpayskzhu). No SMART ERP or legacy ERP object was changed.
+
+### 1. Product identity and minimum countable data — APPLIED / VERIFIED
+
+- count_products.sku and count_products.name are nullable.
+- A countable product must have at least one stable identifier: SKU or barcode. The database enforces this with a CHECK constraint.
+- Barcode is unique within an engagement; SKU uniqueness is case-insensitive within an engagement. Values are trimmed and cannot be blank.
+- base_unit remains mandatory and cannot be blank. The database no longer supplies a synthetic default unit for new products.
+- Product name, category, image, alternate units, conversion definitions, expected quantity and purchase-cost metadata are optional. Missing values remain NULL/empty; the system does not invent product names, categories, image references, unit conversions or costs.
+- When enriching an existing product, an omitted base unit may be reused only when SKU/barcode resolves to exactly one existing product. A new product still requires an explicit base unit.
+- Product lookup, recount labels, reconciliation details and print preview use name → SKU → barcode fallback. The counter screen accepts a barcode-only product.
+- Reconciliation detail label columns product_sku and product_name are nullable; operational identity remains enforced by count_products.
+
+### 2. Operation/location scope independent from book quantity — APPLIED / VERIFIED
+
+- count_expected_balances.expected_quantity is nullable.
+- count_reconciliation_lines.expected_scope marks a product/location position that belongs to the operation even when no book balance is available.
+- Import commit creates one expected-balance scope row for every committed product/location row with a resolved location, whether expected quantity is numeric or NULL.
+- Re-importing a row with blank book quantity does not erase a previously stored numeric baseline.
+- Reconciliation retains unknown-baseline positions and marks an uncounted scoped location as not_counted; NULL is never treated as numeric zero.
+- A product may appear at multiple locations in one import batch. Duplicate product identities are rejected only when the same identity is repeated as a duplicate item row rather than a separate valid location scope.
+- Approval requires all scoped positions to be counted and every imported product to have at least one effective count result.
+
+### 3. Operation-scoped purchase-cost snapshots — APPLIED / VERIFIED
+
+- Added public.count_session_product_costs, unique by (session_id, product_id), with operation-scoped purchase unit cost, currency, purchase unit, conversion factor to base unit, provenance type/reference/date, source batch, warning codes and audit actors/timestamps.
+- count_import_rows accepts the corresponding optional cost fields. Invalid or incomplete cost metadata creates warnings; it does not reject an otherwise countable product.
+- Missing source type/reference remains NULL. The import file name is not substituted as authoritative price provenance.
+- When one product has inconsistent cost tuples across location rows in the same batch, every affected row receives CONFLICTING_COST_SNAPSHOT_IN_BATCH; no arbitrary tuple is chosen. A pre-existing cost snapshot is also marked conflicted so it cannot be used for valuation.
+- Later enrichment may supply missing price metadata without re-sending an already known base unit.
+- The client workbook calculates a value only when the count is complete and all required cost fields/provenance and positive conversion factor are present. Missing or conflicted cost produces a blank value and a row in the completion register.
+- Currency totals remain separate per currency. No cross-currency addition or conversion is inferred.
+- Pricing policy remains UNKNOWN: no approved business rule has yet been selected for last purchase price, weighted average, invoice-specific cost or another valuation basis. The report therefore labels calculated figures as derived from the supplied operation cost snapshot, not as accounting valuation or an accounting posting.
+
+### 4. Import-write boundary and database authorization — APPLIED / VERIFIED
+
+- authenticated has SELECT-only access to count_import_rows, count_expected_balances and count_session_product_costs.
+- count_import_batches is readable; direct INSERT/DELETE is revoked. Direct UPDATE is restricted to mapping_id and metadata, which are the only batch fields written directly by the supervisor UI.
+- Batch creation, row staging and commit are performed through validated RPCs.
+- Public count_create_import_batch, count_stage_import_rows and count_commit_import_batch are SECURITY INVOKER wrappers. Privileged implementations are stored under counting_private and re-check supervisor authorization. The import-row mutation path is not exposed as a public SECURITY DEFINER endpoint.
+- All three public import RPCs deny anon EXECUTE and permit authenticated EXECUTE. The private schema does not grant authenticated CREATE.
+- Import commit revalidates session scope, row identity, location ownership and cross-product matches instead of trusting staged flags.
+
+### 5. Server-authoritative session lifecycle — APPLIED / VERIFIED
+
+- A new session must be inserted as planned; timestamps are server-managed.
+- Allowed transitions: planned → active, active → paused, paused → active, approved active/paused → review, and eligible active/paused/review → completed.
+- A trigger rejects direct status jumps and prevents direct timestamp edits.
+- Completion requires the latest approved reconciliation, unchanged count-entry snapshot, no uncounted scoped positions, no open recount tasks, no unresolved critical alerts and no imported product without an effective count.
+- Supervisor buttons use public.count_transition_session. The public RPC is SECURITY INVOKER, supervisor-scoped and denies anon; lifecycle integrity remains enforced by the private trigger guard.
+- Import-row, cost-snapshot, expected-balance and session lifecycle negative cases are included in rollback-only QA.
+
+### 6. Safe Auth identity reuse — DEPLOYED / STATICALLY VERIFIED
+
+- counting-provision-member is version 6, ACTIVE, verify_jwt=true.
+- It searches Auth identities by normalized exact email using paginated Auth Admin lookup.
+- A confirmed existing identity is reused without changing its password or Auth metadata. An active engagement membership is reused idempotently.
+- An unconfirmed Auth identity or an existing inactive membership is not silently reactivated; the function returns a specific conflict response.
+- A new Auth identity requires a new initial password of at least 10 characters.
+- owner@rawaea.com is explicitly prohibited from being attached as an ordinary team member.
+- Supervisor and owner UI forms explain that an existing account does not need a password entry and that its password is not changed.
+- Not Auth-E2E verified: no confirmed owner login or real browser session was available. The owner Auth identity count remains zero; no test identity/password was created.
+
+### 7. Client-facing Excel balance export — DEPLOYED / CODE-VERIFIED; FILE E2E UNKNOWN
+
+- counting-export-session is version 12, ACTIVE, verify_jwt=true.
+- Added the client_balance export scope; it is XLSX-only and requires the latest reconciliation to be approved.
+- Workbook sheets: ملخص العميل, الرصيد الفعلي, تفاصيل وحدات العد, تفصيل المواقع, and استكمالات البيانات.
+- Product balance is blank when any in-scope location remains uncounted. A separate field may show the known quantity from counted locations only; it is not labelled as the complete balance.
+- Unit details include entered quantity, entered unit, conversion factor, base quantity, base unit, count round/revision, timestamp, scan code and recount reference. This is an event-detail sheet; the approved result remains in the final-balance sheet.
+- The workbook contains a product-image column and embeds PNG/JPEG images stored in the private counting-product-images bucket. Limits: at most 500 embedded images, at most 1 MB per image, at most 12 MB aggregate image bytes and at most 50 MB workbook size. Unsupported/oversized/missing images and external HTTPS image URLs are listed as completion gaps with their reference; external URLs are not fetched by the server.
+- Images referenced by a private storage path are embedded in the XLSX OOXML package under xl/media/; the workbook also contains an image reference/status and a completion-register entry where an image is not embedded.
+- Decimal valuation uses fixed-scale integer arithmetic internally: quantities at scale 4 and cost/value at scale 6; workbook numeric format shows up to six decimals. A deterministic calculation check passed: 120 ÷ 12 = 10 per base unit; 5.25 × 10 = 52.5.
+- Incomplete quantities or costs remain blank; multiple currencies produce separate totals; no exchange rate or pricing policy is invented.
+- Row-level import warnings are included in the completion register with item identity, source file, source row and suggested next action.
+- Not generated or opened in Excel yet: no authenticated browser session and no confirmed deployed CountFlow origin were available. The Edge Function is deployed, but a signed client workbook has not been generated/downloaded/opened in Microsoft Excel or a compatible spreadsheet application during this verification pass.
+
+### 8. Field PWA and browser-cache behavior
+
+- Offline retry is scoped to the current project/member/device and current session; retrying one user/device does not clear other queued events.
+- When offline events belong to a paused/review/completed session, they remain locally stored and are not submitted into a different or inactive session.
+- countflow-sw.js build changed to countflow-sw-20261120-2 to invalidate stale shell/static caches when the updated PWA is deployed.
+- Remaining P1: a fully offline device can hold unreported queue entries that the server cannot know about until that device reconnects. A server-side close barrier covering every offline device has not yet been implemented or browser-tested. Cross-client Broadcast and concurrent-device E2E remain UNKNOWN.
+
+### 9. Verification — PASS / UNKNOWN
+
+PASS
+- Core rollback integration: barcode-only product; blank name/SKU/image preserved; same product at multiple locations; null book balance preserved as an in-scope position; real multi-location count; optional complete/partial cost metadata; late cost enrichment; unit fallback; assignment boundary; idempotency; recount; reconciliation.
+- Rollback smoke: owner bootstrap, import flow through the RPC, lifecycle start/pause/resume, direct lifecycle bypass rejection, entry idempotency, assignment scope, recount creation/entry/review, reconciliation approval/freeze, append-only ledgers and anonymous RPC denial.
+- Both SQL test suites execute inside transactions ending in ROLLBACK.
+- Inline JavaScript syntax: admin PASS, supervisor PASS, field counter PASS, service worker PASS.
+- Decimal arithmetic verification: 120 / 12 = 10, 5.25 × 10 = 52.5, and half-unit rounding at six decimals passed.
+- Live CountFlow schema: 23 count_* tables, all 23 RLS-enabled; 76 CountFlow policies; 78 foreign keys, all validated; no CountFlow table without a primary key.
+- Final privilege verification: direct row/baseline/cost DML is denied to authenticated except batch UPDATE(mapping_id, metadata); public import/session RPCs are SECURITY INVOKER, authenticated EXECUTE=true and anon EXECUTE=false.
+- Post-test residue: projects=0, members=0, sessions=0, assignments=0, products=0, entries=0, expected_balances=0, reconciliation_runs=0, import_batches=0, import_rows=0, cost_snapshots=0 and exports=0. Auth user count remains 1,868 legacy identities; owner@rawaea.com=0.
+
+Security/performance advisors
+- No CountFlow-specific public SECURITY DEFINER or unindexed-FK finding remains after moving privileged import implementations into counting_private and indexing the new FKs.
+- The advisor still reports legacy public objects such as public.inventory_count_details without RLS/primary key and other old public-schema findings; these are not CountFlow and were deliberately not changed.
+- Some CountFlow indexes are reported as unused because all synthetic transactions were rolled back and there is no retained workload. They were not dropped on the basis of an empty test database.
+
+### 10. Explicit remaining acceptance gates
+
+1. Authenticated browser E2E using an authorized owner/supervisor login, including existing-auth reuse and new-account provisioning without creating an uncontrolled test user.
+2. Deploy the PWA files to the real Cloudflare-hosted CountFlow origin; verify the new service-worker cache version, login, import, field counting, queue recovery and cross-client Realtime.
+3. Generate a synthetic client-balance XLSX through the deployed Edge Function and open it with an XLSX reader/Excel-compatible application. Verify all five sheets, numeric precision, image embedding, signed download and workbook integrity. Do not claim this gate passed until the file is actually generated and inspected.
+4. Complete a multi-device offline queue/close handshake so an operation cannot be closed while a disconnected device has unreported local count events.
+5. Obtain an explicit business decision for the purchase-cost valuation policy (last purchase, weighted average, invoice-specific or another agreed source). Until then, pricing_policy=UNKNOWN and no single authoritative inventory valuation is claimed.
+6. External HTTPS product-image references are not embedded automatically. Upload/import them into the private CountFlow image bucket (or add a separately secured best-effort client-side fetch/upload flow) before expecting an embedded image in the client workbook.
+
+### Isolation
+
+Only companies/company-2/Counting/ and CountFlow-specific objects in rawaea-staging were changed. No SMART ERP project, companies/company-1/main.html, core.js, legacy ERP tables/functions, inventory balance, treasury or accounting data was modified. No persistent business test data, Auth identity, password, export file or customer inventory was created.
