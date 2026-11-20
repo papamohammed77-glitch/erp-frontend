@@ -83,6 +83,28 @@ function xmlEscape(value: unknown) {
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;",
   }[ch] as string));
 }
+function decimalToScaled(value: unknown, scale: number): bigint | null {
+  if (value === null || value === undefined || value === "") return null;
+  const raw = String(value).trim();
+  const match = raw.match(/^([+-]?)([0-9]+)(?:\\.([0-9]*))?$/);
+  if (!match) throw new Error("INVALID_DECIMAL_VALUE");
+  const factor = 10n ** BigInt(scale);
+  const sign = match[1] === "-" ? -1n : 1n;
+  const whole = BigInt(match[2]) * factor;
+  const fraction = match[3] || "";
+  const kept = fraction.slice(0, scale).padEnd(scale, "0");
+  let result = whole + BigInt(kept || "0");
+  if (fraction.length > scale && fraction[scale] >= "5") result += 1n;
+  return sign * result;
+}
+function roundDivide(numerator: bigint, denominator: bigint): bigint {
+  if (denominator <= 0n) throw new Error("INVALID_DECIMAL_DENOMINATOR");
+  if (numerator < 0n) return -roundDivide(-numerator, denominator);
+  return (numerator + denominator / 2n) / denominator;
+}
+function scaledToNumber(value: bigint, scale: number): number {
+  return Number(value) / Number(10n ** BigInt(scale));
+}
 function excelColumn(index: number) {
   let n=index+1, out="";
   while(n>0){const r=(n-1)%26;out=String.fromCharCode(65+r)+out;n=Math.floor((n-1)/26);}
@@ -145,7 +167,7 @@ function buildClientBalanceXlsx(sheets: Array<{name:string,rows:unknown[][],widt
     '</Relationships>');
   files["xl/styles.xml"]=strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
     '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
-    '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00;[Red](#,##0.00);-"/></numFmts>'+
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.######;[Red](#,##0.######);-"/></numFmts>'+
     '<fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font></fonts>'+
     '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill></fills>'+
     '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD9E2F3"/></left><right style="thin"><color rgb="FFD9E2F3"/></right><top style="thin"><color rgb="FFD9E2F3"/></top><bottom style="thin"><color rgb="FFD9E2F3"/></bottom><diagonal/></border></borders>'+
@@ -367,7 +389,7 @@ Deno.serve(async (req: Request) => {
         "الرصيد الدفتري المرجعي","الكمية المعدودة","الفرق","حالة الموقع",
       ]];
       const gapRows:any[][]=[["SKU","الباركود","الصنف","الموقع","نوع الفجوة","التفاصيل","الإجراء المقترح"]];
-      const currencyTotals=new Map<string,{value:number,products:number}>();
+      const currencyTotals=new Map<string,{valueMicro:bigint,products:number}>();
       let fullyCountedProducts=0,partiallyCountedProducts=0,notCountedProducts=0;
       let fullyPricedProducts=0,unpricedProducts=0,valueEligibleProducts=0;
       let embeddedCount=0,notEmbeddedCount=0,completeQuantityProducts=0;
@@ -377,8 +399,10 @@ Deno.serve(async (req: Request) => {
         const countedLines=productLines.filter((l:any)=>l.counted_quantity!==null&&l.counted_quantity!==undefined);
         const uncountedLines=productLines.filter((l:any)=>l.counted_quantity===null||l.counted_quantity===undefined||l.result_status==="not_counted");
         const isCountComplete=productLines.length>0&&uncountedLines.length===0;
-        const partialQuantity=countedLines.reduce((sum:number,l:any)=>sum+Number(l.counted_quantity||0),0);
-        const actualQuantity=isCountComplete?partialQuantity:null;
+        const partialQuantityScaled=countedLines.reduce((sum:bigint,l:any)=>sum+(decimalToScaled(l.counted_quantity,4)??0n),0n);
+        const partialQuantity=scaledToNumber(partialQuantityScaled,4);
+        const actualQuantityScaled=isCountComplete?partialQuantityScaled:null;
+        const actualQuantity=actualQuantityScaled===null?null:scaledToNumber(actualQuantityScaled,4);
         const cost:any=costMap.get(product.id)||null;
         const costFields={
           price:cost?.purchase_unit_cost,
@@ -394,19 +418,30 @@ Deno.serve(async (req: Request) => {
           "COST_DATA_INCOMPLETE","INVALID_PURCHASE_UNIT_COST","INVALID_CURRENCY_CODE",
           "INVALID_UNIT_FACTOR","COST_REQUIRES_OPERATION_SCOPE","CONFLICTING_COST_SNAPSHOT_IN_BATCH"
         ].includes(w));
-        const isCostComplete=!!cost&&missingCostFields.length===0&&Number(cost.unit_factor_to_base)>0&&Number(cost.purchase_unit_cost)>=0&&blockingCostWarnings.length===0;
-        const baseUnitCost=isCostComplete?Number(cost.purchase_unit_cost)/Number(cost.unit_factor_to_base):null;
-        const lineValue=isCostComplete&&actualQuantity!==null?actualQuantity*Number(baseUnitCost):null;
+        const purchasePriceMicro=cost?decimalToScaled(cost.purchase_unit_cost,6):null;
+        const purchaseUnitFactorMicro=cost?decimalToScaled(cost.unit_factor_to_base,6):null;
+        const isCostComplete=!!cost&&missingCostFields.length===0
+          &&purchaseUnitFactorMicro!==null&&purchaseUnitFactorMicro>0n
+          &&purchasePriceMicro!==null&&purchasePriceMicro>=0n
+          &&blockingCostWarnings.length===0;
+        const baseUnitCostMicro=isCostComplete
+          ?roundDivide(purchasePriceMicro!*1000000n,purchaseUnitFactorMicro!)
+          :null;
+        const baseUnitCost=baseUnitCostMicro===null?null:scaledToNumber(baseUnitCostMicro,6);
+        const lineValueMicro=isCostComplete&&actualQuantityScaled!==null
+          ?roundDivide(actualQuantityScaled*baseUnitCostMicro!,10000n)
+          :null;
+        const lineValue=lineValueMicro===null?null:scaledToNumber(lineValueMicro,6);
         const photo=imageByProduct.get(product.id)||{status:"لا توجد صورة",reference:""};
         if(photo.bytes&&photo.extension){embeddedImages.push({row:clientRows.length+1,extension:photo.extension,bytes:photo.bytes});embeddedCount++;}
         else notEmbeddedCount++;
         if(isCountComplete){fullyCountedProducts++;completeQuantityProducts++;}else if(productLines.length){partiallyCountedProducts++;if(countedLines.length)knownCountedQuantityProducts++;}else{notCountedProducts++;}
         if(isCostComplete)fullyPricedProducts++;else unpricedProducts++;
-        if(lineValue!==null){
+        if(lineValueMicro!==null){
           valueEligibleProducts++;
           const currency=String(cost.currency_code);
-          const agg=currencyTotals.get(currency)||{value:0,products:0};
-          agg.value+=lineValue;agg.products++;currencyTotals.set(currency,agg);
+          const agg=currencyTotals.get(currency)||{valueMicro:0n,products:0};
+          agg.valueMicro+=lineValueMicro;agg.products++;currencyTotals.set(currency,agg);
         }
 
         if(!product.name)gapRows.push([product.sku||"",product.barcode||"","", "", "اسم الصنف غير مكتمل","لا يوجد اسم وصفي محفوظ للصنف","استكمال الاسم من مصدر العميل"]);
@@ -496,7 +531,7 @@ Deno.serve(async (req: Request) => {
         ["قاعدة النقص في العد","الموقع غير المعدود لا يُسجل صفراً؛ الرصيد الإجمالي يبقى فارغاً عند نقص أي موقع ضمن نطاق الصنف","",""],
       ];
       for(const [currency,total] of [...currencyTotals.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
-        summaryRows.push(["قيمة الأصناف المكتملة التسعير",total.products,currency,total.value]);
+        summaryRows.push(["قيمة الأصناف المكتملة التسعير",total.products,currency,scaledToNumber(total.valueMicro,6)]);
       }
       const workbookBytes=buildClientBalanceXlsx([
         {name:"ملخص العميل",rows:summaryRows,widths:[38,58,14,24]},
@@ -526,7 +561,10 @@ Deno.serve(async (req: Request) => {
         complete_quantity_products:fullyCountedProducts,partial_quantity_products:partiallyCountedProducts,
         not_counted_products:notCountedProducts,fully_priced_products:fullyPricedProducts,
         unpriced_products:unpricedProducts,value_eligible_products:valueEligibleProducts,
-        currency_totals:[...currencyTotals.entries()].map(([currency,v])=>({currency,products:v.products,value:v.value})),
+        currency_totals:[...currencyTotals.entries()].map(([currency,v])=>({
+          currency,products:v.products,value:scaledToNumber(v.valueMicro,6),
+          value_scaled_micro:v.valueMicro.toString(),scale:6
+        })),
         pricing_policy:"UNKNOWN",
       };
       const {error:updateError}=await admin.from("count_exports").update({
