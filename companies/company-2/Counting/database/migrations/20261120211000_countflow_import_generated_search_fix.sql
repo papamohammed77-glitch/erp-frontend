@@ -298,7 +298,6 @@ EXCEPTION WHEN OTHERS THEN
   WHERE id=p_batch_id;
   RAISE;
 END;
-$function$
-
+$function$;
 REVOKE ALL ON FUNCTION public.count_commit_import_batch(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.count_commit_import_batch(uuid) TO authenticated;
