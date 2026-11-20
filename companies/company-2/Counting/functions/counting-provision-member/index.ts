@@ -8,6 +8,23 @@ const cors = {
 const reply = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
+async function findAuthUserByEmail(admin: any, normalizedEmail: string) {
+  const perPage = 1000;
+  const maxPages = 50;
+  for (let page = 1; page <= maxPages; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw new Error("AUTH_USER_LOOKUP_FAILED: " + error.message);
+    const users = data?.users || [];
+    const matches = users.filter((u: any) =>
+      String(u.email || "").trim().toLowerCase() === normalizedEmail
+    );
+    if (matches.length > 1) throw new Error("DUPLICATE_AUTH_EMAIL_IDENTITIES");
+    if (matches.length === 1) return matches[0];
+    if (users.length < perPage) return null;
+  }
+  throw new Error("AUTH_USER_LOOKUP_LIMIT_REACHED");
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return reply({ error: "METHOD_NOT_ALLOWED" }, 405);
@@ -57,24 +74,81 @@ Deno.serve(async (req) => {
     const displayName = String(body.display_name || "").trim();
     const username = String(body.username || email).trim();
     const role = String(body.role || "counter");
-    if (!email || password.length < 10 || !displayName || !username || !["counter", "auditor", "supervisor"].includes(role))
+    if (!email || !displayName || !username || !["counter", "auditor", "supervisor"].includes(role))
       return reply({ error: "INVALID_INPUT" }, 400);
-    const { data: created, error: createError } = await admin.auth.admin.createUser({
-      email, password, email_confirm: true, user_metadata: { counting_display_name: displayName }
-    });
-    if (createError || !created.user) return reply({ error: createError?.message || "USER_CREATE_FAILED" }, 400);
+
+    // Reuse a confirmed Auth identity without changing its password or metadata.
+    // A password is required only when the email does not yet exist in Auth.
+    let authUser = await findAuthUserByEmail(admin, email);
+    let accountCreated = false;
+    let accountReused = false;
+    if (authUser) {
+      if (!authUser.email_confirmed_at) {
+        return reply({
+          error: "ACCOUNT_EXISTS_UNCONFIRMED",
+          message: "يوجد حساب Auth بهذا البريد لكنه غير مؤكد. أكمل تأكيد الحساب أولاً؛ لم تُغيّر كلمة مروره."
+        }, 409);
+      }
+      accountReused = true;
+    } else {
+      if (password.length < 10) return reply({ error: "PASSWORD_REQUIRED_FOR_NEW_ACCOUNT" }, 400);
+      const { data: created, error: createError } = await admin.auth.admin.createUser({
+        email, password, email_confirm: true, user_metadata: { counting_display_name: displayName }
+      });
+      if (createError || !created.user) {
+        return reply({ error: createError?.message || "USER_CREATE_FAILED" }, 400);
+      }
+      authUser = created.user;
+      accountCreated = true;
+    }
+
+    const { data: existingMembership, error: membershipLookupError } = await admin.from("count_members")
+      .select("id,role,status,display_name,username")
+      .eq("project_id", projectId).eq("user_id", authUser.id).maybeSingle();
+    if (membershipLookupError) {
+      if (accountCreated) await admin.auth.admin.deleteUser(authUser.id);
+      return reply({ error: "MEMBERSHIP_LOOKUP_FAILED: " + membershipLookupError.message }, 500);
+    }
+    if (existingMembership) {
+      if (existingMembership.status !== "active") {
+        if (accountCreated) await admin.auth.admin.deleteUser(authUser.id);
+        return reply({
+          error: "MEMBERSHIP_EXISTS_NOT_ACTIVE",
+          membership_id: existingMembership.id,
+          membership_status: existingMembership.status,
+          message: "الحساب مرتبط بهذا التكليف بعضوية غير نشطة. لا نعيد تفعيلها تلقائياً؛ استخدم إدارة المستخدمين لاستئناف العضوية."
+        }, 409);
+      }
+      const { error: auditError } = await admin.from("count_audit_log").insert({
+        project_id: projectId, actor_id: authData.user.id, action: "member.reused",
+        entity_type: "member", entity_id: existingMembership.id,
+        details: { email, username: existingMembership.username, role: existingMembership.role, auth_identity_reused: true }
+      });
+      return reply({
+        ok: true, user_id: authUser.id, member_id: existingMembership.id,
+        username: existingMembership.username, role: existingMembership.role,
+        account_reused: true, membership_reused: true,
+        password_changed: false, audit_warning: auditError?.message || null
+      });
+    }
+
     const { data: memberRecord, error: insertError } = await admin.from("count_members").insert({
-      project_id: projectId, user_id: created.user.id, display_name: displayName, username, role, status: "active"
+      project_id: projectId, user_id: authUser.id, display_name: displayName, username, role, status: "active"
     }).select("id").single();
     if (insertError || !memberRecord) {
-      await admin.auth.admin.deleteUser(created.user.id);
+      if (accountCreated) await admin.auth.admin.deleteUser(authUser.id);
       return reply({ error: insertError?.message || "MEMBERSHIP_CREATE_FAILED" }, 409);
     }
     const { error: auditError } = await admin.from("count_audit_log").insert({
-      project_id: projectId, actor_id: authData.user.id, action: "member.created",
-      entity_type: "member", entity_id: memberRecord.id, details: { email, username, role }
+      project_id: projectId, actor_id: authData.user.id, action: accountReused ? "member.attached_existing_auth" : "member.created",
+      entity_type: "member", entity_id: memberRecord.id,
+      details: { email, username, role, account_reused: accountReused, password_changed: false }
     });
-    return reply({ ok: true, user_id: created.user.id, member_id: memberRecord.id, username, audit_warning: auditError?.message || null });
+    return reply({
+      ok: true, user_id: authUser.id, member_id: memberRecord.id, username,
+      account_reused: accountReused, membership_reused: false,
+      password_changed: false, audit_warning: auditError?.message || null
+    });
   } catch (error) {
     return reply({ error: error instanceof Error ? error.message : "INTERNAL_ERROR" }, 500);
   }
