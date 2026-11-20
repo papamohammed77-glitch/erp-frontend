@@ -25,10 +25,15 @@ Deno.serve(async (req) => {
     const projectId = String(body.project_id || "");
     const action = String(body.action || "create");
     if (!projectId) return reply({ error: "INVALID_INPUT" }, 400);
-    const { data: membership, error: membershipError } = await admin.from("count_members")
-      .select("role,status").eq("project_id", projectId).eq("user_id", authData.user.id).maybeSingle();
-    if (membershipError || membership?.role !== "supervisor" || membership?.status !== "active")
-      return reply({ error: "SUPERVISOR_REQUIRED" }, 403);
+    const isPlatformOwner =
+      String(authData.user.email || "").trim().toLowerCase() === "owner@rawaea.com" &&
+      Boolean(authData.user.email_confirmed_at);
+    if (!isPlatformOwner) {
+      const { data: membership, error: membershipError } = await admin.from("count_members")
+        .select("role,status").eq("project_id", projectId).eq("user_id", authData.user.id).maybeSingle();
+      if (membershipError || membership?.role !== "supervisor" || membership?.status !== "active")
+        return reply({ error: "SUPERVISOR_REQUIRED" }, 403);
+    }
 
     if (action === "reset_password") {
       const memberId = String(body.member_id || "");
