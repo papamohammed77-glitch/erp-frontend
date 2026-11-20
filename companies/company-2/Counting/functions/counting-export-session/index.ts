@@ -255,6 +255,9 @@ Deno.serve(async (req: Request) => {
       if (!latestRun || latestRun.status !== "approved") {
         throw new Error("CLIENT_BALANCE_REQUIRES_APPROVED_RECONCILIATION");
       }
+      const {data:engagement,error:engagementError}=await admin.from("count_projects")
+        .select("id,name,code").eq("id",session.project_id).maybeSingle();
+      if(engagementError||!engagement)throw new Error("CLIENT_BALANCE_ENGAGEMENT_NOT_FOUND");
       const [lines, locations, importBatches, costs] = await Promise.all([
         fetchAll(admin,"count_reconciliation_lines",
           "id,run_id,product_id,location_id,product_sku,product_name,location_path,unit,expected_quantity,counted_quantity,variance_quantity,result_status,computed_at",
@@ -367,7 +370,12 @@ Deno.serve(async (req: Request) => {
           sourceReference:cost?.source_reference,
         };
         const missingCostFields=Object.entries(costFields).filter(([_,v])=>v===null||v===undefined||v==="").map(([k])=>k);
-        const isCostComplete=!!cost&&missingCostFields.length===0&&Number(cost.unit_factor_to_base)>0&&Number(cost.purchase_unit_cost)>=0;
+        const costWarnings=Array.isArray(cost?.warning_codes)?cost.warning_codes:[];
+        const blockingCostWarnings=costWarnings.filter((w:string)=>[
+          "COST_DATA_INCOMPLETE","INVALID_PURCHASE_UNIT_COST","INVALID_CURRENCY_CODE",
+          "INVALID_UNIT_FACTOR","COST_REQUIRES_OPERATION_SCOPE","CONFLICTING_COST_SNAPSHOT_IN_BATCH"
+        ].includes(w));
+        const isCostComplete=!!cost&&missingCostFields.length===0&&Number(cost.unit_factor_to_base)>0&&Number(cost.purchase_unit_cost)>=0&&blockingCostWarnings.length===0;
         const baseUnitCost=isCostComplete?Number(cost.purchase_unit_cost)/Number(cost.unit_factor_to_base):null;
         const lineValue=isCostComplete&&actualQuantity!==null?actualQuantity*Number(baseUnitCost):null;
         const photo=imageByProduct.get(product.id)||{status:"لا توجد صورة",reference:""};
@@ -387,7 +395,9 @@ Deno.serve(async (req: Request) => {
         if(!cost){
           gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "بيانات التكلفة غير متوفرة","لا توجد لقطة تكلفة لهذه العملية","استيراد/توثيق سعر الشراء ومصدره ووحدته وعملته ومعامل تحويله"]);
         }else if(!isCostComplete){
-          gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "بيانات التكلفة غير مكتملة","الحقول الناقصة: "+missingCostFields.join("، ")+" · تنبيهات: "+(cost.warning_codes||[]).join("، "),"استكمال الحقول الناقصة قبل احتساب قيمة الرصيد"]);
+          gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "بيانات التكلفة غير مكتملة","الحقول الناقصة: "+missingCostFields.join("، ")+" · تنبيهات: "+costWarnings.join("، "),"استكمال الحقول الناقصة أو حل تعارض مصادر السعر قبل احتساب قيمة الرصيد"]);
+        }else if(costWarnings.length){
+          gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "تنبيهات مصدر التكلفة",costWarnings.join("، "),"مراجعة التنبيهات المرجعية وتحديث بيانات السعر عند الحاجة"]);
         }
         if(!productLines.length){
           gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "لا توجد نتيجة عد","الصنف موجود في استيراد العملية لكن لا توجد له نتيجة في جولة التسوية المعتمدة","تحديد موقعه وإتمام العد ثم اعتماد جولة تسوية جديدة"]);
@@ -429,7 +439,8 @@ Deno.serve(async (req: Request) => {
       }
       const summaryRows:any[][]=[
         ["مؤشر التقرير","القيمة","العملة","إجمالي القيمة المشتقة"],
-        ["اسم الجهة/التكليف",session.project_id,"",""],
+        ["اسم الجهة/التكليف",engagement.name,"",""],
+        ["رقم التكليف",engagement.code||"","", ""],
         ["اسم العملية",session.name,"",""],
         ["حالة العملية",session.status,"",""],
         ["رقم جولة التسوية المعتمدة",latestRun.run_number,"",""],
@@ -451,7 +462,6 @@ Deno.serve(async (req: Request) => {
       for(const [currency,total] of [...currencyTotals.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
         summaryRows.push(["قيمة الأصناف المكتملة التسعير",total.products,currency,total.value]);
       }
-      const imagesSet=new Set(embeddedImages.map(im=>im.row));
       const workbookBytes=buildClientBalanceXlsx([
         {name:"ملخص العميل",rows:summaryRows,widths:[38,58,14,24]},
         {name:"الرصيد الفعلي",rows:clientRows,widths:[12,18,20,32,20,22,18,24,24,18,18,12,24,22,22,22,28,16,25,48,48]},
