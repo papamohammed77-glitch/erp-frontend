@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-20-741-CountFlow-Core-Offline-PWA-Shell`  
+**Last Verified Event:** `LVE-2026-11-20-744-CountFlow-Engagement-Operation-Workflow`  
 **Date:** 2026-11-20  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -11,11 +11,11 @@
 
 | Artifact | Current Git blob SHA |
 |---|---|
-| `countflow-admin.html` | `13ca11377cf3f05aad23c438c2869aeba3922ccc` |
+| `countflow-admin.html` | `79b33ded97a355a33a2eb1b6cd84441e9b78cebb` |
 | `countflow.html` | `83969d45a0f446e5f9e74f8de2d943635484d3cd` |
-| `Countflow-supervisor.html` | `42b65e9aa71d594cdae9800f15739d5222d91918` |
-| `README.md` | `3553a5a7bf04a73f65b9de2ddccf7fb86fdb9e40` |
-| `ARCHITECTURE.md` | `5df149b7544a9b55f808d52f0dd9d8ee42d4c5fb` |
+| `Countflow-supervisor.html` | `51badad631219f1d2588135254aea2dc3b43c10b` |
+| `README.md` | `fc98f54bb092ba68b9872c1c1d69524d4caf6241` |
+| `ARCHITECTURE.md` | `0183e7cd6fe15c32c1df07b7e3f88e56e0b8a999` |
 | `DEPLOYMENT.md` | `478fafbf6671e7d0d8b781baf9dc0414c9449bec` |
 | `scripts/build-pages.sh` | `865629e8f1061f403f426f9c712d0ec00fdd9793` |
 | `index.html` | `707a5a0f18674a93cab811be23ea9a13abb4a91b` |
@@ -24,10 +24,12 @@
 | `manifest.webmanifest` | `dc5fa4e24234586c398da958e5a0463d7316d7fb` |
 | `countflow-icon.svg` | `7540be49299b57849a8cb25a163981730571d6a5` |
 | `_headers` | `799b5b51882d12ed2503fb41ad04633145d24468` |
-| `functions/counting-provision-member/index.ts` | `74af323b9efda52d01b0326ef71dc0fe5133fa3b` |
-| `functions/counting-export-session/index.ts` | `e0f8f6faf67aee2b7478a1eb99b53c3b64caf0ba` |
-| `database/migrations/20261120170000_countflow_platform_owner_verified_email.sql` | source committed | 
-| `database/migrations/20261120171000_countflow_license_settings_unbounded_emails.sql` | source committed |
+| `functions/counting-provision-member/index.ts` | `22851e4653563af347d562cb9ccf86e408fb34a1` |
+| `functions/counting-export-session/index.ts` | `511a28a4e4eeaa1e7e452db036ef374af4122acb` |
+| `database/migrations/20261120170000_countflow_platform_owner_verified_email.sql` | `b59d12d4047ed2ce8ab5b0528b93fde6cd3a8591` | 
+| `database/migrations/20261120171000_countflow_license_settings_unbounded_emails.sql` | `09dd07432dbec5a71cfeaa09198abb1d9ff640af` |
+| `database/migrations/20261120200000_countflow_atomic_engagement_and_operation_create.sql` | `725ce36cdd06fde99e45ca6d4c7ce6539e2cfde2` |
+| `database/migrations/README.md` | `ee02b814026f7f30a3fbeb9356c85085dde77d53` |
 
 ## 2. Verified Supabase structure
 
@@ -46,14 +48,14 @@
 
 | Function | Version | JWT | State |
 |---|---:|---|---|
-| `counting-provision-member` | 3 | Required | ACTIVE |
-| `counting-export-session` | 6 | Required | ACTIVE |
+| `counting-provision-member` | 4 | Required | ACTIVE |
+| `counting-export-session` | 7 | Required | ACTIVE |
 
-The export function verifies the authenticated supervisor membership, creates a 13-sheet XLSX or detailed CSV, stores the artifact in the private `counting-exports` bucket, and records SHA-256, size, row count, and a signed URL. All UI exports now use this server pipeline; it also includes import rejection details, evidence image links, device/presence, and session audit history. Successful export is itself written to the audit log; failed completion removes orphaned Storage objects.
+Both functions also authorize the platform owner only when the authenticated Auth email is owner@rawaea.com and is confirmed; ordinary supervisors still require active membership in the target engagement. The export function creates a 13-sheet XLSX or detailed CSV, stores the artifact in the private `counting-exports` bucket, and records SHA-256, size, row count, and a signed URL. All UI exports now use this server pipeline; it also includes import rejection details, evidence image links, device/presence, and session audit history. Successful export is itself written to the audit log; failed completion removes orphaned Storage objects.
 
 ## 4. Completed behavior and regression tests
 
-Latest applied migration ledger entry: `20261119195750_countflow_import_batch_sku_lookup_index_v1`. The matching Git source filename is `20261119195630_countflow_import_batch_sku_lookup_index_v1.sql`; timestamp mapping is documented as drift, not an instruction to reapply.
+Latest applied CountFlow migration by live ledger version: `20261120004422`, name `20261120200000_countflow_atomic_engagement_and_operation_create`. The owner/license migrations are recorded at live versions `20261119232523` and `20261119232615`; ledger versions are not identical to the Git source filename timestamps. See database/migrations/README.md for reconciliation.
 
 - Continuous camera scanning (detection throttled to 200 ms), location barcode selection, repeated same-product scan quantity increment, and a save-before-switch safeguard.
 - Import pipeline uses 1,000-row staging chunks and detailed row outcomes; location reads/import mapping are paginated.
@@ -386,3 +388,57 @@ No code, schema, ACL, RLS, account, deployment, or business-data changes were ma
 
 ### Isolation
 Only CountFlow master UI and CountFlow-specific migrations/settings were changed. SMART ERP, `company-1/main.html`, `core.js`, all legacy ERP tables/functions, and business balances were not touched.
+
+---
+
+## LVE-2026-11-20-744 — CountFlow engagement + named operation workflow
+
+**Scope:** CountFlow only — companies/company-2/Counting/ and Supabase rawaea-staging (hfzznsiprnwkpayskzhu).
+
+### Business model and data contract — CONFIRMED
+- The contracting organization is variable per contract; it is not a permanent customer master.
+- count_projects is the independent engagement workspace / ملف تكليف الجرد: name stores the contracting-party name and code is the unique engagement reference. The same contracting-party name may appear in separate workspaces with distinct codes.
+- count_sessions.name is the operation name / اسم عملية الجرد, e.g. جرد شهر يناير 2027 - كارفور فرع المعادي.
+- count_members remains engagement-scoped. count_assignments binds members to a specific operation and optionally to a location.
+- Removing a count_assignments row removes that user from the selected operation only; it does not delete the Auth identity, engagement membership, or historic count_entries.
+
+### Database change — APPLIED / VERIFIED
+- Added public.count_create_engagement(p_client_name,p_engagement_code,p_operation_name) as a SECURITY INVOKER RPC. It validates input and inserts the engagement workspace and first planned operation in one transaction.
+- Authenticated EXECUTE=true; anon EXECUTE=false.
+- The live ledger contains the three owner/license/engagement migration names. The latest live version is 20261120004422; the two owner/license entries are 20261119232523 and 20261119232615.
+- count_assignments RLS remains enabled; anon grants=0; existing supervisor/owner RLS scope protects assignment operations.
+
+### Master UI — IMPLEMENTED
+- countflow-admin.html creates a new engagement and its first named operation together using the RPC.
+- Added the historical operation register across owner-visible engagements: search by contracting-party name, operation name or engagement code; filter by status and creation-date range; sortable columns; 50-row pagination.
+- Operation detail provides team management, adding an existing engagement member, creating an account and assigning it to the selected operation, removing from this operation only, current metrics, import history, reconciliation lines, export archive, print preview, and XLSX/CSV export through the server function.
+- Coverage display derives from the actual count_session_kpis contract (expected_positions/counted_positions, or total_products/counted_products fallback); it does not assume a non-existent coverage_percent_total key.
+
+### Supervisor UI — IMPLEMENTED
+- Countflow-supervisor.html creates a new engagement and first named operation from an inline validated form using the same atomic RPC.
+- Operation history is searchable by operation name, status and date range, with open/select behavior for completed historical operations.
+- Operation assignment list has a remove-from-this-operation action. Creating a new member provisions the identity/membership through the existing Edge Function, then assigns that member to the selected editable operation.
+- Completed/cancelled operations are historical in the supervisor UI: team/import/state-change controls are disabled; preview and export remain available.
+- Added printable reconciliation preview. It reads up to 5,000 detail rows for print; use server XLSX for the complete result export.
+- Existing staged CSV/XLSX import and server export paths are reused; no parallel pipeline/table was introduced.
+
+### Edge Functions — DEPLOYED / CONFIRMED
+- counting-provision-member: version 4, ACTIVE, verify_jwt=true; permits active supervisor in target engagement or confirmed platform owner.
+- counting-export-session: version 7, ACTIVE, verify_jwt=true; permits active supervisor in target engagement or confirmed platform owner.
+- Ordinary member access remains bounded by engagement membership and operation assignment rules.
+
+### Verification
+- Inline JavaScript syntax compilation: master PASS, supervisor PASS, field page PASS.
+- Database residue check: count_projects=0, count_sessions=0, count_members=0, count_assignments=0, count_entries=0, count_import_batches=0, count_exports=0.
+- Auth owner account matching owner@rawaea.com=0. No new Auth identity or password was created.
+- RPC privilege check: authenticated=true / anon=false. count_assignments RLS=true and anon grants=0.
+- Security advisor still reports the known 65 public legacy tables without RLS; no CountFlow-specific finding for the new owner helper, license settings, or engagement RPC was returned. Legacy ERP objects were deliberately not changed.
+
+### Not run / UNKNOWN
+- No authenticated browser E2E was run: no confirmed owner Auth login or deployed CountFlow origin is available.
+- Real create-member, import commit, signed XLSX/CSV download, print dialog, cross-browser UI and concurrent-device behavior are not yet browser-verified.
+- No Cloudflare deployment, DNS or domain modification was made.
+- Previously recorded CountFlow P1s remain open: offline queue close/replay barrier, retry scoping, direct-DML/state-transition bypasses, import staging revalidation and cross-client Broadcast delivery.
+
+### Isolation
+No SMART ERP project, company-1/main.html, core.js, legacy ERP table/function, stock, treasury or accounting object was changed. No persistent CountFlow business or Auth test data was created.
