@@ -1,6 +1,6 @@
 # CountFlow — CURRENT_STATE
 
-**Last Verified Event:** `LVE-2026-11-20-745-CountFlow-Minimum-Data-Cost-Control-Client-Balance-Export`  
+**Last Verified Event:** `LVE-2026-11-20-746-CountFlow-Execution-Handoff`  
 **Date:** 2026-11-20  
 **Repository:** `papamohammed77-glitch/erp-frontend`  
 **Application path:** `companies/company-2/Counting/`  
@@ -29,6 +29,12 @@
 | `database/migrations/20261120170000_countflow_platform_owner_verified_email.sql` | `b59d12d4047ed2ce8ab5b0528b93fde6cd3a8591` | 
 | `database/migrations/20261120171000_countflow_license_settings_unbounded_emails.sql` | `09dd07432dbec5a71cfeaa09198abb1d9ff640af` |
 | `database/migrations/20261120200000_countflow_atomic_engagement_and_operation_create.sql` | `725ce36cdd06fde99e45ca6d4c7ce6539e2cfde2` |
+| `database/migrations/20261120230000_countflow_server_session_lifecycle.sql` | f2a8d067fa6bf3a64d77e3f7a39ded18470d8113 |
+| `tests/countflow_core_integration_rollback.sql` | 1afe0c483db3c6e10b2efc10340096f3117e372d |
+| `tests/rollback-smoke.sql` | 9e182511601dd764d50a7fff013293e89d18d501 |
+| `tests/countflow_approval_finality_rollback.sql` | c09bfd3147fadbda21a019d38037ff3f4fe72eba |
+| `tests/import_90k_rollback.sql` | d72d9ee724071446aa96888fc124a056e3470760 |
+| `FINAL_EXECUTION_REPORT_LVE-746.md` | da3083d6a0847b7da9d4b78da50d1f65e14b295d |
 | `database/migrations/README.md` | `ee02b814026f7f30a3fbeb9356c85085dde77d53` |
 
 ## 2. Verified Supabase structure
@@ -55,7 +61,7 @@ Both functions also authorize the platform owner only when the authenticated Aut
 
 ## 4. Completed behavior and regression tests
 
-Latest applied CountFlow migration by live ledger version: `20261120004422`, name `20261120200000_countflow_atomic_engagement_and_operation_create`. The owner/license migrations are recorded at live versions `20261119232523` and `20261119232615`; ledger versions are not identical to the Git source filename timestamps. See database/migrations/README.md for reconciliation.
+Historical checkpoint at LVE-744: the latest live migration was `20261120004422` (`20261120200000_countflow_atomic_engagement_and_operation_create`). This was superseded by later CountFlow migrations; see the current live ledger version recorded under LVE-746. The owner/license migrations are recorded at live versions `20261119232523` and `20261119232615`; ledger versions are not identical to the Git source filename timestamps. See database/migrations/README.md for reconciliation.
 
 - Continuous camera scanning (detection throttled to 200 ms), location barcode selection, repeated same-product scan quantity increment, and a save-before-switch safeguard.
 - Import pipeline uses 1,000-row staging chunks and detailed row outcomes; location reads/import mapping are paginated.
@@ -563,3 +569,35 @@ Security/performance advisors
 ### Isolation
 
 Only companies/company-2/Counting/ and CountFlow-specific objects in rawaea-staging were changed. No SMART ERP project, companies/company-1/main.html, core.js, legacy ERP tables/functions, inventory balance, treasury or accounting data was modified. No persistent business test data, Auth identity, password, export file or customer inventory was created.
+
+---
+
+## LVE-2026-11-20-746 — Execution verification and successor handoff
+
+**Full report:** `FINAL_EXECUTION_REPORT_LVE-746.md` (full scope, evidence, unresolved gates, and mandatory successor instructions).
+
+### Live source and deployment facts — CONFIRMED
+- Git HEAD before the report/state documentation commits: `4f0d2530c25a3f5288a5defc568d00542ac58e4c`.
+- `counting-export-session`: version 12, ACTIVE, JWT required; live source content exactly matches the GitHub file.
+- `counting-provision-member`: version 6, ACTIVE, JWT required; live source content exactly matches the GitHub file.
+- Latest live Supabase migration ledger row: version `20261120170645`, name `countflow_platform_settings_fk_index`. Migration ledger order, not migration filename timestamps, is authoritative.
+- Session lifecycle guard and `count_transition_session(uuid,text)` are live. The public transition RPC is SECURITY INVOKER; authenticated EXECUTE=true, anon=false. The private trigger guard is inaccessible to authenticated callers and enforces server-side transitions/timestamps.
+
+### Verification results — PASS / NOT RUN
+- `countflow_core_integration_rollback.sql`: PASS.
+- `rollback-smoke.sql`: PASS.
+- `countflow_approval_finality_rollback.sql`: PASS after updating the test fixture to create the session as planned, start it via `count_transition_session`, and insert baseline via validated import RPC. No production guard was relaxed.
+- JavaScript syntax: admin PASS, supervisor PASS, counter PASS, service worker PASS.
+- CountFlow schema: 23 count tables / 23 RLS enabled / 76 policies. Authenticated direct DML on `count_import_rows` and `count_session_product_costs` is SELECT-only. `count_expected_balances.expected_quantity` is nullable and `count_reconciliation_lines.expected_scope` exists.
+- Post-test residue: projects=0, members=0, sessions=0, assignments=0, products=0, entries=0, expected_balances=0, reconciliation_runs=0, import_batches=0, import_rows=0, cost_snapshots=0, exports=0. Auth users=1,868; owner email matches=0.
+- 90,000-row import regression was NOT RUN in this verification pass because the execution tool blocked the request. Do not record it as passed for this pass; rerun after the current private-RPC import refactor with the rollback envelope intact.
+- Security advisor returned no CountFlow-specific security findings. Remaining security lint findings are on legacy public objects. Performance advisor still reports old-schema findings and unused indexes including CountFlow indexes; do not drop them without a real workload/load-test.
+
+### Handoff status
+- LVE-745 behavior remains current: minimum product data, optional cost snapshots, null book-balance scope, multi-location products, client-balance export source and scoped offline retry.
+- LVE-746 confirms test fixtures and lifecycle contracts are aligned. The prior direct status transition bypass is server-guarded; the finality test itself was updated to the supported workflow.
+- Still OPEN: authorized browser E2E, real client XLSX generation/download/open, Cloudflare PWA deployment/verification, multi-device offline close barrier, approved valuation policy, external image upload workflow, and the current-pipeline 90k import regression.
+- The detailed, ordered successor instructions are in `FINAL_EXECUTION_REPORT_LVE-746.md`. The next assistant must resume from these gates, not restart the project or create parallel apps/tables/functions.
+
+### Isolation
+No SMART ERP project, `company-1`, legacy ERP object, stock, sale, treasury or accounting record was changed. No persistent test member, project, session, product, import, count, cost snapshot or export remains.
