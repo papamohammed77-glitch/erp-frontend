@@ -297,7 +297,8 @@
    const p=state.projects.find(v=>v.id===x.project_id)||{},hay=[p.name,p.code,x.name].join(' ').toLowerCase(),day=String(x.created_at||'').slice(0,10);
    return (!q||hay.includes(q))&&(!status||x.status===status)&&(!from||day>=from)&&(!to||day<=to);
   });
-  rows.sort((a,b)=>{const av=a[state.operationSort]??'',bv=b[state.operationSort]??'';let cmp=String(av).localeCompare(String(bv),'ar',{numeric:true});if(state.operationSort==='created_at'||state.operationSort==='started_at'||state.operationSort==='closed_at')cmp=new Date(av||0)-new Date(bv||0);return state.operationSortAsc?cmp:-cmp;});
+  const operationSortValue=(x,key)=>{if(key==='client'||key==='code'){const p=state.projects.find(v=>v.id===x.project_id)||{};return key==='client'?(p.name||''):(p.code||'');}if(key==='team')return Number(state.assignmentCounts[x.id]||0);return x[key]??'';};
+  rows.sort((a,b)=>{const av=operationSortValue(a,state.operationSort),bv=operationSortValue(b,state.operationSort);let cmp;if(state.operationSort==='team')cmp=Number(av)-Number(bv);else if(['created_at','started_at','closed_at'].includes(state.operationSort))cmp=new Date(av||0)-new Date(bv||0);else cmp=String(av).localeCompare(String(bv),'ar',{numeric:true,sensitivity:'base'});return state.operationSortAsc?cmp:-cmp;});
   $('operationResultCount').textContent=rows.length+' عملية';
   const pageSize=50,totalPages=Math.max(1,Math.ceil(rows.length/pageSize));state.operationPage=Math.min(state.operationPage,totalPages);
   const page=rows.slice((state.operationPage-1)*pageSize,state.operationPage*pageSize);
