@@ -76,6 +76,9 @@ Deno.serve(async (req) => {
     const role = String(body.role || "counter");
     if (!email || !displayName || !username || !["counter", "auditor", "supervisor"].includes(role))
       return reply({ error: "INVALID_INPUT" }, 400);
+    if (email === "owner@rawaea.com") {
+      return reply({ error: "PLATFORM_OWNER_IDENTITY_CANNOT_BE_ADDED_AS_A_TEAM_MEMBER" }, 409);
+    }
 
     // Reuse a confirmed Auth identity without changing its password or metadata.
     // A password is required only when the email does not yet exist in Auth.
@@ -128,7 +131,7 @@ Deno.serve(async (req) => {
         ok: true, user_id: authUser.id, member_id: existingMembership.id,
         username: existingMembership.username, role: existingMembership.role,
         account_reused: true, membership_reused: true,
-        password_changed: false, audit_warning: auditError?.message || null
+        existing_password_changed: false, audit_warning: auditError?.message || null
       });
     }
 
@@ -142,12 +145,13 @@ Deno.serve(async (req) => {
     const { error: auditError } = await admin.from("count_audit_log").insert({
       project_id: projectId, actor_id: authData.user.id, action: accountReused ? "member.attached_existing_auth" : "member.created",
       entity_type: "member", entity_id: memberRecord.id,
-      details: { email, username, role, account_reused: accountReused, password_changed: false }
+      details: { email, username, role, account_reused: accountReused, existing_password_changed: !accountCreated, password_initialized: accountCreated }
     });
     return reply({
       ok: true, user_id: authUser.id, member_id: memberRecord.id, username,
       account_reused: accountReused, membership_reused: false,
-      password_changed: false, audit_warning: auditError?.message || null
+      existing_password_changed: false, password_initialized: accountCreated,
+      audit_warning: auditError?.message || null
     });
   } catch (error) {
     return reply({ error: error instanceof Error ? error.message : "INTERNAL_ERROR" }, 500);
