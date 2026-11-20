@@ -23,7 +23,8 @@ VALUES('f3c6e6a1-8c22-4df0-9a01-444444444444','f3c6e6a1-8c22-4df0-9a01-333333333
 INSERT INTO public.count_locations(id,project_id,location_type,code,name,sort_order)
 VALUES
 ('f3c6e6a1-8c22-4df0-9a01-555555555555','f3c6e6a1-8c22-4df0-9a01-333333333333','shelf','TEST-LOC-A','Test Shelf A',1),
-('f3c6e6a1-8c22-4df0-9a01-666666666666','f3c6e6a1-8c22-4df0-9a01-333333333333','shelf','TEST-LOC-B','Test Shelf B',2);
+('f3c6e6a1-8c22-4df0-9a01-666666666666','f3c6e6a1-8c22-4df0-9a01-333333333333','shelf','TEST-LOC-B','Test Shelf B',2),
+('f3c6e6a1-8c22-4df0-9a01-555555555556','f3c6e6a1-8c22-4df0-9a01-333333333333','shelf','TEST-LOC-C','Test Shelf C',3);
 INSERT INTO public.count_sessions(id,project_id,name,status,created_by)
 VALUES('f3c6e6a1-8c22-4df0-9a01-777777777777','f3c6e6a1-8c22-4df0-9a01-333333333333','Rollback Integration Session','active','f3c6e6a1-8c22-4df0-9a01-111111111111');
 INSERT INTO public.count_assignments(session_id,member_id,location_id,status)
@@ -187,7 +188,7 @@ DO $$ BEGIN
   BEGIN
     PERFORM public.count_record_entry('f3c6e6a1-8c22-4df0-9a01-777777777777',
       (SELECT id FROM public.count_products WHERE project_id='f3c6e6a1-8c22-4df0-9a01-333333333333' AND sku='CF-TEST-001'),
-      'f3c6e6a1-8c22-4df0-9a01-666666666666',1,'each','f3c6e6a1-8c22-4df0-9a01-999999999999',
+      'f3c6e6a1-8c22-4df0-9a01-555555555556',1,'each','f3c6e6a1-8c22-4df0-9a01-999999999999',
       '990000000001','rollback-device-001','must be denied');
     RAISE EXCEPTION 'ASSERT_ASSIGNMENT_ENFORCEMENT_FAILED';
   EXCEPTION WHEN OTHERS THEN
