@@ -8,6 +8,18 @@
 <section id="login" class="panel login"><h2>دخول مراقب الجرد</h2><p class="muted">لوحة تحكم مستقلة عن تطبيق المندوب.</p><div class="field"><label>البريد الإلكتروني</label><input id="email" type="email" autocomplete="username"></div><div class="field"><label>كلمة المرور</label><input id="password" type="password" autocomplete="current-password"></div><button class="primary" id="loginBtn" style="width:100%">تسجيل الدخول</button><p class="muted" id="loginError"></p><div class="notice">الحساب الأول للمشرف الرئيسي ينشأ مرة واحدة من Supabase Auth بواسطة مسؤول المشروع، ثم ينشئ المشرف مشروع الجرد ويدير بقية الحسابات من هنا.</div></section>
 <section id="app" class="hidden">
 <div class="panel"><div class="row"><div class="grow"><small class="muted">مشروع الجرد</small><h2 id="projectTitle" style="margin:3px 0">—</h2><small id="projectCode" class="muted"></small></div><select id="projectSelect" style="max-width:260px;padding:10px;border:1px solid var(--line);border-radius:10px"></select><button class="soft" id="newProjectBtn">＋ تكليف جرد</button></div><div class="grid" style="margin-top:14px"><div class="stat"><small>أفراد نشطون</small><b id="activeMembers">0</b></div><div class="stat"><small>الأصناف</small><b id="productTotal">0</b></div><div class="stat"><small>عمليات العد</small><b id="entryTotal">0</b></div><div class="stat"><small>المواقع</small><b id="locationTotal">0</b></div></div></div>
+<div id="engagementCreatePanel" class="panel hidden">
+ <div class="row"><div class="grow"><h3 style="margin:0">إنشاء تكليف جرد وعملية جديدة</h3><small class="muted">اسم الجهة واسم العملية حقـلان منفصلان؛ يمكن تكرار اسم الجهة في تكليف آخر لاحقاً.</small></div><button type="button" class="soft" id="closeEngagementCreate">إغلاق</button></div>
+ <form id="engagementCreateForm">
+  <div class="split">
+   <div class="field"><label>الجهة المتعاقدة</label><input id="engagementClientName" maxlength="120" required placeholder="كارفور"></div>
+   <div class="field"><label>اسم العملية / المهمة</label><input id="engagementOperationName" maxlength="150" required placeholder="جرد شهر يناير 2027 - فرع المعادي"></div>
+   <div class="field"><label>رقم التكليف الفريد</label><input id="engagementCode" maxlength="40" required pattern="[A-Za-z0-9_-]+" placeholder="CF-202701-MAADY"></div>
+  </div>
+  <div class="row"><button type="submit" class="primary" id="saveEngagement">إنشاء التكليف والعملية الأولى</button></div>
+  <p class="muted mini">سيتم حفظ ملف الجهة وأول عملية جرد في معاملة واحدة؛ إذا فشل أحد الإدخالين فلن يُترك تكليف نصف مكتمل.</p>
+ </form>
+</div>
 <div class="tabs"><button class="active" data-tab="live">المراقبة اللحظية</button><button data-tab="team">فريق الجرد</button><button data-tab="import">استيراد البيانات</button><button data-tab="structure">الأقسام والمواقع</button><button data-tab="sessions">جلسات الجرد</button><button data-tab="reports">التقارير</button></div>
 <div id="tab-live">
 <div class="split"><div class="panel"><div class="row"><b class="grow">نبض العمليات المباشر</b><span class="pill" id="liveBadge">متصل</span></div><div class="grid" style="grid-template-columns:repeat(2,1fr)"><div class="stat"><small>عمليات اليوم</small><b id="liveToday">0</b></div><div class="stat"><small>آخر دقيقة</small><b id="liveMinute">0</b></div></div><p class="muted mini">التحديثات تصل من قاعدة البيانات عبر Realtime؛ لا تعتمد اللوحة على إعادة تحميل الصفحة.</p></div><div class="panel"><b>تقدم الجلسة</b><h2 id="progressText">0 / 0</h2><div class="bar"><i id="progressBar" style="width:0%"></i></div><small class="muted" id="progressHint">يظهر التقدم بعد تحميل الأصناف وبدء جلسة.</small></div></div>
@@ -107,18 +119,23 @@ async function loadPresence(){const [presence,team,devices]=await Promise.all([s
 let refreshTimer=null,sessionRefreshTimer=null;function handleBroadcast(msg){const p=msg.payload||msg,table=p.table||p.data?.table;if(table==='count_entries')refreshCockpit();else if(table==='count_presence')loadPresence();else if(table==='count_alerts')loadAlerts();else if(table==='count_recount_tasks')loadRecountQueue();else if(table==='count_reconciliation_runs')report();else if(table==='count_sessions'){clearTimeout(sessionRefreshTimer);sessionRefreshTimer=setTimeout(async()=>{await loadSessions();await subscribe();await Promise.all([loadAssignments(),loadRecountQueue(),report()]);refreshCockpit()},250)}else if(table==='count_members'){loadMembers();loadPresence()}else if(table==='count_assignments')loadAssignments();else if(table==='count_locations')loadLocations();else if(table==='count_import_batches')loadImportHistory();else refreshCockpit()}function refreshCockpit(){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>Promise.all([loadLive(),loadPresence(),loadAlerts()]),350)}async function subscribe(){if(channel){await Promise.all(channel.map(c=>sb.removeChannel(c)))}await sb.realtime.setAuth();const status=s=>{$('connection').textContent=s==='SUBSCRIBED'?'● بث خاص نشط':'● إعادة الاتصال';$('liveBadge').textContent=s==='SUBSCRIBED'?'مباشر':'غير متصل'};const projectChannel=sb.channel('countflow:project:'+project.id,{config:{private:true}}).on('broadcast',{event:'INSERT'},handleBroadcast).on('broadcast',{event:'UPDATE'},handleBroadcast).on('broadcast',{event:'DELETE'},handleBroadcast).subscribe(status);const sessionChannel=session?sb.channel('countflow:session:'+session.id,{config:{private:true}}).on('broadcast',{event:'INSERT'},handleBroadcast).on('broadcast',{event:'UPDATE'},handleBroadcast).on('broadcast',{event:'DELETE'},handleBroadcast).subscribe(status):null;channel=[projectChannel,...(sessionChannel?[sessionChannel]:[])]}
 $('loginBtn').onclick=async()=>{const {error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error){$('loginError').textContent=error.message;return}await auth()};
 $('projectSelect').onchange=async()=>{project=projects.find(x=>x.id===$('projectSelect').value);await loadAll()};
-$('newProjectBtn').onclick=async()=>{
- const clientName=(prompt('اسم الجهة المتعاقدة؟')||'').trim();if(!clientName)return;
- const operationName=(prompt('اسم عملية الجرد؟ مثال: جرد شهر يناير 2027 - فرع المعادي')||'').trim();if(!operationName)return;
- const code=(prompt('رقم التكليف الفريد؟')||'CNT-'+Date.now()).trim().toUpperCase();if(!code)return;
- const {data,error}=await sb.rpc('count_create_engagement',{p_client_name:clientName,p_engagement_code:code,p_operation_name:operationName});
- if(error){toast('تعذر إنشاء التكليف والعملية: '+error.message);return}
- const {data:owner,error:ownerError}=await sb.from('count_members').select('*').eq('project_id',data.project_id).eq('user_id',user.id).maybeSingle();
- if(ownerError){toast('تم إنشاء التكليف، لكن تعذر تأكيد عضويتك: '+ownerError.message);return}
- if(owner)member=owner;
- toast('تم إنشاء ملف التكليف وأول عملية جرد: '+operationName);
- await loadProjects();
-};
+$('newProjectBtn').onclick=()=>{$('engagementCreatePanel').classList.toggle('hidden');$('engagementClientName').focus();};
+$('closeEngagementCreate').onclick=()=>$('engagementCreatePanel').classList.add('hidden');
+$('engagementCreateForm').addEventListener('submit',async e=>{
+ e.preventDefault();const b=$('saveEngagement');b.disabled=true;
+ try{
+  const clientName=$('engagementClientName').value.trim(),operationName=$('engagementOperationName').value.trim(),code=$('engagementCode').value.trim().toUpperCase();
+  const {data,error}=await sb.rpc('count_create_engagement',{p_client_name:clientName,p_engagement_code:code,p_operation_name:operationName});
+  if(error)throw error;
+  const {data:owner,error:ownerError}=await sb.from('count_members').select('*').eq('project_id',data.project_id).eq('user_id',user.id).maybeSingle();
+  if(ownerError)throw ownerError;
+  if(owner)member=owner;
+  $('engagementCreateForm').reset();$('engagementCreatePanel').classList.add('hidden');
+  toast('تم إنشاء التكليف والعملية الأولى: '+operationName);
+  await loadProjects();
+ }catch(e){toast('تعذر إنشاء التكليف: '+(e.message||String(e)));}
+ finally{b.disabled=false;}
+});
 $('assignTask').onclick=async()=>{if(!session)return toast('اختر عملية جرد أولاً');if(!['planned','active','paused','review'].includes(session.status))return toast('لا يمكن تعديل فريق عملية مكتملة أو ملغاة.');const memberId=$('assignMember').value,locationId=$('assignLocation').value||null;if(!memberId)return toast('اختر مندوباً');const {error}=await sb.from('count_assignments').upsert({session_id:session.id,member_id:memberId,location_id:locationId,status:'assigned'},{onConflict:'session_id,member_id,location_id'});if(error)toast(error.message);else{toast('تم إسناد المستخدم إلى العملية أو تحديث نطاقه.');await loadAssignments()}};
 $('createMember').onclick=async()=>{
  if(!project)return toast('اختر ملف التكليف أولاً');
