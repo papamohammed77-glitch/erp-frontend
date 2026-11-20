@@ -86,7 +86,7 @@ function xmlEscape(value: unknown) {
 function decimalToScaled(value: unknown, scale: number): bigint | null {
   if (value === null || value === undefined || value === "") return null;
   const raw = String(value).trim();
-  const match = raw.match(/^([+-]?)([0-9]+)(?:\\.([0-9]*))?$/);
+  const match = raw.match(/^([+-]?)([0-9]+)(?:\.([0-9]*))?$/);
   if (!match) throw new Error("INVALID_DECIMAL_VALUE");
   const factor = 10n ** BigInt(scale);
   const sign = match[1] === "-" ? -1n : 1n;
