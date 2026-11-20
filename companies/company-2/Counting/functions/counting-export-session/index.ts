@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import * as XLSX from "npm:xlsx@0.18.5";
+import { zipSync, strToU8 } from "npm:fflate@0.8.2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -77,6 +78,112 @@ function toHex(buffer: ArrayBuffer) {
   return [...new Uint8Array(buffer)].map(v => v.toString(16).padStart(2, "0")).join("");
 }
 
+function xmlEscape(value: unknown) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;",
+  }[ch] as string));
+}
+function excelColumn(index: number) {
+  let n=index+1, out="";
+  while(n>0){const r=(n-1)%26;out=String.fromCharCode(65+r)+out;n=Math.floor((n-1)/26);}
+  return out;
+}
+function clientSheetXml(rows: unknown[][], widths: number[], options: {filter?:boolean, drawing?:boolean, imageRows?:Set<number>} = {}) {
+  const maxCols=Math.max(widths.length,...rows.map(r=>r.length),1);
+  const cols=widths.map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>').join("");
+  const sheetRows=rows.map((row,ri)=>{
+    const cells=row.map((value,ci)=>{
+      const ref=excelColumn(ci)+(ri+1);
+      if(value===null||value===undefined||value==="")return '<c r="'+ref+'"/>';
+      if(typeof value==="number"&&Number.isFinite(value)){
+        const style=ri===0?1:2;
+        return '<c r="'+ref+'" s="'+style+'" t="n"><v>'+String(value)+'</v></c>';
+      }
+      const text=xmlEscape(value);
+      return '<c r="'+ref+'" s="'+(ri===0?1:0)+'" t="inlineStr"><is><t xml:space="preserve">'+text+'</t></is></c>';
+    }).join("");
+    const isImageRow=options.imageRows?.has(ri+1);
+    const height=ri===0?28:(isImageRow?62:22);
+    return '<row r="'+(ri+1)+'" ht="'+height+'" customHeight="1">'+cells+'</row>';
+  }).join("");
+  const last=excelColumn(maxCols-1)+Math.max(1,rows.length);
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
+    '<sheetViews><sheetView workbookViewId="0" rightToLeft="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+
+    '<cols>'+cols+'</cols><sheetData>'+sheetRows+'</sheetData>'+
+    (options.filter?'<autoFilter ref="A1:'+last+'"/>':'')+
+    (options.drawing?'<drawing r:id="rId1"/>':'')+
+    '<pageMargins left="0.25" right="0.25" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>'+
+    '</worksheet>';
+}
+function buildClientBalanceXlsx(sheets: Array<{name:string,rows:unknown[][],widths:number[]}>, embeddedImages:Array<{row:number,extension:string,bytes:Uint8Array}>) {
+  const files:Record<string,Uint8Array>={};
+  const contentOverrides=sheets.map((_,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join("");
+  const hasImages=embeddedImages.length>0;
+  const mediaDefaults=hasImages?'<Default Extension="png" ContentType="image/png"/><Default Extension="jpg" ContentType="image/jpeg"/>':'';
+  const drawingOverride=hasImages?'<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>':'';
+  files["[Content_Types].xml"]=strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+    '<Default Extension="xml" ContentType="application/xml"/>'+mediaDefaults+
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
+    contentOverrides+drawingOverride+
+    '</Types>');
+  files["_rels/.rels"]=strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'+
+    '</Relationships>');
+  const sheetNodes=sheets.map((s,i)=>'<sheet name="'+xmlEscape(s.name)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join("");
+  files["xl/workbook.xml"]=strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
+    '<bookViews><workbookView/></bookViews><sheets>'+sheetNodes+'</sheets><calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>');
+  const relNodes=sheets.map((_,i)=>'<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join("");
+  files["xl/_rels/workbook.xml.rels"]=strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+relNodes+
+    '<Relationship Id="rId'+(sheets.length+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'+
+    '</Relationships>');
+  files["xl/styles.xml"]=strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00;[Red](#,##0.00);-"/></numFmts>'+
+    '<fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Arial"/></font></fonts>'+
+    '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F4E78"/><bgColor indexed="64"/></patternFill></fill></fills>'+
+    '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD9E2F3"/></left><right style="thin"><color rgb="FFD9E2F3"/></right><top style="thin"><color rgb="FFD9E2F3"/></top><bottom style="thin"><color rgb="FFD9E2F3"/></bottom><diagonal/></border></borders>'+
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'+
+    '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/></cellXfs>'+
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>');
+  for(let i=0;i<sheets.length;i++){
+    const sheet=sheets[i];
+    const imageRows=i===1?new Set(embeddedImages.map(im=>im.row)):new Set<number>();
+    const xml=clientSheetXml(sheet.rows,sheet.widths,{filter:true,drawing:i===1&&hasImages,imageRows});
+    files["xl/worksheets/sheet"+(i+1)+".xml"]=strToU8(xml);
+    if(i===1&&hasImages){
+      files["xl/worksheets/_rels/sheet2.xml.rels"]=strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>'+
+        '</Relationships>');
+    }
+  }
+  if(hasImages){
+    const anchors:string[]=[];
+    const rels:string[]=[];
+    embeddedImages.forEach((im,i)=>{
+      const id=i+1,fromRow=im.row-1,toRow=im.row;
+      anchors.push('<xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>'+fromRow+'</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>'+toRow+'</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>'+
+        '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="'+id+'" name="Product image '+id+'"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>'+
+        '<xdr:blipFill><a:blip r:embed="rId'+id+'"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>'+
+        '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="850000" cy="620000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>');
+      rels.push('<Relationship Id="rId'+id+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image'+id+'.'+im.extension+'"/>');
+      files["xl/media/image"+id+"."+im.extension]=im.bytes;
+    });
+    files["xl/drawings/drawing1.xml"]=strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+anchors.join("")+'</xdr:wsDr>');
+    files["xl/drawings/_rels/drawing1.xml.rels"]=strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+rels.join("")+'</Relationships>');
+  }
+  return zipSync(files,{level:6});
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405);
@@ -102,8 +209,11 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const sessionId = String(body?.session_id || "");
     const format = String(body?.format || "xlsx").toLowerCase();
+    const scope = String(body?.scope || "full").toLowerCase();
     if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return json({ error: "INVALID_SESSION_ID" }, 400);
     if (!["xlsx", "csv"].includes(format)) return json({ error: "UNSUPPORTED_EXPORT_FORMAT" }, 400);
+    if (!["full", "client_balance"].includes(scope)) return json({ error: "UNSUPPORTED_EXPORT_SCOPE" }, 400);
+    if (scope === "client_balance" && format !== "xlsx") return json({ error: "CLIENT_BALANCE_REQUIRES_XLSX" }, 400);
 
     admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -129,12 +239,272 @@ Deno.serve(async (req: Request) => {
       session_id: session.id,
       requested_by: user.id,
       export_format: format,
-      export_scope: "full",
+      export_scope: scope,
       status: "processing",
       metadata: { requested_at: new Date().toISOString(), engine: "counting-export-session-v1" },
     }).select("id").single();
     if (createError || !exportRow) throw new Error("EXPORT_RECORD_CREATE_FAILED: " + (createError?.message || "unknown"));
     exportId = exportRow.id;
+
+
+    if (scope === "client_balance") {
+      const runs = await fetchAll(admin,"count_reconciliation_runs",
+        "id,run_number,status,expected_rows,counted_rows,matched_rows,variance_rows,uncounted_rows,created_at,computed_at,approved_at",
+        [["session_id","eq",sessionId]],10000,"run_number");
+      const latestRun = [...runs].sort((a:any,b:any)=>Number(b.run_number)-Number(a.run_number))[0] || null;
+      if (!latestRun || latestRun.status !== "approved") {
+        throw new Error("CLIENT_BALANCE_REQUIRES_APPROVED_RECONCILIATION");
+      }
+      const [lines, locations, importBatches, costs] = await Promise.all([
+        fetchAll(admin,"count_reconciliation_lines",
+          "id,run_id,product_id,location_id,product_sku,product_name,location_path,unit,expected_quantity,counted_quantity,variance_quantity,result_status,computed_at",
+          [["run_id","eq",latestRun.id]],MAX_LINES),
+        fetchAll(admin,"count_locations",
+          "id,code,name,location_type,parent_id,sort_order",
+          [["project_id","eq",session.project_id]],MAX_LOCATIONS),
+        fetchAll(admin,"count_import_batches",
+          "id,source_name,source_format,row_count,accepted_count,rejected_count,status,created_at,completed_at,error_report",
+          [["session_id","eq",sessionId]],50000),
+        fetchAll(admin,"count_session_product_costs",
+          "id,product_id,purchase_unit_cost,currency_code,purchase_unit,unit_factor_to_base,source_type,source_reference,source_date,warning_codes,source_batch_id,updated_at",
+          [["session_id","eq",sessionId]],MAX_PRODUCTS),
+      ]);
+      const importBatchIds=importBatches.map((b:any)=>b.id);
+      const committedImportRows:any[]=[];
+      for(let offset=0;offset<importBatchIds.length;offset+=500){
+        const chunk=importBatchIds.slice(offset,offset+500);
+        committedImportRows.push(...await fetchAll(admin,"count_import_rows",
+          "id,batch_id,product_id,sku,barcode,product_name,base_unit,row_number,warning_codes",
+          [["batch_id","in",chunk],["row_status","eq","committed"]],MAX_PRODUCTS));
+        if(committedImportRows.length>MAX_PRODUCTS)throw new Error("CLIENT_BALANCE_PRODUCT_LIMIT:"+MAX_PRODUCTS);
+      }
+      const productIds=new Set<string>();
+      for(const line of lines)productIds.add(line.product_id);
+      for(const row of committedImportRows)if(row.product_id)productIds.add(row.product_id);
+      for(const cost of costs)productIds.add(cost.product_id);
+      if(productIds.size>MAX_PRODUCTS)throw new Error("CLIENT_BALANCE_PRODUCT_LIMIT:"+MAX_PRODUCTS);
+
+      const productIdArray=[...productIds];
+      const products:any[]=[];
+      for(let offset=0;offset<productIdArray.length;offset+=500){
+        const chunk=productIdArray.slice(offset,offset+500);
+        products.push(...await fetchAll(admin,"count_products",
+          "id,sku,barcode,name,category,base_unit,units,image_url,is_active",
+          [["project_id","eq",session.project_id],["id","in",chunk]],MAX_PRODUCTS));
+      }
+      const productMap=new Map(products.map((p:any)=>[p.id,p]));
+      const locationMap=new Map(locations.map((l:any)=>[l.id,l]));
+      const costMap=new Map(costs.map((c:any)=>[c.product_id,c]));
+      const locationPath=(locationId:string|null)=>{
+        if(!locationId)return "موقع غير محدد";
+        const chain:any[]=[];const seen=new Set<string>();let node:any=locationMap.get(locationId);
+        while(node&&!seen.has(node.id)){seen.add(node.id);chain.unshift(node);node=node.parent_id?locationMap.get(node.parent_id):null;}
+        return chain.map(x=>(x.code?x.code+" · ":"")+x.name).join(" / ")||"موقع غير معروف";
+      };
+      const linesByProduct=new Map<string,any[]>();
+      for(const line of lines){if(!linesByProduct.has(line.product_id))linesByProduct.set(line.product_id,[]);linesByProduct.get(line.product_id)!.push(line);}
+      const importsByProduct=new Map<string,any[]>();
+      for(const row of committedImportRows){if(row.product_id){if(!importsByProduct.has(row.product_id))importsByProduct.set(row.product_id,[]);importsByProduct.get(row.product_id)!.push(row);}}
+      const importWarningCount=committedImportRows.reduce((n:number,r:any)=>n+(Array.isArray(r.warning_codes)&&r.warning_codes.length?1:0),0);
+      const imageByProduct=new Map<string,{status:string,extension?:string,bytes?:Uint8Array,reference:string}>();
+      const embeddedImages:Array<{row:number,extension:string,bytes:Uint8Array}>=[];
+      let embeddedBytes=0;
+      for(const product of products){
+        const reference=String(product.image_url||"");
+        if(!reference){imageByProduct.set(product.id,{status:"لا توجد صورة",reference:""});continue;}
+        if(/^https:\/\//i.test(reference)){
+          imageByProduct.set(product.id,{status:"رابط خارجي - لم يتم تضمينه",reference});continue;
+        }
+        if(!reference.startsWith(session.project_id+"/")||reference.includes("..")||reference.includes("\\")||reference.includes("?")){
+          imageByProduct.set(product.id,{status:"مرجع تخزين غير صالح",reference});continue;
+        }
+        if(embeddedImages.length>=500){imageByProduct.set(product.id,{status:"تجاوز حد تضمين الصور",reference});continue;}
+        try{
+          const {data:blob,error}=await admin.storage.from("counting-product-images").download(reference);
+          if(error||!blob){imageByProduct.set(product.id,{status:"تعذر تحميل الصورة",reference});continue;}
+          if(blob.size>1024*1024){imageByProduct.set(product.id,{status:"حجم الصورة أكبر من 1MB",reference});continue;}
+          const mime=String(blob.type||"").toLowerCase();
+          const extension=mime==="image/png"?"png":mime==="image/jpeg"?"jpg":"";
+          if(!extension){imageByProduct.set(product.id,{status:"صيغة غير مدعومة للتضمين (PNG/JPEG فقط)",reference});continue;}
+          if(embeddedBytes+blob.size>12*1024*1024){imageByProduct.set(product.id,{status:"تجاوز حد حجم الصور الإجمالي",reference});continue;}
+          const bytes=new Uint8Array(await blob.arrayBuffer());
+          embeddedBytes+=bytes.byteLength;
+          imageByProduct.set(product.id,{status:"مضمنة داخل Excel",extension,bytes,reference});
+        }catch(_){imageByProduct.set(product.id,{status:"تعذر تحميل الصورة",reference});}
+      }
+
+      const clientRows:any[][]=[[
+        "الصورة","SKU","الباركود","اسم الصنف","التصنيف","الرصيد الفعلي المكتمل",
+        "الوحدة الأساسية","حالة اكتمال الكمية","الكمية المعروفة من المواقع المعدودة فقط",
+        "سعر الشراء","وحدة الشراء","العملة","معامل التحويل إلى الوحدة الأساسية",
+        "تكلفة الوحدة الأساسية","قيمة الرصيد","نوع مصدر السعر","مرجع مصدر السعر",
+        "تاريخ السعر","حالة الصورة","المواقع المعدودة","المواقع غير المعدودة",
+      ]];
+      const locationRows:any[][]=[[
+        "SKU","الباركود","الصنف","الفرع / المخزن / الموقع","الوحدة الأساسية",
+        "الرصيد الدفتري المرجعي","الكمية المعدودة","الفرق","حالة الموقع",
+      ]];
+      const gapRows:any[][]=[["SKU","الباركود","الصنف","الموقع","نوع الفجوة","التفاصيل","الإجراء المقترح"]];
+      const currencyTotals=new Map<string,{value:number,products:number}>();
+      let fullyCountedProducts=0,partiallyCountedProducts=0,notCountedProducts=0;
+      let fullyPricedProducts=0,unpricedProducts=0,valueEligibleProducts=0;
+      let embeddedCount=0,notEmbeddedCount=0,completeQuantityProducts=0;
+      let knownCountedQuantityProducts=0;
+      for(const product of products){
+        const productLines=(linesByProduct.get(product.id)||[]).sort((a:any,b:any)=>String(a.location_path||"").localeCompare(String(b.location_path||"")));
+        const countedLines=productLines.filter((l:any)=>l.counted_quantity!==null&&l.counted_quantity!==undefined);
+        const uncountedLines=productLines.filter((l:any)=>l.counted_quantity===null||l.counted_quantity===undefined||l.result_status==="not_counted");
+        const isCountComplete=productLines.length>0&&uncountedLines.length===0;
+        const partialQuantity=countedLines.reduce((sum:number,l:any)=>sum+Number(l.counted_quantity||0),0);
+        const actualQuantity=isCountComplete?partialQuantity:null;
+        const cost:any=costMap.get(product.id)||null;
+        const costFields={
+          price:cost?.purchase_unit_cost,
+          currency:cost?.currency_code,
+          purchaseUnit:cost?.purchase_unit,
+          factor:cost?.unit_factor_to_base,
+          sourceType:cost?.source_type,
+          sourceReference:cost?.source_reference,
+        };
+        const missingCostFields=Object.entries(costFields).filter(([_,v])=>v===null||v===undefined||v==="").map(([k])=>k);
+        const isCostComplete=!!cost&&missingCostFields.length===0&&Number(cost.unit_factor_to_base)>0&&Number(cost.purchase_unit_cost)>=0;
+        const baseUnitCost=isCostComplete?Number(cost.purchase_unit_cost)/Number(cost.unit_factor_to_base):null;
+        const lineValue=isCostComplete&&actualQuantity!==null?actualQuantity*Number(baseUnitCost):null;
+        const photo=imageByProduct.get(product.id)||{status:"لا توجد صورة",reference:""};
+        if(photo.bytes&&photo.extension){embeddedImages.push({row:clientRows.length+1,extension:photo.extension,bytes:photo.bytes});embeddedCount++;}
+        else notEmbeddedCount++;
+        if(isCountComplete){fullyCountedProducts++;completeQuantityProducts++;}else if(productLines.length){partiallyCountedProducts++;if(countedLines.length)knownCountedQuantityProducts++;}else{notCountedProducts++;}
+        if(isCostComplete)fullyPricedProducts++;else unpricedProducts++;
+        if(lineValue!==null){
+          valueEligibleProducts++;
+          const currency=String(cost.currency_code);
+          const agg=currencyTotals.get(currency)||{value:0,products:0};
+          agg.value+=lineValue;agg.products++;currencyTotals.set(currency,agg);
+        }
+
+        if(!product.name)gapRows.push([product.sku||"",product.barcode||"","", "", "اسم الصنف غير مكتمل","لا يوجد اسم وصفي محفوظ للصنف","استكمال الاسم من مصدر العميل"]);
+        if(!photo.bytes)gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "الصورة غير مضمنة",photo.status+" · "+photo.reference,"رفع صورة واضحة بصيغة PNG/JPEG"]);
+        if(!cost){
+          gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "بيانات التكلفة غير متوفرة","لا توجد لقطة تكلفة لهذه العملية","استيراد/توثيق سعر الشراء ومصدره ووحدته وعملته ومعامل تحويله"]);
+        }else if(!isCostComplete){
+          gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "بيانات التكلفة غير مكتملة","الحقول الناقصة: "+missingCostFields.join("، ")+" · تنبيهات: "+(cost.warning_codes||[]).join("، "),"استكمال الحقول الناقصة قبل احتساب قيمة الرصيد"]);
+        }
+        if(!productLines.length){
+          gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "لا توجد نتيجة عد","الصنف موجود في استيراد العملية لكن لا توجد له نتيجة في جولة التسوية المعتمدة","تحديد موقعه وإتمام العد ثم اعتماد جولة تسوية جديدة"]);
+        }else if(uncountedLines.length){
+          for(const l of uncountedLines){
+            const loc=locationPath(l.location_id);
+            gapRows.push([product.sku||"",product.barcode||"",product.name||"",loc,"موقع لم يكتمل عده","لا توجد كمية معدودة معتمدة لهذا الموقع؛ لم تُعامل على أنها صفر","إتمام العد/إعادة العد للموقع ثم إعادة التسوية"]);
+          }
+        }
+        if(!product.base_unit)gapRows.push([product.sku||"",product.barcode||"",product.name||"","", "وحدة أساسية غير متاحة","تعذر تحديد الوحدة الأساسية للصنف","استكمال الوحدة والتحقق من تحويلات الوحدات"]);
+
+        clientRows.push([
+          "",product.sku||"",product.barcode||"",product.name||"",product.category||"",
+          actualQuantity,product.base_unit||"",isCountComplete?"مكتمل":productLines.length?"غير مكتمل - مواقع ناقصة":"لم يسجل عد",
+          countedLines.length?partialQuantity:null,
+          isCostComplete?Number(cost.purchase_unit_cost):null,cost?.purchase_unit||"",
+          cost?.currency_code||"",isCostComplete?Number(cost.unit_factor_to_base):null,
+          baseUnitCost,lineValue,cost?.source_type||"",cost?.source_reference||"",
+          cost?.source_date||"",photo.status,
+          countedLines.map((l:any)=>locationPath(l.location_id)).join(" | "),
+          uncountedLines.map((l:any)=>locationPath(l.location_id)).join(" | "),
+        ]);
+        if(productLines.length){
+          for(const l of productLines){
+            locationRows.push([
+              product.sku||"",product.barcode||"",product.name||"",locationPath(l.location_id),
+              product.base_unit||l.unit||"",l.expected_quantity===null?null:Number(l.expected_quantity),
+              l.counted_quantity===null?null:Number(l.counted_quantity),
+              l.variance_quantity===null?null:Number(l.variance_quantity),
+              l.counted_quantity===null||l.counted_quantity===undefined?"غير معدود":l.result_status,
+            ]);
+          }
+        }else{
+          locationRows.push([product.sku||"",product.barcode||"",product.name||"","لم يسجل موقع/عد",product.base_unit||"",null,null,null,"لم يسجل عد"]);
+        }
+      }
+      for(const batch of importBatches){
+        if((batch.rejected_count||0)>0)gapRows.push(["","","","", "صفوف مرفوضة في الاستيراد",batch.source_name+" · عدد الصفوف المرفوضة: "+batch.rejected_count,"مراجعة أخطاء الاستيراد وإعادة إدخال الصفوف الصحيحة"]);
+      }
+      const summaryRows:any[][]=[
+        ["مؤشر التقرير","القيمة","العملة","إجمالي القيمة المشتقة"],
+        ["اسم الجهة/التكليف",session.project_id,"",""],
+        ["اسم العملية",session.name,"",""],
+        ["حالة العملية",session.status,"",""],
+        ["رقم جولة التسوية المعتمدة",latestRun.run_number,"",""],
+        ["تاريخ اعتماد التسوية",latestRun.approved_at||"",""],
+        ["عدد الأصناف المشمولة",products.length,"",""],
+        ["أصناف اكتمل عد جميع مواقعها",fullyCountedProducts,"",""],
+        ["أصناف بعدّ جزئي/مواقع ناقصة",partiallyCountedProducts,"",""],
+        ["أصناف لم يسجل لها عد",notCountedProducts,"",""],
+        ["أصناف لها تكلفة مكتملة المصدر",fullyPricedProducts,"",""],
+        ["أصناف بلا/بتكلفة غير مكتملة",unpricedProducts,"",""],
+        ["أصناف أمكن احتساب قيمة لها",valueEligibleProducts,"",""],
+        ["صور مضمنة داخل المصنف",embeddedCount,"",""],
+        ["صور غير مضمنة/مفقودة",notEmbeddedCount,"",""],
+        ["صفوف استيراد تحمل تنبيهات",importWarningCount,"",""],
+        ["سياسة التسعير المعتمدة","UNKNOWN - لم تُعتمد بعد","",""],
+        ["منهج القيمة","قيمة مشتقة من سعر الشراء المقدم ÷ معامل التحويل؛ ليست قيداً أو تقييماً محاسبياً معتمداً","",""],
+        ["قاعدة النقص في العد","الموقع غير المعدود لا يُسجل صفراً؛ الرصيد الإجمالي يبقى فارغاً عند نقص أي موقع ضمن نطاق الصنف","",""],
+      ];
+      for(const [currency,total] of [...currencyTotals.entries()].sort((a,b)=>a[0].localeCompare(b[0]))){
+        summaryRows.push(["قيمة الأصناف المكتملة التسعير",total.products,currency,total.value]);
+      }
+      const imagesSet=new Set(embeddedImages.map(im=>im.row));
+      const workbookBytes=buildClientBalanceXlsx([
+        {name:"ملخص العميل",rows:summaryRows,widths:[38,58,14,24]},
+        {name:"الرصيد الفعلي",rows:clientRows,widths:[12,18,20,32,20,22,18,24,24,18,18,12,24,22,22,22,28,16,25,48,48]},
+        {name:"تفصيل المواقع",rows:locationRows,widths:[18,20,32,58,18,22,22,18,22]},
+        {name:"استكمالات البيانات",rows:gapRows,widths:[18,20,32,58,28,72,70]},
+      ],embeddedImages);
+      if(workbookBytes.byteLength>50*1024*1024)throw new Error("CLIENT_BALANCE_EXPORT_EXCEEDS_50MB");
+      const bytes=workbookBytes instanceof Uint8Array?workbookBytes:new Uint8Array(workbookBytes);
+      const digest=await crypto.subtle.digest("SHA-256",bytes);
+      const sha256=toHex(digest);
+      const extension="xlsx";
+      const fileName="CountFlow_ClientBalance_"+session.id+"_"+new Date().toISOString().slice(0,10)+".xlsx";
+      storagePath=session.project_id+"/"+session.id+"/"+exportId+"-"+fileName;
+      const contentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      const {error:uploadError}=await admin.storage.from("counting-exports").upload(storagePath,bytes,{
+        contentType,upsert:false,cacheControl:"3600",
+      });
+      if(uploadError)throw new Error("CLIENT_BALANCE_UPLOAD_FAILED: "+uploadError.message);
+      const expiresAt=new Date(Date.now()+7*24*60*60*1000).toISOString();
+      const metadata={
+        engine:"counting-client-balance-ooxml-v1",format:"xlsx",scope:"client_balance",
+        reconciliation_run_id:latestRun.id,reconciliation_run_number:latestRun.run_number,
+        products:products.length,location_rows:locationRows.length-1,gap_rows:gapRows.length-1,
+        images_embedded:embeddedCount,images_not_embedded:notEmbeddedCount,embedded_image_bytes:embeddedBytes,
+        complete_quantity_products:fullyCountedProducts,partial_quantity_products:partiallyCountedProducts,
+        not_counted_products:notCountedProducts,fully_priced_products:fullyPricedProducts,
+        unpriced_products:unpricedProducts,value_eligible_products:valueEligibleProducts,
+        currency_totals:[...currencyTotals.entries()].map(([currency,v])=>({currency,products:v.products,value:v.value})),
+        pricing_policy:"UNKNOWN",
+      };
+      const {error:updateError}=await admin.from("count_exports").update({
+        status:"ready",storage_path:storagePath,row_count:products.length,file_size_bytes:bytes.byteLength,
+        sha256,completed_at:new Date().toISOString(),expires_at:expiresAt,metadata,
+      }).eq("id",exportId);
+      if(updateError)throw new Error("CLIENT_BALANCE_RECORD_UPDATE_FAILED: "+updateError.message);
+      const {data:signed,error:signedError}=await admin.storage.from("counting-exports").createSignedUrl(storagePath,7*24*60*60);
+      if(signedError||!signed?.signedUrl)throw new Error("CLIENT_BALANCE_SIGNED_URL_FAILED: "+(signedError?.message||"no url"));
+      const {error:auditError}=await admin.from("count_audit_log").insert({
+        project_id:session.project_id,actor_id:user.id,action:"export.client_balance.ready",
+        entity_type:"count_export",entity_id:exportId,
+        details:{session_id:session.id,scope:"client_balance",reconciliation_run_id:latestRun.id,
+          products:products.length,images_embedded:embeddedCount,images_not_embedded:notEmbeddedCount,
+          value_eligible_products:valueEligibleProducts,sha256}
+      });
+      if(auditError)throw new Error("CLIENT_BALANCE_AUDIT_WRITE_FAILED: "+auditError.message);
+      return json({
+        export_id:exportId,status:"ready",scope:"client_balance",file_name:fileName,
+        signed_url:signed.signedUrl,row_count:products.length,file_size_bytes:bytes.byteLength,
+        sha256,expires_at:expiresAt,images_embedded:embeddedCount,images_not_embedded:notEmbeddedCount,
+        products_fully_counted:fullyCountedProducts,products_with_incomplete_cost:unpricedProducts,
+        pricing_policy:"UNKNOWN"
+      });
+    }
 
     const [entries, products, locations, members, runs, alerts, recounts, imports] = await Promise.all([
       fetchAll(admin, "count_entries",
@@ -380,7 +750,9 @@ Deno.serve(async (req: Request) => {
     if (exportId && admin) {
       await admin.from("count_exports").update({status:"failed",error_message:message,completed_at:new Date().toISOString()}).eq("id",exportId);
     }
-    const status = /SUPERVISOR_ACCESS_REQUIRED/.test(message) ? 403 : /EXPORT_LIMIT|EXPORT_COMBINED_ROW_LIMIT/.test(message) ? 413 : 500;
+    const status = /SUPERVISOR_ACCESS_REQUIRED/.test(message) ? 403 :
+      /CLIENT_BALANCE_REQUIRES_APPROVED_RECONCILIATION/.test(message) ? 409 :
+      /EXPORT_LIMIT|EXPORT_COMBINED_ROW_LIMIT|CLIENT_BALANCE_PRODUCT_LIMIT|CLIENT_BALANCE_EXPORT_EXCEEDS_50MB/.test(message) ? 413 : 500;
     return json({error:message},status);
   }
 });
