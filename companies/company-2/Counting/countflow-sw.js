@@ -1,6 +1,6 @@
 /* CountFlow Service Worker — shell/static assets only; never cache business data. */
 'use strict';
-var CF_SW_BUILD = 'countflow-sw-20261120-1';
+var CF_SW_BUILD = 'countflow-sw-20261120-2';
 var CF_SHELL_CACHE = 'cf-shell-' + CF_SW_BUILD;
 var CF_STATIC_CACHE = 'cf-static-' + CF_SW_BUILD;
 var CF_SHELL = [
