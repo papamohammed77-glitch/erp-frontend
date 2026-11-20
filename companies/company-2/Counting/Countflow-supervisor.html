@@ -53,12 +53,17 @@ async function loadAssignments(){
 }
 async function loadProducts(){const {count}=await sb.from('count_products').select('*',{count:'exact',head:true}).eq('project_id',project.id);$('productTotal').textContent=count||0}
 function refreshSessionControls(){
- const status=session?.status||'';
+ const status=session?.status||'',editable=['planned','active','paused','review'].includes(status),historical=['completed','cancelled'].includes(status);
  $('sessionControl').textContent=session?session.name+' · '+status+' · '+new Date(session.created_at).toLocaleString('ar-EG'):'لا توجد عملية جرد محددة.';
  $('startSession').disabled=!session||!['planned','paused'].includes(status);
  $('pauseSession').disabled=!session||status!=='active';
- $('closeSession').disabled=!session||['completed','cancelled'].includes(status);
- $('startSession').title=status==='completed'?'لا يمكن إعادة فتح عملية مكتملة':'';
+ $('closeSession').disabled=!session||historical;
+ $('assignTask').disabled=!editable;$('createMember').disabled=!editable;
+ $('runReconciliation').disabled=!session||!['active','paused','review'].includes(status);
+ $('generateRecounts').disabled=!session||historical;
+ $('approveReconciliation').disabled=!session||historical;
+ $('commitProducts').disabled=!session||!editable;
+ $('startSession').title=historical?'لا يمكن إعادة فتح عملية مكتملة أو ملغاة':'';
  $('pauseSession').title=status!=='active'?'متاح أثناء التنفيذ فقط':'';
 }
 async function selectSession(sessionId){
