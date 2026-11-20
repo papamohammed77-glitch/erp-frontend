@@ -46,8 +46,79 @@ function db(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1)
 async function queuePut(x){const d=await db();await new Promise((ok,no)=>{const t=d.transaction('queue','readwrite');t.objectStore('queue').put(x);t.oncomplete=ok;t.onerror=()=>no(t.error)});d.close();await queueCount()}
 async function queueAll(){const d=await db();const a=await new Promise((ok,no)=>{const r=d.transaction('queue').objectStore('queue').getAll();r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});d.close();return a}
 async function queueDelete(key){const d=await db();await new Promise(ok=>{const t=d.transaction('queue','readwrite');t.objectStore('queue').delete(key);t.oncomplete=ok});d.close()}
-async function queueCount(){const all=await queueAll();const mine=member&&project?all.filter(x=>x.session_id===session?.id&&((x.member_id===member.id&&x.project_id===project.id)||(!x.member_id&&x.device_id===deviceId))):all;$('queueCount').textContent=mine.length;await renderQueueIssues()}async function renderQueueIssues(){const box=$('queueIssues');if(!box)return;const all=await queueAll(),mine=member&&project?all.filter(x=>x.session_id===session?.id&&((x.member_id===member.id&&x.project_id===project.id)||(!x.member_id&&x.device_id===deviceId))):all,failed=mine.filter(x=>x.sync_error);if(!failed.length){box.innerHTML='';return}box.innerHTML='<div class="panel" style="border-color:#f0c7a4;background:#fffaf5"><b>عمليات تحتاج مراجعة المزامنة ('+failed.length+')</b><p class="muted">لم تُحذف هذه العمليات؛ احتفظنا بها محلياً لأن الخادم رفضها. راجع سبب الرفض ثم أعد المحاولة بعد تصحيح التعيين أو حالة الجلسة.</p>'+failed.slice(0,8).map(x=>'<div style="padding:7px 0;border-top:1px solid var(--line)"><b>'+esc(x.scan_code||x.product_id||'عملية عد')+'</b><small class="muted" style="display:block">'+esc(x.sync_error)+'</small></div>').join('')+(failed.length>8?'<small class="muted">و '+(failed.length-8)+' عمليات أخرى…</small>':'')+'<button id="retryQueueBtn" class="soft" style="margin-top:10px">إعادة محاولة العمليات المتعثرة</button></div>';$('retryQueueBtn').onclick=async()=>{const current=await queueAll();for(const x of current.filter(v=>v.sync_error))await queuePut({...x,sync_error:null,failed_at:null});await syncQueue();await renderQueueIssues()}}
-async function syncQueue(){if(!navigator.onLine||!session||!member||!project)return false;const allPending=await queueAll();const pending=allPending.filter(x=>!x.sync_error&&x.session_id===session.id&&((x.member_id===member.id&&x.project_id===project.id)||(!x.member_id&&x.device_id===deviceId)));let synced=0;for(const x of pending){const args=x.recount_task_id?{p_task_id:x.recount_task_id,p_quantity:x.quantity,p_unit:x.unit,p_client_event_id:x.client_event_id,p_scan_code:x.scan_code,p_device_id:x.device_id,p_note:x.note}:{p_session_id:x.session_id,p_product_id:x.product_id,p_location_id:x.location_id,p_quantity:x.quantity,p_unit:x.unit,p_client_event_id:x.client_event_id,p_scan_code:x.scan_code,p_device_id:x.device_id,p_note:x.note};const {error}=await sb.rpc(x.recount_task_id?'count_record_recount_entry':'count_record_entry',args);if(error){console.warn('count sync',error);const transient=!error.status||error.status===0||error.status===401||error.status>=500||/network|fetch|timeout/i.test(error.message||'');if(transient)break;await queuePut({...x,sync_error:error.message||'رفض الخادم العملية',failed_at:new Date().toISOString()});continue}await queueDelete(x.client_event_id);synced++}await queueCount();if(synced){toast('تمت مزامنة '+synced+' عملية');await loadRecountTasks()}return synced===pending.length}
+function deviceQueueRows(all){
+ if(!member||!project)return all;
+ return all.filter(x=>x.project_id===project.id&&x.member_id===member.id&&x.device_id===deviceId);
+}
+async function queueCount(){
+ const all=await queueAll(),mine=deviceQueueRows(all);
+ $('queueCount').textContent=mine.length;
+ await renderQueueIssues();
+}
+async function renderQueueIssues(){
+ const box=$('queueIssues');if(!box)return;
+ const all=await queueAll(),mine=deviceQueueRows(all);
+ const failed=mine.filter(x=>x.sync_error);
+ const queued=mine.filter(x=>!x.sync_error);
+ const currentSessionId=session?.id||null;
+ const held=queued.filter(x=>!currentSessionId||x.session_id!==currentSessionId||session?.status!=='active');
+ const retryable=failed.filter(x=>currentSessionId&&x.session_id===currentSessionId&&session?.status==='active');
+ const sections=[];
+ if(held.length){
+  sections.push('<div style="padding:9px 0;border-top:1px solid var(--line)"><b>عمليات محفوظة تنتظر استئناف جلسة صالحة ('+held.length+')</b><p class="muted">لم نحذف هذه العمليات ولم ننقلها إلى عملية أخرى. لن تُرسل إلى الخادم ما لم تكن جلستها نفسها نشطة؛ تواصل مع المشرف عند انتهاء الجلسة قبل اعتماد التقرير.</p>'+held.slice(0,6).map(x=>'<div><small>'+esc(x.scan_code||x.product_id||'عملية عد')+' · جلسة '+esc(x.session_id||'غير محددة')+'</small></div>').join('')+'</div>');
+ }
+ if(failed.length){
+  sections.push('<div style="padding:9px 0;border-top:1px solid var(--line)"><b>عمليات رفضها الخادم أو تحتاج مراجعة ('+failed.length+')</b><p class="muted">لم تُحذف هذه العمليات. راجع سبب الرفض. زر إعادة المحاولة يعمل فقط على أخطاء الجلسة الحالية النشطة لهذا المستخدم وهذا الجهاز.</p>'+failed.slice(0,8).map(x=>'<div style="padding:6px 0"><b>'+esc(x.scan_code||x.product_id||'عملية عد')+'</b><small class="muted" style="display:block">'+esc(x.sync_error)+'</small></div>').join('')+(failed.length>8?'<small class="muted">و '+(failed.length-8)+' عمليات أخرى…</small>':'')+(retryable.length?'<button id="retryQueueBtn" class="soft" style="margin-top:10px">إعادة محاولة '+retryable.length+' عملية للجلسة الحالية</button>':'')+'</div>');
+ }
+ box.innerHTML=sections.length?'<div class="panel" style="border-color:#f0c7a4;background:#fffaf5"><b>حالة طابور المزامنة</b>'+sections.join('')+'</div>':'';
+ if(retryable.length){
+  $('retryQueueBtn').onclick=async()=>{
+   const current=await queueAll();
+   const ids=new Set(retryable.map(x=>x.client_event_id));
+   for(const x of current){
+    if(ids.has(x.client_event_id)&&x.project_id===project?.id&&x.member_id===member?.id&&x.device_id===deviceId&&x.session_id===session?.id){
+     await queuePut({...x,sync_error:null,failed_at:null});
+    }
+   }
+   await syncQueue();await renderQueueIssues();
+  };
+ }
+}
+async function syncQueue(){
+ if(!navigator.onLine||!session||!member||!project)return false;
+ const sessionId=session.id,projectId=project.id,memberId=member.id,device=deviceId;
+ const all=await queueAll();
+ const deviceRows=all.filter(x=>x.project_id===projectId&&x.member_id===memberId&&x.device_id===device);
+ const currentRows=deviceRows.filter(x=>x.session_id===sessionId);
+ const pending=currentRows.filter(x=>!x.sync_error);
+ if(!pending.length){await queueCount();return true;}
+ const {data:serverSession,error:sessionError}=await sb.from('count_sessions').select('status').eq('id',sessionId).eq('project_id',projectId).maybeSingle();
+ if(sessionError||!serverSession){
+  $('assignmentHint').textContent='تعذر التحقق من حالة الجلسة؛ أبقينا عمليات العد في الجهاز ولم نرسلها.';
+  await queueCount();return false;
+ }
+ session.status=serverSession.status;
+ if(session.status!=='active'){
+  $('assignmentHint').textContent='توجد '+currentRows.length+' عمليات محفوظة محلياً لهذه الجلسة. الجلسة ليست نشطة؛ لم نرسل العمليات ولم نحذفها. اطلب من المشرف استئناف الجلسة أو معالجة الطابور قبل الاعتماد.';
+  await queueCount();return false;
+ }
+ let synced=0;
+ for(const x of pending){
+  const args=x.recount_task_id?{p_task_id:x.recount_task_id,p_quantity:x.quantity,p_unit:x.unit,p_client_event_id:x.client_event_id,p_scan_code:x.scan_code,p_device_id:x.device_id,p_note:x.note}:{p_session_id:x.session_id,p_product_id:x.product_id,p_location_id:x.location_id,p_quantity:x.quantity,p_unit:x.unit,p_client_event_id:x.client_event_id,p_scan_code:x.scan_code,p_device_id:x.device_id,p_note:x.note};
+  const {error}=await sb.rpc(x.recount_task_id?'count_record_recount_entry':'count_record_entry',args);
+  if(error){
+   console.warn('count sync',error);
+   const transient=!error.status||error.status===0||error.status===401||error.status>=500||/network|fetch|timeout/i.test(error.message||'');
+   if(transient)break;
+   await queuePut({...x,sync_error:error.message||'رفض الخادم العملية',failed_at:new Date().toISOString()});
+   continue;
+  }
+  await queueDelete(x.client_event_id);synced++;
+ }
+ await queueCount();
+ if(synced){toast('تمت مزامنة '+synced+' عملية');await loadRecountTasks()}
+ return synced===pending.length;
+}
 async function touchPresence(state){if(!member||!project)return false;const approvalKey='countflow-device-approved:'+project.id+':'+member.id+':'+deviceId;if(!navigator.onLine)return localStorage.getItem(approvalKey)==='1'&&session?.status==='active';const {data:memberState,error:memberCheckError}=await sb.from('count_members').select('status').eq('id',member.id).maybeSingle();if(!memberCheckError&&(!memberState||memberState.status!=='active')){localStorage.removeItem(approvalKey);member.status=memberState?.status||'removed';$('saveBtn').disabled=true;$('assignmentHint').textContent='تم إيقاف عضويتك أو سحبها بواسطة المشرف. تواصل معه لاستعادة صلاحية العد.';return false}if(!session)return false;const {data:presence,error}=await sb.rpc('count_touch_presence',{p_session_id:session.id,p_device_id:deviceId,p_device_label:(navigator.userAgent||'جهاز ويب').slice(0,120),p_platform:(navigator.platform||'web').slice(0,60),p_app_version:'countflow-counter-1.0',p_state:state|| (document.hidden?'idle':'online'),p_location_id:$('location')?.value||null});if(error){console.warn('presence heartbeat',error.message);localStorage.removeItem(approvalKey);$('saveBtn').disabled=true;$('assignmentHint').textContent='تعذر اعتماد هذا الجهاز: '+error.message;return false}if(!presence?.ok){localStorage.removeItem(approvalKey);$('saveBtn').disabled=true;$('assignmentHint').textContent=presence?.device_status==='pending'?'هذا جهاز جديد وينتظر اعتماد المشرف قبل السماح بالعد.':'هذا الجهاز مبطل؛ اطلب من المشرف إعادة تفعيله.';return false}localStorage.setItem(approvalKey,'1');return true}
 function showApp(){ $('login').classList.add('hidden');$('workspace').classList.remove('hidden');$('userLabel').textContent=user.email||'مندوب الجرد';$('accountDetails').textContent=user.email+' · '+member.display_name+' · '+member.role;$('projectName').textContent=project.name}
 async function activateMembership(m){if(memberChannel){await sb.removeChannel(memberChannel);memberChannel=null}member=m;project=availableProjects[m.project_id];if(!project){toast('المشروع المرتبط بهذا الحساب غير متاح');return}deviceId=bindDeviceIdentity(member,project);session=null;activeRecountTask=null;product=null;$('productInfo').classList.add('hidden');$('emptyProduct').classList.remove('hidden');$('saveBtn').textContent='تسجيل الكمية ومتابعة الصنف التالي';const {data:ss,error}=await sb.from('count_sessions').select('*').eq('project_id',project.id).in('status',['active','paused']).order('created_at',{ascending:false}).limit(1).maybeSingle();if(error)toast('تعذر تحميل جلسة المشروع: '+error.message);session=ss||null;showApp();$('projectSwitch').value=m.id;await loadLocations();await loadHistory();if(session){$('sessionName').textContent=session.name;$('sessionStatus').textContent=session.status==='active'?'جلسة نشطة':'الجلسة متوقفة مؤقتاً';$('assignmentHint').textContent='التزم بالموقع المسند إليك. كل تسجيل مرتبط بحسابك ووقته وجهازك.';$('saveBtn').disabled=session.status!=='active'||member.status!=='active'}else{$('sessionName').textContent='لا توجد جلسة نشطة';$('sessionStatus').textContent='بانتظار الجلسة';$('saveBtn').disabled=true}await subscribe();await syncQueue();await queueCount();const deviceOk=await touchPresence('online');if(session&&session.status==='active'&&member.status==='active'&&deviceOk)$('saveBtn').disabled=false;await loadRecountTasks()}
