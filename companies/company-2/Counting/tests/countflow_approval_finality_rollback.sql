@@ -15,8 +15,22 @@ INSERT INTO count_sessions(id,project_id,name,status,created_by) VALUES('d4c6e6a
 SELECT count_transition_session('d4c6e6a1-8c22-4df0-9a01-777777777777','active');
 INSERT INTO count_assignments(session_id,member_id,location_id,status) VALUES('d4c6e6a1-8c22-4df0-9a01-777777777777','d4c6e6a1-8c22-4df0-9a01-444444444444','d4c6e6a1-8c22-4df0-9a01-555555555555','assigned');
 INSERT INTO count_products(id,project_id,sku,name,base_unit,units) VALUES('d4c6e6a1-8c22-4df0-9a01-888888888888','d4c6e6a1-8c22-4df0-9a01-333333333333','CF-FINAL-001','Final Product','each','["each"]');
-INSERT INTO count_expected_balances(project_id,session_id,product_id,location_id,expected_quantity,unit)
-VALUES('d4c6e6a1-8c22-4df0-9a01-333333333333','d4c6e6a1-8c22-4df0-9a01-777777777777','d4c6e6a1-8c22-4df0-9a01-888888888888','d4c6e6a1-8c22-4df0-9a01-555555555555',10,'each');
+DO $baseline_import$
+DECLARE v_batch uuid; v_stage jsonb; v_commit jsonb;
+BEGIN
+ v_batch:=public.count_create_import_batch(
+  'd4c6e6a1-8c22-4df0-9a01-333333333333',
+  'd4c6e6a1-8c22-4df0-9a01-777777777777',
+  'finality-baseline.csv','csv','finality-baseline-checksum'
+ );
+ v_stage:=public.count_stage_import_rows(v_batch,'[
+  {"sku":"CF-FINAL-001","name":"Final Product","base_unit":"each","expected_qty":"10","location_code":"F-A"}
+ ]'::jsonb,0);
+ IF (v_stage->>'accepted_rows')::int<>1 THEN RAISE EXCEPTION 'ASSERT_FINALITY_BASELINE_STAGE_FAILED:%',v_stage; END IF;
+ v_commit:=public.count_commit_import_batch(v_batch);
+ IF (v_commit->>'accepted_rows')::int<>1 OR (v_commit->>'expected_balance_rows')::int<>1
+ THEN RAISE EXCEPTION 'ASSERT_FINALITY_BASELINE_COMMIT_FAILED:%',v_commit; END IF;
+END $baseline_import$;
 SELECT set_config('request.jwt.claim.sub','d4c6e6a1-8c22-4df0-9a01-222222222222',true);
 SELECT set_config('request.jwt.claims','{"sub":"d4c6e6a1-8c22-4df0-9a01-222222222222","role":"authenticated"}',true);
 SELECT count_touch_presence('d4c6e6a1-8c22-4df0-9a01-777777777777','final-device','test','desktop','test','online','d4c6e6a1-8c22-4df0-9a01-555555555555');
