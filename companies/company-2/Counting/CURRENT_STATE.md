@@ -11,7 +11,7 @@
 
 | Artifact | Current Git blob SHA |
 |---|---|
-| `countflow-admin.html` | `0c3a57cbe45426f600ac834e3505f94219052598` |
+| `countflow-admin.html` | `8e45921fb2a7a199e8569e8a5e17349ebe210cbe` |
 | `countflow.html` | `83969d45a0f446e5f9e74f8de2d943635484d3cd` |
 | `Countflow-supervisor.html` | `2e1823e81829569653788937a086a0c0e414b212` |
 | `README.md` | `fc98f54bb092ba68b9872c1c1d69524d4caf6241` |
@@ -413,6 +413,7 @@ Only CountFlow master UI and CountFlow-specific migrations/settings were changed
 - Added the historical operation register across owner-visible engagements: search by contracting-party name, operation name or engagement code; filter by status and creation-date range; sortable columns; 50-row pagination.
 - Operation detail provides team management, adding an existing engagement member, creating an account and assigning it to the selected operation, removing from this operation only, current metrics, import history, reconciliation lines, export archive, print preview, and XLSX/CSV export through the server function.
 - Coverage display derives from the actual count_session_kpis contract (expected_positions/counted_positions, or total_products/counted_products fallback); it does not assume a non-existent coverage_percent_total key.
+- Sorting uses actual values for the derived contracting-party, engagement-code and team-count columns, not nonexistent count_sessions fields.
 
 ### Supervisor UI — IMPLEMENTED
 - Countflow-supervisor.html creates a new engagement and first named operation from an inline validated form using the same atomic RPC.
