@@ -50,7 +50,7 @@ BEGIN
 END $$;
 
 -- New minimum-data regression: barcode + base unit is enough to create and count an item.
-DO $
+DO $$
 DECLARE
   v_batch uuid;
   v_stage jsonb;
@@ -159,7 +159,7 @@ SELECT jsonb_build_object(
 ) AS verified_result;
 
 -- Prove the barcode-only product can pass the same server-authoritative count RPC.
-DO $
+DO $$
 DECLARE v_product uuid; v_entry public.count_entries;
 BEGIN
   SELECT id INTO v_product FROM public.count_products
