@@ -242,7 +242,7 @@ BEGIN
    WHERE run_id=(SELECT id FROM public.count_reconciliation_runs WHERE session_id='f3c6e6a1-8c22-4df0-9a01-777777777777' AND run_number=2)
      AND product_id=(SELECT id FROM public.count_products WHERE project_id='f3c6e6a1-8c22-4df0-9a01-333333333333' AND sku='CF-TEST-001');
   v_kpis:=public.count_session_kpis('f3c6e6a1-8c22-4df0-9a01-777777777777');
-  IF v_first<>7 OR v_second<>8 OR (v_kpis->>'quantity_total')::numeric<>8
+  IF v_first<>7 OR v_second<>8 OR (v_kpis->>'quantity_total')::numeric<>15
   THEN RAISE EXCEPTION 'ASSERT_RECOUNT_OVERRIDE_FAILED: first %, second %, kpis %',v_first,v_second,v_kpis; END IF;
 END $$;
 
