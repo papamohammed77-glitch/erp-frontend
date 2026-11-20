@@ -147,11 +147,11 @@
          <div class="field"><label>الاسم الظاهر</label><input id="operationNewName" maxlength="120"></div>
          <div class="field"><label>اسم المستخدم</label><input id="operationNewUsername" maxlength="80"></div>
          <div class="field"><label>البريد الإلكتروني</label><input id="operationNewEmail" type="email"></div>
-         <div class="field"><label>كلمة مرور مؤقتة (10 أحرف فأكثر)</label><input id="operationNewPassword" type="password"></div>
+         <div class="field"><label>كلمة مرور أولية للحساب الجديد (اختيارية للحساب الموجود)</label><input id="operationNewPassword" type="password" autocomplete="new-password" placeholder="اتركها فارغة لربط حساب مؤكد موجود"></div>
          <div class="field full"><label>الدور</label><select id="operationNewRole"><option value="counter">مندوب جرد</option><option value="auditor">مراجع / مدقق</option><option value="supervisor">مشرف جرد</option></select></div>
         </div>
         <button id="operationCreateMember" type="button" class="primary">إنشاء الحساب وإضافته للعملية</button>
-        <p class="hint">إخراج المستخدم من العملية يحذف الإسناد لهذه العملية فقط؛ لا يحذف حسابه ولا عضويته من التكليف ولا بيانات العد المسجلة.</p>
+        <p class="hint">البريد المؤكد الموجود يُعاد استخدامه دون تغيير كلمة المرور. الحساب الجديد يحتاج كلمة مرور أولية لا تقل عن 10 أحرف؛ البريد غير المؤكد أو العضوية غير النشطة لا يتم تجاوزها تلقائياً. إخراج المستخدم من العملية يحذف الإسناد لهذه العملية فقط ولا يحذف حسابه أو بيانات العد.</p>
        </div>
        <div class="panel">
         <h3>استيراد جدول الأصناف</h3>
@@ -409,15 +409,15 @@
  async function operationCreateMember(){
   const s=state.selectedSession,p=state.project;if(!s||!p)return;
   const payload={action:'create',project_id:p.id,email:$('operationNewEmail').value.trim(),password:$('operationNewPassword').value,display_name:$('operationNewName').value.trim(),username:$('operationNewUsername').value.trim(),role:$('operationNewRole').value};
-  if(!payload.email||!payload.display_name||!payload.username||payload.password.length<10)return notify('أكمل بيانات الحساب وكلمة المرور (10 أحرف على الأقل).',true);
+  if(!payload.email||!payload.display_name||!payload.username||(payload.password&&payload.password.length<10))return notify('أكمل البريد والاسم واسم المستخدم؛ كلمة المرور مطلوبة للحساب الجديد فقط (10 أحرف على الأقل).',true);
   const b=$('operationCreateMember');b.disabled=true;
   try{
    const {data,error}=await db.functions.invoke('counting-provision-member',{body:payload});
-   if(error)throw error;if(data?.error)throw new Error(data.error);if(!data?.ok||!data.member_id)throw new Error('استجابة إنشاء الحساب غير مكتملة.');
+   if(error)throw error;if(data?.error)throw new Error(data.message||data.error);if(!data?.ok||!data.member_id)throw new Error('استجابة إنشاء الحساب غير مكتملة.');
    const {error:assignmentError}=await db.from('count_assignments').upsert({session_id:s.id,member_id:data.member_id,location_id:null,status:'assigned'},{onConflict:'session_id,member_id,location_id'});
    $('operationNewName').value='';$('operationNewUsername').value='';$('operationNewEmail').value='';$('operationNewPassword').value='';
    if(assignmentError)notify('أُنشئ الحساب وعضويته، لكن تعذر إسناده إلى العملية: '+assignmentError.message,true);
-   else notify('تم إنشاء الحساب وإضافته إلى العملية مباشرة.');
+   else notify((data.account_reused?'تم ربط حساب Auth الموجود دون تغيير كلمة مروره':'تم إنشاء حساب Auth جديد')+'؛ '+(data.membership_reused?'العضوية النشطة كانت موجودة بالفعل.':'تم إنشاء عضوية التكليف.')+' تمت معالجة الإسناد للعملية.');
    await loadProjectData();await loadOperationTeam();await loadGlobalOperations();
   }catch(e){fail('تعذر إنشاء الحساب وإسناده',e);}
   finally{b.disabled=false;}
