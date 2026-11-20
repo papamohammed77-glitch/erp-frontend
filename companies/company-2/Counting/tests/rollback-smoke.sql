@@ -12,6 +12,11 @@ DECLARE
   v_project uuid;
   v_session uuid;
   v_product uuid;
+  v_product_sku text;
+  v_product_barcode text;
+  v_batch uuid;
+  v_stage jsonb;
+  v_commit jsonb;
   v_loc1 uuid;
   v_loc2 uuid;
   v_member uuid;
@@ -79,8 +84,21 @@ BEGIN
   PERFORM public.count_transition_session(v_session,'paused');
   PERFORM public.count_transition_session(v_session,'active');
 
-  INSERT INTO public.count_expected_balances(project_id,session_id,product_id,location_id,expected_quantity,unit)
-  VALUES(v_project,v_session,v_product,v_loc1,10,'قطعة');
+  SELECT sku,barcode INTO v_product_sku,v_product_barcode
+  FROM public.count_products WHERE id=v_product;
+
+  v_batch := public.count_create_import_batch(
+    v_project,v_session,'qa-baseline.csv','csv','qa-baseline-checksum'
+  );
+  v_stage := public.count_stage_import_rows(v_batch,jsonb_build_array(jsonb_build_object(
+    'sku',v_product_sku,'barcode',v_product_barcode,'name','QA Test Product',
+    'base_unit','قطعة','expected_qty','10','location_code','QA-S1'
+  )),0);
+  IF (v_stage->>'accepted_rows')::int<>1 OR (v_stage->>'rejected_rows')::int<>0
+  THEN RAISE EXCEPTION 'QA_FAIL_IMPORT_STAGE_BASELINE:%',v_stage; END IF;
+  v_commit := public.count_commit_import_batch(v_batch);
+  IF (v_commit->>'accepted_rows')::int<>1 OR (v_commit->>'expected_balance_rows')::int<>1
+  THEN RAISE EXCEPTION 'QA_FAIL_IMPORT_COMMIT_BASELINE:%',v_commit; END IF;
 
   INSERT INTO public.count_devices(project_id,member_id,device_id,device_label,platform,app_version,status)
   VALUES(v_project,v_member,v_device,'QA Device','test','qa','active');
