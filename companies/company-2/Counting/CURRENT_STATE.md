@@ -601,3 +601,73 @@ Only companies/company-2/Counting/ and CountFlow-specific objects in rawaea-stag
 
 ### Isolation
 No SMART ERP project, `company-1`, legacy ERP object, stock, sale, treasury or accounting record was changed. No persistent test member, project, session, product, import, count, cost snapshot or export remains.
+
+
+---
+
+## LVE-2026-11-20-747 — Daily security, workflow ACL and product-acceptance revalidation
+
+**Date/time:** 2026-11-20 21:47 Africa/Cairo  
+**Scope:** CountFlow source and rawaea-staging read-only revalidation; cross-project security findings are recorded in RAWAEA governance Report747.  
+**Operational Git HEAD before this documentation update:** b48e384319436e22a2464b6d3749c3e0069f7b14.
+
+### Source snapshots — RECONFIRMED
+The following current blobs still match this checkpoint:
+- countflow-admin.html: 57127597826ff479b52ce392c4c560afaf3c9994
+- countflow.html: 6bbd9db32682e6e48429d85ebaf061d3ff965e25
+- Countflow-supervisor.html: e30452120e2307472bcccfb8e3e06261d51b2734
+- countflow-core.js: 43395393093ba9bba94959dc1cc71457327a4e5e
+- countflow-sw.js: 408fe0047d230535ae482230ea892e2edbb663f2
+- server session lifecycle migration: f2a8d067fa6bf3a64d77e3f7a39ded18470d8113
+- import_90k_rollback.sql: d72d9ee724071446aa96888fc124a056e3470760
+- FINAL_EXECUTION_REPORT_LVE-746.md: da3083d6a0847b7da9d4b78da50d1f65e14b295d
+
+No CountFlow application source, migration, Edge Function or deployed artifact was changed in this event.
+
+### Live Supabase structure — CONFIRMED
+Project rawaea-staging / hfzznsiprnwkpayskzhu:
+- 23 CountFlow public tables; all 23 have RLS enabled.
+- 76 CountFlow policies.
+- 78 CountFlow foreign keys; all 78 are validated.
+- Zero anon SELECT/INSERT/UPDATE/DELETE grants on CountFlow tables.
+- 148 total project migrations; latest live ledger row remains 20261120170645 / countflow_platform_settings_fk_index.
+- counting-provision-member v6 and counting-export-session v12 are ACTIVE with verify_jwt=true. Their live index.ts contents exactly match current GitHub source (8,567 and 57,295 characters respectively).
+- 24 Edge Functions exist in the project. Six legacy harness/canary functions still have verify_jwt=false; none is either CountFlow function. They were not invoked or modified.
+- All CountFlow business tables remain empty: projects, members, sessions, assignments, products, entries, expected balances, reconciliation runs, import batches/rows, cost snapshots and exports = 0.
+- Auth users = 1,868; owner@rawaea.com matches = 0; qa-90k test users = 0.
+
+### Current CountFlow direct-DML boundary — CONFIRMED
+- count_entries: authenticated SELECT/INSERT only; no authenticated UPDATE/DELETE.
+- count_expected_balances, count_import_batches, count_import_rows and count_session_product_costs: authenticated SELECT only.
+- count_sessions: authenticated supervisor INSERT/UPDATE/DELETE. The lifecycle guard runs BEFORE INSERT/UPDATE and the audit trigger records row changes, but the guard does not run on DELETE. A supervisor DELETE policy exists. Child FKs cascade session deletion to assignments, entries, presence and session cost snapshots; other child relations RESTRICT deletion. This needs an explicit deletion lifecycle gate.
+- count_reconciliation_runs: authenticated supervisor INSERT/UPDATE; no DELETE policy. The table has only the Broadcast trigger, not a row-audit or lifecycle guard. Direct UPDATE can bypass count_approve_reconciliation validation.
+- count_recount_tasks: authenticated supervisor INSERT/UPDATE/DELETE; audit and Broadcast triggers exist, but no state guard prevents direct UPDATE/DELETE from bypassing the recount review RPC.
+- count_alerts: authenticated supervisor INSERT/UPDATE; only the Broadcast trigger is present. No row-audit or resolution-state guard was found.
+- count_assignments remains supervisor-scoped direct CRUD with audit triggers; no anon grants exist.
+
+These are workflow-integrity P1s, not anon access findings. No direct DML was executed.
+
+### Static product/UX scan — SOURCE ONLY
+All three HTML pages declare Arabic language, RTL direction and a viewport:
+- Master: 3 media queries, 39 buttons, 6 forms, 31 inputs, zero aria-* attributes and zero alt attributes.
+- Counter: 1 media query, 16 buttons, 6 inputs, zero aria-* attributes and one alt attribute.
+- Supervisor: 3 media queries, 51 buttons, 1 form, 29 inputs, zero aria-* attributes and one alt attribute.
+- countflow-core.js contains one Service Worker registration and three Postgres Changes references. Counter and Supervisor source contain Broadcast handlers (5 and 13 references respectively).
+This is a static source scan only. It does not establish keyboard accessibility, screen-reader usability, responsive behavior on devices, camera compatibility, offline recovery, event delivery or measured latency. The absence of aria-* attributes is an OPEN accessibility review item, not a complete WCAG audit.
+
+### 90,000-row regression — NOT VERIFIED
+The current script was inspected: it starts with BEGIN, ends with ROLLBACK, contains no standalone COMMIT statement, and scopes permanent-table writes to auth.users and CountFlow tables only. The execution tool failed internally before returning a test result. Therefore this run is NOT PASS and must remain NOT RUN/UNVERIFIED. A subsequent read-only residue query found zero rows in every CountFlow business table and zero qa-90k Auth users. No persistent fixture was found; the tool failure prevents claiming that the test executed successfully.
+
+### Acceptance blockers remain OPEN
+- No platform-owner Auth identity exists; no roster-backed supervisor/counter accounts were created.
+- No authenticated Browser E2E, actual client-balance XLSX download/open, real image embedding check, multi-device offline close-barrier test, cross-device Broadcast delivery/latency test, Cloudflare Pages deployment or device matrix was completed.
+- The approved cost valuation policy remains UNKNOWN.
+- The app is pre-release; source, schema and rollback suites do not prove user acceptance or deployment parity.
+
+### Governance conflict — DO NOT RESOLVE BY ASSUMPTION
+The permanent constitution §6.4 names SMART ERP Production as the sole execution database and rejects a separate staging project. The newer MASTER DAILY protocol §19 calls for isolated/Staging QA, while the current CountFlow implementation uses the existing rawaea-staging project. No new project was created. Until the owner explicitly resolves this conflict, no further CountFlow write tests or deployment should be run against rawaea-staging. Read-only verification remains permitted.
+
+### Safety and next step
+No SMART ERP stock, treasury, journal, supplier/customer ledger or custody data was changed. No CountFlow migration, ACL, RLS, Edge Function or deployment was changed. The attempted 90k test has no PASS result and no persistent residue was observed.
+
+Next: obtain owner approval for the narrowly defined P0 security containment in SMART ERP and resolve the existing staging-governance conflict before further CountFlow write testing. Do not create accounts, commit QA data, deploy Pages, or broaden the schema.
