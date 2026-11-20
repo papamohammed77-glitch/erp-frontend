@@ -4,38 +4,47 @@
 **Backend:** Supabase project `rawaea-staging` — `hfzznsiprnwkpayskzhu`.  
 **Isolation rule:** Never connect CountFlow to SMART ERP (`fiilmooggumokxanwiyx`) or load RAWAEA's `companies/company-1/core.js`.
 
-## 1. Tenant and concurrent-count model
+## 1. Engagement and concurrent-operation model
 
-The existing CountFlow schema already provides the correct base hierarchy:
+CountFlow is the inventory-counting service provider's internal operating system. Contracting organizations are temporary and variable engagements, **not a permanent customer master**.
 
-- **Client / customer organization = `count_projects` row.** Examples: Carrefour, Panda, a non-food retail complex, or a garment factory. Each project owns its catalog, location hierarchy, team memberships, assignments, devices, expected balances, evidence and audit scope.
-- **A physical stocktake / count engagement = `count_sessions` row.** A client can have several sessions over time, and different client projects can have active sessions at the same time.
-- **Workforce = `count_members` + `count_assignments`.** Membership is project-scoped; assignments are session- and optionally location-scoped. A counter assigned to one customer does not inherit access to another customer's data.
-- **The same Auth identity can be a supervisor in several projects.** The existing `count_bootstrap_project_owner` trigger creates a supervisor membership for the Auth identity that creates a project. The owner account should create every customer project it is responsible for; customer supervisors and counters are provisioned within their own project.
+The existing schema already supports this separation without adding another business table:
 
-This allows parallel execution without combining customer catalogs or count results. A project is not a single count operation: it is the tenant boundary for a client; sessions represent count operations.
+- **Engagement workspace = one `count_projects` row.** `count_projects.name` stores the contracting party name (e.g. Carrefour); `code` is the unique engagement reference. It is not a canonical customer record and the same company name may appear in many separate engagements.
+- **Named count operation = one `count_sessions` row.** `count_sessions.name` stores the exact operation/task name (e.g. "جرد شهر يناير 2027 - كارفور فرع المعادي"). Each operation belongs to one engagement workspace. A workspace may contain multiple named operations over its lifecycle.
+- **Workforce = `count_members` + `count_assignments`.** Membership is scoped to the engagement; an assignment binds a member to a specific operation and optionally to a location. Removing an assignment removes that member from that operation only. It does not delete the Auth account, engagement membership, historical count entries, or their audit trail.
+- **Independent repeat contracts.** A second Carrefour count is created as a new engagement workspace with a new unique code; it must not reuse or merge the earlier engagement's catalog, sites, team assignments, expected balances, evidence, or count history.
+- **Concurrent work.** Multiple operations across multiple engagement workspaces may be active concurrently. Each operation has its own team assignments, count entries, imports, reconciliation, exports and status history.
+
+The first engagement/operation pair is created atomically by `public.count_create_engagement(p_client_name,p_engagement_code,p_operation_name)`. The database transaction inserts the engagement workspace and the first planned operation together; a failed second insert cannot leave an incomplete engagement. The RPC is SECURITY INVOKER, requires `auth.uid()`, and is executable by `authenticated` but not `anon`.
+
+The master and supervisor applications both use that contract. A new operation added later within an existing engagement is a new `count_sessions` row; the operation register provides historical search, status/date filters, sorting, paging, detail preview, printing, and server-generated exports.
 
 ## 2. Owner identity and authority boundary
 
-The master UI already supports email/password sign-in and a first-owner sign-up path. An authenticated identity with no CountFlow memberships can create its first project; the database trigger then creates its supervisor membership.
+The platform owner identity is reserved as `owner@rawaea.com`. Global authority is server-enforced and never derived from browser metadata:
 
-Important distinction:
+- `counting_private.is_platform_owner()` recognizes only the authenticated Supabase Auth identity whose email is exactly `owner@rawaea.com` and whose email has been confirmed.
+- `counting_private.is_member(uuid)` and `counting_private.is_supervisor(uuid)` include this verified platform-owner check, so RLS continues to authorize access through the existing policy contracts for every CountFlow engagement.
+- The two server-side functions `counting-provision-member` and `counting-export-session` also accept the verified platform owner; ordinary users still require active supervisor membership in the target engagement.
+- Public first-user sign-up was removed from the master login to prevent an arbitrary visitor from taking over initial ownership.
+- **The Auth identity itself remains uncreated** in the latest database check (zero users with `owner@rawaea.com`). The owner must be provisioned through Supabase Auth and confirm this email before the owner login and global authority can be exercised. Do not assign one of the legacy Auth users by guess and do not create a password in SQL or chat.
 
-- This is currently a **project-owning supervisor identity**, not a separate platform-wide super-admin role.
-- It can manage all projects in which it has an active supervisor membership. To maintain the intended owner-wide view, create each customer project using the same owner Auth identity.
-- A user with a non-supervisor membership only is rejected from the master UI.
-- No owner Auth identity has been created or bound in the current database. Do not assign one of the pre-existing legacy Auth users by guess. The owner email must be confirmed, then the user signs in or completes the explicit sign-up flow. The password is entered by the owner in the application and must not be shared in chat.
-- A future platform-level owner role, capable of managing projects created by unrelated supervisors, requires a dedicated server-authoritative role contract and RLS changes. It must not be simulated by trusting user metadata or an email string in browser code.
+A supervisor can create a new engagement and its first operation from the supervisor app. The database creates the supervisor membership for the authenticated creator. The verified platform owner can manage all engagements, including those created by other supervisors.
 
-## 3. Master dashboard global views
+## 3. Master dashboard and operation register
 
-The master page now provides:
+The CountFlow master dashboard provides:
 
-- **Client/project directory:** create and select customer projects. The selected project remains the context for product catalog, location hierarchy, member provisioning, planned sessions and audit.
-- **Users:** aggregate membership rows across all projects visible to the signed-in owner, with the customer/project displayed on each row. The add-user form provisions into the currently selected project only.
-- **Current count operations:** aggregate sessions across all owner-visible projects. Active, planned, paused and review sessions are visible together; completed/closed sessions are separated into history. Selecting a row changes the master context to that customer project.
-- **Pagination:** project, member and session reads are paginated/batched instead of relying on the former 200-project ceiling or a single small response.
-- **Live refresh:** `count_sessions` and `count_members` Postgres Changes events invalidate the dashboard snapshot; the UI re-fetches through RLS. A 30-second visible-page reconciliation is retained as a fallback. Realtime delivery still requires authenticated browser verification under concurrent users.
+- **Engagement directory:** create and select an independent count engagement using the contracting party name and unique engagement code. The initial named count operation is created in the same transaction.
+- **Users:** aggregate CountFlow memberships visible to the platform owner, with each row showing the engagement. User provisioning remains scoped to the selected engagement.
+- **Operation register:** one searchable historical register across owner-visible engagements. Filters include contracting-party/operation/code search, operation status, and creation-date range. Columns are sortable and results are paginated.
+- **Operation detail:** open a specific operation to view its team, current KPIs, import batches, reconciliation result, and export archive; add an existing engagement member or create a new account and assign it to that operation; remove a member from that operation without deleting their account or engagement membership.
+- **Import/export/print:** import CSV/XLSX item catalogs and session expected balances using the existing staged CountFlow import RPCs. XLSX/CSV result exports use the server-side `counting-export-session` pipeline. The printable preview presents reconciliation details; the server XLSX remains the complete export artifact.
+- **History preservation:** completed operations remain available for review, preview and export. Historical operations cannot be reopened or have their team/import altered from the supervisor UI.
+- **Live refresh:** `count_sessions` and `count_members` Postgres Changes events invalidate the dashboard snapshot; the UI re-fetches authoritative rows through RLS. A 30-second visible-page reconciliation remains the fallback.
+
+The supervisor page provides the same operation-level team assignment/removal and account provisioning flow, a searchable historical session register, existing CSV/XLSX staged import, server-side result export, and printable result preview.
 
 ## 4. RAWAEA architecture patterns adopted by principle, not by code
 
