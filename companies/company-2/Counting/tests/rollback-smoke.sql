@@ -133,6 +133,11 @@ BEGIN
       AND has_function_privilege('anon',p.oid,'EXECUTE')
   ) THEN RAISE EXCEPTION 'QA_FAIL_ANON_FUNCTION_EXECUTE'; END IF;
 
+  IF has_table_privilege('authenticated','public.count_import_rows','INSERT')
+     OR has_table_privilege('authenticated','public.count_import_rows','UPDATE')
+     OR has_table_privilege('authenticated','public.count_import_rows','DELETE')
+  THEN RAISE EXCEPTION 'QA_FAIL_IMPORT_ROW_DIRECT_DML_PRIVILEGE'; END IF;
+
   IF has_table_privilege('authenticated','public.count_audit_log','UPDATE')
      OR has_table_privilege('authenticated','public.count_audit_log','DELETE')
      OR has_table_privilege('authenticated','public.count_reconciliation_lines','UPDATE')
