@@ -159,7 +159,9 @@ SELECT jsonb_build_object(
 ) AS verified_result;
 
 -- Prove the barcode-only product can pass the same server-authoritative count RPC.
-DO $$
+SELECT set_config('request.jwt.claim.sub','f3c6e6a1-8c22-4df0-9a01-222222222222',true);
+SELECT set_config('request.jwt.claims','{"sub":"f3c6e6a1-8c22-4df0-9a01-222222222222","role":"authenticated"}',true);
+DO $
 DECLARE v_product uuid; v_entry public.count_entries;
 BEGIN
   SELECT id INTO v_product FROM public.count_products
