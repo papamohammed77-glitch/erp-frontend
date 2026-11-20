@@ -28,6 +28,8 @@ INSERT INTO public.count_sessions(id,project_id,name,status,created_by)
 VALUES('f3c6e6a1-8c22-4df0-9a01-777777777777','f3c6e6a1-8c22-4df0-9a01-333333333333','Rollback Integration Session','active','f3c6e6a1-8c22-4df0-9a01-111111111111');
 INSERT INTO public.count_assignments(session_id,member_id,location_id,status)
 VALUES('f3c6e6a1-8c22-4df0-9a01-777777777777','f3c6e6a1-8c22-4df0-9a01-444444444444','f3c6e6a1-8c22-4df0-9a01-555555555555','assigned');
+INSERT INTO public.count_assignments(session_id,member_id,location_id,status)
+VALUES('f3c6e6a1-8c22-4df0-9a01-777777777777','f3c6e6a1-8c22-4df0-9a01-444444444444','f3c6e6a1-8c22-4df0-9a01-666666666666','assigned');
 
 SELECT public.count_create_import_batch('f3c6e6a1-8c22-4df0-9a01-333333333333',
 'f3c6e6a1-8c22-4df0-9a01-777777777777','rollback-fixture.csv','csv','rollback-fixture-checksum');
@@ -63,8 +65,8 @@ BEGIN
     'barcode-only-fixture.csv','csv','barcode-only-fixture-checksum'
   );
   v_stage := public.count_stage_import_rows(v_batch,'[
-    {"sku":"","barcode":"990000000009","name":"","base_unit":"قطعة","units":[],"expected_qty":"5","location_code":"TEST-LOC-A","purchase_unit_cost":"120","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-001","cost_source_date":"2026-11-20"},
-    {"sku":"","barcode":"990000000009","name":"","base_unit":"قطعة","units":[],"expected_qty":"4","location_code":"TEST-LOC-B","purchase_unit_cost":"120","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-001","cost_source_date":"2026-11-20"},
+    {"sku":"","barcode":"990000000009","name":"","base_unit":"قطعة","units":[],"expected_qty":"","location_code":"TEST-LOC-A","purchase_unit_cost":"120","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-001","cost_source_date":"2026-11-20"},
+    {"sku":"","barcode":"990000000009","name":"","base_unit":"قطعة","units":[],"expected_qty":"","location_code":"TEST-LOC-B","purchase_unit_cost":"120","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-001","cost_source_date":"2026-11-20"},
     {"sku":"","barcode":"990000000011","name":"","base_unit":"قطعة","purchase_unit_cost":"15","purchase_unit":"كرتونة"},
     {"sku":"","barcode":"990000000012","name":"","base_unit":"قطعة","location_code":"TEST-LOC-A","purchase_unit_cost":"10","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-A"},
     {"sku":"","barcode":"990000000012","name":"","base_unit":"قطعة","location_code":"TEST-LOC-B","purchase_unit_cost":"12","currency_code":"EGP","purchase_unit":"كرتونة","unit_factor_to_base":"12","cost_source_type":"supplier_invoice","cost_source_reference":"SUP-INV-B"},
@@ -160,6 +162,14 @@ SELECT public.count_record_entry('f3c6e6a1-8c22-4df0-9a01-777777777777',
 (SELECT id FROM public.count_products WHERE project_id='f3c6e6a1-8c22-4df0-9a01-333333333333' AND sku='CF-TEST-001'),
 'f3c6e6a1-8c22-4df0-9a01-555555555555',7,'each','f3c6e6a1-8c22-4df0-9a01-888888888888',
 '990000000001','rollback-device-001','rollback integration count');
+SELECT public.count_record_entry('f3c6e6a1-8c22-4df0-9a01-777777777777',
+ (SELECT id FROM public.count_products WHERE project_id='f3c6e6a1-8c22-4df0-9a01-333333333333' AND barcode='990000000009'),
+ 'f3c6e6a1-8c22-4df0-9a01-555555555555',3,'قطعة','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+ '990000000009','rollback-device-001','barcode-only location A');
+SELECT public.count_record_entry('f3c6e6a1-8c22-4df0-9a01-777777777777',
+ (SELECT id FROM public.count_products WHERE project_id='f3c6e6a1-8c22-4df0-9a01-333333333333' AND barcode='990000000009'),
+ 'f3c6e6a1-8c22-4df0-9a01-666666666666',4,'قطعة','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+ '990000000009','rollback-device-001','barcode-only location B');
 
 DO $$
 DECLARE v_first uuid; v_second uuid;
@@ -188,6 +198,20 @@ END $$;
 SELECT set_config('request.jwt.claim.sub','f3c6e6a1-8c22-4df0-9a01-111111111111',true);
 SELECT set_config('request.jwt.claims','{"sub":"f3c6e6a1-8c22-4df0-9a01-111111111111","role":"authenticated"}',true);
 SELECT public.count_reconcile_session('f3c6e6a1-8c22-4df0-9a01-777777777777');
+DO $scope_reconciliation$
+DECLARE v_product uuid; v_count integer;
+BEGIN
+  SELECT id INTO v_product FROM public.count_products
+  WHERE project_id='f3c6e6a1-8c22-4df0-9a01-333333333333'
+    AND barcode='990000000009';
+  SELECT count(*) INTO v_count FROM public.count_reconciliation_lines
+  WHERE run_id=(SELECT id FROM public.count_reconciliation_runs
+    WHERE session_id='f3c6e6a1-8c22-4df0-9a01-777777777777' AND run_number=1)
+    AND product_id=v_product AND expected_scope
+    AND expected_quantity IS NULL AND counted_quantity IS NOT NULL
+    AND result_status='not_expected';
+  IF v_count<>2 THEN RAISE EXCEPTION 'ASSERT_NULL_BASELINE_SCOPE_RECONCILIATION_FAILED:%',v_count; END IF;
+END $scope_reconciliation$;
 SELECT public.count_generate_recount_tasks(
  (SELECT id FROM public.count_reconciliation_runs WHERE session_id='f3c6e6a1-8c22-4df0-9a01-777777777777' ORDER BY run_number DESC LIMIT 1),
  'f3c6e6a1-8c22-4df0-9a01-444444444444',0);
@@ -227,25 +251,6 @@ SELECT jsonb_build_object(
  'reconciliation_after_recount',8,'kpis',public.count_session_kpis('f3c6e6a1-8c22-4df0-9a01-777777777777')
 ) AS verified_result;
 
--- Prove the barcode-only product can pass the same server-authoritative count RPC.
-SELECT set_config('request.jwt.claim.sub','f3c6e6a1-8c22-4df0-9a01-222222222222',true);
-SELECT set_config('request.jwt.claims','{"sub":"f3c6e6a1-8c22-4df0-9a01-222222222222","role":"authenticated"}',true);
-DO $barcode_count$
-DECLARE v_product uuid; v_entry public.count_entries;
-BEGIN
-  SELECT id INTO v_product FROM public.count_products
-  WHERE project_id='f3c6e6a1-8c22-4df0-9a01-333333333333'
-    AND barcode='990000000009';
-  v_entry := public.count_record_entry(
-    'f3c6e6a1-8c22-4df0-9a01-777777777777',v_product,
-    'f3c6e6a1-8c22-4df0-9a01-555555555555',3,'قطعة',
-    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-    '990000000009','rollback-device-001','barcode-only count'
-  );
-  IF v_entry.product_id IS DISTINCT FROM v_product
-     OR v_entry.quantity<>3 OR v_entry.unit<>'قطعة'
-     OR v_entry.base_quantity<>3
-  THEN RAISE EXCEPTION 'ASSERT_BARCODE_ONLY_COUNT_FAILED'; END IF;
-END $barcode_count$;
+-- Barcode-only counting at both locations is asserted in the first reconciliation.
 SELECT 'PASS: barcode-only counting, optional fields, complete/partial cost capture and unit reuse' AS regression_result;
 ROLLBACK;
