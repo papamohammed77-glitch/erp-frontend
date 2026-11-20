@@ -57,7 +57,25 @@ BEGIN
 
   INSERT INTO public.count_sessions(project_id,name,status,created_by)
   VALUES(v_project,'QA Rollback Session','planned',v_supervisor) RETURNING id INTO v_session;
+
+  -- Direct DML may not jump from planned to completed.
+  BEGIN
+    UPDATE public.count_sessions SET status='completed' WHERE id=v_session;
+    RAISE EXCEPTION 'QA_FAIL_DIRECT_SESSION_JUMP_ALLOWED';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM='QA_FAIL_DIRECT_SESSION_JUMP_ALLOWED' THEN RAISE; END IF;
+    IF SQLERRM NOT LIKE 'INVALID_SESSION_STATUS_TRANSITION:%' THEN RAISE; END IF;
+  END;
+
+  -- Only the authorized transition RPC starts, pauses, and resumes this session.
   PERFORM public.count_transition_session(v_session,'active');
+  BEGIN
+    UPDATE public.count_sessions SET status='completed' WHERE id=v_session;
+    RAISE EXCEPTION 'QA_FAIL_DIRECT_SESSION_CLOSE_BEFORE_APPROVAL';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM='QA_FAIL_DIRECT_SESSION_CLOSE_BEFORE_APPROVAL' THEN RAISE; END IF;
+    IF SQLERRM<>'SESSION_CLOSE_REQUIRES_LATEST_APPROVED_RECONCILIATION' THEN RAISE; END IF;
+  END;
   PERFORM public.count_transition_session(v_session,'paused');
   PERFORM public.count_transition_session(v_session,'active');
 
